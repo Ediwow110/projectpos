@@ -43,6 +43,8 @@ model Business {
   settings    Setting[]
   categories  Category[]
   products    Product[]
+  movements   InventoryMovement[]
+  balances    InventoryBalance[]
 }
 
 model BusinessMembership {
@@ -165,4 +167,35 @@ model Product {
   category       Category? @relation(fields: [categoryId], references: [id])
   @@index([businessId, isActive])
   @@index([businessId, categoryId])
+}
+  preventOversell Boolean   @default(true)
+  movements      InventoryMovement[]
+  balances       InventoryBalance[]
+
+model InventoryMovement {
+  id            String   @id @default(cuid())
+  businessId    String
+  productId     String
+  type          String
+  qtyDelta      Int
+  reason        String?
+  referenceType String?
+  referenceId   String?
+  actorId       String
+  requestId     String
+  createdAt     DateTime @default(now())
+  business      Business @relation(fields: [businessId], references: [id])
+  product       Product  @relation(fields: [productId], references: [id])
+  @@index([businessId, productId, createdAt])
+}
+
+model InventoryBalance {
+  id         String   @id @default(cuid())
+  businessId String
+  productId  String
+  qtyOnHand  Int      @default(0)
+  updatedAt  DateTime @updatedAt
+  business   Business @relation(fields: [businessId], references: [id])
+  product    Product  @relation(fields: [productId], references: [id])
+  @@unique([businessId, productId])
 }
