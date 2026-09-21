@@ -74,6 +74,27 @@ export interface DbProduct {
   imageUrl: string | null;
 }
 
+
+export interface DbMovement {
+  id: string;
+  businessId: string;
+  productId: string;
+  type: string;
+  qtyDelta: number;
+  reason: string | null;
+  referenceType: string | null;
+  referenceId: string | null;
+  actorId: string;
+  requestId: string;
+}
+
+export interface DbBalance {
+  id: string;
+  businessId: string;
+  productId: string;
+  qtyOnHand: number;
+}
+
 export interface DbPort {
   findUserByEmail(email: string): Promise<DbUser | null>;
   findUserById(id: string): Promise<DbUser | null>;
@@ -104,4 +125,10 @@ export interface DbPort {
   listProducts(businessId: string): Promise<DbProduct[]>;
   findProductById(id: string, businessId: string): Promise<DbProduct | null>;
   updateProduct(id: string, businessId: string, patch: Partial<Omit<DbProduct, "id" | "businessId">>): Promise<DbProduct | null>;
+  createMovement(m: Omit<DbMovement, "id">): Promise<DbMovement>;
+  listMovements(productId: string, businessId: string): Promise<DbMovement[]>;
+  listMovementsByBusiness(businessId: string): Promise<DbMovement[]>;
+  upsertBalance(b: Omit<DbBalance, "id">): Promise<DbBalance>;
+  findBalance(productId: string, businessId: string): Promise<DbBalance | null>;
+  listBalances(businessId: string): Promise<DbBalance[]>;
 }

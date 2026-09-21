@@ -1,4 +1,4 @@
-import type { AuditEntry, DbBusiness, DbCategory, DbMembership, DbPort, DbProduct, DbResetToken, DbSession, DbUser } from "./db.port";
+import type { AuditEntry, DbBalance, DbBusiness, DbCategory, DbMembership, DbMovement, DbPort, DbProduct, DbResetToken, DbSession, DbUser } from "./db.port";
 
 let n = 0;
 const nid = (p: string): string => `${p}_${Date.now().toString(36)}_${(n += 1)}`;
@@ -12,6 +12,8 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const settings = new Map<string, Record<string, unknown>>();
   const categories = new Map<string, DbCategory>();
   const products = new Map<string, DbProduct>();
+  const movements = new Map<string, DbMovement>();
+  const balances = new Map<string, DbBalance>();
   const audit: AuditEntry[] = [];
   return {
     audit,
@@ -135,6 +137,34 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       const next = { ...p, ...patch };
       products.set(id, next);
       return next;
+    },
+    async createMovement(m) {
+      const row = { ...m, id: nid("mov") };
+      movements.set(row.id, row);
+      return row;
+    },
+    async listMovements(productId, businessId) {
+      return [...movements.values()].filter(
+        (m) => m.productId === productId && m.businessId === businessId,
+      );
+    },
+    async listMovementsByBusiness(businessId) {
+      return [...movements.values()].filter((m) => m.businessId === businessId);
+    },
+    async upsertBalance(b) {
+      const key = `${b.businessId}:${b.productId}`;
+      const existing = balances.get(key);
+      const row = existing ? { ...existing, qtyOnHand: b.qtyOnHand } : { ...b, id: nid("bal") };
+      balances.set(key, row);
+      return row;
+    },
+    async findBalance(productId, businessId) {
+      const row = balances.get(`${businessId}:${productId}`) ?? null;
+      if (!row || row.businessId !== businessId) return null;
+      return row;
+    },
+    async listBalances(businessId) {
+      return [...balances.values()].filter((b) => b.businessId === businessId);
     },
   };
 }
