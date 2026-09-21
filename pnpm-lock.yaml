@@ -24,6 +24,15 @@ importers:
         specifier: 2.1.8
         version: 2.1.8
 
+  apps/web:
+    devDependencies:
+      typescript:
+        specifier: 5.6.3
+        version: 5.6.3
+      vitest:
+        specifier: 2.1.8
+        version: 2.1.8
+
   packages/auth:
     devDependencies:
       typescript:
