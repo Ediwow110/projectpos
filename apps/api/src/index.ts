@@ -9,3 +9,4 @@ export * from "./auth/password";
 export * from "./auth/sessions";
 export * from "./auth/reset-tokens";
 export * from "./auth/csrf";
+export * from "./tenant/seed";
