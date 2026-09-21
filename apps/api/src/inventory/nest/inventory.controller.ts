@@ -128,7 +128,7 @@ export class InventoryController {
     if (!this.adjustGuard(req, res)) return;
     try {
       const auth = req.auth!;
-      res.json(await this.inventory.rebuild(auth.businessId, auth.userId, rid(req)));
+      res.status(200).json(await this.inventory.rebuild(auth.businessId, auth.userId, rid(req)));
     } catch (e) {
       const code = e instanceof Error ? e.message : "VALIDATION";
       fail(res, statusFor(code), code, "Rebuild failed", req);
