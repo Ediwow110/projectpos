@@ -41,6 +41,8 @@ model Business {
   sessions    Session[]
   auditLogs   AuditLog[]
   settings    Setting[]
+  categories  Category[]
+  products    Product[]
 }
 
 model BusinessMembership {
@@ -125,4 +127,42 @@ model Setting {
   business   Business @relation(fields: [businessId], references: [id])
   @@unique([businessId, key])
   @@index([businessId])
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  businessId  String
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  business    Business @relation(fields: [businessId], references: [id])
+  products    Product[]
+  @@unique([businessId, name])
+  @@index([businessId])
+}
+
+model Product {
+  id             String    @id @default(cuid())
+  businessId     String
+  categoryId     String?
+  name           String
+  sku            String?
+  barcode        String?
+  brand          String?
+  unit           String    @default("pc")
+  costMinor      Int       @default(0)
+  priceMinor     Int
+  taxRateBps     Int?
+  reorderLevel   Int       @default(0)
+  trackInventory Boolean   @default(true)
+  isActive       Boolean   @default(true)
+  imageUrl       String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  business       Business  @relation(fields: [businessId], references: [id])
+  category       Category? @relation(fields: [categoryId], references: [id])
+  @@index([businessId, isActive])
+  @@index([businessId, categoryId])
 }
