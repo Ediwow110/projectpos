@@ -11,7 +11,9 @@ import { TenantService } from "./tenant/nest/tenant.service";
 import { BusinessController } from "./business/nest/business.controller";
 import { BusinessService } from "./business/nest/business.service";
 import { CatalogController } from "./catalog/nest/catalog.controller";
+import { InventoryController } from "./inventory/nest/inventory.controller";
 import { CatalogService } from "./catalog/nest/catalog.service";
+import { InventoryService } from "./inventory/nest/inventory.service";
 import { RequestIdMiddleware } from "./common/request-id.middleware";
 import { SessionGuard } from "./common/session.guard";
 import { CsrfGuard } from "./common/csrf.guard";
@@ -20,12 +22,13 @@ import type { DbPort } from "./common/db.port";
 import { createMemoryDb } from "./common/memory.db";
 
 @Module({
-  controllers: [AuthController, TenantController, BusinessController, CatalogController],
+  controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController],
   providers: [
     AuthService,
     TenantService,
     BusinessService,
     CatalogService,
+    InventoryService,
     SessionGuard,
     CsrfGuard,
     { provide: APP_FILTER, useClass: AuthErrorFilter },
@@ -40,7 +43,7 @@ export class AppModule implements NestModule {
 export async function createTestApp(): Promise<INestApplication> {
   const db: DbPort = createMemoryDb();
   const moduleRef = await Test.createTestingModule({
-    controllers: [AuthController, TenantController, BusinessController, CatalogController],
+    controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController],
     providers: [
       { provide: "DbPort", useValue: db },
       { provide: AuthService, useFactory: (d: DbPort) => new AuthService(d), inject: ["DbPort"] },
@@ -57,6 +60,11 @@ export async function createTestApp(): Promise<INestApplication> {
       {
         provide: CatalogService,
         useFactory: (d: DbPort) => new CatalogService(d),
+        inject: ["DbPort"],
+      },
+      {
+        provide: InventoryService,
+        useFactory: (d: DbPort) => new InventoryService(d),
         inject: ["DbPort"],
       },
       {

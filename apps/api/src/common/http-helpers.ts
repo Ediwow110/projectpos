@@ -31,6 +31,8 @@ export const CODE_STATUS: Record<string, number> = {
   CATALOG_DUPLICATE_SKU: 409,
   CATALOG_DUPLICATE_BARCODE: 409,
   CATALOG_IMPORT_TOO_LARGE: 400,
+  INSUFFICIENT_STOCK: 409,
+  PRODUCT_NOT_TRACKED: 400,
 };
 
 export function statusFor(code: string, fallback = 400): number {
