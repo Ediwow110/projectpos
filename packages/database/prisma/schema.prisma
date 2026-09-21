@@ -1,0 +1,114 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  memberships  BusinessMembership[]
+  sessions     Session[]
+}
+
+model Business {
+  id        String   @id @default(cuid())
+  name      String
+  currency  String   @default("PHP")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  memberships BusinessMembership[]
+  sessions    Session[]
+  auditLogs   AuditLog[]
+  settings    Setting[]
+}
+
+model BusinessMembership {
+  id         String   @id @default(cuid())
+  businessId String
+  userId     String
+  roleId     String
+  createdAt  DateTime @default(now())
+  business   Business @relation(fields: [businessId], references: [id])
+  user       User     @relation(fields: [userId], references: [id])
+  role       Role     @relation(fields: [roleId], references: [id])
+  @@unique([businessId, userId])
+  @@index([businessId])
+  @@index([userId])
+}
+
+model Role {
+  id          String               @id @default(cuid())
+  businessId  String
+  name        String
+  permissions RolePermission[]
+  memberships BusinessMembership[]
+  @@unique([businessId, name])
+  @@index([businessId])
+}
+
+model Permission {
+  id    String           @id @default(cuid())
+  key   String           @unique
+  roles RolePermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id])
+  @@id([roleId, permissionId])
+}
+
+model Session {
+  id         String    @id @default(cuid())
+  userId     String
+  businessId String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id])
+  business   Business  @relation(fields: [businessId], references: [id])
+  @@index([businessId])
+  @@index([userId])
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  businessId     String
+  actorId        String
+  action         String
+  entityType     String
+  entityId       String
+  beforeSnapshot Json?
+  afterSnapshot  Json?
+  reason         String?
+  requestId      String
+  ip             String?
+  createdAt      DateTime @default(now())
+  business       Business @relation(fields: [businessId], references: [id])
+  @@index([businessId, createdAt])
+  @@index([businessId, entityType, entityId])
+}
+
+model Setting {
+  id         String   @id @default(cuid())
+  businessId String
+  key        String
+  value      Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  business   Business @relation(fields: [businessId], references: [id])
+  @@unique([businessId, key])
+  @@index([businessId])
+}
