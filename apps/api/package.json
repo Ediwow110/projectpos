@@ -8,11 +8,25 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@nestjs/common": "11",
+    "@nestjs/core": "11",
+    "@nestjs/platform-express": "11",
+    "@nestjs/testing": "11",
     "@pos/auth": "workspace:*",
     "@pos/types": "workspace:*",
-    "argon2": "0.41.1"
+    "@pos/validation": "workspace:*",
+    "argon2": "0.41.1",
+    "cookie-parser": "^1.4.7",
+    "express": "^4.21.2",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
   },
   "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.2",
+    "@types/supertest": "^7.2.1",
+    "supertest": "^7.2.2",
     "typescript": "5.6.3",
     "vitest": "2.1.8"
   }

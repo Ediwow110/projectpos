@@ -1,0 +1,35 @@
+import type { Response } from "express";
+import { error } from "../errors";
+import { getCorrelationId } from "../correlation";
+
+export function fail(res: Response, status: number, code: string, message: string, req: { headers: Record<string, unknown>; correlationId?: string }, fields?: Record<string, string[]>): void {
+  const headers: Record<string, string | undefined> = {};
+  for (const [k, v] of Object.entries(req.headers)) headers[k.toLowerCase()] = Array.isArray(v) ? v.join(",") : String(v ?? "");
+  const correlationId = req.correlationId ?? getCorrelationId(headers);
+  res.status(status).json(error(code, message, correlationId, fields));
+}
+
+export const CODE_STATUS: Record<string, number> = {
+  AUTH_WEAK_PASSWORD: 400,
+  AUTH_EMAIL_TAKEN: 409,
+  AUTH_INVALID_CREDENTIALS: 401,
+  AUTH_TOKEN_INVALID: 400,
+  AUTH_TOKEN_EXPIRED: 400,
+  AUTH_TOKEN_USED: 400,
+  AUTH_REAUTH_REQUIRED: 403,
+  SESSION_EXPIRED: 401,
+  SESSION_REVOKED: 401,
+  TENANT_REQUIRED: 401,
+  TENANT_MISMATCH: 403,
+  VALIDATION: 400,
+  RATE_LIMITED: 429,
+  FORBIDDEN: 403,
+  CSRF_REQUIRED: 403,
+  CSRF_MISMATCH: 403,
+  ONBOARDING_REQUIRED_STEP: 400,
+  NOT_FOUND: 404,
+};
+
+export function statusFor(code: string, fallback = 400): number {
+  return CODE_STATUS[code] ?? fallback;
+}
