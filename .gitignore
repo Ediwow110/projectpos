@@ -11,3 +11,4 @@ coverage/
 .worktrees/
 worktrees/
 .superpowers/
+*.tsbuildinfo
