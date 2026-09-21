@@ -39,7 +39,9 @@ export default function DashboardPage(): JSX.Element {
           <li>
             <Link href="/onboarding">Continue setup</Link>
           </li>
-          <li>Products — coming in Phase 2</li>
+          <li>
+            <Link href="/products">Products</Link>
+          </li>
           <li>Sales — coming in Phase 4</li>
           <li>Team — coming in a later phase</li>
         </ul>
