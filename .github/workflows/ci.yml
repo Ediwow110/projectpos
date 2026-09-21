@@ -16,3 +16,6 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: node scripts/verify-scaffold.test.mjs
+      - run: node scripts/verify-phase0.test.mjs
+      - run: pnpm test
+      - run: pnpm test:exit
