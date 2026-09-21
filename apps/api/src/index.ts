@@ -5,3 +5,7 @@ export * from "./tenant.guard";
 export * from "./audit";
 export * from "./routes/me";
 export * from "./routes/health";
+export * from "./auth/password";
+export * from "./auth/sessions";
+export * from "./auth/reset-tokens";
+export * from "./auth/csrf";
