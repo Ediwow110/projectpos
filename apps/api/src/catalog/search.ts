@@ -20,10 +20,10 @@ export function matchesQuery(row: CatalogRow, q: string): boolean {
   return false;
 }
 
-export function applyProductSearch(
-  rows: CatalogRow[],
+export function applyProductSearch<T extends CatalogRow>(
+  rows: T[],
   opts: { q?: string; categoryId?: string; active: "true" | "false" | "all"; page: number; pageSize: number },
-): { items: CatalogRow[]; total: number; page: number; pageSize: number } {
+): { items: T[]; total: number; page: number; pageSize: number } {
   let out = rows.filter((r) => {
     if (opts.active === "true" && !r.isActive) return false;
     if (opts.active === "false" && r.isActive) return false;

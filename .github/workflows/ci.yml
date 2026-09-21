@@ -20,3 +20,4 @@ jobs:
       - run: pnpm test
       - run: pnpm test:exit
       - run: node scripts/verify-phase1.test.mjs
+      - run: node scripts/verify-phase2.test.mjs
