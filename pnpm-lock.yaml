@@ -35,6 +35,9 @@ importers:
       '@pos/auth':
         specifier: workspace:*
         version: link:../../packages/auth
+      '@pos/database':
+        specifier: workspace:*
+        version: link:../../packages/database
       '@pos/types':
         specifier: workspace:*
         version: link:../../packages/types

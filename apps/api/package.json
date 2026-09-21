@@ -13,6 +13,7 @@
     "@nestjs/platform-express": "11",
     "@nestjs/testing": "11",
     "@pos/auth": "workspace:*",
+    "@pos/database": "workspace:*",
     "@pos/types": "workspace:*",
     "@pos/validation": "workspace:*",
     "argon2": "0.41.1",
