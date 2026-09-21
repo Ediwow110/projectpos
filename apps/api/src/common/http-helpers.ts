@@ -28,6 +28,9 @@ export const CODE_STATUS: Record<string, number> = {
   CSRF_MISMATCH: 403,
   ONBOARDING_REQUIRED_STEP: 400,
   NOT_FOUND: 404,
+  CATALOG_DUPLICATE_SKU: 409,
+  CATALOG_DUPLICATE_BARCODE: 409,
+  CATALOG_IMPORT_TOO_LARGE: 400,
 };
 
 export function statusFor(code: string, fallback = 400): number {
