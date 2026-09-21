@@ -1,4 +1,4 @@
-import type { AuditEntry, DbBusiness, DbMembership, DbPort, DbResetToken, DbSession, DbUser } from "./db.port";
+import type { AuditEntry, DbBusiness, DbCategory, DbMembership, DbPort, DbProduct, DbResetToken, DbSession, DbUser } from "./db.port";
 
 let n = 0;
 const nid = (p: string): string => `${p}_${Date.now().toString(36)}_${(n += 1)}`;
@@ -10,6 +10,8 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const sessions = new Map<string, DbSession>();
   const resets = new Map<string, DbResetToken>();
   const settings = new Map<string, Record<string, unknown>>();
+  const categories = new Map<string, DbCategory>();
+  const products = new Map<string, DbProduct>();
   const audit: AuditEntry[] = [];
   return {
     audit,
@@ -93,6 +95,46 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     },
     async listAudit() {
       return audit;
+    },
+    async createCategory(c) {
+      const row = { ...c, id: nid("cat") };
+      categories.set(row.id, row);
+      return row;
+    },
+    async listCategories(businessId) {
+      return [...categories.values()].filter((c) => c.businessId === businessId);
+    },
+    async findCategoryById(id, businessId) {
+      const c = categories.get(id) ?? null;
+      if (!c || c.businessId !== businessId) return null;
+      return c;
+    },
+    async updateCategory(id, businessId, patch) {
+      const c = categories.get(id) ?? null;
+      if (!c || c.businessId !== businessId) return null;
+      const next = { ...c, ...patch };
+      categories.set(id, next);
+      return next;
+    },
+    async createProduct(p) {
+      const row = { ...p, id: nid("prod") };
+      products.set(row.id, row);
+      return row;
+    },
+    async listProducts(businessId) {
+      return [...products.values()].filter((p) => p.businessId === businessId);
+    },
+    async findProductById(id, businessId) {
+      const p = products.get(id) ?? null;
+      if (!p || p.businessId !== businessId) return null;
+      return p;
+    },
+    async updateProduct(id, businessId, patch) {
+      const p = products.get(id) ?? null;
+      if (!p || p.businessId !== businessId) return null;
+      const next = { ...p, ...patch };
+      products.set(id, next);
+      return next;
     },
   };
 }

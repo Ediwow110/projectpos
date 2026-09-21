@@ -48,6 +48,32 @@ export interface AuditEntry {
   requestId: string;
 }
 
+export interface DbCategory {
+  id: string;
+  businessId: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+}
+
+export interface DbProduct {
+  id: string;
+  businessId: string;
+  categoryId: string | null;
+  name: string;
+  sku: string | null;
+  barcode: string | null;
+  brand: string | null;
+  unit: string;
+  costMinor: number;
+  priceMinor: number;
+  taxRateBps: number | null;
+  reorderLevel: number;
+  trackInventory: boolean;
+  isActive: boolean;
+  imageUrl: string | null;
+}
+
 export interface DbPort {
   findUserByEmail(email: string): Promise<DbUser | null>;
   findUserById(id: string): Promise<DbUser | null>;
@@ -70,4 +96,12 @@ export interface DbPort {
   saveSettings(businessId: string, settings: Record<string, unknown>): Promise<void>;
   appendAudit(e: AuditEntry): Promise<void>;
   listAudit(): Promise<AuditEntry[]>;
+  createCategory(c: Omit<DbCategory, "id">): Promise<DbCategory>;
+  listCategories(businessId: string): Promise<DbCategory[]>;
+  findCategoryById(id: string, businessId: string): Promise<DbCategory | null>;
+  updateCategory(id: string, businessId: string, patch: Partial<Omit<DbCategory, "id" | "businessId">>): Promise<DbCategory | null>;
+  createProduct(p: Omit<DbProduct, "id">): Promise<DbProduct>;
+  listProducts(businessId: string): Promise<DbProduct[]>;
+  findProductById(id: string, businessId: string): Promise<DbProduct | null>;
+  updateProduct(id: string, businessId: string, patch: Partial<Omit<DbProduct, "id" | "businessId">>): Promise<DbProduct | null>;
 }
