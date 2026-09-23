@@ -42,6 +42,7 @@ export const CODE_STATUS: Record<string, number> = {
   SHIFT_NO_OPEN_SHIFT: 409,
   SHIFT_ALREADY_CLOSED: 409,
   SHIFT_CLOSED_IMMUTABLE: 403,
+  REFUND_EXCEEDS_LIMIT: 400,
 };
 
 export function statusFor(code: string, fallback = 400): number {

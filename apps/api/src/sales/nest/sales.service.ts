@@ -1,9 +1,12 @@
 import { Injectable } from "@nestjs/common";
 import { withScope } from "@pos/database";
 import type {
+  DbCustomer,
   DbPayment,
   DbPort,
   DbProduct,
+  DbRefund,
+  DbRefundItem,
   DbSale,
   DbSaleItem,
 } from "../../common/db.port";
@@ -36,6 +39,11 @@ export interface PaymentInput {
 export type SaleWithLines = DbSale & {
   items: DbSaleItem[];
   payments: DbPayment[];
+};
+
+export type SaleDetail = SaleWithLines & {
+  refunds: Array<DbRefund & { items: DbRefundItem[] }>;
+  customer: DbCustomer | null;
 };
 
 const CASH_METHODS = new Set(["cash"]);
@@ -145,6 +153,14 @@ export class SalesService {
       if (!reg) throw new Error("VALIDATION");
       registerId = reg.id;
     }
+    let customerId: string | null = null;
+    let customerName: string | null = input.customerName?.trim() ? input.customerName.trim() : null;
+    if (input.customerId !== undefined && input.customerId !== null) {
+      const customer = await this.db.findCustomerById(input.customerId, businessId);
+      if (!customer) throw new Error("VALIDATION");
+      customerId = customer.id;
+      if (!customerName) customerName = customer.name;
+    }
     const sale = await this.db.createSale({
       businessId,
       receiptNo,
@@ -156,13 +172,14 @@ export class SalesService {
       paidMinor: 0,
       changeMinor: 0,
       currency: "PHP",
-      customerId: input.customerId ?? null,
-      customerName: input.customerName?.trim() ? input.customerName.trim() : null,
+      customerId,
+      customerName,
       notes: input.notes?.trim() ? input.notes.trim() : null,
       actorId,
       requestId,
       idempotencyKey: null,
       registerId,
+      createdAt: new Date(),
     });
     for (const l of lines) {
       await this.db.createSaleItem({
@@ -577,28 +594,56 @@ export class SalesService {
     businessId: string,
     saleId: string,
     granted: string[],
-  ): Promise<SaleWithLines> {
+    role: string = "owner",
+  ): Promise<SaleDetail> {
     withScope(businessId, {});
     const sale = await this.requireSale(businessId, saleId);
     const full = await this.embed(sale);
-    if (granted.includes("cost.view")) return full;
-    return {
-      ...full,
-      items: full.items.map((i) => {
-        const { costMinor: _omitted, ...rest } = i;
-        void _omitted;
-        return { ...rest, costMinor: 0 } as DbSaleItem;
-      }),
-    };
+    const items = granted.includes("cost.view")
+      ? full.items
+      : full.items.map((i) => {
+          const { costMinor: _omitted, ...rest } = i;
+          void _omitted;
+          return { ...rest, costMinor: 0 } as DbSaleItem;
+        });
+    const refundRows = await this.db.listRefundsBySale(sale.id, businessId);
+    const refunds: Array<DbRefund & { items: DbRefundItem[] }> = [];
+    for (const r of refundRows) {
+      refunds.push({ ...r, items: await this.db.listRefundItems(r.id, businessId) });
+    }
+    let customer: DbCustomer | null = null;
+    if (sale.customerId) {
+      const row = await this.db.findCustomerById(sale.customerId, businessId);
+      if (row) {
+        customer = role === "cashier" ? { ...row, phone: null, email: null, address: null } : row;
+      }
+    }
+    return { ...full, items, refunds, customer };
   }
 
   async listSales(
     businessId: string,
-    opts: { cursor?: string; limit: number; status?: string },
+    opts: { cursor?: string; limit: number; status?: string; customerId?: string; dateFrom?: string; dateTo?: string },
   ): Promise<{ items: DbSale[]; nextCursor: string | null }> {
     withScope(businessId, {});
     let rows = await this.db.listSalesByBusiness(businessId);
     if (opts.status) rows = rows.filter((s) => s.status === opts.status);
+    if (opts.customerId) rows = rows.filter((s) => s.customerId === opts.customerId);
+    let from: number | null = null;
+    let to: number | null = null;
+    if (opts.dateFrom !== undefined) {
+      from = new Date(opts.dateFrom).getTime();
+      if (Number.isNaN(from)) throw new Error("VALIDATION");
+    }
+    if (opts.dateTo !== undefined) {
+      to = new Date(opts.dateTo).getTime();
+      if (Number.isNaN(to)) throw new Error("VALIDATION");
+    }
+    if (from !== null && to !== null && to - from > 366 * 24 * 3600 * 1000) {
+      throw new Error("VALIDATION");
+    }
+    if (from !== null) rows = rows.filter((s) => s.createdAt.getTime() >= (from as number));
+    if (to !== null) rows = rows.filter((s) => s.createdAt.getTime() <= (to as number));
     rows = [...rows].sort((a, b) => (a.receiptNo < b.receiptNo ? 1 : -1));
     let start = 0;
     if (opts.cursor) {
@@ -609,6 +654,21 @@ export class SalesService {
     const nextCursor =
       start + opts.limit < rows.length ? items[items.length - 1].id : null;
     return { items, nextCursor };
+  }
+
+  async buildSalesExport(
+    businessId: string,
+    opts: { status?: string; customerId?: string; dateFrom?: string; dateTo?: string },
+  ): Promise<{ headers: string[]; rows: Array<Array<string | number | null>> }> {
+    withScope(businessId, {});
+    const { items } = await this.listSales(businessId, { ...opts, limit: 1000 });
+    return {
+      headers: ["id", "receiptNo", "status", "subtotalMinor", "discountMinor", "taxMinor", "totalMinor", "paidMinor", "changeMinor", "currency", "customerName", "registerId"],
+      rows: items.map((s) => [
+        s.id, s.receiptNo, s.status, s.subtotalMinor, s.discountMinor, s.taxMinor,
+        s.totalMinor, s.paidMinor, s.changeMinor, s.currency, s.customerName, s.registerId,
+      ]),
+    };
   }
 
   async receiptData(businessId: string, saleId: string): Promise<{

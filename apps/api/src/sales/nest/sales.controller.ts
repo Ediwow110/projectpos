@@ -12,6 +12,7 @@ import { SessionGuard } from "../../common/session.guard";
 import { CsrfGuard } from "../../common/csrf.guard";
 import { getCorrelationId } from "../../correlation";
 import { fail, statusFor } from "../../common/http-helpers";
+import { toCsv } from "../../common/csv";
 import { AuthService } from "../../auth/nest/auth.service";
 import { SalesService } from "./sales.service";
 
@@ -150,11 +151,47 @@ export class SalesController {
         cursor: parsed.data.cursor,
         limit: parsed.data.limit,
         status: parsed.data.status,
+        customerId: parsed.data.customerId,
+        dateFrom: parsed.data.dateFrom,
+        dateTo: parsed.data.dateTo,
       });
       res.json(page);
     } catch (e) {
       const code = e instanceof Error ? e.message : "VALIDATION";
       fail(res, statusFor(code), code, "Sales fetch failed", req);
+    }
+  }
+
+  @Get("sales/export")
+  async exportSales(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Query() query: Record<string, string>,
+  ): Promise<void> {
+    if (!this.perms(req).includes("export.run")) {
+      fail(res, 403, "FORBIDDEN", "Export requires export.run", req);
+      return;
+    }
+    if (query["format"] !== "csv") {
+      fail(res, 400, "VALIDATION", "Only format=csv is supported", req);
+      return;
+    }
+    const parsed = salesQuerySchema.safeParse(query);
+    if (!parsed.success) {
+      fail(res, 400, "VALIDATION", "Invalid sales query", req);
+      return;
+    }
+    try {
+      const { headers, rows } = await this.sales.buildSalesExport(req.auth!.businessId, {
+        status: parsed.data.status,
+        customerId: parsed.data.customerId,
+        dateFrom: parsed.data.dateFrom,
+        dateTo: parsed.data.dateTo,
+      });
+      res.status(200).set("Content-Type", "text/csv; charset=utf-8").send(toCsv(headers, rows));
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "VALIDATION";
+      fail(res, statusFor(code), code, "Sales export failed", req);
     }
   }
 
@@ -165,7 +202,7 @@ export class SalesController {
     @Param("id") id: string,
   ): Promise<void> {
     try {
-      res.json(await this.sales.getSale(req.auth!.businessId, id, this.perms(req)));
+      res.json(await this.sales.getSale(req.auth!.businessId, id, this.perms(req), req.auth!.role));
     } catch (e) {
       const code = e instanceof Error ? e.message : "VALIDATION";
       fail(res, statusFor(code), code, "Sale fetch failed", req);

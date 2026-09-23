@@ -114,6 +114,7 @@ export interface DbSale {
   requestId: string;
   idempotencyKey: string | null;
   registerId: string | null;
+  createdAt: Date;
 }
 
 export interface DbSaleItem {

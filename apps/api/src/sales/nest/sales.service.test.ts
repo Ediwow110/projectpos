@@ -10,7 +10,7 @@ describe("phase4 sales port", () => {
       subtotalMinor: 0, discountMinor: 0, taxMinor: 0, totalMinor: 0,
       paidMinor: 0, changeMinor: 0, currency: "PHP",
       customerId: null, customerName: null, notes: null,
-      actorId: "u1", requestId: "r1", idempotencyKey: null, registerId: null,
+      actorId: "u1", requestId: "r1", idempotencyKey: null, registerId: null, createdAt: new Date("2026-09-20T00:00:00.000Z"),
     });
     expect(await db.findSaleById(sale.id, "b1")).not.toBeNull();
     expect(await db.findSaleById(sale.id, "b2")).toBeNull();
