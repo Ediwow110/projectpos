@@ -1,4 +1,4 @@
-import type { AuditEntry, DbBalance, DbBusiness, DbCategory, DbMembership, DbMovement, DbPort, DbProduct, DbResetToken, DbSession, DbUser } from "./db.port";
+import type { AuditEntry, DbBalance, DbBusiness, DbCategory, DbMembership, DbMovement, DbPort, DbProduct, DbResetToken, DbSession, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency } from "./db.port";
 
 let n = 0;
 const nid = (p: string): string => `${p}_${Date.now().toString(36)}_${(n += 1)}`;
@@ -14,6 +14,12 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const products = new Map<string, DbProduct>();
   const movements = new Map<string, DbMovement>();
   const balances = new Map<string, DbBalance>();
+  const sales = new Map<string, DbSale>();
+  const saleItems = new Map<string, DbSaleItem>();
+  const payments = new Map<string, DbPayment>();
+  const heldSales = new Map<string, DbHeldSale>();
+  const idempotency = new Map<string, DbIdempotency>();
+  const receiptSeq = new Map<string, number>();
   const audit: AuditEntry[] = [];
   return {
     audit,
@@ -165,6 +171,86 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     },
     async listBalances(businessId) {
       return [...balances.values()].filter((b) => b.businessId === businessId);
+    },
+    async createSale(s) {
+      const row = { ...s, id: nid("sale") };
+      sales.set(row.id, row);
+      return row;
+    },
+    async findSaleById(id, businessId) {
+      const s = sales.get(id) ?? null;
+      if (!s || s.businessId !== businessId) return null;
+      return s;
+    },
+    async listSalesByBusiness(businessId) {
+      return [...sales.values()].filter((s) => s.businessId === businessId);
+    },
+    async updateSale(id, businessId, patch) {
+      const s = sales.get(id) ?? null;
+      if (!s || s.businessId !== businessId) return null;
+      const next = { ...s, ...patch };
+      sales.set(id, next);
+      return next;
+    },
+    async createSaleItem(i) {
+      const row = { ...i, id: nid("sitem") };
+      saleItems.set(row.id, row);
+      return row;
+    },
+    async listSaleItems(saleId, businessId) {
+      return [...saleItems.values()].filter(
+        (i) => i.saleId === saleId && i.businessId === businessId,
+      );
+    },
+    async createPayment(p) {
+      const row = { ...p, id: nid("pay") };
+      payments.set(row.id, row);
+      return row;
+    },
+    async findPaymentById(id, businessId) {
+      const p = payments.get(id) ?? null;
+      if (!p || p.businessId !== businessId) return null;
+      return p;
+    },
+    async listPaymentsBySale(saleId, businessId) {
+      return [...payments.values()].filter(
+        (p) => p.saleId === saleId && p.businessId === businessId,
+      );
+    },
+    async updatePayment(id, businessId, patch) {
+      const p = payments.get(id) ?? null;
+      if (!p || p.businessId !== businessId) return null;
+      const next = { ...p, ...patch };
+      payments.set(id, next);
+      return next;
+    },
+    async createHeldSale(h) {
+      const row = { ...h, id: nid("held") };
+      heldSales.set(row.id, row);
+      return row;
+    },
+    async findHeldSaleById(id, businessId) {
+      const h = heldSales.get(id) ?? null;
+      if (!h || h.businessId !== businessId) return null;
+      return h;
+    },
+    async markHeldResumed(id, businessId) {
+      const h = heldSales.get(id);
+      if (h && h.businessId === businessId) heldSales.set(id, { ...h, resumedAt: new Date() });
+    },
+    async claimIdempotency(r) {
+      const key = `${r.businessId}:${r.key}:${r.commandType}`;
+      if (idempotency.has(key)) throw new Error("IDEMPOTENCY_REPLAY");
+      idempotency.set(key, r);
+    },
+    async findIdempotency(businessId, key, commandType) {
+      return idempotency.get(`${businessId}:${key}:${commandType}`) ?? null;
+    },
+    async nextReceiptNo(businessId) {
+      const year = new Date().getUTCFullYear();
+      const seq = (receiptSeq.get(businessId) ?? 0) + 1;
+      receiptSeq.set(businessId, seq);
+      return `${year}-${String(seq).padStart(6, "0")}`;
     },
   };
 }

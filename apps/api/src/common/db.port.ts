@@ -95,6 +95,68 @@ export interface DbBalance {
   qtyOnHand: number;
 }
 
+export interface DbSale {
+  id: string;
+  businessId: string;
+  receiptNo: string;
+  status: string;
+  subtotalMinor: number;
+  discountMinor: number;
+  taxMinor: number;
+  totalMinor: number;
+  paidMinor: number;
+  changeMinor: number;
+  currency: string;
+  customerId: string | null;
+  customerName: string | null;
+  notes: string | null;
+  actorId: string;
+  requestId: string;
+  idempotencyKey: string | null;
+}
+
+export interface DbSaleItem {
+  id: string;
+  businessId: string;
+  saleId: string;
+  productId: string;
+  name: string;
+  unit: string;
+  qty: number;
+  priceMinor: number;
+  costMinor: number;
+  taxRateBps: number | null;
+  lineDiscountMinor: number;
+  lineTotalMinor: number;
+}
+
+export interface DbPayment {
+  id: string;
+  businessId: string;
+  saleId: string;
+  method: string;
+  amountMinor: number;
+  status: string;
+  providerRef: string | null;
+  idempotencyKey: string;
+}
+
+export interface DbHeldSale {
+  id: string;
+  businessId: string;
+  actorId: string;
+  payload: unknown;
+  resumedAt: Date | null;
+}
+
+export interface DbIdempotency {
+  businessId: string;
+  key: string;
+  commandType: string;
+  fingerprint: string;
+  resultId: string;
+}
+
 export interface DbPort {
   findUserByEmail(email: string): Promise<DbUser | null>;
   findUserById(id: string): Promise<DbUser | null>;
@@ -131,4 +193,20 @@ export interface DbPort {
   upsertBalance(b: Omit<DbBalance, "id">): Promise<DbBalance>;
   findBalance(productId: string, businessId: string): Promise<DbBalance | null>;
   listBalances(businessId: string): Promise<DbBalance[]>;
+  createSale(s: Omit<DbSale, "id">): Promise<DbSale>;
+  findSaleById(id: string, businessId: string): Promise<DbSale | null>;
+  listSalesByBusiness(businessId: string): Promise<DbSale[]>;
+  updateSale(id: string, businessId: string, patch: Partial<Omit<DbSale, "id" | "businessId">>): Promise<DbSale | null>;
+  createSaleItem(i: Omit<DbSaleItem, "id">): Promise<DbSaleItem>;
+  listSaleItems(saleId: string, businessId: string): Promise<DbSaleItem[]>;
+  createPayment(p: Omit<DbPayment, "id">): Promise<DbPayment>;
+  findPaymentById(id: string, businessId: string): Promise<DbPayment | null>;
+  listPaymentsBySale(saleId: string, businessId: string): Promise<DbPayment[]>;
+  updatePayment(id: string, businessId: string, patch: Partial<Omit<DbPayment, "id" | "businessId">>): Promise<DbPayment | null>;
+  createHeldSale(h: Omit<DbHeldSale, "id">): Promise<DbHeldSale>;
+  findHeldSaleById(id: string, businessId: string): Promise<DbHeldSale | null>;
+  markHeldResumed(id: string, businessId: string): Promise<void>;
+  claimIdempotency(r: DbIdempotency): Promise<void>;
+  findIdempotency(businessId: string, key: string, commandType: string): Promise<DbIdempotency | null>;
+  nextReceiptNo(businessId: string): Promise<string>;
 }
