@@ -45,6 +45,10 @@ model Business {
   products    Product[]
   movements   InventoryMovement[]
   balances    InventoryBalance[]
+  sales       Sale[]
+  payments    Payment[]
+  heldSales   HeldSale[]
+  idempotencyKeys SaleIdempotency[]
 }
 
 model BusinessMembership {
@@ -165,12 +169,12 @@ model Product {
   updatedAt      DateTime  @updatedAt
   business       Business  @relation(fields: [businessId], references: [id])
   category       Category? @relation(fields: [categoryId], references: [id])
-  @@index([businessId, isActive])
-  @@index([businessId, categoryId])
-}
   preventOversell Boolean   @default(true)
   movements      InventoryMovement[]
   balances       InventoryBalance[]
+  @@index([businessId, isActive])
+  @@index([businessId, categoryId])
+}
 
 model InventoryMovement {
   id            String   @id @default(cuid())
@@ -198,4 +202,89 @@ model InventoryBalance {
   business   Business @relation(fields: [businessId], references: [id])
   product    Product  @relation(fields: [productId], references: [id])
   @@unique([businessId, productId])
+}
+
+model Sale {
+  id             String     @id @default(cuid())
+  businessId     String
+  receiptNo      String
+  status         String     @default("DRAFT")
+  subtotalMinor  Int        @default(0)
+  discountMinor  Int        @default(0)
+  taxMinor       Int        @default(0)
+  totalMinor     Int        @default(0)
+  paidMinor      Int        @default(0)
+  changeMinor    Int        @default(0)
+  currency       String     @default("PHP")
+  customerId     String?
+  customerName   String?
+  notes          String?
+  actorId        String
+  requestId      String
+  idempotencyKey String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  business       Business   @relation(fields: [businessId], references: [id])
+  items          SaleItem[]
+  payments       Payment[]
+  @@unique([businessId, receiptNo])
+  @@unique([businessId, idempotencyKey])
+  @@index([businessId, status, createdAt])
+}
+
+model SaleItem {
+  id                String @id @default(cuid())
+  businessId        String
+  saleId            String
+  productId         String
+  name              String
+  unit              String @default("pc")
+  qty               Int
+  priceMinor        Int
+  costMinor         Int    @default(0)
+  taxRateBps        Int?
+  lineDiscountMinor Int    @default(0)
+  lineTotalMinor    Int
+  sale              Sale   @relation(fields: [saleId], references: [id])
+  @@index([businessId, saleId])
+}
+
+model Payment {
+  id             String   @id @default(cuid())
+  businessId     String
+  saleId         String
+  method         String
+  amountMinor    Int
+  status         String   @default("SUCCEEDED")
+  providerRef    String?
+  idempotencyKey String
+  createdAt      DateTime @default(now())
+  business       Business @relation(fields: [businessId], references: [id])
+  sale           Sale     @relation(fields: [saleId], references: [id])
+  @@unique([businessId, idempotencyKey])
+  @@unique([businessId, providerRef])
+  @@index([businessId, saleId])
+}
+
+model HeldSale {
+  id         String    @id @default(cuid())
+  businessId String
+  actorId    String
+  payload    Json
+  createdAt  DateTime  @default(now())
+  resumedAt  DateTime?
+  business   Business  @relation(fields: [businessId], references: [id])
+  @@index([businessId, actorId])
+}
+
+model SaleIdempotency {
+  id          String   @id @default(cuid())
+  businessId  String
+  key         String
+  commandType String
+  fingerprint String
+  resultId    String
+  createdAt   DateTime @default(now())
+  business    Business @relation(fields: [businessId], references: [id])
+  @@unique([businessId, key, commandType])
 }
