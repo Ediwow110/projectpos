@@ -37,7 +37,7 @@
 - `scripts/backup.sh`, `scripts/restore.sh` (Task 6).
 - `docs/superpowers/runbooks/backup-restore.md`, `incidents.md` (Task 6).
 - `scripts/load/dashboard-mix.mjs`, `docs/superpowers/audits/2026-09-23-phase8-performance.md` (Task 7).
-- `playwright.config.ts`, `tests/e2e/critical-path.spec.ts`, `tests/e2e/roles.spec.ts`, `tests/e2e/helpers.ts` (Task 8).
+- `playwright.config.ts`, `e2e/critical-path.spec.ts`, `e2e/roles.spec.ts`, `e2e/helpers.ts` (Task 8).
 - `.github/workflows/ci.yml`: typecheck step + e2e job (Task 8).
 - `tests/phase8-exit.test.ts`, `scripts/verify-phase8.test.mjs` (Task 8).
 
@@ -465,7 +465,7 @@ git commit -m "test: add phase8 load harness and performance measurements"
 
 **Files:**
 - Modify: root `package.json` (add `@playwright/test` devDependency via `pnpm add -D @playwright/test`, add `"e2e": "playwright test"` script), `apps/web/package.json` if e2e helpers live there (keep at root)
-- Create: `playwright.config.ts`, `tests/e2e/helpers.ts`, `tests/e2e/critical-path.spec.ts`, `tests/e2e/roles.spec.ts`
+- Create: `playwright.config.ts`, `e2e/helpers.ts`, `e2e/critical-path.spec.ts`, `e2e/roles.spec.ts`
 - Modify: `.github/workflows/ci.yml` (add `pnpm typecheck` step; add `e2e` job with Playwright setup + Postgres service, PR-only)
 - Create: `tests/phase8-exit.test.ts`, `scripts/verify-phase8.test.mjs`
 
@@ -495,7 +495,7 @@ export default defineConfig({
 
 (Verify the `start` scripts exist during implementation; adjust to the real commands — `apps/api` and `apps/web` package.json scripts must be read first. If no `start` script exists, add minimal ones as part of this task: api `start: node dist/main.js` requires a build... simpler honest path: document + implement whatever boots the apps; do not fake it.)
 
-`tests/e2e/helpers.ts`: `registerBusiness(page, { ownerName, email, password, businessName })` via UI register form (read the actual form labels from `apps/web/src/app/register/page.tsx` during implementation — do not guess), `loginAs`, `apiSeed` (direct API calls with fetch for products/stock to keep specs fast).
+`e2e/helpers.ts`: `registerBusiness(page, { ownerName, email, password, businessName })` via UI register form (read the actual form labels from `apps/web/src/app/register/page.tsx` during implementation — do not guess), `loginAs`, `apiSeed` (direct API calls with fetch for products/stock to keep specs fast).
 
 `critical-path.spec.ts` (§13.2 verbatim): register → create employee... employee creation UI does not exist (no member-invite API — record as documented gap; create the cashier session by registering a second business? No — different tenant. Honest approach: the "employee" step uses a second user registered... which creates its own business. Hmm. The critical path needs two users in ONE business, which the product cannot do yet (no invite flow — Phase 1 scoped membership to registration only). Resolution: run the cashier steps as the same owner session but through the cashier UI surfaces (POS), and record the missing multi-user-in-one-business E2E as a dated follow-up tied to a future member-invite feature. Do not fake multi-user.)
 
@@ -541,7 +541,7 @@ Verify script (`scripts/verify-phase8.test.mjs`): existence checks for abuse sui
 - [ ] **Step 5: Full verification (`pnpm test && pnpm test:exit && node scripts/verify-phase8.test.mjs && pnpm typecheck`) then commit**
 
 ```bash
-git add playwright.config.ts tests/e2e/ package.json pnpm-lock.yaml apps/web/package.json apps/api/package.json .github/workflows/ci.yml tests/phase8-exit.test.ts scripts/verify-phase8.test.mjs
+git add playwright.config.ts e2e/ package.json pnpm-lock.yaml apps/web/package.json apps/api/package.json .github/workflows/ci.yml tests/phase8-exit.test.ts scripts/verify-phase8.test.mjs
 git commit -m "test: add phase8 e2e coverage and exit gate"
 ```
 
