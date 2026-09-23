@@ -63,6 +63,7 @@ export class InventoryController {
         reason: parsed.data.reason,
         referenceType: parsed.data.referenceType,
         referenceId: parsed.data.referenceId,
+        branchId: parsed.data.branchId,
       });
       res.status(201).json(row);
     } catch (e) {

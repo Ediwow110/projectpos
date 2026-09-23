@@ -74,6 +74,7 @@ export class ShiftController {
       res.status(201).json(
         await this.shifts.createRegister(auth.businessId, auth.userId, rid(req), {
           name: parsed.data.name,
+          branchId: parsed.data.branchId,
         }, auth.role),
       );
     } catch (e) {
@@ -102,6 +103,7 @@ export class ShiftController {
         await this.shifts.updateRegister(auth.businessId, auth.userId, rid(req), id, {
           name: parsed.data.name,
           isActive: parsed.data.isActive,
+          branchId: parsed.data.branchId,
         }, auth.role),
       );
     } catch (e) {

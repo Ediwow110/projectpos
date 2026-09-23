@@ -18,6 +18,8 @@ import { CustomerController } from "./customers/nest/customer.controller";
 import { ExpenseController } from "./expenses/nest/expense.controller";
 import { RefundController } from "./refunds/nest/refund.controller";
 import { ReportingController } from "./reports/nest/reporting.controller";
+import { BranchController } from "./branches/nest/branch.controller";
+import { TransferController } from "./transfers/nest/transfer.controller";
 import { CatalogService } from "./catalog/nest/catalog.service";
 import { InventoryService } from "./inventory/nest/inventory.service";
 import { SalesService } from "./sales/nest/sales.service";
@@ -26,6 +28,8 @@ import { CustomerService } from "./customers/nest/customer.service";
 import { ExpenseService } from "./expenses/nest/expense.service";
 import { RefundService } from "./refunds/nest/refund.service";
 import { ReportingService } from "./reports/nest/reporting.service";
+import { BranchService } from "./branches/nest/branch.service";
+import { TransferService } from "./transfers/nest/transfer.service";
 import { RequestIdMiddleware } from "./common/request-id.middleware";
 import { SecurityHeadersMiddleware, securityHeaders } from "./common/security-headers.middleware";
 import { SessionGuard } from "./common/session.guard";
@@ -35,7 +39,7 @@ import type { DbPort } from "./common/db.port";
 import { createMemoryDb } from "./common/memory.db";
 
 @Module({
-    controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController],
+    controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController],
   providers: [
     AuthService,
     TenantService,
@@ -48,6 +52,8 @@ import { createMemoryDb } from "./common/memory.db";
     ExpenseService,
     RefundService,
     ReportingService,
+    BranchService,
+    TransferService,
     SessionGuard,
     CsrfGuard,
     // Standalone boot store: single-process ephemeral memory database.
@@ -66,7 +72,7 @@ export class AppModule implements NestModule {
 export async function createTestApp(): Promise<INestApplication> {
   const db: DbPort = createMemoryDb();
   const moduleRef = await Test.createTestingModule({
-  controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController],
+  controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController],
     providers: [
       { provide: "DbPort", useValue: db },
       { provide: AuthService, useFactory: (d: DbPort) => new AuthService(d), inject: ["DbPort"] },
@@ -118,6 +124,16 @@ export async function createTestApp(): Promise<INestApplication> {
       {
         provide: ReportingService,
         useFactory: (d: DbPort) => new ReportingService(d),
+        inject: ["DbPort"],
+      },
+      {
+        provide: BranchService,
+        useFactory: (d: DbPort) => new BranchService(d),
+        inject: ["DbPort"],
+      },
+      {
+        provide: TransferService,
+        useFactory: (d: DbPort) => new TransferService(d),
         inject: ["DbPort"],
       },
       {

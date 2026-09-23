@@ -122,9 +122,16 @@ export class ShiftService {
     return row;
   }
 
-  async listRegisters(businessId: string): Promise<DbRegister[]> {
+  async listRegisters(businessId: string): Promise<Array<DbRegister & { branchName: string | null }>> {
     withScope(businessId, {});
-    return this.db.listRegisters(businessId);
+    const rows = await this.db.listRegisters(businessId);
+    const out: Array<DbRegister & { branchName: string | null }> = [];
+    for (const r of rows) {
+      const branchId = r.branchId ?? null;
+      const branch = branchId ? await this.db.findBranchById(branchId, businessId) : null;
+      out.push({ ...r, branchId, branchName: branch?.name ?? null });
+    }
+    return out;
   }
 
   async updateRegister(

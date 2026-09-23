@@ -126,6 +126,7 @@ export class ExpenseController {
           expenseDate: parsed.data.expenseDate,
           attachmentUrl: parsed.data.attachmentUrl,
           shiftId: parsed.data.shiftId,
+          branchId: parsed.data.branchId,
         }),
       );
     } catch (e) {
