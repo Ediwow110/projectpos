@@ -20,12 +20,25 @@ interface RegisterRow {
   id: string;
   name: string;
   isActive: boolean;
+  branchId: string | null;
+  branchName: string | null;
+}
+
+interface BranchRow {
+  id: string;
+  name: string;
 }
 
 export default function RegistersPage(): JSX.Element {
   const [name, setName] = useState("");
+  const [branchId, setBranchId] = useState("");
   const [error, setError] = useState("");
   const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<Me>("/api/v1/me"), retry: false });
+  const branchesQuery = useQuery({
+    queryKey: ["branches"],
+    queryFn: () => apiFetch<{ items: BranchRow[] }>("/api/v1/branches"),
+    retry: false,
+  });
   const listQuery = useQuery({
     queryKey: ["registers"],
     queryFn: () => apiFetch<{ items: RegisterRow[] }>("/api/v1/registers"),
@@ -55,6 +68,7 @@ export default function RegistersPage(): JSX.Element {
           {listQuery.data.items.map((r) => (
             <li key={r.id}>
               {r.name}
+              {r.branchName ? ` — ${r.branchName}` : ""}
               {r.isActive ? "" : " (archived)"}{" "}
               {manageable && r.isActive && (
                 <button
@@ -77,14 +91,27 @@ export default function RegistersPage(): JSX.Element {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            void mutate("/api/v1/registers", { method: "POST", body: JSON.stringify({ name }) }).then(() =>
-              setName(""),
-            );
+            void mutate("/api/v1/registers", {
+              method: "POST",
+              body: JSON.stringify({ name, branchId: branchId === "" ? undefined : branchId }),
+            }).then(() => {
+              setName("");
+              setBranchId("");
+            });
           }}
         >
           <label>
             Register name
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Counter 1" />
+          </label>
+          <label>
+            Branch
+            <select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+              <option value="">No branch</option>
+              {(branchesQuery.data?.items ?? []).map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
           </label>
           <button type="submit">Create register</button>
         </form>

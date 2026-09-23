@@ -17,6 +17,12 @@ interface SaleRow {
   status: string;
   totalMinor: number;
   customerName: string | null;
+  branchId: string | null;
+}
+
+interface BranchRow {
+  id: string;
+  name: string;
 }
 
 interface SalesPage {
@@ -33,10 +39,16 @@ export default function SalesHistoryPage(): JSX.Element {
   const [customerId, setCustomerId] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [branchId, setBranchId] = useState("");
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [error, setError] = useState("");
 
   const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<Me>("/api/v1/me"), retry: false });
+  const branchesQuery = useQuery({
+    queryKey: ["branches"],
+    queryFn: () => apiFetch<{ items: BranchRow[] }>("/api/v1/branches"),
+    retry: false,
+  });
 
   function queryString(next?: string): string {
     const sp = new URLSearchParams();
@@ -54,6 +66,12 @@ export default function SalesHistoryPage(): JSX.Element {
     queryFn: () => apiFetch<SalesPage>(queryString(cursor)),
     retry: false,
   });
+
+  const branchName = (id: string | null): string =>
+    id == null ? "No branch" : branchesQuery.data?.items.find((b) => b.id === id)?.name ?? "Unknown branch";
+  const visibleSales = (listQuery.data?.items ?? []).filter(
+    (s) => branchId === "" || (s.branchId ?? null) === branchId,
+  );
 
   function downloadExport(): void {
     setError("");
@@ -103,6 +121,15 @@ export default function SalesHistoryPage(): JSX.Element {
           To
           <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
         </label>
+        <label>
+          Branch
+          <select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+            <option value="">All branches</option>
+            {(branchesQuery.data?.items ?? []).map((b) => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </select>
+        </label>
         <button type="submit">Filter</button>
         {canExport && (
           <button type="button" onClick={downloadExport}>
@@ -118,12 +145,12 @@ export default function SalesHistoryPage(): JSX.Element {
             : "Could not load sales."}
         </p>
       )}
-      {listQuery.data && listQuery.data.items.length === 0 && <p>No sales match these filters.</p>}
+      {listQuery.data && visibleSales.length === 0 && <p>No sales match these filters.</p>}
       <ul>
-        {(listQuery.data?.items ?? []).map((s) => (
+        {visibleSales.map((s) => (
           <li key={s.id} style={{ fontVariantNumeric: "tabular-nums" }}>
             <Link href={"/sales/" + s.id}>{s.receiptNo}</Link> — {s.status} — {money(s.totalMinor)}
-            {s.customerName ? " — " + s.customerName : ""}
+            {s.customerName ? " — " + s.customerName : ""} — {branchName(s.branchId)}
           </li>
         ))}
       </ul>

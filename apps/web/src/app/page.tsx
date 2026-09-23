@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ApiError, apiFetch } from "../lib/api";
 import { TrendChart } from "../lib/charts";
 import { availableMetrics, buildOverviewQuery, formatDelta, money } from "../lib/reports";
+import type { BranchRow } from "./branches/page";
 
 interface Me {
   userId: string;
@@ -68,18 +69,25 @@ export default function DashboardPage(): JSX.Element {
   const [preset, setPreset] = useState(30);
   const [compare, setCompare] = useState("previous_period");
   const [metric, setMetric] = useState("revenue");
+  const [branchId, setBranchId] = useState("");
 
   const meQuery = useQuery({
     queryKey: ["me"],
     queryFn: () => apiFetch<Me>("/api/v1/me"),
     retry: false,
   });
+  const branchesQuery = useQuery({
+    queryKey: ["branches"],
+    queryFn: () => apiFetch<{ items: BranchRow[] }>("/api/v1/branches"),
+    retry: false,
+    enabled: !meQuery.isError,
+  });
 
   const range = presetRange(preset);
   const overviewQuery = useQuery({
-    queryKey: ["overview", preset, compare],
+    queryKey: ["overview", preset, compare, branchId],
     queryFn: () =>
-      apiFetch<Overview>(buildOverviewQuery({ ...range, compare })),
+      apiFetch<Overview>(buildOverviewQuery({ ...range, compare, branchId: branchId || undefined })),
     retry: false,
     enabled: !meQuery.isError,
   });
@@ -122,11 +130,23 @@ export default function DashboardPage(): JSX.Element {
             <option value="none">None</option>
           </select>
         </label>
+        <label>
+          Branch
+          <select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+            <option value="">All branches</option>
+            {(branchesQuery.data?.items ?? []).map((b) => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </select>
+        </label>
         <nav aria-label="Reports">
           <Link href="/reports/sales">Sales</Link> | <Link href="/reports/products">Products</Link> |{" "}
           <Link href="/reports/inventory">Inventory</Link> | <Link href="/reports/payments">Payments</Link> |{" "}
           <Link href="/reports/cash">Cash</Link> | <Link href="/reports/customers">Customers</Link> |{" "}
-          <Link href="/reports/cashiers">Cashiers</Link>
+          <Link href="/reports/cashiers">Cashiers</Link> | <Link href="/reports/branches">Branches</Link>
+        </nav>
+        <nav aria-label="Locations">
+          <Link href="/branches">Branches</Link> | <Link href="/transfers">Transfers</Link>
         </nav>
       </div>
       {overviewQuery.isLoading && <p>Loading dashboard…</p>}
@@ -146,6 +166,8 @@ export default function DashboardPage(): JSX.Element {
             <li><Link href="/inventory">Inventory</Link></li>
             <li><Link href="/pos">Point of sale</Link></li>
             <li><Link href="/registers">Registers</Link></li>
+            <li><Link href="/branches">Branches</Link></li>
+            <li><Link href="/transfers">Transfers</Link></li>
             <li><Link href="/shifts">Shifts</Link></li>
             <li><Link href="/sales">Sales</Link></li>
             <li><Link href="/customers">Customers</Link></li>

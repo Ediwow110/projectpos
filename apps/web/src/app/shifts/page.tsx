@@ -21,12 +21,18 @@ interface RegisterRow {
 interface ShiftRow {
   id: string;
   registerId: string;
+  branchId: string | null;
   status: string;
   openedBy: string;
   openingFloatMinor: number;
   countedCashMinor: number | null;
   varianceMinor: number | null;
   expectedCashMinor: number;
+}
+
+interface BranchRow {
+  id: string;
+  name: string;
 }
 
 const KINDS = ["paid_out", "cash_deposit", "cash_withdrawal", "adjustment"];
@@ -43,6 +49,11 @@ export default function ShiftsPage(): JSX.Element {
   const registersQuery = useQuery({
     queryKey: ["registers"],
     queryFn: () => apiFetch<{ items: RegisterRow[] }>("/api/v1/registers"),
+    retry: false,
+  });
+  const branchesQuery = useQuery({
+    queryKey: ["branches"],
+    queryFn: () => apiFetch<{ items: BranchRow[] }>("/api/v1/branches"),
     retry: false,
   });
   const openQuery = useQuery({
@@ -116,6 +127,10 @@ export default function ShiftsPage(): JSX.Element {
 
   const registers = (registersQuery.data?.items ?? []).filter((r) => r.isActive);
   const openShifts = openQuery.data?.items ?? [];
+  const branchName = (branchId: string | null | undefined): string =>
+    branchId == null
+      ? "No branch"
+      : (branchesQuery.data?.items ?? []).find((b) => b.id === branchId)?.name ?? "Unknown branch";
 
   return (
     <main>
@@ -153,6 +168,7 @@ export default function ShiftsPage(): JSX.Element {
             <h3>
               <Link href={"/shifts/" + s.id}>Shift {s.id.slice(0, 8)}</Link>
             </h3>
+            <p>Branch: {branchName(s.branchId)}</p>
             <p style={{ fontVariantNumeric: "tabular-nums" }}>
               Float: {money(s.openingFloatMinor)} — Expected: {money(s.expectedCashMinor)}
             </p>
@@ -190,7 +206,8 @@ export default function ShiftsPage(): JSX.Element {
         <ul>
           {(historyQuery.data?.items ?? []).map((s) => (
             <li key={s.id} style={{ fontVariantNumeric: "tabular-nums" }}>
-              <Link href={"/shifts/" + s.id}>Shift {s.id.slice(0, 8)}</Link> — {s.status}
+              <Link href={"/shifts/" + s.id}>Shift {s.id.slice(0, 8)}</Link> — {s.status} —{" "}
+              {branchName(s.branchId)}
               {s.varianceMinor !== null && s.varianceMinor !== undefined
                 ? " — " + varianceLabel(s.varianceMinor)
                 : ""}

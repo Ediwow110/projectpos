@@ -3,12 +3,14 @@ export function buildOverviewQuery(params: {
   dateTo?: string;
   compare?: string;
   registerId?: string;
+  branchId?: string;
 }): string {
   const sp = new URLSearchParams();
   if (params.dateFrom) sp.set("dateFrom", params.dateFrom);
   if (params.dateTo) sp.set("dateTo", params.dateTo);
   sp.set("compare", params.compare ?? "previous_period");
   if (params.registerId) sp.set("registerId", params.registerId);
+  if (params.branchId) sp.set("branchId", params.branchId);
   return `/api/v1/dashboard/overview?${sp.toString()}`;
 }
 
