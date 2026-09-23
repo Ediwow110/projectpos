@@ -87,11 +87,11 @@ export class AuthController {
       return;
     }
     try {
-      const out = await this.auth.login(parsed.data, {
+      const out = await this.auth.login({ email: parsed.data.email, password: parsed.data.password }, {
         requestId: rid(req),
         ip: req.ip ?? null,
         userAgent: req.headers["user-agent"]?.toString() ?? null,
-      });
+      }, parsed.data.deviceId);
       res.cookie("pos_session", out.token, cookieOpts(req));
       res.cookie("pos_csrf", out.csrfToken, { ...cookieOpts(req), httpOnly: false });
       res.json({ userId: out.userId, businessId: out.businessId, csrfToken: out.csrfToken });

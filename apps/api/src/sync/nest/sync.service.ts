@@ -26,4 +26,24 @@ export class SyncService {
     }
     return { applied, unknown, serverTime: new Date().toISOString() };
   }
+
+  async resolveConflict(
+    businessId: string,
+    actorId: string,
+    requestId: string,
+    input: { key: string; commandType: string; reason: string },
+    role: string,
+  ): Promise<{ ok: true }> {
+    withScope(businessId, {});
+    if (role !== "owner" && role !== "manager") throw new Error("FORBIDDEN");
+    await this.db.appendAudit({
+      businessId,
+      actorId,
+      action: "sync.resolve",
+      entityType: "OutboxCommand",
+      entityId: `${input.commandType}:${input.key}:${input.reason}`,
+      requestId,
+    });
+    return { ok: true };
+  }
 }
