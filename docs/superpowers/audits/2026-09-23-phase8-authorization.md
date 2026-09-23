@@ -116,6 +116,23 @@ Audited statements in migrations 0001-0007 against access patterns:
 
 ## Findings
 
+(Findings 1-4 recorded during Tasks 2-3; see git history.)
+
+## Dependency review (`pnpm audit --audit-level=high`, 2026-09-23)
+
+Baseline: 16 vulnerabilities (1 low, 7 moderate, 6 high, 2 critical).
+
+- FIXED: upgraded `vitest` 2.1.8 → 3.2.7 across workspaces (`pnpm up vitest@^3.2.6 -r`; full suite green, no code changes needed). Eliminates both criticals (GHSA-9crc-q9x8-hgqq, GHSA-5xrq-8626-4rwp) and the vite `server.fs.deny` Windows bypass (GHSA-fx2h-pf6j-xcff, via vite 7). Post-upgrade audit: 10 vulns (1 low, 4 moderate, 5 high), zero critical.
+- ACCEPTED (transitive via Next.js 15.5.25, build-time only): postcss GHSA-6g55-p6wh-862q + GHSA-r28c-9q8g-f849. PostCSS processes our own stylesheets at build time; no attacker-controlled CSS reaches it. Revisit on Next.js upgrade. Follow-up dated 2026-12-23.
+- ACCEPTED (transitive via `@nestjs/platform-express`, unreachable): multer GHSA-wc9g-mqfw-jrwm + GHSA-qfvm-cv95-jqjf + GHSA-535w-7cp7-47q4. Grep proof: no `multipart`/`multer`/`FileInterceptor`/`busboy`/`formidable` usage anywhere under `apps/api/src` — the API is JSON-only with an explicit 100kb body limit, so the vulnerable code path is never loaded for attacker input. Revisit on NestJS upgrade. Follow-up dated 2026-12-23.
+
+## Upload review
+
+- No file-upload handling exists in the product (grep proof above; attachments/images are URL strings, never stored bytes).
+- URL validators tightened in Phase 8 Task 3: `imageUrl` and `attachmentUrl` accept http(s) only (`abuse-payments.contract.test.ts` proves `javascript:` rejection).
+- JSON body limit explicit at 100kb in `main.ts`; oversize bodies map to 413 `PAYLOAD_TOO_LARGE` (tested).
+- Verdict: no upload attack surface beyond validated URL strings.
+
 1. FIXED (abuse-payments suite): `imageUrl` (`catalog.schema.ts`) used bare `z.string().url()`, which ACCEPTS `javascript:`/`data:` URLs per WHATWG parsing — product creation returned 201 for `javascript:alert(1)`. Tightened to http(s)-only via refine; same defense-in-depth refine added to expense `attachmentUrl` (service already protocol-checked). Tests: `abuse-payments.contract.test.ts` "rejects malicious attachment and image URLs".
 2. FIXED (abuse-payments suite): oversized JSON bodies surfaced as 500 INTERNAL. Made the 100kb JSON limit explicit in `main.ts` and mapped body-parser 413s to `PAYLOAD_TOO_LARGE` in `AuthErrorFilter` (+ `CODE_STATUS` entry). Test asserts 413.
 3. FIXED (abuse-payments suite): cashier role seed included `discount.override`, `inventory.adjust`, and `shift.close.override`, defeating the FR-RBAC-02 threshold policy (cashiers could self-approve over-threshold discounts). Removed all three from the cashier seed in `tenant/seed.ts`; `rolePermissions` reads the seed live so enforcement is immediate. No existing test relied on the old grants (`seed.test.ts` green). Test: "gates over-threshold discounts by permission".
