@@ -32,6 +32,8 @@ export interface ShiftReport {
   status: string;
   components: ShiftComponents;
   movements: DbCashMovement[];
+  expectedCash: number;
+  variance: number;
 }
 
 function kindToType(kind: CashKind): CashMovementType {
@@ -310,6 +312,8 @@ export class ShiftService {
           variance,
         },
         movements,
+        expectedCash,
+        variance,
       };
       return { shift: updated, report };
     });
