@@ -56,6 +56,9 @@ model Business {
   refunds     Refund[]
   refundItems RefundItem[]
   expenses    Expense[]
+  branches    Branch[]
+  transfers   StockTransfer[]
+  transferLines StockTransferLine[]
 }
 
 model BusinessMembership {
@@ -197,6 +200,9 @@ model InventoryMovement {
   createdAt     DateTime @default(now())
   business      Business @relation(fields: [businessId], references: [id])
   product       Product  @relation(fields: [productId], references: [id])
+  // Phase 9a: branch scope is a plain nullable string column (no Prisma
+  // relation) to minimize relation churn; validated same-business server-side.
+  branchId      String?
   @@index([businessId, productId, createdAt])
 }
 
@@ -208,6 +214,8 @@ model InventoryBalance {
   updatedAt  DateTime @updatedAt
   business   Business @relation(fields: [businessId], references: [id])
   product    Product  @relation(fields: [productId], references: [id])
+  // Phase 9a: nullable branch scope; null = legacy head-office scope.
+  branchId   String?
   @@unique([businessId, productId])
 }
 
@@ -230,6 +238,8 @@ model Sale {
   requestId      String
   idempotencyKey String?
   registerId     String?
+  // Phase 9a: nullable branch scope (register's branch, else explicit, else null).
+  branchId       String?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
   business       Business   @relation(fields: [businessId], references: [id])
@@ -304,6 +314,9 @@ model Register {
   businessId String
   name       String
   isActive   Boolean  @default(true)
+  // Phase 9a: optional home branch.
+  branchId   String?
+  branch     Branch?  @relation(fields: [branchId], references: [id])
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   business   Business @relation(fields: [businessId], references: [id])
@@ -316,9 +329,10 @@ model Shift {
   id                   String    @id @default(cuid())
   businessId           String
   registerId           String
+  // Phase 9a: copied from register at open.
+  branchId             String?
   status               String    @default("OPEN")
-  openedBy             String
-  closedBy             String?
+  openedBy             String  closedBy             String?
   openingFloatMinor    Int       @default(0)
   countedCashMinor     Int?
   varianceMinor        Int?
@@ -344,6 +358,8 @@ model CashMovement {
   businessId    String
   shiftId       String
   registerId    String
+  // Phase 9a: copied from shift.
+  branchId      String?
   type          String
   amountMinor   Int
   reason        String?
@@ -417,6 +433,8 @@ model Expense {
   description   String?
   method        String
   shiftId       String?
+  // Phase 9a: shift's branch when shift-linked, else explicit input, else null.
+  branchId      String?
   expenseDate   DateTime  @default(now())
   actorId       String
   requestId     String
@@ -428,4 +446,46 @@ model Expense {
   business      Business  @relation(fields: [businessId], references: [id])
   @@index([businessId, category, expenseDate])
   @@index([businessId, expenseDate])
+}
+
+model Branch {
+  id         String     @id @default(cuid())
+  businessId String
+  name       String
+  type       String     @default("store")
+  isActive   Boolean    @default(true)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  business   Business   @relation(fields: [businessId], references: [id])
+  registers  Register[]
+  @@unique([businessId, name])
+  @@index([businessId])
+}
+
+model StockTransfer {
+  id           String              @id @default(cuid())
+  businessId   String
+  fromBranchId String
+  toBranchId   String
+  status       String              @default("DRAFT")
+  requestedBy  String
+  dispatchedBy String?
+  receivedBy   String?
+  requestId    String
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  business     Business            @relation(fields: [businessId], references: [id])
+  lines        StockTransferLine[]
+  @@index([businessId, status, createdAt])
+}
+
+model StockTransferLine {
+  id         String        @id @default(cuid())
+  businessId String
+  transferId String
+  productId  String
+  qty        Int
+  business   Business      @relation(fields: [businessId], references: [id])
+  transfer   StockTransfer @relation(fields: [transferId], references: [id])
+  @@index([businessId, transferId])
 }

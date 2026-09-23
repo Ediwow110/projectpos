@@ -6,12 +6,14 @@ export const CASH_KINDS = ["paid_out", "cash_deposit", "cash_withdrawal", "adjus
 export const registerCreateSchema = z.object({
   name: z.string().trim().min(1, "VALIDATION").max(80, "VALIDATION"),
   isActive: z.boolean().optional(),
+  branchId: z.string().min(1, "VALIDATION").optional(),
 });
 
 export const registerUpdateSchema = z
   .object({
     name: z.string().trim().min(1, "VALIDATION").max(80, "VALIDATION").optional(),
     isActive: z.boolean().optional(),
+    branchId: z.string().min(1, "VALIDATION").nullable().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: "VALIDATION" });
 

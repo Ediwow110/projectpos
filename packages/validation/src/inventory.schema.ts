@@ -21,6 +21,7 @@ export const movementCreateSchema = z.object({
   reason: z.string().trim().max(500, "VALIDATION").optional(),
   referenceType: z.string().trim().max(64, "VALIDATION").optional(),
   referenceId: z.string().min(1, "VALIDATION").max(128, "VALIDATION").optional(),
+  branchId: z.string().min(1, "VALIDATION").optional(),
 });
 
 const pageQuery = z.object({

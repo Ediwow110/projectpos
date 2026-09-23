@@ -7,6 +7,7 @@ export const reportsQuerySchema = z.object({
   dateTo: z.string().max(64, "VALIDATION").optional(),
   compare: z.enum(COMPARE_MODES).default("previous_period"),
   registerId: z.string().min(1, "VALIDATION").optional(),
+  branchId: z.string().min(1, "VALIDATION").optional(),
 });
 
 export const salesReportQuerySchema = reportsQuerySchema.extend({

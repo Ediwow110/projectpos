@@ -13,6 +13,7 @@ export const expenseCreateSchema = z.object({
     .refine((u) => u.startsWith("http://") || u.startsWith("https://"), { message: "VALIDATION" })
     .optional(),
   shiftId: z.string().min(1, "VALIDATION").optional(),
+  branchId: z.string().min(1, "VALIDATION").optional(),
 });
 
 export const expenseListSchema = z.object({
