@@ -9,7 +9,9 @@ export const expenseCreateSchema = z.object({
   description: z.string().trim().max(500, "VALIDATION").optional(),
   method: z.enum(EXPENSE_METHODS),
   expenseDate: z.string().max(64, "VALIDATION").optional(),
-  attachmentUrl: z.string().trim().url("VALIDATION").max(500, "VALIDATION").optional(),
+  attachmentUrl: z.string().trim().url("VALIDATION").max(500, "VALIDATION")
+    .refine((u) => u.startsWith("http://") || u.startsWith("https://"), { message: "VALIDATION" })
+    .optional(),
   shiftId: z.string().min(1, "VALIDATION").optional(),
 });
 

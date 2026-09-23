@@ -10,8 +10,11 @@ export const ROLE_SEED: Record<"owner" | "manager" | "cashier" | "inventory", st
     (p) =>
       p !== "price.edit" &&
       p !== "cost.view" &&
+      p !== "discount.override" &&
       p !== "sale.refund" &&
       p !== "sale.void" &&
+      p !== "inventory.adjust" &&
+      p !== "shift.close.override" &&
       p !== "settings.write" &&
       p !== "user.manage" &&
       p !== "export.run",

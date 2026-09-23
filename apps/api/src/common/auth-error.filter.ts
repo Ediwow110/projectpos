@@ -25,6 +25,13 @@ export class AuthErrorFilter implements ExceptionFilter {
       return;
     }
     if (exception instanceof Error) {
+      // Body-parser payload-too-large errors carry status 413: surface them
+      // as 413 PAYLOAD_TOO_LARGE instead of a generic 500.
+      const status = (exception as { status?: unknown }).status;
+      if (status === 413) {
+        res.status(413).json(error("PAYLOAD_TOO_LARGE", "Request body too large", correlationId));
+        return;
+      }
       res.status(500).json(error("INTERNAL", "Internal error", correlationId));
       return;
     }

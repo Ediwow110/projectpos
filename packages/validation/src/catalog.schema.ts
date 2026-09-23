@@ -18,6 +18,13 @@ export const categoryUpdateSchema = z
 const skuField = z.string().trim().max(64, "VALIDATION").optional();
 const barcodeField = z.string().trim().max(64, "VALIDATION").optional();
 
+const httpUrlField = z
+  .string()
+  .trim()
+  .url("VALIDATION")
+  .max(500, "VALIDATION")
+  .refine((u) => u.startsWith("http://") || u.startsWith("https://"), { message: "VALIDATION" });
+
 export const productCreateSchema = z.object({
   name: z.string().trim().min(1, "VALIDATION").max(160, "VALIDATION"),
   categoryId: z.string().min(1, "VALIDATION").optional(),
@@ -31,7 +38,7 @@ export const productCreateSchema = z.object({
   reorderLevel: z.number().int().min(0).default(0),
   trackInventory: z.boolean().default(true),
   isActive: z.boolean().default(true),
-  imageUrl: z.string().trim().url("VALIDATION").max(500, "VALIDATION").optional(),
+  imageUrl: httpUrlField.optional(),
 });
 
 export const productUpdateSchema = z
@@ -48,7 +55,7 @@ export const productUpdateSchema = z
     reorderLevel: z.number().int().min(0).optional(),
     trackInventory: z.boolean().optional(),
     isActive: z.boolean().optional(),
-    imageUrl: z.string().trim().url("VALIDATION").max(500, "VALIDATION").nullable().optional(),
+    imageUrl: httpUrlField.nullable().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: "VALIDATION" });
 

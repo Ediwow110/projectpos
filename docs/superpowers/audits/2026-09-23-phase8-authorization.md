@@ -116,7 +116,9 @@ Audited statements in migrations 0001-0007 against access patterns:
 
 ## Findings
 
-1. (Fix in Task 3) `imageUrl` (`catalog.schema.ts`) uses bare `z.string().url()`, which ACCEPTS `javascript:`/`data:` URLs per WHATWG parsing. Tighten to http(s) only. `attachmentUrl` is service-checked already; add the same schema-level refine for defense in depth.
-2. (Verify in Task 3) Nest default JSON body limit — confirm 413 on oversized bodies; make explicit in `main.ts` if implicit.
-3. (Documented gap, not a bug) No member-invite API exists, so multi-user-in-one-business flows cannot be E2E-tested with distinct sessions; Playwright covers single-session role surfaces + unit tests prove role gates. Dated follow-up tied to a future invite feature.
-4. (Documented gap) Staging performance cannot be measured from this repo; local cohorts + staging procedure instead (Task 7).
+1. FIXED (abuse-payments suite): `imageUrl` (`catalog.schema.ts`) used bare `z.string().url()`, which ACCEPTS `javascript:`/`data:` URLs per WHATWG parsing — product creation returned 201 for `javascript:alert(1)`. Tightened to http(s)-only via refine; same defense-in-depth refine added to expense `attachmentUrl` (service already protocol-checked). Tests: `abuse-payments.contract.test.ts` "rejects malicious attachment and image URLs".
+2. FIXED (abuse-payments suite): oversized JSON bodies surfaced as 500 INTERNAL. Made the 100kb JSON limit explicit in `main.ts` and mapped body-parser 413s to `PAYLOAD_TOO_LARGE` in `AuthErrorFilter` (+ `CODE_STATUS` entry). Test asserts 413.
+3. FIXED (abuse-payments suite): cashier role seed included `discount.override`, `inventory.adjust`, and `shift.close.override`, defeating the FR-RBAC-02 threshold policy (cashiers could self-approve over-threshold discounts). Removed all three from the cashier seed in `tenant/seed.ts`; `rolePermissions` reads the seed live so enforcement is immediate. No existing test relied on the old grants (`seed.test.ts` green). Test: "gates over-threshold discounts by permission".
+4. (Verify in Task 3 — resolved, no code change needed): concurrent oversell test initially showed 0×201 because the shared fixture product had only 4 units left; rewritten with a dedicated product (stock 5, two qty-5 drafts) → exactly 1×201 + 1×`INSUFFICIENT_STOCK`. Test bug, not production bug.
+5. (Documented gap, not a bug) No member-invite API exists, so multi-user-in-one-business flows cannot be E2E-tested with distinct sessions; Playwright covers single-session role surfaces + unit tests prove role gates. Dated follow-up tied to a future invite feature.
+6. (Documented gap) Staging performance cannot be measured from this repo; local cohorts + staging procedure instead (Task 7).
