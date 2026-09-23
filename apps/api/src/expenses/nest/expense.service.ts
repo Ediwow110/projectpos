@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import { withScope } from "@pos/database";
 import type { DbExpense, DbPort } from "../../common/db.port";
 
@@ -27,7 +27,7 @@ function parseExpenseDate(raw: string | undefined, now: Date): Date {
 
 @Injectable()
 export class ExpenseService {
-  constructor(private readonly db: DbPort) {}
+  constructor(@Inject("DbPort") private readonly db: DbPort) {}
 
   async createExpense(
     businessId: string,

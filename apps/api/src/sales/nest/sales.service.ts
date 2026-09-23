@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import { withScope } from "@pos/database";
 import type {
   DbCustomer,
@@ -52,7 +52,7 @@ const CASH_METHODS = new Set(["cash"]);
 export class SalesService {
   private readonly shifts: ShiftService;
 
-  constructor(private readonly db: DbPort) {
+  constructor(@Inject("DbPort") private readonly db: DbPort) {
     // Same-DbPort instance (not Nest DI) to avoid a Sales<->Shift DI cycle.
     this.shifts = new ShiftService(db);
   }

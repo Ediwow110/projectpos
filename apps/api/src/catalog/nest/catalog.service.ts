@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import { withScope } from "@pos/database";
 import type { DbCategory, DbPort, DbProduct } from "../../common/db.port";
 import {
@@ -71,7 +71,7 @@ async function assertUniqueBarcode(
 
 @Injectable()
 export class CatalogService {
-  constructor(private readonly db: DbPort) {}
+  constructor(@Inject("DbPort") private readonly db: DbPort) {}
 
   async createCategory(
     businessId: string,

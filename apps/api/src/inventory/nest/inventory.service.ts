@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import { withScope } from "@pos/database";
 import type { DbBalance, DbMovement, DbPort, DbProduct } from "../../common/db.port";
 import { validateQtyDelta, type MovementType } from "../signs";
@@ -50,7 +50,7 @@ export interface DriftRow {
 
 @Injectable()
 export class InventoryService {
-  constructor(private readonly db: DbPort) {}
+  constructor(@Inject("DbPort") private readonly db: DbPort) {}
 
   private readonly locks = new Map<string, Promise<void>>();
 

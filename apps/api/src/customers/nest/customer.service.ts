@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import { withScope } from "@pos/database";
 import type { DbCustomer, DbPort, DbSale } from "../../common/db.port";
 
@@ -36,7 +36,7 @@ function cleanString(v: string | undefined, max: number): string | null {
 
 @Injectable()
 export class CustomerService {
-  constructor(private readonly db: DbPort) {}
+  constructor(@Inject("DbPort") private readonly db: DbPort) {}
 
   async createCustomer(
     businessId: string,

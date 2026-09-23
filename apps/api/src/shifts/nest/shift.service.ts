@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import { withScope } from "@pos/database";
 import type { DbCashMovement, DbPort, DbRegister, DbShift } from "../../common/db.port";
 import {
@@ -42,7 +42,7 @@ function kindToType(kind: CashKind): CashMovementType {
 
 @Injectable()
 export class ShiftService {
-  constructor(private readonly db: DbPort) {}
+  constructor(@Inject("DbPort") private readonly db: DbPort) {}
 
   private readonly locks = new Map<string, Promise<void>>();
 

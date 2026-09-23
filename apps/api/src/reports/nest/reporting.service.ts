@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import { withScope } from "@pos/database";
 import type { DbPort, DbSale, DbSaleItem } from "../../common/db.port";
 import {
@@ -45,7 +45,7 @@ interface SaleWithLines {
 
 @Injectable()
 export class ReportingService {
-  constructor(private readonly db: DbPort) {}
+  constructor(@Inject("DbPort") private readonly db: DbPort) {}
 
   private resolved(query: ReportQuery): { range: DateRange; prev: DateRange | null; compare: string; label: string } {
     const compare = query.compare ?? "previous_period";
