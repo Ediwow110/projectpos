@@ -5,3 +5,6 @@ export * from "./catalog.schema";
 export * from "./inventory.schema";
 export * from "./sales.schema";
 export * from "./shifts.schema";
+export * from "./customers.schema";
+export * from "./refunds.schema";
+export * from "./expenses.schema";

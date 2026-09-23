@@ -50,4 +50,7 @@ export const salesQuerySchema = z.object({
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100, "VALIDATION").default(50),
   status: z.string().trim().max(32, "VALIDATION").optional(),
+  customerId: z.string().min(1, "VALIDATION").optional(),
+  dateFrom: z.string().max(64, "VALIDATION").optional(),
+  dateTo: z.string().max(64, "VALIDATION").optional(),
 });

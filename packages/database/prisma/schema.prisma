@@ -52,6 +52,10 @@ model Business {
   registers   Register[]
   shifts      Shift[]
   cashMovements CashMovement[]
+  customers   Customer[]
+  refunds     Refund[]
+  refundItems RefundItem[]
+  expenses    Expense[]
 }
 
 model BusinessMembership {
@@ -350,4 +354,76 @@ model CashMovement {
   shift         Shift    @relation(fields: [shiftId], references: [id])
   @@index([businessId, shiftId, createdAt])
   @@index([businessId, registerId, createdAt])
+}
+
+model Customer {
+  id         String   @id @default(cuid())
+  businessId String
+  name       String
+  phone      String?
+  email      String?
+  address    String?
+  notes      String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  business   Business @relation(fields: [businessId], references: [id])
+  @@unique([businessId, phone])
+  @@index([businessId, isActive])
+  @@index([businessId, name])
+}
+
+model Refund {
+  id                String       @id @default(cuid())
+  businessId        String
+  saleId            String
+  status            String       @default("APPROVED")
+  totalMinor        Int          @default(0)
+  reason            String?
+  requestedBy       String
+  approvedBy        String
+  requestId         String
+  approvedRequestId String
+  singleStep        Boolean      @default(false)
+  createdAt         DateTime     @default(now())
+  business          Business     @relation(fields: [businessId], references: [id])
+  items             RefundItem[]
+  @@index([businessId, saleId])
+  @@index([businessId, createdAt])
+}
+
+model RefundItem {
+  id          String   @id @default(cuid())
+  businessId  String
+  refundId    String
+  saleItemId  String
+  productId   String
+  qty         Int
+  amountMinor Int
+  restocked   Boolean  @default(false)
+  business    Business @relation(fields: [businessId], references: [id])
+  refund      Refund   @relation(fields: [refundId], references: [id])
+  @@index([businessId, refundId])
+  @@index([businessId, saleItemId])
+}
+
+model Expense {
+  id            String    @id @default(cuid())
+  businessId    String
+  category      String
+  amountMinor   Int
+  description   String?
+  method        String
+  shiftId       String?
+  expenseDate   DateTime  @default(now())
+  actorId       String
+  requestId     String
+  attachmentUrl String?
+  voidedAt      DateTime?
+  voidReason    String?
+  cashAdjusted  Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  business      Business  @relation(fields: [businessId], references: [id])
+  @@index([businessId, category, expenseDate])
+  @@index([businessId, expenseDate])
 }
