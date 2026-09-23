@@ -45,7 +45,9 @@ export default function DashboardPage(): JSX.Element {
           <li>
             <Link href="/inventory">Inventory</Link>
           </li>
-          <li>Sales — coming in Phase 4</li>
+          <li>
+            <Link href="/pos">Point of sale</Link>
+          </li>
           <li>Team — coming in a later phase</li>
         </ul>
       </section>
