@@ -54,6 +54,15 @@ export default function DashboardPage(): JSX.Element {
           <li>
             <Link href="/shifts">Shifts</Link>
           </li>
+          <li>
+            <Link href="/sales">Sales</Link>
+          </li>
+          <li>
+            <Link href="/customers">Customers</Link>
+          </li>
+          <li>
+            <Link href="/expenses">Expenses</Link>
+          </li>
           <li>Team — coming in a later phase</li>
         </ul>
       </section>

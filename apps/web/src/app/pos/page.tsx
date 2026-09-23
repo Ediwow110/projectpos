@@ -59,8 +59,18 @@ export default function PosPage(): JSX.Element {
   const [receiptId, setReceiptId] = useState<string | null>(null);
   const [reconcileId, setReconcileId] = useState<string | null>(null);
   const [registerId, setRegisterId] = useState("");
+  const [customerQ, setCustomerQ] = useState("");
+  const [customerId, setCustomerId] = useState("");
+  const [walkIn, setWalkIn] = useState("");
 
   const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<Me>("/api/v1/me"), retry: false });
+  const customersQuery = useQuery({
+    queryKey: ["pos-customers", customerQ],
+    queryFn: () => apiFetch<{ items: Array<{ id: string; name: string; phone: string | null }> }>(
+      "/api/v1/customers?" + new URLSearchParams({ q: customerQ, active: "true", page: "1", pageSize: "10" }).toString(),
+    ),
+    retry: false,
+  });
   const registersQuery = useQuery({
     queryKey: ["pos-registers"],
     queryFn: () => apiFetch<{ items: Array<{ id: string; name: string; isActive: boolean }> }>("/api/v1/registers"),
@@ -103,6 +113,8 @@ export default function PosPage(): JSX.Element {
           body: JSON.stringify({
             lines: cart.map((c) => ({ productId: c.productId, qty: c.qty })),
             ...(registerId !== "" ? { registerId } : {}),
+            ...(customerId !== "" ? { customerId } : {}),
+            ...(customerId === "" && walkIn.trim() !== "" ? { customerName: walkIn.trim() } : {}),
           }),
         },
       });
@@ -134,6 +146,8 @@ export default function PosPage(): JSX.Element {
           body: JSON.stringify({
             lines: cart.map((c) => ({ productId: c.productId, qty: c.qty })),
             ...(registerId !== "" ? { registerId } : {}),
+            ...(customerId !== "" ? { customerId } : {}),
+            ...(customerId === "" && walkIn.trim() !== "" ? { customerName: walkIn.trim() } : {}),
           }),
         },
       });
@@ -186,6 +200,42 @@ export default function PosPage(): JSX.Element {
             ))}
         </select>
       </label>
+      <label>
+        Customer
+        <input
+          value={customerQ}
+          onChange={(e) => {
+            setCustomerQ(e.target.value);
+            setCustomerId("");
+          }}
+          placeholder="Search customers"
+        />
+      </label>
+      {customerQ.trim() !== "" && (
+        <ul>
+          {(customersQuery.data?.items ?? []).map((c) => (
+            <li key={c.id}>
+              <button onClick={() => { setCustomerId(c.id); setCustomerQ(c.name); setWalkIn(""); }}>
+                {c.name}{c.phone ? " — " + c.phone : ""}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <label>
+        Walk-in name (used when no customer selected)
+        <input
+          value={walkIn}
+          onChange={(e) => {
+            setWalkIn(e.target.value);
+            if (e.target.value.trim() !== "") setCustomerId("");
+          }}
+          placeholder="Optional"
+        />
+      </label>
+      {customerId !== "" && (
+        <button onClick={() => { setCustomerId(""); setCustomerQ(""); }}>Clear customer</button>
+      )}
       {status.includes("SHIFT_NO_OPEN_SHIFT") && (
         <p role="alert">
           No open shift on this register. <Link href="/shifts">Open a shift</Link> first.
