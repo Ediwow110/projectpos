@@ -86,3 +86,55 @@ describe("phase7 sales and products reports", () => {
     expect(out.rows[0]).toMatchObject({ qty: 3, revenue: 7500, profit: 4500, marginPct: 60 });
   });
 });
+
+describe("phase7 inventory payments cash customers cashiers", () => {
+  it("reports inventory health and low stock", async () => {
+    const { svc, productId } = await setupReports();
+    void productId;
+    const out = await svc.getInventoryReport("b1");
+    expect(out.low).toBe(0);
+    expect(out.out).toBe(0);
+    expect(out.healthy).toBe(1);
+    expect(out.movements.sold).toBe(3);
+  });
+  it("breaks payments down by method", async () => {
+    const { svc } = await setupReports();
+    const out = await svc.getPaymentsReport("b1", {
+      dateFrom: "2026-09-01T00:00:00.000Z", dateTo: "2026-09-30T00:00:00.000Z", compare: "none",
+    }, "owner", ALL);
+    expect(out.byMethod).toEqual([{ method: "cash", total: 7500, count: 2 }]);
+    expect(out.unknown).toBe(0);
+  });
+  it("tops customers by spend without PII", async () => {
+    const { db, svc } = await setupReports();
+    const cust = await db.createCustomer({
+      businessId: "b1", name: "Ana", phone: "0917", email: null,
+      address: null, notes: null, isActive: true,
+    });
+    const sales = new SalesService(db);
+    const draft = await sales.createDraft("b1", "u1", "rx", {
+      lines: [{ productId: (await db.listProducts("b1"))[0].id, qty: 1, lineDiscountMinor: 0 }],
+      orderDiscountMinor: 0, customerId: cust.id,
+    }, ALL);
+    await sales.completeSale("b1", "u1", "ry", draft.id, {
+      payments: [{ method: "cash", amountMinor: draft.totalMinor }], key: "top-cust-1", granted: ALL,
+    });
+    await db.updateSale(draft.id, "b1", { createdAt: new Date("2026-09-21T10:00:00.000Z") });
+    const out = await svc.getCustomersReport("b1", {
+      dateFrom: "2026-09-01T00:00:00.000Z", dateTo: "2026-09-30T00:00:00.000Z", compare: "none",
+    }, "cashier");
+    expect(out.total).toBe(1);
+    expect(out.top[0]).toMatchObject({ name: "Ana", spend: 2500, orders: 1 });
+    expect(out.top[0]).not.toHaveProperty("phone");
+  });
+  it("forbids the cashiers view for non-managers", async () => {
+    const { svc } = await setupReports();
+    await expect(svc.getCashiersReport("b1", {
+      dateFrom: "2026-09-01T00:00:00.000Z", dateTo: "2026-09-30T00:00:00.000Z", compare: "none",
+    }, "cashier")).rejects.toThrow("FORBIDDEN");
+    const out = await svc.getCashiersReport("b1", {
+      dateFrom: "2026-09-01T00:00:00.000Z", dateTo: "2026-09-30T00:00:00.000Z", compare: "none",
+    }, "owner");
+    expect(out.actors[0]).toMatchObject({ sales: 7500, orders: 2 });
+  });
+});

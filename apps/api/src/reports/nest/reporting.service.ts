@@ -12,6 +12,7 @@ import {
   type DateRange,
 } from "../aggregate";
 import { deriveStockStatus } from "../../inventory/projection";
+import { sumCashComponents } from "../../shifts/cash";
 
 export interface ReportQuery {
   dateFrom?: string;
@@ -391,6 +392,278 @@ export class ReportingService {
     }
     return {
       rows,
+      generatedAt: new Date().toISOString(),
+      range: { from: range.from.toISOString(), to: range.to.toISOString() },
+      compare,
+      compareLabel: label,
+    };
+  }
+
+  async getInventoryReport(businessId: string): Promise<{
+    healthy: number;
+    low: number;
+    out: number;
+    untracked: number;
+    lowStock: Array<{ productId: string; name: string; onHand: number; reorderLevel: number }>;
+    movements: { received: number; sold: number; damaged: number; adjusted: number };
+    generatedAt: string;
+  }> {
+    withScope(businessId, {});
+    const products = await this.db.listProducts(businessId);
+    let healthy = 0;
+    let low = 0;
+    let out = 0;
+    let untracked = 0;
+    const lowStock: Array<{ productId: string; name: string; onHand: number; reorderLevel: number }> = [];
+    for (const p of products) {
+      if (!p.isActive) continue;
+      const bal = await this.db.findBalance(p.id, businessId);
+      const onHand = bal?.qtyOnHand ?? 0;
+      const status = deriveStockStatus({ qtyOnHand: onHand, reorderLevel: p.reorderLevel, trackInventory: p.trackInventory });
+      if (status === "untracked") {
+        untracked += 1;
+        continue;
+      }
+      if (status === "ok") healthy += 1;
+      if (status === "low") {
+        low += 1;
+        lowStock.push({ productId: p.id, name: p.name, onHand, reorderLevel: p.reorderLevel });
+      }
+      if (status === "out") {
+        out += 1;
+        lowStock.push({ productId: p.id, name: p.name, onHand, reorderLevel: p.reorderLevel });
+      }
+    }
+    lowStock.sort((a, b) => a.name.localeCompare(b.name));
+    // All-time ledger sums: DbMovement carries no timestamp, so no date
+    // filtering is possible here. Documented, not a bug.
+    const movements = await this.db.listMovementsByBusiness(businessId);
+    let received = 0;
+    let sold = 0;
+    let damaged = 0;
+    let adjusted = 0;
+    for (const m of movements) {
+      if (m.type === "opening_stock" || m.type === "receive" || m.type === "return" || m.type === "transfer_in") {
+        received += m.qtyDelta;
+      } else if (m.type === "sale" || m.type === "transfer_out") {
+        sold += -m.qtyDelta;
+      } else if (m.type === "damage") {
+        damaged += -m.qtyDelta;
+      } else if (m.type === "adjustment" || m.type === "stock_count") {
+        adjusted += m.qtyDelta;
+      }
+    }
+    return {
+      healthy,
+      low,
+      out,
+      untracked,
+      lowStock: lowStock.slice(0, 50),
+      movements: { received, sold, damaged, adjusted },
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  async getPaymentsReport(
+    businessId: string,
+    query: ReportQuery,
+    role: string,
+    granted: string[],
+  ): Promise<{
+    byMethod: Array<{ method: string; total: number; count: number }>;
+    unknown: number;
+    refunded: number;
+    generatedAt: string;
+    range: { from: string; to: string };
+    compare: string;
+    compareLabel: string;
+  }> {
+    withScope(businessId, {});
+    void role;
+    void granted;
+    const { range, compare, label } = this.resolved(query);
+    const sales = await this.settledSales(businessId, range, query.registerId);
+    const byMethod = new Map<string, { total: number; count: number }>();
+    let unknown = 0;
+    let refunded = 0;
+    for (const s of sales) {
+      for (const p of await this.db.listPaymentsBySale(s.id, businessId)) {
+        if (p.status === "SUCCEEDED") {
+          const row = byMethod.get(p.method) ?? { total: 0, count: 0 };
+          row.total += p.amountMinor;
+          row.count += 1;
+          byMethod.set(p.method, row);
+        } else if (p.status === "UNKNOWN") {
+          unknown += 1;
+        } else if (p.status === "REFUNDED") {
+          refunded += p.amountMinor;
+        }
+      }
+    }
+    return {
+      byMethod: [...byMethod.entries()]
+        .map(([method, r]) => ({ method, ...r }))
+        .sort((a, b) => b.total - a.total),
+      unknown,
+      refunded,
+      generatedAt: new Date().toISOString(),
+      range: { from: range.from.toISOString(), to: range.to.toISOString() },
+      compare,
+      compareLabel: label,
+    };
+  }
+
+  async getCashReport(
+    businessId: string,
+    query: ReportQuery,
+  ): Promise<{
+    shifts: Array<{
+      shiftId: string;
+      registerId: string;
+      status: string;
+      expectedCash: number;
+      countedCash: number | null;
+      variance: number | null;
+    }>;
+    generatedAt: string;
+  }> {
+    withScope(businessId, {});
+    // DbShift carries no timestamp fields, so no date filtering is applied;
+    // date scoping arrives with a future openedAt column (no migration here).
+    let shifts = await this.db.listShiftsByBusiness(businessId);
+    if (query.registerId) shifts = shifts.filter((s) => s.registerId === query.registerId);
+    shifts = [...shifts].sort((a, b) => (a.id < b.id ? 1 : -1)).slice(0, 100);
+    const out: Array<{
+      shiftId: string;
+      registerId: string;
+      status: string;
+      expectedCash: number;
+      countedCash: number | null;
+      variance: number | null;
+    }> = [];
+    for (const s of shifts) {
+      if (s.status === "CLOSED") {
+        out.push({
+          shiftId: s.id,
+          registerId: s.registerId,
+          status: s.status,
+          expectedCash: s.expectedCashMinor,
+          countedCash: s.countedCashMinor,
+          variance: s.varianceMinor,
+        });
+      } else {
+        const movements = await this.db.listCashMovementsByShift(s.id, businessId);
+        const sums = sumCashComponents(movements);
+        out.push({
+          shiftId: s.id,
+          registerId: s.registerId,
+          status: s.status,
+          expectedCash: s.openingFloatMinor + sums.cashSales - sums.cashRefunds - sums.cashExpenses + sums.cashDeposits - sums.cashWithdrawals + sums.adjustments,
+          countedCash: null,
+          variance: null,
+        });
+      }
+    }
+    return { shifts: out, generatedAt: new Date().toISOString() };
+  }
+
+  async getCustomersReport(
+    businessId: string,
+    query: { dateFrom?: string; dateTo?: string; compare?: string },
+    role: string,
+  ): Promise<{
+    total: number;
+    active: number;
+    top: Array<{ customerId: string; name: string; spend: number; orders: number }>;
+    generatedAt: string;
+    range: { from: string; to: string };
+    compare: string;
+    compareLabel: string;
+  }> {
+    withScope(businessId, {});
+    void role;
+    const { range, compare, label } = this.resolved(query);
+    const customers = await this.db.listCustomersByBusiness(businessId);
+    const sales = await this.settledSales(businessId, range);
+    const withLines = await this.linesFor(businessId, sales);
+    const spend = new Map<string, { spend: number; orders: number }>();
+    for (const s of withLines) {
+      if (!s.sale.customerId) continue;
+      const row = spend.get(s.sale.customerId) ?? { spend: 0, orders: 0 };
+      row.spend += s.sale.totalMinor - s.refunded;
+      row.orders += 1;
+      spend.set(s.sale.customerId, row);
+    }
+    const top: Array<{ customerId: string; name: string; spend: number; orders: number }> = [];
+    for (const [customerId, r] of spend) {
+      const row = await this.db.findCustomerById(customerId, businessId);
+      top.push({ customerId, name: row?.name ?? "Walk-in", ...r });
+    }
+    top.sort((a, b) => b.spend - a.spend);
+    return {
+      total: customers.length,
+      active: customers.filter((c) => c.isActive).length,
+      top: top.slice(0, 10),
+      generatedAt: new Date().toISOString(),
+      range: { from: range.from.toISOString(), to: range.to.toISOString() },
+      compare,
+      compareLabel: label,
+    };
+  }
+
+  async getCashiersReport(
+    businessId: string,
+    query: ReportQuery,
+    role: string,
+  ): Promise<{
+    actors: Array<{
+      actorId: string;
+      name: string;
+      sales: number;
+      orders: number;
+      refunds: number;
+      refundTotal: number;
+      discounts: number;
+      varianceContext: { shiftsClosed: number; totalVariance: number };
+    }>;
+    generatedAt: string;
+    range: { from: string; to: string };
+    compare: string;
+    compareLabel: string;
+  }> {
+    withScope(businessId, {});
+    if (role !== "owner" && role !== "manager") throw new Error("FORBIDDEN");
+    const { range, compare, label } = this.resolved(query);
+    const sales = await this.settledSales(businessId, range, query.registerId);
+    const withLines = await this.linesFor(businessId, sales);
+    const agg = new Map<string, { sales: number; orders: number; refunds: number; refundTotal: number; discounts: number }>();
+    for (const s of withLines) {
+      const row = agg.get(s.sale.actorId) ?? { sales: 0, orders: 0, refunds: 0, refundTotal: 0, discounts: 0 };
+      row.sales += s.sale.totalMinor - s.refunded;
+      row.orders += 1;
+      row.discounts += s.sale.discountMinor;
+      const refundRows = await this.db.listRefundsBySale(s.sale.id, businessId);
+      row.refunds += refundRows.length;
+      row.refundTotal += s.refunded;
+      agg.set(s.sale.actorId, row);
+    }
+    const shifts = await this.db.listShiftsByBusiness(businessId);
+    const actors = [];
+    for (const [actorId, r] of agg) {
+      const user = await this.db.findUserById(actorId);
+      const closed = shifts.filter((s) => s.status === "CLOSED" && s.closedBy === actorId);
+      actors.push({
+        actorId,
+        name: user?.name ?? actorId,
+        ...r,
+        varianceContext: {
+          shiftsClosed: closed.length,
+          totalVariance: closed.reduce((sum, s) => sum + (s.varianceMinor ?? 0), 0),
+        },
+      });
+    }
+    return {
+      actors,
       generatedAt: new Date().toISOString(),
       range: { from: range.from.toISOString(), to: range.to.toISOString() },
       compare,
