@@ -22,6 +22,7 @@ export const draftCreateSchema = z.object({
   customerName: z.string().trim().max(120, "VALIDATION").optional(),
   notes: z.string().trim().max(500, "VALIDATION").optional(),
   orderDiscountMinor: moneyMinorSchema.default(0),
+  registerId: z.string().min(1, "VALIDATION").optional(),
 });
 
 export const paymentInputSchema = z.object({
@@ -34,6 +35,7 @@ export const completeSchema = z.object({
   saleId: z.string().min(1, "VALIDATION"),
   payments: paymentInputSchema.array().min(1, "VALIDATION").max(10, "VALIDATION"),
   idempotencyKey: z.string().min(8, "VALIDATION").max(128, "VALIDATION"),
+  registerId: z.string().min(1, "VALIDATION").optional(),
 });
 
 export const reconcileSchema = z.object({

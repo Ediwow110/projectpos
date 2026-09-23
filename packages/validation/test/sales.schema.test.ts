@@ -27,3 +27,13 @@ describe("phase4 sales schemas", () => {
     expect(out.lines[0].qty).toBe(2);
   });
 });
+
+describe("phase5 registerId on sales schemas", () => {
+  it("accepts drafts with and without registerId", async () => {
+    const { draftCreateSchema, completeSchema } = await import("../src/sales.schema");
+    expect(draftCreateSchema.parse({ lines: [{ productId: "p1", qty: 1 }], registerId: "r1" }).registerId).toBe("r1");
+    expect(
+      completeSchema.parse({ saleId: "s1", payments: [{ method: "cash", amountMinor: 100 }], idempotencyKey: "key-12345", registerId: "r1" }).registerId,
+    ).toBe("r1");
+  });
+});

@@ -49,6 +49,9 @@ model Business {
   payments    Payment[]
   heldSales   HeldSale[]
   idempotencyKeys SaleIdempotency[]
+  registers   Register[]
+  shifts      Shift[]
+  cashMovements CashMovement[]
 }
 
 model BusinessMembership {
@@ -222,6 +225,7 @@ model Sale {
   actorId        String
   requestId      String
   idempotencyKey String?
+  registerId     String?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
   business       Business   @relation(fields: [businessId], references: [id])
@@ -287,4 +291,63 @@ model SaleIdempotency {
   createdAt   DateTime @default(now())
   business    Business @relation(fields: [businessId], references: [id])
   @@unique([businessId, key, commandType])
+}
+
+model Register {
+  id         String   @id @default(cuid())
+  businessId String
+  name       String
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  business   Business @relation(fields: [businessId], references: [id])
+  shifts     Shift[]
+  @@unique([businessId, name])
+  @@index([businessId])
+}
+
+model Shift {
+  id                   String    @id @default(cuid())
+  businessId           String
+  registerId           String
+  status               String    @default("OPEN")
+  openedBy             String
+  closedBy             String?
+  openingFloatMinor    Int       @default(0)
+  countedCashMinor     Int?
+  varianceMinor        Int?
+  cashSalesMinor       Int       @default(0)
+  cashRefundsMinor     Int       @default(0)
+  cashExpensesMinor    Int       @default(0)
+  cashDepositsMinor    Int       @default(0)
+  cashWithdrawalsMinor Int       @default(0)
+  adjustmentsMinor     Int       @default(0)
+  expectedCashMinor    Int       @default(0)
+  closeNotes           String?
+  openedAt             DateTime  @default(now())
+  closedAt             DateTime?
+  business             Business  @relation(fields: [businessId], references: [id])
+  register             Register  @relation(fields: [registerId], references: [id])
+  movements            CashMovement[]
+  @@index([businessId, registerId, status])
+  @@index([businessId, status, openedAt])
+}
+
+model CashMovement {
+  id            String   @id @default(cuid())
+  businessId    String
+  shiftId       String
+  registerId    String
+  type          String
+  amountMinor   Int
+  reason        String?
+  referenceType String?
+  referenceId   String?
+  actorId       String
+  requestId     String
+  createdAt     DateTime @default(now())
+  business      Business @relation(fields: [businessId], references: [id])
+  shift         Shift    @relation(fields: [shiftId], references: [id])
+  @@index([businessId, shiftId, createdAt])
+  @@index([businessId, registerId, createdAt])
 }
