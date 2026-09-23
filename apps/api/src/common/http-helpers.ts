@@ -33,6 +33,11 @@ export const CODE_STATUS: Record<string, number> = {
   CATALOG_IMPORT_TOO_LARGE: 400,
   INSUFFICIENT_STOCK: 409,
   PRODUCT_NOT_TRACKED: 400,
+  SALE_INVALID_TRANSITION: 409,
+  PAYMENT_TOTAL_MISMATCH: 400,
+  IDEMPOTENCY_MISMATCH: 409,
+  PAYMENT_UNKNOWN: 202,
+  IDEMPOTENCY_REPLAY: 200,
 };
 
 export function statusFor(code: string, fallback = 400): number {
