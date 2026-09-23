@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createMemoryDb } from "../../common/memory.db";
+import { ShiftService } from "./shift.service";
 
 describe("phase5 shift port", () => {
   it("round-trips a register scoped to its business", async () => {
@@ -42,5 +43,56 @@ describe("phase5 shift port", () => {
     });
     expect((await db.listCashMovementsByShift(shift.id, "b1")).length).toBe(1);
     expect(await db.listCashMovementsByShift(shift.id, "b2")).toEqual([]);
+  });
+});
+
+async function setupShift() {
+  const db = createMemoryDb();
+  const svc = new ShiftService(db);
+  const reg = await svc.createRegister("b1", "u1", "r0", { name: "Counter 1" }, "owner");
+  return { db, svc, registerId: reg.id };
+}
+
+describe("phase5 shift service", () => {
+  it("opens with float, records cash, closes with reconciled variance", async () => {
+    const { db, svc, registerId } = await setupShift();
+    const shift = await svc.openShift("b1", "u1", "r1", registerId, { openingFloatMinor: 10000 }, "cashier");
+    expect(shift.status).toBe("OPEN");
+    await svc.recordCash("b1", "u1", "r2", shift.id, { kind: "paid_out", amountMinor: 1200, reason: "ice delivery" }, []);
+    await svc.recordCash("b1", "u1", "r3", shift.id, { kind: "cash_deposit", amountMinor: 2000 }, []);
+    const { shift: closed, report } = await svc.closeShift("b1", "u1", "r4", shift.id, { countedCashMinor: 10800 }, []);
+    expect(closed.status).toBe("CLOSED");
+    expect(report.expectedCash).toBe(10800);
+    expect(report.variance).toBe(0);
+    expect((await db.listAudit()).map((a) => a.action)).toEqual(
+      expect.arrayContaining(["shift.open", "shift.cash", "shift.close"]),
+    );
+  });
+  it("rejects double open and double close", async () => {
+    const { svc, registerId } = await setupShift();
+    const shift = await svc.openShift("b1", "u1", "r1", registerId, { openingFloatMinor: 0 }, "cashier");
+    await expect(svc.openShift("b1", "u1", "r2", registerId, { openingFloatMinor: 0 }, "cashier")).rejects.toThrow("SHIFT_ALREADY_OPEN");
+    await svc.closeShift("b1", "u1", "r3", shift.id, { countedCashMinor: 0 }, []);
+    await expect(svc.closeShift("b1", "u1", "r4", shift.id, { countedCashMinor: 0 }, [])).rejects.toThrow("SHIFT_ALREADY_CLOSED");
+  });
+  it("rejects mutations on a closed shift", async () => {
+    const { svc, registerId } = await setupShift();
+    const shift = await svc.openShift("b1", "u1", "r1", registerId, { openingFloatMinor: 0 }, "cashier");
+    await svc.closeShift("b1", "u1", "r2", shift.id, { countedCashMinor: 0 }, []);
+    await expect(
+      svc.recordCash("b1", "u1", "r3", shift.id, { kind: "cash_deposit", amountMinor: 100 }, []),
+    ).rejects.toThrow("SHIFT_CLOSED_IMMUTABLE");
+  });
+  it("requires override to close another actor's shift", async () => {
+    const { svc, registerId } = await setupShift();
+    const shift = await svc.openShift("b1", "u1", "r1", registerId, { openingFloatMinor: 0 }, "cashier");
+    await expect(svc.closeShift("b1", "u2", "r2", shift.id, { countedCashMinor: 0 }, [])).rejects.toThrow("FORBIDDEN");
+    await svc.closeShift("b1", "u2", "r2", shift.id, { countedCashMinor: 0 }, ["shift.close.override"]);
+  });
+  it("blocks cashier register setup and cross-tenant reads", async () => {
+    const { svc, registerId } = await setupShift();
+    await expect(svc.createRegister("b1", "u9", "r9", { name: "Back" }, "cashier")).rejects.toThrow("FORBIDDEN");
+    await expect(svc.getShift("b2", "nope", "owner", "u1")).rejects.toThrow("NOT_FOUND");
+    void registerId;
   });
 });
