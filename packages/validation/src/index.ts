@@ -8,3 +8,4 @@ export * from "./shifts.schema";
 export * from "./customers.schema";
 export * from "./refunds.schema";
 export * from "./expenses.schema";
+export * from "./reports.schema";
