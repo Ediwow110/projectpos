@@ -10,6 +10,7 @@ import type {
 import { computeSaleTotals, requiresDiscountOverride } from "../totals";
 import { transitionSale } from "../state-machine";
 import { fingerprintPayload } from "../idempotency";
+import { ShiftService } from "../../shifts/nest/shift.service";
 
 export interface DraftLineInput {
   productId: string;
@@ -23,6 +24,7 @@ export interface DraftInput {
   customerId?: string;
   customerName?: string;
   notes?: string;
+  registerId?: string;
 }
 
 export interface PaymentInput {
@@ -40,7 +42,12 @@ const CASH_METHODS = new Set(["cash"]);
 
 @Injectable()
 export class SalesService {
-  constructor(private readonly db: DbPort) {}
+  private readonly shifts: ShiftService;
+
+  constructor(private readonly db: DbPort) {
+    // Same-DbPort instance (not Nest DI) to avoid a Sales<->Shift DI cycle.
+    this.shifts = new ShiftService(db);
+  }
 
   private readonly locks = new Map<string, Promise<void>>();
 
@@ -132,6 +139,12 @@ export class SalesService {
       businessTaxRateBps: businessTax,
     });
     const receiptNo = await this.db.nextReceiptNo(businessId);
+    let registerId: string | null = null;
+    if (input.registerId !== undefined) {
+      const reg = await this.db.findRegisterById(input.registerId, businessId);
+      if (!reg) throw new Error("VALIDATION");
+      registerId = reg.id;
+    }
     const sale = await this.db.createSale({
       businessId,
       receiptNo,
@@ -149,6 +162,7 @@ export class SalesService {
       actorId,
       requestId,
       idempotencyKey: null,
+      registerId,
     });
     for (const l of lines) {
       await this.db.createSaleItem({
@@ -181,18 +195,23 @@ export class SalesService {
     actorId: string,
     requestId: string,
     saleId: string,
-    input: { payments: PaymentInput[]; key: string; granted: string[] },
+    input: { payments: PaymentInput[]; key: string; granted: string[]; registerId?: string },
   ): Promise<{ sale: SaleWithLines; replayed: boolean }> {
     withScope(businessId, {});
     return this.withLock(`sales:${businessId}`, async () => {
-      const fingerprint = fingerprintPayload({ saleId, payments: input.payments });
+      const sale = await this.requireSale(businessId, saleId);
+      const registerId = input.registerId ?? sale.registerId ?? null;
+      if (input.registerId !== undefined && input.registerId !== null) {
+        const reg = await this.db.findRegisterById(input.registerId, businessId);
+        if (!reg) throw new Error("VALIDATION");
+      }
+      const fingerprint = fingerprintPayload({ saleId, payments: input.payments, registerId });
       const existing = await this.db.findIdempotency(businessId, input.key, "sale.complete");
       if (existing) {
         if (existing.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
         const original = await this.requireSale(businessId, existing.resultId);
         return { sale: await this.embed(original), replayed: true };
       }
-      const sale = await this.requireSale(businessId, saleId);
       if (sale.status !== "DRAFT" && sale.status !== "PENDING_PAYMENT") {
         throw new Error("SALE_INVALID_TRANSITION");
       }
@@ -216,6 +235,13 @@ export class SalesService {
         throw new Error("PAYMENT_TOTAL_MISMATCH");
       }
       const change = paid - totals.totalMinor;
+      const cashMinor = input.payments
+        .filter((p) => CASH_METHODS.has(p.method))
+        .reduce((sum, p) => sum + p.amountMinor, 0);
+      if (registerId && cashMinor > 0) {
+        const open = await this.db.findOpenShiftByRegister(businessId, registerId);
+        if (!open) throw new Error("SHIFT_NO_OPEN_SHIFT");
+      }
       const unknown = input.payments.some((p) => (p.providerRef ?? "").startsWith("unknown-"));
       if (unknown) {
         for (const p of input.payments) {
@@ -232,13 +258,14 @@ export class SalesService {
         const fromStatus = sale.status === "DRAFT" ? "PENDING_PAYMENT" : sale.status;
         if (sale.status === "DRAFT") transitionSale("DRAFT", "PENDING_PAYMENT");
         const nextStatus = transitionSale(fromStatus, "PAYMENT_UNKNOWN");
-        const updated =
-          (await this.db.updateSale(sale.id, businessId, {
-            status: nextStatus,
-            paidMinor: paid,
-            changeMinor: change,
-            idempotencyKey: input.key,
-          })) ?? sale;
+      const updated =
+        (await this.db.updateSale(sale.id, businessId, {
+          status: nextStatus,
+          paidMinor: paid,
+          changeMinor: change,
+          idempotencyKey: input.key,
+          ...(input.registerId !== undefined ? { registerId: input.registerId } : {}),
+        })) ?? sale;
         await this.db.claimIdempotency({
           businessId,
           key: input.key,
@@ -268,6 +295,9 @@ export class SalesService {
           idempotencyKey: `${input.key}:${p.method}`,
         });
       }
+      if (registerId && cashMinor > 0) {
+        await this.shifts.postCashSale(businessId, actorId, requestId, registerId, sale.id, cashMinor);
+      }
       let status = sale.status;
       if (status === "DRAFT") status = transitionSale(status, "PENDING_PAYMENT");
       status = transitionSale(status, "PAID");
@@ -281,6 +311,7 @@ export class SalesService {
           paidMinor: paid,
           changeMinor: change,
           idempotencyKey: input.key,
+          ...(input.registerId !== undefined ? { registerId: input.registerId } : {}),
         })) ?? sale;
       await this.db.claimIdempotency({
         businessId,
@@ -367,9 +398,16 @@ export class SalesService {
       status = transitionSale(status, "PENDING_PAYMENT");
       if (outcome === "SUCCEEDED") {
         const items = await this.db.listSaleItems(sale.id, businessId);
+        if (sale.registerId && CASH_METHODS.has(payment.method)) {
+          const open = await this.db.findOpenShiftByRegister(businessId, sale.registerId);
+          if (!open) throw new Error("SHIFT_NO_OPEN_SHIFT");
+        }
         await this.applyStockEffect(businessId, actorId, requestId, sale.id, items);
         const updatedPayment =
           (await this.db.updatePayment(payment.id, businessId, { status: "SUCCEEDED" })) ?? payment;
+        if (sale.registerId && CASH_METHODS.has(payment.method)) {
+          await this.shifts.postCashSale(businessId, actorId, requestId, sale.registerId, sale.id, payment.amountMinor);
+        }
         status = transitionSale(status, "PAID");
         status = transitionSale(status, "COMPLETED");
         const updated =
