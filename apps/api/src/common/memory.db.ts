@@ -1,4 +1,4 @@
-import type { AuditEntry, DbBalance, DbBusiness, DbCategory, DbMembership, DbMovement, DbPort, DbProduct, DbResetToken, DbSession, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense } from "./db.port";
+import type { AuditEntry, DbBalance, DbBranch, DbBusiness, DbCategory, DbMembership, DbMovement, DbPort, DbProduct, DbResetToken, DbSession, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense } from "./db.port";
 
 let n = 0;
 const nid = (p: string): string => `${p}_${Date.now().toString(36)}_${(n += 1)}`;
@@ -27,6 +27,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const refunds = new Map<string, DbRefund>();
   const refundItems = new Map<string, DbRefundItem>();
   const expenses = new Map<string, DbExpense>();
+  const branches = new Map<string, DbBranch>();
   const audit: AuditEntry[] = [];
   return {
     audit,
@@ -393,6 +394,28 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       if (!e || e.businessId !== businessId) return null;
       const next = { ...e, ...patch };
       expenses.set(id, next);
+      return next;
+    },
+    async createBranch(b) {
+      const row = { ...b, id: nid("br") };
+      branches.set(row.id, row);
+      return row;
+    },
+    async listBranchesByBusiness(businessId) {
+      return [...branches.values()]
+        .filter((b) => b.businessId === businessId)
+        .sort((a, b) => a.name.localeCompare(b.name));
+    },
+    async findBranchById(id, businessId) {
+      const b = branches.get(id) ?? null;
+      if (!b || b.businessId !== businessId) return null;
+      return b;
+    },
+    async updateBranch(id, businessId, patch) {
+      const b = branches.get(id) ?? null;
+      if (!b || b.businessId !== businessId) return null;
+      const next = { ...b, ...patch };
+      branches.set(id, next);
       return next;
     },
   };

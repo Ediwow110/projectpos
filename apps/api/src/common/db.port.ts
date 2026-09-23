@@ -253,6 +253,14 @@ export interface DbExpense {
   cashAdjusted: boolean;
 }
 
+export interface DbBranch {
+  id: string;
+  businessId: string;
+  name: string;
+  type: string;
+  isActive: boolean;
+}
+
 export interface DbPort {
   findUserByEmail(email: string): Promise<DbUser | null>;
   findUserById(id: string): Promise<DbUser | null>;
@@ -331,4 +339,8 @@ export interface DbPort {
   listExpensesByBusiness(businessId: string): Promise<DbExpense[]>;
   findExpenseById(id: string, businessId: string): Promise<DbExpense | null>;
   updateExpense(id: string, businessId: string, patch: Partial<Omit<DbExpense, "id" | "businessId">>): Promise<DbExpense | null>;
+  createBranch(b: Omit<DbBranch, "id">): Promise<DbBranch>;
+  listBranchesByBusiness(businessId: string): Promise<DbBranch[]>;
+  findBranchById(id: string, businessId: string): Promise<DbBranch | null>;
+  updateBranch(id: string, businessId: string, patch: Partial<Omit<DbBranch, "id" | "businessId">>): Promise<DbBranch | null>;
 }
