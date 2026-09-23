@@ -238,6 +238,8 @@ model Sale {
   @@unique([businessId, receiptNo])
   @@unique([businessId, idempotencyKey])
   @@index([businessId, status, createdAt])
+  @@index([businessId, customerId])
+  @@index([businessId, registerId])
 }
 
 model SaleItem {
