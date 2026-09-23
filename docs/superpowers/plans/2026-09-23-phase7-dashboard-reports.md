@@ -592,8 +592,8 @@ beforeAll(async () => {
   await request(app.getHttpServer()).post("/api/v1/inventory/movements")
     .set("Cookie", cookie).set("X-CSRF-Token", csrf)
     .send({ productId, type: "opening_stock", qtyDelta: 50 });
-  await makeSale("dash-k1", 2);
-  await makeSale("dash-k2", 1);
+  await makeSale("dash-key-01", 2);
+  await makeSale("dash-key-02", 1);
 });
 
 afterAll(async () => { await app.close(); });
