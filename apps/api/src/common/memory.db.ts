@@ -1,4 +1,4 @@
-import type { AuditEntry, DbBalance, DbBusiness, DbCategory, DbMembership, DbMovement, DbPort, DbProduct, DbResetToken, DbSession, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement } from "./db.port";
+import type { AuditEntry, DbBalance, DbBusiness, DbCategory, DbMembership, DbMovement, DbPort, DbProduct, DbResetToken, DbSession, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer } from "./db.port";
 
 let n = 0;
 const nid = (p: string): string => `${p}_${Date.now().toString(36)}_${(n += 1)}`;
@@ -23,6 +23,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const registers = new Map<string, DbRegister>();
   const shifts = new Map<string, DbShift>();
   const cashMovements = new Map<string, DbCashMovement>();
+  const customers = new Map<string, DbCustomer>();
   const audit: AuditEntry[] = [];
   return {
     audit,
@@ -315,6 +316,26 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       return [...cashMovements.values()].filter(
         (m) => m.shiftId === shiftId && m.businessId === businessId,
       );
+    },
+    async createCustomer(c) {
+      const row = { ...c, id: nid("cust") };
+      customers.set(row.id, row);
+      return row;
+    },
+    async listCustomersByBusiness(businessId) {
+      return [...customers.values()].filter((c) => c.businessId === businessId);
+    },
+    async findCustomerById(id, businessId) {
+      const c = customers.get(id) ?? null;
+      if (!c || c.businessId !== businessId) return null;
+      return c;
+    },
+    async updateCustomer(id, businessId, patch) {
+      const c = customers.get(id) ?? null;
+      if (!c || c.businessId !== businessId) return null;
+      const next = { ...c, ...patch };
+      customers.set(id, next);
+      return next;
     },
   };
 }

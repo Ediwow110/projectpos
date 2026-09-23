@@ -199,6 +199,17 @@ export interface DbCashMovement {
   requestId: string;
 }
 
+export interface DbCustomer {
+  id: string;
+  businessId: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  notes: string | null;
+  isActive: boolean;
+}
+
 export interface DbPort {
   findUserByEmail(email: string): Promise<DbUser | null>;
   findUserById(id: string): Promise<DbUser | null>;
@@ -263,4 +274,8 @@ export interface DbPort {
   updateShift(id: string, businessId: string, patch: Partial<Omit<DbShift, "id" | "businessId">>): Promise<DbShift | null>;
   createCashMovement(m: Omit<DbCashMovement, "id">): Promise<DbCashMovement>;
   listCashMovementsByShift(shiftId: string, businessId: string): Promise<DbCashMovement[]>;
+  createCustomer(c: Omit<DbCustomer, "id">): Promise<DbCustomer>;
+  listCustomersByBusiness(businessId: string): Promise<DbCustomer[]>;
+  findCustomerById(id: string, businessId: string): Promise<DbCustomer | null>;
+  updateCustomer(id: string, businessId: string, patch: Partial<Omit<DbCustomer, "id" | "businessId">>): Promise<DbCustomer | null>;
 }
