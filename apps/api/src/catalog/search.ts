@@ -8,7 +8,6 @@ export interface CatalogRow {
   costMinor: number;
   priceMinor: number;
   isActive: boolean;
-  [key: string]: unknown;
 }
 
 export function matchesQuery(row: CatalogRow, q: string): boolean {

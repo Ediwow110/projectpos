@@ -12,7 +12,7 @@ import { applyProductSearch } from "../search";
 
 export interface CategoryInput {
   name: string;
-  description?: string;
+  description?: string | null;
   isActive?: boolean;
 }
 
