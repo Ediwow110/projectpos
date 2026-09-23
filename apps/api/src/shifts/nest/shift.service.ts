@@ -374,21 +374,23 @@ export class ShiftService {
     registerId: string,
     saleId: string,
     cashMinor: number,
+    opts?: { type?: "cash_sale" | "cash_refund"; referenceType?: string; referenceId?: string },
   ): Promise<DbCashMovement> {
     withScope(businessId, {});
     const shift = await this.db.findOpenShiftByRegister(businessId, registerId);
     if (!shift) throw new Error("SHIFT_NO_OPEN_SHIFT");
-    validateCashAmount("cash_sale", cashMinor);
-    // No audit row of its own: covered by the sale's sale.complete audit.
+    const type = opts?.type ?? "cash_sale";
+    validateCashAmount(type, type === "cash_refund" ? -Math.abs(cashMinor) : cashMinor);
+    // No audit row of its own: covered by the sale's sale.complete / refund.approve audit.
     return this.db.createCashMovement({
       businessId,
       shiftId: shift.id,
       registerId,
-      type: "cash_sale",
-      amountMinor: cashMinor,
+      type,
+      amountMinor: type === "cash_refund" ? -Math.abs(cashMinor) : cashMinor,
       reason: null,
-      referenceType: "Sale",
-      referenceId: saleId,
+      referenceType: opts?.referenceType ?? "Sale",
+      referenceId: opts?.referenceId ?? saleId,
       actorId,
       requestId,
     });

@@ -1,4 +1,4 @@
-import type { AuditEntry, DbBalance, DbBusiness, DbCategory, DbMembership, DbMovement, DbPort, DbProduct, DbResetToken, DbSession, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer } from "./db.port";
+import type { AuditEntry, DbBalance, DbBusiness, DbCategory, DbMembership, DbMovement, DbPort, DbProduct, DbResetToken, DbSession, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem } from "./db.port";
 
 let n = 0;
 const nid = (p: string): string => `${p}_${Date.now().toString(36)}_${(n += 1)}`;
@@ -24,6 +24,8 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const shifts = new Map<string, DbShift>();
   const cashMovements = new Map<string, DbCashMovement>();
   const customers = new Map<string, DbCustomer>();
+  const refunds = new Map<string, DbRefund>();
+  const refundItems = new Map<string, DbRefundItem>();
   const audit: AuditEntry[] = [];
   return {
     audit,
@@ -336,6 +338,41 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       const next = { ...c, ...patch };
       customers.set(id, next);
       return next;
+    },
+    async createRefund(r) {
+      const row = { ...r, id: nid("ref") };
+      refunds.set(row.id, row);
+      return row;
+    },
+    async listRefundsBySale(saleId, businessId) {
+      return [...refunds.values()].filter(
+        (r) => r.saleId === saleId && r.businessId === businessId,
+      );
+    },
+    async findRefundById(id, businessId) {
+      const r = refunds.get(id) ?? null;
+      if (!r || r.businessId !== businessId) return null;
+      return r;
+    },
+    async createRefundItem(i) {
+      const row = { ...i, id: nid("ritem") };
+      refundItems.set(row.id, row);
+      return row;
+    },
+    async listRefundItems(refundId, businessId) {
+      return [...refundItems.values()].filter(
+        (i) => i.refundId === refundId && i.businessId === businessId,
+      );
+    },
+    async listRefundItemsBySale(saleId, businessId) {
+      const ids = new Set(
+        [...refunds.values()]
+          .filter((r) => r.saleId === saleId && r.businessId === businessId)
+          .map((r) => r.id),
+      );
+      return [...refundItems.values()].filter(
+        (i) => ids.has(i.refundId) && i.businessId === businessId,
+      );
     },
   };
 }

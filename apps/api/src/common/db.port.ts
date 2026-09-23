@@ -210,6 +210,31 @@ export interface DbCustomer {
   isActive: boolean;
 }
 
+export interface DbRefund {
+  id: string;
+  businessId: string;
+  saleId: string;
+  status: string;
+  totalMinor: number;
+  reason: string | null;
+  requestedBy: string;
+  approvedBy: string;
+  requestId: string;
+  approvedRequestId: string;
+  singleStep: boolean;
+}
+
+export interface DbRefundItem {
+  id: string;
+  businessId: string;
+  refundId: string;
+  saleItemId: string;
+  productId: string;
+  qty: number;
+  amountMinor: number;
+  restocked: boolean;
+}
+
 export interface DbPort {
   findUserByEmail(email: string): Promise<DbUser | null>;
   findUserById(id: string): Promise<DbUser | null>;
@@ -278,4 +303,10 @@ export interface DbPort {
   listCustomersByBusiness(businessId: string): Promise<DbCustomer[]>;
   findCustomerById(id: string, businessId: string): Promise<DbCustomer | null>;
   updateCustomer(id: string, businessId: string, patch: Partial<Omit<DbCustomer, "id" | "businessId">>): Promise<DbCustomer | null>;
+  createRefund(r: Omit<DbRefund, "id">): Promise<DbRefund>;
+  listRefundsBySale(saleId: string, businessId: string): Promise<DbRefund[]>;
+  findRefundById(id: string, businessId: string): Promise<DbRefund | null>;
+  createRefundItem(i: Omit<DbRefundItem, "id">): Promise<DbRefundItem>;
+  listRefundItems(refundId: string, businessId: string): Promise<DbRefundItem[]>;
+  listRefundItemsBySale(saleId: string, businessId: string): Promise<DbRefundItem[]>;
 }
