@@ -50,6 +50,7 @@ export class ReportingController {
           dateTo: parsed.data.dateTo,
           compare: parsed.data.compare,
           registerId: parsed.data.registerId,
+          branchId: parsed.data.branchId,
         }, auth.role, this.perms(req)),
       );
     } catch (e) {
@@ -77,6 +78,7 @@ export class ReportingController {
           dateTo: parsed.data.dateTo,
           compare: parsed.data.compare,
           registerId: parsed.data.registerId,
+          branchId: parsed.data.branchId,
           granularity: parsed.data.granularity,
         }, auth.role, this.perms(req)),
       );
@@ -105,6 +107,7 @@ export class ReportingController {
           dateTo: parsed.data.dateTo,
           compare: parsed.data.compare,
           registerId: parsed.data.registerId,
+          branchId: parsed.data.branchId,
           tab: parsed.data.tab,
           limit: parsed.data.limit,
         }, auth.role, this.perms(req)),
@@ -116,9 +119,20 @@ export class ReportingController {
   }
 
   @Get("reports/inventory")
-  async inventory(@Req() req: Request, @Res() res: Response): Promise<void> {
+  async inventory(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Query() query: Record<string, string>,
+  ): Promise<void> {
+    const parsed = reportsQuerySchema.safeParse(query);
+    if (!parsed.success) {
+      fail(res, 400, "VALIDATION", "Invalid inventory report query", req);
+      return;
+    }
     try {
-      res.status(200).json(await this.reports.getInventoryReport(req.auth!.businessId));
+      res.status(200).json(
+        await this.reports.getInventoryReport(req.auth!.businessId, parsed.data.branchId),
+      );
     } catch (e) {
       const code = e instanceof Error ? e.message : "VALIDATION";
       fail(res, statusFor(code), code, "Inventory report fetch failed", req);
@@ -170,11 +184,38 @@ export class ReportingController {
           dateTo: parsed.data.dateTo,
           compare: parsed.data.compare,
           registerId: parsed.data.registerId,
+          branchId: parsed.data.branchId,
         }),
       );
     } catch (e) {
       const code = e instanceof Error ? e.message : "VALIDATION";
       fail(res, statusFor(code), code, "Cash report fetch failed", req);
+    }
+  }
+
+  @Get("reports/branches")
+  async branches(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Query() query: Record<string, string>,
+  ): Promise<void> {
+    const parsed = reportsQuerySchema.safeParse(query);
+    if (!parsed.success) {
+      fail(res, 400, "VALIDATION", "Invalid branches report query", req);
+      return;
+    }
+    try {
+      const auth = req.auth!;
+      res.status(200).json(
+        await this.reports.getBranchesReport(auth.businessId, {
+          dateFrom: parsed.data.dateFrom,
+          dateTo: parsed.data.dateTo,
+          compare: parsed.data.compare,
+        }, auth.role, this.perms(req)),
+      );
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "VALIDATION";
+      fail(res, statusFor(code), code, "Branches report fetch failed", req);
     }
   }
 

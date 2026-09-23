@@ -92,3 +92,109 @@ describe("phase9a transfer HTTP contract", () => {
     expect(res.body.code).toBe("TENANT_REQUIRED");
   });
 });
+describe("phase9a transfer edges", () => {
+  it("rejects same-branch and unknown-branch transfers with VALIDATION", async () => {
+    const same = await request(app.getHttpServer()).post("/api/v1/transfers")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ fromBranchId: branchA, toBranchId: branchA, lines: [{ productId, qty: 1 }] });
+    expect(same.status).toBe(400);
+    expect(same.body.code).toBe("VALIDATION");
+    const unknown = await request(app.getHttpServer()).post("/api/v1/transfers")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ fromBranchId: branchA, toBranchId: "br_missing", lines: [{ productId, qty: 1 }] });
+    expect(unknown.status).toBe(400);
+    expect(unknown.body.code).toBe("VALIDATION");
+  });
+  it("rejects receive-before-dispatch and cancel-after-receive", async () => {
+    const created = await request(app.getHttpServer()).post("/api/v1/transfers")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ fromBranchId: branchA, toBranchId: branchB, lines: [{ productId, qty: 1 }] });
+    const id = created.body.id as string;
+    const early = await request(app.getHttpServer()).post(`/api/v1/transfers/${id}/receive`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .set("Idempotency-Key", "http-edge-r1")
+      .send({});
+    expect(early.status).toBe(409);
+    expect(early.body.code).toBe("TRANSFER_INVALID_STATE");
+    const dispatched = await request(app.getHttpServer()).post(`/api/v1/transfers/${id}/dispatch`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .set("Idempotency-Key", "http-edge-d1")
+      .send({});
+    expect(dispatched.status).toBe(200);
+    const received = await request(app.getHttpServer()).post(`/api/v1/transfers/${id}/receive`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .set("Idempotency-Key", "http-edge-r2")
+      .send({});
+    expect(received.status).toBe(200);
+    const cancelled = await request(app.getHttpServer()).post(`/api/v1/transfers/${id}/cancel`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .set("Idempotency-Key", "http-edge-c1")
+      .send({});
+    expect(cancelled.status).toBe(409);
+    expect(cancelled.body.code).toBe("TRANSFER_INVALID_STATE");
+  });
+  it("rejects cashier transfer writes (service-level gate)", async () => {
+    const { createMemoryDb } = await import("../src/common/memory.db");
+    const { TransferService } = await import("../src/transfers/nest/transfer.service");
+    const svc = new TransferService(createMemoryDb());
+    await expect(
+      svc.createTransfer("b1", "u9", "r9", {
+        fromBranchId: "a", toBranchId: "b", lines: [{ productId: "p", qty: 1 }],
+      }, []),
+    ).rejects.toThrow("FORBIDDEN");
+  });
+  it("returns NOT_FOUND for another tenants transfer", async () => {
+    const created = await request(app.getHttpServer()).post("/api/v1/transfers")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ fromBranchId: branchA, toBranchId: branchB, lines: [{ productId, qty: 1 }] });
+    const id = created.body.id as string;
+    const reg2 = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
+      ownerName: "Bo", email: "bo-transfer@example.com",
+      password: "correct-horse-12", businessName: "Other Transfer Store",
+    });
+    const other = jar(reg2.headers["set-cookie"]);
+    const got = await request(app.getHttpServer()).get(`/api/v1/transfers/${id}`)
+      .set("Cookie", other);
+    expect(got.status).toBe(404);
+    expect(got.body.code).toBe("NOT_FOUND");
+  });
+  it("compares branches in the report view", async () => {
+    await request(app.getHttpServer()).post("/api/v1/inventory/movements")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ productId, type: "receive", qtyDelta: 50, branchId: branchA });
+    await request(app.getHttpServer()).post("/api/v1/inventory/movements")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ productId, type: "receive", qtyDelta: 50, branchId: branchB });
+    const draftA = await request(app.getHttpServer()).post("/api/v1/sales/drafts")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ lines: [{ productId, qty: 1 }], branchId: branchA });
+    expect(draftA.status).toBe(201);
+    await request(app.getHttpServer()).post("/api/v1/sales/complete")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .set("Idempotency-Key", "http-edge-sale-a")
+      .send({ saleId: draftA.body.id, payments: [{ method: "cash", amountMinor: draftA.body.totalMinor }] });
+    const draftB = await request(app.getHttpServer()).post("/api/v1/sales/drafts")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ lines: [{ productId, qty: 2 }], branchId: branchB });
+    expect(draftB.status).toBe(201);
+    await request(app.getHttpServer()).post("/api/v1/sales/complete")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .set("Idempotency-Key", "http-edge-sale-b")
+      .send({ saleId: draftB.body.id, payments: [{ method: "cash", amountMinor: draftB.body.totalMinor }] });
+    const from = new Date(Date.now() - 30 * 86400000).toISOString();
+    const to = new Date(Date.now() + 86400000).toISOString();
+    const range = `dateFrom=${encodeURIComponent(from)}&dateTo=${encodeURIComponent(to)}&compare=none`;
+    const branches = await request(app.getHttpServer()).get(`/api/v1/reports/branches?${range}`)
+      .set("Cookie", cookie);
+    expect(branches.status).toBe(200);
+    const rows = branches.body.rows as Array<{ branchId: string | null; sales: number }>;
+    const rowA = rows.find((r) => r.branchId === branchA)!;
+    const rowB = rows.find((r) => r.branchId === branchB)!;
+    expect(rowA.sales).toBe(draftA.body.totalMinor);
+    expect(rowB.sales).toBe(draftB.body.totalMinor);
+    const overview = await request(app.getHttpServer()).get(`/api/v1/dashboard/overview?${range}`)
+      .set("Cookie", cookie);
+    expect(overview.status).toBe(200);
+    expect(rows.reduce((s, r) => s + r.sales, 0)).toBe(overview.body.kpis.netRevenue.value);
+  });
+});

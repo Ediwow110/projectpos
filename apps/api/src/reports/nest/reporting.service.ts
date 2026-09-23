@@ -19,6 +19,8 @@ export interface ReportQuery {
   dateTo?: string;
   compare?: string;
   registerId?: string;
+  // Phase 9a: optional branch scope; absent = all branches including null scope.
+  branchId?: string;
   granularity?: "day" | "hour";
   tab?: string;
   limit?: number;
@@ -61,13 +63,15 @@ export class ReportingService {
     businessId: string,
     range: DateRange,
     registerId?: string,
+    branchId?: string,
   ): Promise<DbSale[]> {
     const all = await this.db.listSalesByBusiness(businessId);
     return all.filter(
       (s) =>
         isSettled(s.status) &&
         this.inRange(s.createdAt, range) &&
-        (!registerId || s.registerId === registerId),
+        (!registerId || s.registerId === registerId) &&
+        (!branchId || (s.branchId ?? null) === branchId),
     );
   }
 
@@ -108,6 +112,7 @@ export class ReportingService {
     businessId: string,
     range: DateRange,
     registerId?: string,
+    branchId?: string,
   ): Promise<{
     netRevenue: number;
     orders: number;
@@ -116,7 +121,7 @@ export class ReportingService {
     refundTotal: number;
     discountTotal: number;
   }> {
-    const sales = await this.settledSales(businessId, range, registerId);
+    const sales = await this.settledSales(businessId, range, registerId, branchId);
     const withLines = await this.linesFor(businessId, sales);
     const gross = withLines.reduce((sum, s) => sum + s.sale.totalMinor, 0);
     const refundTotal = withLines.reduce((sum, s) => sum + s.refunded, 0);
@@ -165,9 +170,9 @@ export class ReportingService {
     withScope(businessId, {});
     void role;
     const { range, prev, compare, label } = this.resolved(query);
-    const cur = await this.metrics(businessId, range, query.registerId);
+    const cur = await this.metrics(businessId, range, query.registerId, query.branchId);
     const curExpenses = await this.expensesTotal(businessId, range);
-    const old = prev ? await this.metrics(businessId, prev, query.registerId) : null;
+    const old = prev ? await this.metrics(businessId, prev, query.registerId, query.branchId) : null;
     const oldExpenses = prev ? await this.expensesTotal(businessId, prev) : null;
     const canSeeProfit = granted.includes("cost.view");
     const kpis: {
@@ -191,7 +196,7 @@ export class ReportingService {
     const buckets = bucketRange(range.from, range.to, granularity);
     const byBucket = new Map<string, { netRevenue: number; orders: number }>();
     for (const b of buckets) byBucket.set(b, { netRevenue: 0, orders: 0 });
-    const sales = await this.settledSales(businessId, range, query.registerId);
+    const sales = await this.settledSales(businessId, range, query.registerId, query.branchId);
     const withLines = await this.linesFor(businessId, sales);
     for (const s of withLines) {
       const key = bucketKey(s.sale.createdAt, granularity);
@@ -214,7 +219,7 @@ export class ReportingService {
       .map(([productId, r]) => ({ productId, ...r }))
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 5);
-    const attention = await this.attentionFor(businessId);
+    const attention = await this.attentionFor(businessId, query.branchId);
     return {
       kpis,
       series,
@@ -229,6 +234,7 @@ export class ReportingService {
 
   private async attentionFor(
     businessId: string,
+    branchId?: string,
   ): Promise<Array<{ kind: string; label: string; href: string; count: number }>> {
     const out: Array<{ kind: string; label: string; href: string; count: number }> = [];
     const products = await this.db.listProducts(businessId);
@@ -236,7 +242,9 @@ export class ReportingService {
     let outCount = 0;
     for (const p of products) {
       if (!p.isActive) continue;
-      const bal = await this.db.findBalance(p.id, businessId);
+      const bal = branchId
+        ? await this.db.findBalance(p.id, businessId, branchId)
+        : await this.db.findBalance(p.id, businessId);
       const status = deriveStockStatus({
         qtyOnHand: bal?.qtyOnHand ?? 0,
         reorderLevel: p.reorderLevel,
@@ -286,11 +294,11 @@ export class ReportingService {
     void role;
     const { range, compare, label } = this.resolved(query);
     const granularity = query.granularity === "hour" ? "hour" : "day";
-    const cur = await this.metrics(businessId, range, query.registerId);
+    const cur = await this.metrics(businessId, range, query.registerId, query.branchId);
     const buckets = bucketRange(range.from, range.to, granularity);
     const byBucket = new Map<string, { netRevenue: number; orders: number }>();
     for (const b of buckets) byBucket.set(b, { netRevenue: 0, orders: 0 });
-    const withLines = await this.linesFor(businessId, await this.settledSales(businessId, range, query.registerId));
+    const withLines = await this.linesFor(businessId, await this.settledSales(businessId, range, query.registerId, query.branchId));
     for (const s of withLines) {
       const slot = byBucket.get(bucketKey(s.sale.createdAt, granularity));
       if (!slot) continue;
@@ -332,7 +340,7 @@ export class ReportingService {
     const canSeeProfit = granted.includes("cost.view");
     const limit = Math.min(Math.max(query.limit ?? 20, 1), 100);
     const tab = query.tab ?? "top";
-    const withLines = await this.linesFor(businessId, await this.settledSales(businessId, range, query.registerId));
+    const withLines = await this.linesFor(businessId, await this.settledSales(businessId, range, query.registerId, query.branchId));
     const agg = new Map<string, { name: string; qty: number; revenue: number; profit: number }>();
     for (const s of withLines) {
       for (const l of s.items) {
@@ -399,7 +407,7 @@ export class ReportingService {
     };
   }
 
-  async getInventoryReport(businessId: string): Promise<{
+  async getInventoryReport(businessId: string, branchId?: string): Promise<{
     healthy: number;
     low: number;
     out: number;
@@ -417,7 +425,12 @@ export class ReportingService {
     const lowStock: Array<{ productId: string; name: string; onHand: number; reorderLevel: number }> = [];
     for (const p of products) {
       if (!p.isActive) continue;
-      const bal = await this.db.findBalance(p.id, businessId);
+      // Phase 9a: when a branch filter is active, health counts derive from
+      // that branch's balances; the movements section stays business-wide
+      // (pre-9a rows are null-scoped, so filtering would undercount history).
+      const bal = branchId
+        ? await this.db.findBalance(p.id, businessId, branchId)
+        : await this.db.findBalance(p.id, businessId);
       const onHand = bal?.qtyOnHand ?? 0;
       const status = deriveStockStatus({ qtyOnHand: onHand, reorderLevel: p.reorderLevel, trackInventory: p.trackInventory });
       if (status === "untracked") {
@@ -532,6 +545,7 @@ export class ReportingService {
     // date scoping arrives with a future openedAt column (no migration here).
     let shifts = await this.db.listShiftsByBusiness(businessId);
     if (query.registerId) shifts = shifts.filter((s) => s.registerId === query.registerId);
+    if (query.branchId) shifts = shifts.filter((s) => (s.branchId ?? null) === query.branchId);
     shifts = [...shifts].sort((a, b) => (a.id < b.id ? 1 : -1)).slice(0, 100);
     const out: Array<{
       shiftId: string;
@@ -565,6 +579,58 @@ export class ReportingService {
       }
     }
     return { shifts: out, generatedAt: new Date().toISOString() };
+  }
+
+  async getBranchesReport(
+    businessId: string,
+    query: ReportQuery,
+    role: string,
+    granted: string[],
+  ): Promise<{
+    rows: Array<{ branchId: string | null; name: string; type: string; sales: number; orders: number; margin: number | null }>;
+    generatedAt: string;
+    range: { from: string; to: string };
+    compare: string;
+    compareLabel: string;
+  }> {
+    withScope(businessId, {});
+    void role;
+    const { range, compare, label } = this.resolved(query);
+    const canSeeProfit = granted.includes("cost.view");
+    const branches = await this.db.listBranchesByBusiness(businessId);
+    const withLines = await this.linesFor(businessId, await this.settledSales(businessId, range));
+    const groups = new Map<string | null, SaleWithLines[]>();
+    for (const s of withLines) {
+      const key = s.sale.branchId ?? null;
+      const arr = groups.get(key) ?? [];
+      arr.push(s);
+      groups.set(key, arr);
+    }
+    const summarize = async (items: SaleWithLines[]) => ({
+      sales: items.reduce((sum, s) => sum + s.sale.totalMinor - s.refunded, 0),
+      orders: items.length,
+      margin: canSeeProfit ? await this.profitOf(items, businessId) : null,
+    });
+    const rows: Array<{ branchId: string | null; name: string; type: string; sales: number; orders: number; margin: number | null }> = [];
+    for (const b of branches) {
+      const { sales, orders, margin } = await summarize(groups.get(b.id) ?? []);
+      rows.push({ branchId: b.id, name: b.name, type: b.type, sales, orders, margin });
+    }
+    // Null-branch (legacy single-location) activity gets its own row so the
+    // table reconciles with the unfiltered totals.
+    const unscoped = groups.get(null) ?? [];
+    if (unscoped.length > 0) {
+      const { sales, orders, margin } = await summarize(unscoped);
+      rows.push({ branchId: null, name: "Unscoped", type: "unscoped", sales, orders, margin });
+    }
+    rows.sort((a, b) => b.sales - a.sales);
+    return {
+      rows,
+      generatedAt: new Date().toISOString(),
+      range: { from: range.from.toISOString(), to: range.to.toISOString() },
+      compare,
+      compareLabel: label,
+    };
   }
 
   async getCustomersReport(
