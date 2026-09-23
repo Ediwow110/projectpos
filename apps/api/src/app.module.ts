@@ -14,10 +14,14 @@ import { CatalogController } from "./catalog/nest/catalog.controller";
 import { InventoryController } from "./inventory/nest/inventory.controller";
 import { SalesController } from "./sales/nest/sales.controller";
 import { ShiftController } from "./shifts/nest/shift.controller";
+import { CustomerController } from "./customers/nest/customer.controller";
+import { ExpenseController } from "./expenses/nest/expense.controller";
 import { CatalogService } from "./catalog/nest/catalog.service";
 import { InventoryService } from "./inventory/nest/inventory.service";
 import { SalesService } from "./sales/nest/sales.service";
 import { ShiftService } from "./shifts/nest/shift.service";
+import { CustomerService } from "./customers/nest/customer.service";
+import { ExpenseService } from "./expenses/nest/expense.service";
 import { RequestIdMiddleware } from "./common/request-id.middleware";
 import { SessionGuard } from "./common/session.guard";
 import { CsrfGuard } from "./common/csrf.guard";
@@ -26,7 +30,7 @@ import type { DbPort } from "./common/db.port";
 import { createMemoryDb } from "./common/memory.db";
 
 @Module({
-  controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController],
+  controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController],
   providers: [
     AuthService,
     TenantService,
@@ -35,6 +39,8 @@ import { createMemoryDb } from "./common/memory.db";
     InventoryService,
     SalesService,
     ShiftService,
+    CustomerService,
+    ExpenseService,
     SessionGuard,
     CsrfGuard,
     { provide: APP_FILTER, useClass: AuthErrorFilter },
@@ -49,7 +55,7 @@ export class AppModule implements NestModule {
 export async function createTestApp(): Promise<INestApplication> {
   const db: DbPort = createMemoryDb();
   const moduleRef = await Test.createTestingModule({
-    controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController],
+    controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController],
     providers: [
       { provide: "DbPort", useValue: db },
       { provide: AuthService, useFactory: (d: DbPort) => new AuthService(d), inject: ["DbPort"] },
@@ -81,6 +87,16 @@ export async function createTestApp(): Promise<INestApplication> {
       {
         provide: ShiftService,
         useFactory: (d: DbPort) => new ShiftService(d),
+        inject: ["DbPort"],
+      },
+      {
+        provide: CustomerService,
+        useFactory: (d: DbPort) => new CustomerService(d),
+        inject: ["DbPort"],
+      },
+      {
+        provide: ExpenseService,
+        useFactory: (d: DbPort) => new ExpenseService(d),
         inject: ["DbPort"],
       },
       {
