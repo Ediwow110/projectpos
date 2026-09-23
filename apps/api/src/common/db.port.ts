@@ -205,6 +205,7 @@ export interface DbPort {
   updatePayment(id: string, businessId: string, patch: Partial<Omit<DbPayment, "id" | "businessId">>): Promise<DbPayment | null>;
   createHeldSale(h: Omit<DbHeldSale, "id">): Promise<DbHeldSale>;
   findHeldSaleById(id: string, businessId: string): Promise<DbHeldSale | null>;
+  listHeldSales(businessId: string, actorId: string): Promise<DbHeldSale[]>;
   markHeldResumed(id: string, businessId: string): Promise<void>;
   claimIdempotency(r: DbIdempotency): Promise<void>;
   findIdempotency(businessId: string, key: string, commandType: string): Promise<DbIdempotency | null>;

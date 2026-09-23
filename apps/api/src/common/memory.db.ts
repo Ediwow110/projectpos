@@ -234,6 +234,11 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       if (!h || h.businessId !== businessId) return null;
       return h;
     },
+    async listHeldSales(businessId, actorId) {
+      return [...heldSales.values()].filter(
+        (h) => h.businessId === businessId && h.actorId === actorId,
+      );
+    },
     async markHeldResumed(id, businessId) {
       const h = heldSales.get(id);
       if (h && h.businessId === businessId) heldSales.set(id, { ...h, resumedAt: new Date() });
