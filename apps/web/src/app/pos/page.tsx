@@ -58,8 +58,14 @@ export default function PosPage(): JSX.Element {
   const [status, setStatus] = useState("");
   const [receiptId, setReceiptId] = useState<string | null>(null);
   const [reconcileId, setReconcileId] = useState<string | null>(null);
+  const [registerId, setRegisterId] = useState("");
 
   const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<Me>("/api/v1/me"), retry: false });
+  const registersQuery = useQuery({
+    queryKey: ["pos-registers"],
+    queryFn: () => apiFetch<{ items: Array<{ id: string; name: string; isActive: boolean }> }>("/api/v1/registers"),
+    retry: false,
+  });
   const searchQuery = useQuery({
     queryKey: ["pos-products", q],
     queryFn: () => apiFetch<SearchResult>(buildProductSearch({ q, active: "true", page: 1, pageSize: 20 })),
@@ -94,7 +100,10 @@ export default function PosPage(): JSX.Element {
         csrfToken: csrf.csrfToken,
         init: {
           method: "POST",
-          body: JSON.stringify({ lines: cart.map((c) => ({ productId: c.productId, qty: c.qty })) }),
+          body: JSON.stringify({
+            lines: cart.map((c) => ({ productId: c.productId, qty: c.qty })),
+            ...(registerId !== "" ? { registerId } : {}),
+          }),
         },
       });
       await apiFetch("/api/v1/sales/" + draft.id + "/hold", {
@@ -122,7 +131,10 @@ export default function PosPage(): JSX.Element {
         csrfToken: csrf.csrfToken,
         init: {
           method: "POST",
-          body: JSON.stringify({ lines: cart.map((c) => ({ productId: c.productId, qty: c.qty })) }),
+          body: JSON.stringify({
+            lines: cart.map((c) => ({ productId: c.productId, qty: c.qty })),
+            ...(registerId !== "" ? { registerId } : {}),
+          }),
         },
       });
       const total = draft.totalMinor;
@@ -139,7 +151,7 @@ export default function PosPage(): JSX.Element {
           csrfToken: csrf.csrfToken,
           init: {
             method: "POST",
-            body: JSON.stringify(payload),
+            body: JSON.stringify(registerId !== "" ? { ...payload, registerId } : payload),
             headers: { "Idempotency-Key": key },
           },
         },
@@ -163,6 +175,22 @@ export default function PosPage(): JSX.Element {
       <Link href="/">Back to dashboard</Link>
       <h1>Point of sale</h1>
       {!canSell && <p role="alert">Your role cannot complete sales.</p>}
+      <label>
+        Register
+        <select value={registerId} onChange={(e) => setRegisterId(e.target.value)}>
+          <option value="">No register (cash will not post to a shift)</option>
+          {(registersQuery.data?.items ?? [])
+            .filter((r) => r.isActive)
+            .map((r) => (
+              <option key={r.id} value={r.id}>{r.name}</option>
+            ))}
+        </select>
+      </label>
+      {status.includes("SHIFT_NO_OPEN_SHIFT") && (
+        <p role="alert">
+          No open shift on this register. <Link href="/shifts">Open a shift</Link> first.
+        </p>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "1rem" }}>
         <section aria-label="Products">
           <form
