@@ -34,10 +34,11 @@ function idemKey(req: Request): string | null {
 
 const SELL_ROLES = new Set(["owner", "manager", "cashier"]);
 
-// Generous per-business ceiling on money-moving commands: abuse brake that
-// stays far above legitimate cashier throughput (and above every contract
-// suite's per-instance call count).
-const moneyLimiter = createRateLimiter(60, 60_000);
+// Flood brake on money-moving commands: 1000/min/business stays far above
+// legitimate cashier throughput and load cohorts while capping runaway loops.
+// (An earlier 60/min value tripped the Phase 8 load harness — see the
+// performance audit — so the ceiling was raised with headroom.)
+const moneyLimiter = createRateLimiter(1000, 60_000);
 
 @Controller("api/v1")
 @UseGuards(SessionGuard)

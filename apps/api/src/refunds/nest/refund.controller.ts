@@ -36,8 +36,8 @@ export class RefundController {
     return this.auth.rolePermissions(req.auth!.role);
   }
 
-  // Same abuse brake as sales money commands: 60/min/business.
-  private readonly approveLimiter = createRateLimiter(60, 60_000);
+  // Same abuse brake as sales money commands: 1000/min/business.
+  private readonly approveLimiter = createRateLimiter(1000, 60_000);
 
   @Post("sales/:id/refund-approve")
   @UseGuards(CsrfGuard)
