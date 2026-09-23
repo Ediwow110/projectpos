@@ -13,9 +13,11 @@ import { BusinessService } from "./business/nest/business.service";
 import { CatalogController } from "./catalog/nest/catalog.controller";
 import { InventoryController } from "./inventory/nest/inventory.controller";
 import { SalesController } from "./sales/nest/sales.controller";
+import { ShiftController } from "./shifts/nest/shift.controller";
 import { CatalogService } from "./catalog/nest/catalog.service";
 import { InventoryService } from "./inventory/nest/inventory.service";
 import { SalesService } from "./sales/nest/sales.service";
+import { ShiftService } from "./shifts/nest/shift.service";
 import { RequestIdMiddleware } from "./common/request-id.middleware";
 import { SessionGuard } from "./common/session.guard";
 import { CsrfGuard } from "./common/csrf.guard";
@@ -24,7 +26,7 @@ import type { DbPort } from "./common/db.port";
 import { createMemoryDb } from "./common/memory.db";
 
 @Module({
-  controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController],
+  controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController],
   providers: [
     AuthService,
     TenantService,
@@ -32,6 +34,7 @@ import { createMemoryDb } from "./common/memory.db";
     CatalogService,
     InventoryService,
     SalesService,
+    ShiftService,
     SessionGuard,
     CsrfGuard,
     { provide: APP_FILTER, useClass: AuthErrorFilter },
@@ -46,7 +49,7 @@ export class AppModule implements NestModule {
 export async function createTestApp(): Promise<INestApplication> {
   const db: DbPort = createMemoryDb();
   const moduleRef = await Test.createTestingModule({
-    controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController],
+    controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController],
     providers: [
       { provide: "DbPort", useValue: db },
       { provide: AuthService, useFactory: (d: DbPort) => new AuthService(d), inject: ["DbPort"] },
@@ -73,6 +76,11 @@ export async function createTestApp(): Promise<INestApplication> {
       {
         provide: SalesService,
         useFactory: (d: DbPort) => new SalesService(d),
+        inject: ["DbPort"],
+      },
+      {
+        provide: ShiftService,
+        useFactory: (d: DbPort) => new ShiftService(d),
         inject: ["DbPort"],
       },
       {

@@ -38,6 +38,10 @@ export const CODE_STATUS: Record<string, number> = {
   IDEMPOTENCY_MISMATCH: 409,
   PAYMENT_UNKNOWN: 202,
   IDEMPOTENCY_REPLAY: 200,
+  SHIFT_ALREADY_OPEN: 409,
+  SHIFT_NO_OPEN_SHIFT: 409,
+  SHIFT_ALREADY_CLOSED: 409,
+  SHIFT_CLOSED_IMMUTABLE: 403,
 };
 
 export function statusFor(code: string, fallback = 400): number {

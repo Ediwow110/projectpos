@@ -68,6 +68,7 @@ export class SalesController {
           customerId: parsed.data.customerId,
           customerName: parsed.data.customerName,
           notes: parsed.data.notes,
+          registerId: parsed.data.registerId,
         },
         this.perms(req),
       );
@@ -114,6 +115,7 @@ export class SalesController {
           })),
           key,
           granted: this.perms(req),
+          registerId: parsed.data.registerId,
         },
       );
       if (sale.status === "PAYMENT_UNKNOWN") {

@@ -1,0 +1,102 @@
+import { describe, expect, it, beforeAll, afterAll } from "vitest";
+import request from "supertest";
+import type { INestApplication } from "@nestjs/common";
+import { createTestApp } from "../src/app.module";
+
+let app: INestApplication;
+let cookie: string;
+let csrf: string;
+let registerId: string;
+let productId: string;
+
+function jar(h: unknown): string {
+  const arr = Array.isArray(h) ? h : [String(h ?? "")];
+  return arr.map((c) => String(c).split(";")[0]).join("; ");
+}
+
+beforeAll(async () => {
+  app = await createTestApp();
+  const reg = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
+    ownerName: "Ana", email: "ana-shift@example.com",
+    password: "correct-horse-12", businessName: "Sari Store",
+  });
+  cookie = jar(reg.headers["set-cookie"]);
+  csrf = reg.body.csrfToken;
+  const created = await request(app.getHttpServer()).post("/api/v1/registers")
+    .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+    .send({ name: "Counter 1" });
+  registerId = created.body.id;
+  const prod = await request(app.getHttpServer()).post("/api/v1/products")
+    .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+    .send({ name: "Coke", priceMinor: 2500, costMinor: 1000 });
+  productId = prod.body.id;
+  await request(app.getHttpServer()).post("/api/v1/inventory/movements")
+    .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+    .send({ productId, type: "opening_stock", qtyDelta: 50 });
+});
+
+afterAll(async () => { await app.close(); });
+
+describe("phase5 shift HTTP contract", () => {
+  it("opens with float, auto-posts a cash sale, closes reconciled", async () => {
+    const opened = await request(app.getHttpServer()).post(`/api/v1/registers/${registerId}/open`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ registerId, openingFloatMinor: 10000 });
+    expect(opened.status).toBe(201);
+    const shiftId = opened.body.id;
+    const draft = await request(app.getHttpServer()).post("/api/v1/sales/drafts")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ lines: [{ productId, qty: 2 }], registerId });
+    expect(draft.status).toBe(201);
+    const complete = await request(app.getHttpServer()).post("/api/v1/sales/complete")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .set("Idempotency-Key", "shift-sale-1")
+      .send({ saleId: draft.body.id, payments: [{ method: "cash", amountMinor: draft.body.totalMinor }], registerId });
+    expect(complete.status).toBe(201);
+    const cash = await request(app.getHttpServer()).post(`/api/v1/shifts/${shiftId}/cash`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ kind: "paid_out", amountMinor: 1200, reason: "ice delivery" });
+    expect(cash.status).toBe(200);
+    const closed = await request(app.getHttpServer()).post(`/api/v1/shifts/${shiftId}/close`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ countedCashMinor: 13800 });
+    expect(closed.status).toBe(200);
+    expect(closed.body.report.expectedCash).toBe(13800);
+    expect(closed.body.report.variance).toBe(0);
+    const report = await request(app.getHttpServer()).get(`/api/v1/shifts/${shiftId}`)
+      .set("Cookie", cookie);
+    expect(report.status).toBe(200);
+    expect(report.body.components.expectedCash).toBe(13800);
+  });
+
+  it("rejects a second open on the same register", async () => {
+    const reg2 = await request(app.getHttpServer()).post("/api/v1/registers")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ name: "Counter 2" });
+    await request(app.getHttpServer()).post(`/api/v1/registers/${reg2.body.id}/open`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ registerId: reg2.body.id, openingFloatMinor: 0 });
+    const again = await request(app.getHttpServer()).post(`/api/v1/registers/${reg2.body.id}/open`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ registerId: reg2.body.id, openingFloatMinor: 0 });
+    expect(again.status).toBe(409);
+    expect(again.body.code).toBe("SHIFT_ALREADY_OPEN");
+  });
+
+  it("rejects unauthenticated shift reads with TENANT_REQUIRED", async () => {
+    const res = await request(app.getHttpServer()).get("/api/v1/shifts");
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe("TENANT_REQUIRED");
+  });
+
+  it("rejects double close with SHIFT_ALREADY_CLOSED", async () => {
+    const list = await request(app.getHttpServer()).get("/api/v1/shifts?status=CLOSED")
+      .set("Cookie", cookie);
+    const id = list.body.items[0].id;
+    const res = await request(app.getHttpServer()).post(`/api/v1/shifts/${id}/close`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ countedCashMinor: 0 });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("SHIFT_ALREADY_CLOSED");
+  });
+});
