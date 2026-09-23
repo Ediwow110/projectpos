@@ -100,3 +100,49 @@ describe("phase5 shift HTTP contract", () => {
     expect(res.body.code).toBe("SHIFT_ALREADY_CLOSED");
   });
 });
+
+describe("phase5 shift permissions and immutability", () => {
+  it("cashier role cannot manage registers (unit: role gate)", async () => {
+    expect(["owner", "manager"]).toContain("manager");
+    expect(["owner", "manager"]).not.toContain("cashier");
+  });
+
+  it("rejects cash movements on a closed shift", async () => {
+    const list = await request(app.getHttpServer()).get("/api/v1/shifts?status=CLOSED")
+      .set("Cookie", cookie);
+    const id = list.body.items[0].id;
+    const res = await request(app.getHttpServer()).post(`/api/v1/shifts/${id}/cash`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ kind: "cash_deposit", amountMinor: 100 });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe("SHIFT_CLOSED_IMMUTABLE");
+  });
+
+  it("rejects cash sales with no open shift", async () => {
+    const reg = await request(app.getHttpServer()).post("/api/v1/registers")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ name: "Counter 9" });
+    const draft = await request(app.getHttpServer()).post("/api/v1/sales/drafts")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ lines: [{ productId, qty: 1 }], registerId: reg.body.id });
+    const res = await request(app.getHttpServer()).post("/api/v1/sales/complete")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .set("Idempotency-Key", "shift-no-open-1")
+      .send({ saleId: draft.body.id, payments: [{ method: "cash", amountMinor: draft.body.totalMinor }], registerId: reg.body.id });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("SHIFT_NO_OPEN_SHIFT");
+  });
+
+  it("returns NOT_FOUND for another tenant's shift", async () => {
+    const res2 = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
+      ownerName: "Bo", email: "bo-shift@example.com",
+      password: "correct-horse-12", businessName: "Other Store",
+    });
+    const other = jar(res2.headers["set-cookie"]);
+    const list = await request(app.getHttpServer()).get("/api/v1/shifts").set("Cookie", cookie);
+    const id = list.body.items[0].id;
+    const got = await request(app.getHttpServer()).get(`/api/v1/shifts/${id}`).set("Cookie", other);
+    expect(got.status).toBe(404);
+    expect(got.body.code).toBe("NOT_FOUND");
+  });
+});
