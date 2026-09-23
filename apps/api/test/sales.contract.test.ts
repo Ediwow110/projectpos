@@ -86,3 +86,63 @@ describe("phase4 sales HTTP contract", () => {
     expect(res.body.code).toBe("TENANT_REQUIRED");
   });
 });
+
+describe("phase4 sales permissions, unknown, and cross-tenant", () => {
+  it("cashier role lacks sale.void and sale.refund", async () => {
+    const { AuthService } = await import("../src/auth/nest/auth.service");
+    const svc = new AuthService({} as never);
+    expect(svc.rolePermissions("cashier")).not.toContain("sale.void");
+    expect(svc.rolePermissions("cashier")).not.toContain("sale.refund");
+    expect(svc.rolePermissions("manager")).toContain("sale.refund");
+  });
+
+  it("unknown provider outcome returns 202 with reconcile path", async () => {
+    const draft = await request(app.getHttpServer()).post("/api/v1/sales/drafts")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ lines: [{ productId, qty: 1 }] });
+    const res = await request(app.getHttpServer()).post("/api/v1/sales/complete")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .set("Idempotency-Key", "sale-key-unknown")
+      .send({
+        saleId: draft.body.id,
+        payments: [{ method: "gcash", amountMinor: draft.body.totalMinor, providerRef: "unknown-1" }],
+      });
+    expect(res.status).toBe(202);
+    expect(res.body.code).toBe("PAYMENT_UNKNOWN");
+    const paymentId = res.body.sale.payments[0].id;
+    const rec = await request(app.getHttpServer()).post(`/api/v1/payments/${paymentId}/reconcile`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .set("Idempotency-Key", "rec-key-1")
+      .send({ outcome: "SUCCEEDED" });
+    expect(rec.status).toBe(200);
+    expect(rec.body.sale.status).toBe("COMPLETED");
+  });
+
+  it("returns NOT_FOUND for another tenant's sale", async () => {
+    const res2 = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
+      ownerName: "Bo", email: "bo-sale@example.com",
+      password: "correct-horse-12", businessName: "Other Store",
+    });
+    const other = jar(res2.headers["set-cookie"]);
+    const list = await request(app.getHttpServer()).get("/api/v1/sales").set("Cookie", cookie);
+    const id = list.body.items[0].id;
+    const got = await request(app.getHttpServer()).get(`/api/v1/sales/${id}`).set("Cookie", other);
+    expect(got.status).toBe(404);
+    expect(got.body.code).toBe("NOT_FOUND");
+  });
+
+  it("holds and resumes a draft", async () => {
+    const draft = await request(app.getHttpServer()).post("/api/v1/sales/drafts")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ lines: [{ productId, qty: 1 }] });
+    const held = await request(app.getHttpServer()).post(`/api/v1/sales/${draft.body.id}/hold`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({});
+    expect(held.status).toBe(200);
+    const resumed = await request(app.getHttpServer()).post(`/api/v1/sales/${draft.body.id}/resume`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({});
+    expect(resumed.status).toBe(200);
+    expect(resumed.body.status).toBe("DRAFT");
+  });
+});

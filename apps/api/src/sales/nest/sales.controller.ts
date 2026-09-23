@@ -179,7 +179,7 @@ export class SalesController {
   ): Promise<void> {
     try {
       const auth = req.auth!;
-      res.json(await this.sales.holdSale(auth.businessId, auth.userId, rid(req), id));
+      res.status(200).json(await this.sales.holdSale(auth.businessId, auth.userId, rid(req), id));
     } catch (e) {
       const code = e instanceof Error ? e.message : "VALIDATION";
       fail(res, statusFor(code), code, "Hold failed", req);
@@ -195,7 +195,7 @@ export class SalesController {
   ): Promise<void> {
     try {
       const auth = req.auth!;
-      res.json(await this.sales.resumeSale(auth.businessId, auth.userId, rid(req), id));
+      res.status(200).json(await this.sales.resumeSale(auth.businessId, auth.userId, rid(req), id));
     } catch (e) {
       const code = e instanceof Error ? e.message : "VALIDATION";
       fail(res, statusFor(code), code, "Resume failed", req);
@@ -287,7 +287,7 @@ export class SalesController {
     }
     try {
       const auth = req.auth!;
-      res.json(
+      res.status(200).json(
         await this.sales.reconcilePayment(
           auth.businessId,
           auth.userId,
