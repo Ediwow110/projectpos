@@ -15,6 +15,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
       - run: node scripts/verify-scaffold.test.mjs
       - run: node scripts/verify-phase0.test.mjs
       - run: pnpm test
@@ -26,3 +27,27 @@ jobs:
       - run: node scripts/verify-phase5.test.mjs
       - run: node scripts/verify-phase6.test.mjs
       - run: node scripts/verify-phase7.test.mjs
+      - run: node scripts/verify-phase8.test.mjs
+  e2e:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: pos
+          POSTGRES_PASSWORD: pos
+          POSTGRES_DB: pos
+        ports: ["5432:5432"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: npx playwright install --with-deps chromium
+      - run: pnpm e2e

@@ -48,7 +48,7 @@ async function runMix(
   productIds: string[],
   concurrency: number,
   durationMs: number,
-): Promise<{ lat: Record<string, number[]>; errors: number; total: number }> {
+): Promise<{ lat: Record<string, number[]>; errors: number; total: number; samples: string[] }> {
   const lat: Record<string, number[]> = { search: [], complete: [], overview: [], list: [] };
   let errors = 0;
   let total = 0;

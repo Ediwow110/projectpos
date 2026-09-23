@@ -13,9 +13,11 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:exit": "vitest run --root . tests/",
-    "verify": "node scripts/verify-scaffold.test.mjs"
+    "verify": "node scripts/verify-scaffold.test.mjs",
+    "e2e": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "turbo": "^2.11.2",
     "typescript": "5.6.3",
     "vitest": "3.2.7"
