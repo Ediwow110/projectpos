@@ -235,6 +235,23 @@ export interface DbRefundItem {
   restocked: boolean;
 }
 
+export interface DbExpense {
+  id: string;
+  businessId: string;
+  category: string;
+  amountMinor: number;
+  description: string | null;
+  method: string;
+  shiftId: string | null;
+  expenseDate: Date;
+  actorId: string;
+  requestId: string;
+  attachmentUrl: string | null;
+  voidedAt: Date | null;
+  voidReason: string | null;
+  cashAdjusted: boolean;
+}
+
 export interface DbPort {
   findUserByEmail(email: string): Promise<DbUser | null>;
   findUserById(id: string): Promise<DbUser | null>;
@@ -309,4 +326,8 @@ export interface DbPort {
   createRefundItem(i: Omit<DbRefundItem, "id">): Promise<DbRefundItem>;
   listRefundItems(refundId: string, businessId: string): Promise<DbRefundItem[]>;
   listRefundItemsBySale(saleId: string, businessId: string): Promise<DbRefundItem[]>;
+  createExpense(e: Omit<DbExpense, "id">): Promise<DbExpense>;
+  listExpensesByBusiness(businessId: string): Promise<DbExpense[]>;
+  findExpenseById(id: string, businessId: string): Promise<DbExpense | null>;
+  updateExpense(id: string, businessId: string, patch: Partial<Omit<DbExpense, "id" | "businessId">>): Promise<DbExpense | null>;
 }
