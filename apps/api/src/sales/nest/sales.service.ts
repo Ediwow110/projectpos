@@ -28,6 +28,8 @@ export interface DraftInput {
   customerName?: string;
   notes?: string;
   registerId?: string;
+  // Phase 9a: explicit branch scope; defaults to the register's branch, else null.
+  branchId?: string | null;
 }
 
 export interface PaymentInput {
@@ -148,10 +150,18 @@ export class SalesService {
     });
     const receiptNo = await this.db.nextReceiptNo(businessId);
     let registerId: string | null = null;
+    let registerBranchId: string | null = null;
     if (input.registerId !== undefined) {
       const reg = await this.db.findRegisterById(input.registerId, businessId);
       if (!reg) throw new Error("VALIDATION");
       registerId = reg.id;
+      registerBranchId = reg.branchId ?? null;
+    }
+    let branchId: string | null = registerBranchId;
+    if (input.branchId !== undefined && input.branchId !== null) {
+      const branch = await this.db.findBranchById(input.branchId, businessId);
+      if (!branch) throw new Error("VALIDATION");
+      branchId = branch.id;
     }
     let customerId: string | null = null;
     let customerName: string | null = input.customerName?.trim() ? input.customerName.trim() : null;
@@ -179,6 +189,7 @@ export class SalesService {
       requestId,
       idempotencyKey: null,
       registerId,
+      branchId,
       createdAt: new Date(),
     });
     for (const l of lines) {
@@ -212,15 +223,26 @@ export class SalesService {
     actorId: string,
     requestId: string,
     saleId: string,
-    input: { payments: PaymentInput[]; key: string; granted: string[]; registerId?: string },
+    input: { payments: PaymentInput[]; key: string; granted: string[]; registerId?: string; branchId?: string | null },
   ): Promise<{ sale: SaleWithLines; replayed: boolean }> {
     withScope(businessId, {});
     return this.withLock(`sales:${businessId}`, async () => {
       const sale = await this.requireSale(businessId, saleId);
       const registerId = input.registerId ?? sale.registerId ?? null;
+      let registerBranchId: string | null = null;
       if (input.registerId !== undefined && input.registerId !== null) {
         const reg = await this.db.findRegisterById(input.registerId, businessId);
         if (!reg) throw new Error("VALIDATION");
+        registerBranchId = reg.branchId ?? null;
+      } else if (registerId) {
+        const reg = await this.db.findRegisterById(registerId, businessId);
+        registerBranchId = reg?.branchId ?? null;
+      }
+      let branchId: string | null = sale.branchId ?? registerBranchId;
+      if (input.branchId !== undefined && input.branchId !== null) {
+        const branch = await this.db.findBranchById(input.branchId, businessId);
+        if (!branch) throw new Error("VALIDATION");
+        branchId = branch.id;
       }
       const fingerprint = fingerprintPayload({ saleId, payments: input.payments, registerId });
       const existing = await this.db.findIdempotency(businessId, input.key, "sale.complete");
@@ -281,6 +303,7 @@ export class SalesService {
           paidMinor: paid,
           changeMinor: change,
           idempotencyKey: input.key,
+          branchId,
           ...(input.registerId !== undefined ? { registerId: input.registerId } : {}),
         })) ?? sale;
         await this.db.claimIdempotency({
@@ -300,7 +323,7 @@ export class SalesService {
         });
         return { sale: await this.embed(updated), replayed: false };
       }
-      await this.applyStockEffect(businessId, actorId, requestId, sale.id, items);
+        await this.applyStockEffect(businessId, actorId, requestId, sale.id, items, sale.branchId ?? null);
       for (const p of input.payments) {
         await this.db.createPayment({
           businessId,
@@ -328,6 +351,7 @@ export class SalesService {
           paidMinor: paid,
           changeMinor: change,
           idempotencyKey: input.key,
+          branchId,
           ...(input.registerId !== undefined ? { registerId: input.registerId } : {}),
         })) ?? sale;
       await this.db.claimIdempotency({
@@ -355,18 +379,19 @@ export class SalesService {
     requestId: string,
     saleId: string,
     items: DbSaleItem[],
+    branchId: string | null = null,
   ): Promise<void> {
     for (const item of items) {
       const product = await this.requireProduct(businessId, item.productId);
       if (!product.trackInventory) continue;
-      const current = await this.db.findBalance(item.productId, businessId);
+      const current = await this.db.findBalance(item.productId, businessId, branchId);
       const onHand = current?.qtyOnHand ?? 0;
       if (onHand - item.qty < 0) throw new Error("INSUFFICIENT_STOCK");
     }
     for (const item of items) {
       const product = await this.requireProduct(businessId, item.productId);
       if (!product.trackInventory) continue;
-      const current = await this.db.findBalance(item.productId, businessId);
+      const current = await this.db.findBalance(item.productId, businessId, branchId);
       const onHand = current?.qtyOnHand ?? 0;
       await this.db.createMovement({
         businessId,
@@ -378,9 +403,11 @@ export class SalesService {
         referenceId: saleId,
         actorId,
         requestId,
+        branchId,
       });
       await this.db.upsertBalance({
         businessId,
+        branchId,
         productId: item.productId,
         qtyOnHand: onHand - item.qty,
       });
@@ -419,7 +446,7 @@ export class SalesService {
           const open = await this.db.findOpenShiftByRegister(businessId, sale.registerId);
           if (!open) throw new Error("SHIFT_NO_OPEN_SHIFT");
         }
-        await this.applyStockEffect(businessId, actorId, requestId, sale.id, items);
+      await this.applyStockEffect(businessId, actorId, requestId, sale.id, items, sale.branchId ?? null);
         const updatedPayment =
           (await this.db.updatePayment(payment.id, businessId, { status: "SUCCEEDED" })) ?? payment;
         if (sale.registerId && CASH_METHODS.has(payment.method)) {

@@ -30,6 +30,8 @@ export interface ShiftComponents {
 export interface ShiftReport {
   shiftId: string;
   status: string;
+  // Phase 9a: branch scope inherited from the register.
+  branchId: string | null;
   components: ShiftComponents;
   movements: DbCashMovement[];
   expectedCash: number;
@@ -91,18 +93,24 @@ export class ShiftService {
     businessId: string,
     actorId: string,
     requestId: string,
-    input: { name: string },
+    input: { name: string; branchId?: string | null },
     role: string,
   ): Promise<DbRegister> {
     withScope(businessId, {});
     if (!REGISTER_MANAGERS.has(role)) throw new Error("FORBIDDEN");
     const name = input.name.trim();
     if (!name) throw new Error("VALIDATION");
+    let branchId: string | null = null;
+    if (input.branchId !== undefined && input.branchId !== null) {
+      const branch = await this.db.findBranchById(input.branchId, businessId);
+      if (!branch) throw new Error("VALIDATION");
+      branchId = branch.id;
+    }
     const existing = await this.db.listRegisters(businessId);
     if (existing.some((r) => r.name.toLowerCase() === name.toLowerCase())) {
       throw new Error("VALIDATION");
     }
-    const row = await this.db.createRegister({ businessId, name, isActive: true });
+    const row = await this.db.createRegister({ businessId, name, isActive: true, branchId });
     await this.db.appendAudit({
       businessId,
       actorId,
@@ -124,16 +132,27 @@ export class ShiftService {
     actorId: string,
     requestId: string,
     id: string,
-    patch: { name?: string; isActive?: boolean },
+    patch: { name?: string; isActive?: boolean; branchId?: string | null },
     role: string,
   ): Promise<DbRegister> {
     withScope(businessId, {});
     if (!REGISTER_MANAGERS.has(role)) throw new Error("FORBIDDEN");
     const current = await this.requireRegister(businessId, id);
     void current;
+    let branchPatch: { branchId?: string | null } = {};
+    if (patch.branchId !== undefined) {
+      if (patch.branchId === null) {
+        branchPatch = { branchId: null };
+      } else {
+        const branch = await this.db.findBranchById(patch.branchId, businessId);
+        if (!branch) throw new Error("VALIDATION");
+        branchPatch = { branchId: branch.id };
+      }
+    }
     const next = await this.db.updateRegister(id, businessId, {
       ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
       ...(patch.isActive !== undefined ? { isActive: patch.isActive } : {}),
+      ...branchPatch,
     });
     if (!next) throw new Error("NOT_FOUND");
     await this.db.appendAudit({
@@ -165,6 +184,7 @@ export class ShiftService {
       const shift = await this.db.createShift({
         businessId,
         registerId,
+        branchId: reg.branchId ?? null,
         status: "OPEN",
         openedBy: actorId,
         closedBy: null,
@@ -185,6 +205,7 @@ export class ShiftService {
           businessId,
           shiftId: shift.id,
           registerId,
+          branchId: reg.branchId ?? null,
           type: "opening_float",
           amountMinor: input.openingFloatMinor,
           reason: null,
@@ -235,6 +256,7 @@ export class ShiftService {
       businessId,
       shiftId: shift.id,
       registerId: shift.registerId,
+      branchId: shift.branchId ?? null,
       type,
       amountMinor: signed,
       reason: input.reason?.trim() ? input.reason.trim() : null,
@@ -299,6 +321,7 @@ export class ShiftService {
       const report: ShiftReport = {
         shiftId: updated.id,
         status: updated.status,
+        branchId: updated.branchId ?? null,
         components: {
           openingFloat: updated.openingFloatMinor,
           cashSales: sums.cashSales,
@@ -386,6 +409,7 @@ export class ShiftService {
       businessId,
       shiftId: shift.id,
       registerId,
+      branchId: shift.branchId ?? null,
       type,
       amountMinor: type === "cash_refund" ? -Math.abs(cashMinor) : cashMinor,
       reason: null,

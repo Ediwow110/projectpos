@@ -177,3 +177,28 @@ describe("phase5 cash auto-post", () => {
     expect((await db.listMovements(prod.id, "b1")).length).toBe(0);
   });
 });
+describe("phase9a sale branch scope", () => {
+  it("stores branchId from input and deducts branch-keyed stock", async () => {
+    const db = createMemoryDb();
+    const branch = await db.createBranch({ businessId: "b1", name: "North", type: "store", isActive: true });
+    const prod = await db.createProduct({
+      businessId: "b1", categoryId: null, name: "Coke", sku: null, barcode: null,
+      brand: null, unit: "pc", costMinor: 1000, priceMinor: 2500, taxRateBps: null,
+      reorderLevel: 0, trackInventory: true, isActive: true, imageUrl: null,
+    });
+    await db.upsertBalance({ businessId: "b1", branchId: branch.id, productId: prod.id, qtyOnHand: 10 });
+    const svc = new SalesService(db);
+    const ALL = ["discount.override", "sale.void", "sale.refund", "cost.view"];
+    const draft = await svc.createDraft("b1", "u1", "r1", {
+      lines: [{ productId: prod.id, qty: 2, lineDiscountMinor: 0 }], orderDiscountMinor: 0, branchId: branch.id,
+    }, ALL);
+    expect((draft as { branchId: string | null }).branchId).toBe(branch.id);
+    const done = await svc.completeSale("b1", "u1", "r2", draft.id, {
+      payments: [{ method: "cash", amountMinor: draft.totalMinor }], key: "br-sale-1", granted: ALL,
+    });
+    expect(done.sale.status).toBe("COMPLETED");
+    expect((await db.findBalance(prod.id, "b1", branch.id))!.qtyOnHand).toBe(8);
+    // The branch-keyed deduction must not leak into the legacy null scope.
+    expect(await db.findBalance(prod.id, "b1", null)).toBeNull();
+  });
+});

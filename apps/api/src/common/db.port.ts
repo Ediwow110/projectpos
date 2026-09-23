@@ -118,6 +118,8 @@ export interface DbSale {
   requestId: string;
   idempotencyKey: string | null;
   registerId: string | null;
+  // Phase 9a: register's branch, else explicit input, else null.
+  branchId?: string | null;
   createdAt: Date;
 }
 
@@ -168,12 +170,16 @@ export interface DbRegister {
   businessId: string;
   name: string;
   isActive: boolean;
+  // Phase 9a: optional home branch.
+  branchId?: string | null;
 }
 
 export interface DbShift {
   id: string;
   businessId: string;
   registerId: string;
+  // Phase 9a: copied from register at open.
+  branchId?: string | null;
   status: string;
   openedBy: string;
   closedBy: string | null;
@@ -195,6 +201,8 @@ export interface DbCashMovement {
   businessId: string;
   shiftId: string;
   registerId: string;
+  // Phase 9a: copied from shift.
+  branchId?: string | null;
   type: string;
   amountMinor: number;
   reason: string | null;
@@ -248,6 +256,8 @@ export interface DbExpense {
   description: string | null;
   method: string;
   shiftId: string | null;
+  // Phase 9a: shift's branch when shift-linked, else explicit input, else null.
+  branchId?: string | null;
   expenseDate: Date;
   actorId: string;
   requestId: string;

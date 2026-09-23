@@ -16,6 +16,8 @@ export interface MovementInput {
   reason?: string;
   referenceType?: string;
   referenceId?: string;
+  // Phase 9a: nullable branch scope; null/undefined = legacy head-office scope.
+  branchId?: string | null;
 }
 
 export interface BalanceRow {
@@ -25,6 +27,8 @@ export interface BalanceRow {
   reorderLevel: number;
   trackInventory: boolean;
   status: StockStatus;
+  // Phase 9a: branch scope of the balance row.
+  branchId: string | null;
 }
 
 export interface BalancesPage {
@@ -43,6 +47,7 @@ export interface MovementPage {
 
 export interface DriftRow {
   productId: string;
+  branchId: string | null;
   balanceOnHand: number;
   ledgerSum: number;
   drift: number;
@@ -82,7 +87,8 @@ export class InventoryService {
     requestId: string,
     input: MovementInput,
   ): Promise<DbMovement> {
-    return this.withLock(`${businessId}:${input.productId}`, async () => {
+    const branchId = input.branchId ?? null;
+    return this.withLock(`${businessId}:${branchId ?? ""}:${input.productId}`, async () => {
     withScope(businessId, {});
     const product = await this.requireProduct(businessId, input.productId);
     if (!product.trackInventory && input.type !== "adjustment" && input.type !== "stock_count") {
@@ -95,7 +101,7 @@ export class InventoryService {
     ) {
       throw new Error("VALIDATION");
     }
-    const current = await this.db.findBalance(input.productId, businessId);
+    const current = await this.db.findBalance(input.productId, businessId, branchId);
     const onHand = current?.qtyOnHand ?? 0;
     const next = applyMovementToBalance(onHand, { qtyDelta: input.qtyDelta });
     const preventOversell = (product as DbProduct & { preventOversell?: boolean }).preventOversell ?? true;
@@ -110,8 +116,9 @@ export class InventoryService {
       referenceId: input.referenceId ?? null,
       actorId,
       requestId,
+      branchId,
     });
-    await this.db.upsertBalance({ businessId, productId: input.productId, qtyOnHand: next });
+    await this.db.upsertBalance({ businessId, branchId, productId: input.productId, qtyOnHand: next });
     await this.db.appendAudit({
       businessId,
       actorId,
@@ -126,15 +133,18 @@ export class InventoryService {
 
   async getBalances(
     businessId: string,
-    opts: { page: number; pageSize: number; view: "all" | "low" | "out" },
+    opts: { page: number; pageSize: number; view: "all" | "low" | "out"; branchId?: string | null },
   ): Promise<BalancesPage> {
     withScope(businessId, {});
     const [balances, products] = await Promise.all([
       this.db.listBalances(businessId),
       this.db.listProducts(businessId),
     ]);
+    const scoped = opts.branchId === undefined
+      ? balances
+      : balances.filter((b) => (b.branchId ?? null) === (opts.branchId ?? null));
     const byId = new Map(products.map((p) => [p.id, p]));
-    let rows: BalanceRow[] = balances
+    let rows: BalanceRow[] = scoped
       .map((b: DbBalance): BalanceRow | null => {
         const p = byId.get(b.productId);
         if (!p) return null;
@@ -149,6 +159,7 @@ export class InventoryService {
             reorderLevel: p.reorderLevel,
             trackInventory: p.trackInventory,
           }),
+          branchId: b.branchId ?? null,
         };
       })
       .filter((r): r is BalanceRow => r !== null);
@@ -163,11 +174,11 @@ export class InventoryService {
   async getMovementHistory(
     businessId: string,
     productId: string,
-    opts: { page: number; pageSize: number },
+    opts: { page: number; pageSize: number; branchId?: string | null },
   ): Promise<MovementPage> {
     withScope(businessId, {});
     await this.requireProduct(businessId, productId);
-    const all = await this.db.listMovements(productId, businessId);
+    const all = await this.db.listMovements(productId, businessId, opts.branchId);
     const sorted = [...all].sort((a, b) => (a.id < b.id ? 1 : -1));
     const total = sorted.length;
     const start = (opts.page - 1) * opts.pageSize;
@@ -186,16 +197,22 @@ export class InventoryService {
     ]);
     const sums = new Map<string, number>();
     for (const m of movements) {
-      sums.set(m.productId, (sums.get(m.productId) ?? 0) + m.qtyDelta);
+      const key = `${m.branchId ?? ""}:${m.productId}`;
+      sums.set(key, (sums.get(key) ?? 0) + m.qtyDelta);
     }
-    const balanceByProduct = new Map(balances.map((b) => [b.productId, b.qtyOnHand]));
-    const productIds = new Set<string>([...sums.keys(), ...balanceByProduct.keys()]);
+    const balanceByKey = new Map(balances.map((b) => [`${b.branchId ?? ""}:${b.productId}`, b.qtyOnHand]));
+    const keys = new Set<string>([...sums.keys(), ...balanceByKey.keys()]);
     const drifts: DriftRow[] = [];
-    for (const productId of productIds) {
-      const ledgerSum = sums.get(productId) ?? 0;
-      const balanceOnHand = balanceByProduct.get(productId) ?? 0;
+    for (const key of keys) {
+      const sep = key.indexOf(":");
+      const branchPart = key.slice(0, sep);
+      const productId = key.slice(sep + 1);
+      const ledgerSum = sums.get(key) ?? 0;
+      const balanceOnHand = balanceByKey.get(key) ?? 0;
       const drift = balanceOnHand - ledgerSum;
-      if (drift !== 0) drifts.push({ productId, balanceOnHand, ledgerSum, drift });
+      if (drift !== 0) {
+        drifts.push({ productId, branchId: branchPart === "" ? null : branchPart, balanceOnHand, ledgerSum, drift });
+      }
     }
     await this.db.appendAudit({
       businessId,
@@ -205,7 +222,7 @@ export class InventoryService {
       entityId: `${drifts.length}`,
       requestId,
     });
-    return { checked: productIds.size, drifts };
+    return { checked: keys.size, drifts };
   }
 }
 

@@ -14,6 +14,8 @@ export interface ExpenseInput {
   expenseDate?: string;
   attachmentUrl?: string;
   shiftId?: string;
+  // Phase 9a: explicit branch scope; shift-linked expenses inherit the shift's branch.
+  branchId?: string | null;
 }
 
 function parseExpenseDate(raw: string | undefined, now: Date): Date {
@@ -52,11 +54,18 @@ export class ExpenseService {
       }
     }
     let shiftId: string | null = null;
+    let branchId: string | null = null;
+    if (input.branchId !== undefined && input.branchId !== null) {
+      const branch = await this.db.findBranchById(input.branchId, businessId);
+      if (!branch) throw new Error("VALIDATION");
+      branchId = branch.id;
+    }
     if (input.method === "cash" && input.shiftId !== undefined) {
       const shift = await this.db.findShiftById(input.shiftId, businessId);
       if (!shift) throw new Error("NOT_FOUND");
       if (shift.status !== "OPEN") throw new Error("SHIFT_CLOSED_IMMUTABLE");
       shiftId = shift.id;
+      branchId = shift.branchId ?? null;
     }
     const expense = await this.db.createExpense({
       businessId,
@@ -65,6 +74,7 @@ export class ExpenseService {
       description: input.description?.trim() ? input.description.trim() : null,
       method: input.method,
       shiftId,
+      branchId,
       expenseDate,
       actorId,
       requestId,
@@ -79,6 +89,7 @@ export class ExpenseService {
         businessId,
         shiftId: shift.id,
         registerId: shift.registerId,
+        branchId: shift.branchId ?? null,
         type: "paid_out",
         amountMinor: -input.amountMinor,
         reason: category,
@@ -169,6 +180,7 @@ export class ExpenseService {
           businessId,
           shiftId: open.id,
           registerId: open.registerId,
+          branchId: open.branchId ?? null,
           type: "adjustment",
           amountMinor: expense.amountMinor,
           reason: `void:${reason.trim()}`,

@@ -84,3 +84,17 @@ describe("phase3 inventory service", () => {
     expect(out.checked).toBeGreaterThanOrEqual(1);
   });
 });
+describe("phase9a inventory branch scope", () => {
+  it("keeps balances per branch and validates branch movement input", async () => {
+    const db = createMemoryDb();
+    const prod = await db.createProduct({
+      businessId: "b1", categoryId: null, name: "Coke", sku: null, barcode: null,
+      brand: null, unit: "pc", costMinor: 100, priceMinor: 250, taxRateBps: null,
+      reorderLevel: 5, trackInventory: true, isActive: true, imageUrl: null,
+    });
+    const svc = new InventoryService(db);
+    await svc.recordMovement("b1", "u1", "r1", { productId: prod.id, type: "receive", qtyDelta: 7, branchId: "br1" });
+    expect((await db.findBalance(prod.id, "b1", "br1"))!.qtyOnHand).toBe(7);
+    expect(await db.findBalance(prod.id, "b1", null)).toBeNull();
+  });
+});

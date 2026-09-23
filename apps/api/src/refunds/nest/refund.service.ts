@@ -148,7 +148,8 @@ export class RefundService {
           restocked: tracked,
         });
         if (tracked) {
-          const current = await this.db.findBalance(r.line.productId, businessId);
+          const saleBranchId = sale.branchId ?? null;
+          const current = await this.db.findBalance(r.line.productId, businessId, saleBranchId);
           const onHand = current?.qtyOnHand ?? 0;
           await this.db.createMovement({
             businessId,
@@ -160,9 +161,11 @@ export class RefundService {
             referenceId: refund.id,
             actorId,
             requestId,
+            branchId: saleBranchId,
           });
           await this.db.upsertBalance({
             businessId,
+            branchId: saleBranchId,
             productId: r.line.productId,
             qtyOnHand: onHand + r.qty,
           });
