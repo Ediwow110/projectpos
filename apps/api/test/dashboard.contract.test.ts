@@ -87,3 +87,44 @@ describe("phase7 dashboard HTTP contract", () => {
     expect(res.body.code).toBe("TENANT_REQUIRED");
   });
 });
+
+describe("phase7 reporting edges", () => {
+  it("serves inventory, payments, cash, and customers views", async () => {
+    for (const path of [
+      "/api/v1/reports/inventory",
+      `/api/v1/reports/payments?dateFrom=${SINCE}&compare=none`,
+      `/api/v1/reports/cash?dateFrom=${SINCE}&compare=none`,
+      `/api/v1/reports/customers?dateFrom=${SINCE}&compare=none`,
+    ]) {
+      const res = await request(app.getHttpServer()).get(path).set("Cookie", cookie);
+      expect(res.status).toBe(200);
+    }
+    const inv = await request(app.getHttpServer()).get("/api/v1/reports/inventory").set("Cookie", cookie);
+    expect(inv.body.healthy).toBe(1);
+    const pay = await request(app.getHttpServer())
+      .get(`/api/v1/reports/payments?dateFrom=${SINCE}&compare=none`).set("Cookie", cookie);
+    expect(pay.body.byMethod).toEqual([{ method: "cash", total: 7500, count: 2 }]);
+  });
+
+  it("rejects over-wide ranges with VALIDATION", async () => {
+    const res = await request(app.getHttpServer())
+      .get("/api/v1/reports/sales?dateFrom=2020-01-01T00:00:00.000Z&dateTo=2026-09-23T00:00:00.000Z&compare=none")
+      .set("Cookie", cookie);
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("VALIDATION");
+  });
+
+  it("rejects unauthenticated cashiers view with TENANT_REQUIRED", async () => {
+    const res = await request(app.getHttpServer()).get("/api/v1/reports/cashiers");
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe("TENANT_REQUIRED");
+  });
+
+  it("serves the cashiers view to the owner", async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/reports/cashiers?dateFrom=${SINCE}&compare=none`)
+      .set("Cookie", cookie);
+    expect(res.status).toBe(200);
+    expect(res.body.actors[0]).toMatchObject({ orders: 2, sales: 7500 });
+  });
+});
