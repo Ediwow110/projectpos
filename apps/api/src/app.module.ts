@@ -50,6 +50,10 @@ import { createMemoryDb } from "./common/memory.db";
     ReportingService,
     SessionGuard,
     CsrfGuard,
+    // Standalone boot store: single-process ephemeral memory database.
+    // Correct for local dev and E2E; a Postgres-backed DbPort is a
+    // dated follow-up required before production launch (see audit doc).
+    { provide: "DbPort", useFactory: () => createMemoryDb() },
     { provide: APP_FILTER, useClass: AuthErrorFilter },
   ],
 })

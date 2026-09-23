@@ -32,6 +32,21 @@ export class AuthErrorFilter implements ExceptionFilter {
         res.status(413).json(error("PAYLOAD_TOO_LARGE", "Request body too large", correlationId));
         return;
       }
+      // Other Nest HttpExceptions (e.g. malformed JSON bodies surfacing as
+      // 400 BadRequestException) keep their status instead of masking as 500.
+      // Codes stay within the stable envelope vocabulary.
+      if (status === 400) {
+        res.status(400).json(error("VALIDATION", "Invalid request", correlationId));
+        return;
+      }
+      if (status === 403) {
+        res.status(403).json(error("FORBIDDEN", "Forbidden", correlationId));
+        return;
+      }
+      if (status === 404) {
+        res.status(404).json(error("NOT_FOUND", "Not found", correlationId));
+        return;
+      }
       res.status(500).json(error("INTERNAL", "Internal error", correlationId));
       return;
     }

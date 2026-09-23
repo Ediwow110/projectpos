@@ -116,6 +116,12 @@ Audited statements in migrations 0001-0007 against access patterns:
 
 ## Findings
 
+(Findings 1-4 recorded during Tasks 2-3; dependency/upload verdicts in their sections above.)
+
+5. FIXED (Task 8): the production `AppModule` never provided `"DbPort"` — `main.ts` boot would crash on DI resolution, so the standalone API could never start (only `createTestApp` wired a database). Wired the in-process store as the provider with a code comment marking it ephemeral; a Postgres-backed `DbPort` remains a dated follow-up required before production launch.
+6. FIXED (Task 8): no CORS configuration although the web (`:3000`) and API (`:3001`) are separate origins — browser E2E and any split deployment fail preflight. Enabled CORS with credentials for a single configurable `WEB_URL` origin in `main.ts`.
+7. Documented gap: same-origin port split keeps `SameSite=Lax` cookies working (site = scheme+host, port-insensitive); a true cross-site deployment would need `SameSite=None; Secure` review — flagged for the deploy checklist, not changed here.
+
 (Findings 1-4 recorded during Tasks 2-3; see git history.)
 
 ## Dependency review (`pnpm audit --audit-level=high`, 2026-09-23)
