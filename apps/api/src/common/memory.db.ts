@@ -1,4 +1,4 @@
-import type { AuditEntry, DbBalance, DbBusiness, DbCategory, DbMembership, DbMovement, DbPort, DbProduct, DbResetToken, DbSession, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency } from "./db.port";
+import type { AuditEntry, DbBalance, DbBusiness, DbCategory, DbMembership, DbMovement, DbPort, DbProduct, DbResetToken, DbSession, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement } from "./db.port";
 
 let n = 0;
 const nid = (p: string): string => `${p}_${Date.now().toString(36)}_${(n += 1)}`;
@@ -20,6 +20,9 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const heldSales = new Map<string, DbHeldSale>();
   const idempotency = new Map<string, DbIdempotency>();
   const receiptSeq = new Map<string, number>();
+  const registers = new Map<string, DbRegister>();
+  const shifts = new Map<string, DbShift>();
+  const cashMovements = new Map<string, DbCashMovement>();
   const audit: AuditEntry[] = [];
   return {
     audit,
@@ -256,6 +259,62 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       const seq = (receiptSeq.get(businessId) ?? 0) + 1;
       receiptSeq.set(businessId, seq);
       return `${year}-${String(seq).padStart(6, "0")}`;
+    },
+    async createRegister(r) {
+      const row = { ...r, id: nid("reg") };
+      registers.set(row.id, row);
+      return row;
+    },
+    async listRegisters(businessId) {
+      return [...registers.values()].filter((r) => r.businessId === businessId);
+    },
+    async findRegisterById(id, businessId) {
+      const r = registers.get(id) ?? null;
+      if (!r || r.businessId !== businessId) return null;
+      return r;
+    },
+    async updateRegister(id, businessId, patch) {
+      const r = registers.get(id) ?? null;
+      if (!r || r.businessId !== businessId) return null;
+      const next = { ...r, ...patch };
+      registers.set(id, next);
+      return next;
+    },
+    async createShift(s) {
+      const row = { ...s, id: nid("shift") };
+      shifts.set(row.id, row);
+      return row;
+    },
+    async findShiftById(id, businessId) {
+      const s = shifts.get(id) ?? null;
+      if (!s || s.businessId !== businessId) return null;
+      return s;
+    },
+    async findOpenShiftByRegister(businessId, registerId) {
+      for (const s of shifts.values()) {
+        if (s.businessId === businessId && s.registerId === registerId && s.status === "OPEN") return s;
+      }
+      return null;
+    },
+    async listShiftsByBusiness(businessId) {
+      return [...shifts.values()].filter((s) => s.businessId === businessId);
+    },
+    async updateShift(id, businessId, patch) {
+      const s = shifts.get(id) ?? null;
+      if (!s || s.businessId !== businessId) return null;
+      const next = { ...s, ...patch };
+      shifts.set(id, next);
+      return next;
+    },
+    async createCashMovement(m) {
+      const row = { ...m, id: nid("cmov") };
+      cashMovements.set(row.id, row);
+      return row;
+    },
+    async listCashMovementsByShift(shiftId, businessId) {
+      return [...cashMovements.values()].filter(
+        (m) => m.shiftId === shiftId && m.businessId === businessId,
+      );
     },
   };
 }

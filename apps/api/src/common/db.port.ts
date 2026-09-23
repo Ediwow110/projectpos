@@ -113,6 +113,7 @@ export interface DbSale {
   actorId: string;
   requestId: string;
   idempotencyKey: string | null;
+  registerId: string | null;
 }
 
 export interface DbSaleItem {
@@ -155,6 +156,47 @@ export interface DbIdempotency {
   commandType: string;
   fingerprint: string;
   resultId: string;
+}
+
+export interface DbRegister {
+  id: string;
+  businessId: string;
+  name: string;
+  isActive: boolean;
+}
+
+export interface DbShift {
+  id: string;
+  businessId: string;
+  registerId: string;
+  status: string;
+  openedBy: string;
+  closedBy: string | null;
+  openingFloatMinor: number;
+  countedCashMinor: number | null;
+  varianceMinor: number | null;
+  cashSalesMinor: number;
+  cashRefundsMinor: number;
+  cashExpensesMinor: number;
+  cashDepositsMinor: number;
+  cashWithdrawalsMinor: number;
+  adjustmentsMinor: number;
+  expectedCashMinor: number;
+  closeNotes: string | null;
+}
+
+export interface DbCashMovement {
+  id: string;
+  businessId: string;
+  shiftId: string;
+  registerId: string;
+  type: string;
+  amountMinor: number;
+  reason: string | null;
+  referenceType: string | null;
+  referenceId: string | null;
+  actorId: string;
+  requestId: string;
 }
 
 export interface DbPort {
@@ -210,4 +252,15 @@ export interface DbPort {
   claimIdempotency(r: DbIdempotency): Promise<void>;
   findIdempotency(businessId: string, key: string, commandType: string): Promise<DbIdempotency | null>;
   nextReceiptNo(businessId: string): Promise<string>;
+  createRegister(r: Omit<DbRegister, "id">): Promise<DbRegister>;
+  listRegisters(businessId: string): Promise<DbRegister[]>;
+  findRegisterById(id: string, businessId: string): Promise<DbRegister | null>;
+  updateRegister(id: string, businessId: string, patch: Partial<Omit<DbRegister, "id" | "businessId">>): Promise<DbRegister | null>;
+  createShift(s: Omit<DbShift, "id">): Promise<DbShift>;
+  findShiftById(id: string, businessId: string): Promise<DbShift | null>;
+  findOpenShiftByRegister(businessId: string, registerId: string): Promise<DbShift | null>;
+  listShiftsByBusiness(businessId: string): Promise<DbShift[]>;
+  updateShift(id: string, businessId: string, patch: Partial<Omit<DbShift, "id" | "businessId">>): Promise<DbShift | null>;
+  createCashMovement(m: Omit<DbCashMovement, "id">): Promise<DbCashMovement>;
+  listCashMovementsByShift(shiftId: string, businessId: string): Promise<DbCashMovement[]>;
 }
