@@ -1,4 +1,4 @@
-import type { AuditEntry, DbBalance, DbBranch, DbBusiness, DbCategory, DbMembership, DbMovement, DbPort, DbProduct, DbResetToken, DbSession, DbStockTransfer, DbStockTransferLine, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense } from "./db.port";
+import type { AuditEntry, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbMembership, DbMovement, DbPort, DbProduct, DbResetToken, DbSession, DbStockTransfer, DbStockTransferLine, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense } from "./db.port";
 
 let n = 0;
 const nid = (p: string): string => `${p}_${Date.now().toString(36)}_${(n += 1)}`;
@@ -30,6 +30,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const branches = new Map<string, DbBranch>();
   const transfers = new Map<string, DbStockTransfer>();
   const transferLines = new Map<string, DbStockTransferLine>();
+  const devices = new Map<string, DbDevice>();
   const audit: AuditEntry[] = [];
 
   const balanceKey = (businessId: string, branchId: string | null | undefined, productId: string): string =>
@@ -455,6 +456,33 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       return [...transferLines.values()].filter(
         (l) => l.transferId === transferId && l.businessId === businessId,
       );
+    },
+    async createDevice(d) {
+      const row = { ...d, id: nid("dev") };
+      devices.set(row.id, row);
+      return row;
+    },
+    async listDevicesByBusiness(businessId) {
+      return [...devices.values()].filter((d) => d.businessId === businessId);
+    },
+    async findDeviceById(id, businessId) {
+      const d = devices.get(id) ?? null;
+      if (!d || d.businessId !== businessId) return null;
+      return d;
+    },
+    async revokeDevice(id, businessId, revokedAt) {
+      const d = devices.get(id) ?? null;
+      if (!d || d.businessId !== businessId) return null;
+      const next = { ...d, revokedAt };
+      devices.set(id, next);
+      return next;
+    },
+    async revokeSessionsByDevice(businessId, deviceId) {
+      for (const s of sessions.values()) {
+        if (s.businessId === businessId && s.deviceId === deviceId && s.revokedAt === null) {
+          sessions.set(s.id, { ...s, revokedAt: new Date() });
+        }
+      }
     },
   };
 }

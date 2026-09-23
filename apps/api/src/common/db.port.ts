@@ -28,6 +28,8 @@ export interface DbSession {
   authenticatedAt: Date;
   ip: string | null;
   userAgent: string | null;
+  // Phase 9b: bound POS device; null/undefined = pre-9b sessions and non-device logins.
+  deviceId?: string | null;
 }
 
 export interface DbResetToken {
@@ -295,6 +297,14 @@ export interface DbStockTransferLine {
   qty: number;
 }
 
+export interface DbDevice {
+  id: string;
+  businessId: string;
+  userId: string;
+  label: string;
+  revokedAt: Date | null;
+}
+
 export interface DbPort {
   findUserByEmail(email: string): Promise<DbUser | null>;
   findUserById(id: string): Promise<DbUser | null>;
@@ -383,4 +393,9 @@ export interface DbPort {
   updateTransfer(id: string, businessId: string, patch: Partial<Omit<DbStockTransfer, "id" | "businessId">>): Promise<DbStockTransfer | null>;
   createTransferLine(l: Omit<DbStockTransferLine, "id">): Promise<DbStockTransferLine>;
   listTransferLines(transferId: string, businessId: string): Promise<DbStockTransferLine[]>;
+  createDevice(d: Omit<DbDevice, "id">): Promise<DbDevice>;
+  listDevicesByBusiness(businessId: string): Promise<DbDevice[]>;
+  findDeviceById(id: string, businessId: string): Promise<DbDevice | null>;
+  revokeDevice(id: string, businessId: string, revokedAt: Date): Promise<DbDevice | null>;
+  revokeSessionsByDevice(businessId: string, deviceId: string): Promise<void>;
 }

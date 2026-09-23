@@ -32,6 +32,7 @@ export class AuthService {
       authenticatedAt: rec.createdAt,
       ip: rec.ip,
       userAgent: rec.userAgent,
+      deviceId: null,
     });
     void created;
     await this.db.appendAudit({ businessId: business.id, actorId: user.id, action: "auth.register", entityType: "User", entityId: user.id, requestId: meta.requestId });
@@ -44,7 +45,7 @@ export class AuthService {
     };
   }
 
-  async login(input: { email: string; password: string }, meta: { requestId: string; ip: string | null; userAgent: string | null }): Promise<{ token: string; csrfToken: string; userId: string; businessId: string }> {
+  async login(input: { email: string; password: string }, meta: { requestId: string; ip: string | null; userAgent: string | null }, deviceId?: string): Promise<{ token: string; csrfToken: string; userId: string; businessId: string }> {
     const user = await this.db.findUserByEmail(input.email);
     if (!user || !(await verifyPassword(user.passwordHash, input.password))) {
       throw new Error("AUTH_INVALID_CREDENTIALS");
@@ -52,6 +53,12 @@ export class AuthService {
     const memberships = await this.db.listMembershipsByUser(user.id);
     if (memberships.length === 0) throw new Error("TENANT_REQUIRED");
     const businessId = memberships[0].businessId;
+    if (deviceId !== undefined) {
+      const device = await this.db.findDeviceById(deviceId, businessId);
+      if (!device || device.userId !== user.id || device.revokedAt !== null) {
+        throw new Error("FORBIDDEN");
+      }
+    }
     const rec = buildSessionRecord({ userId: user.id, businessId, ip: meta.ip, userAgent: meta.userAgent });
     await this.db.createSession({
       userId: rec.userId,
@@ -62,6 +69,7 @@ export class AuthService {
       authenticatedAt: rec.createdAt,
       ip: rec.ip,
       userAgent: rec.userAgent,
+      deviceId: deviceId ?? null,
     });
     await this.db.appendAudit({ businessId, actorId: user.id, action: "auth.login", entityType: "User", entityId: user.id, requestId: meta.requestId });
     return { token: rec.token, csrfToken: issueCsrfToken(), userId: user.id, businessId };
