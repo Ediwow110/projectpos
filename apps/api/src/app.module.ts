@@ -27,6 +27,7 @@ import { ExpenseService } from "./expenses/nest/expense.service";
 import { RefundService } from "./refunds/nest/refund.service";
 import { ReportingService } from "./reports/nest/reporting.service";
 import { RequestIdMiddleware } from "./common/request-id.middleware";
+import { SecurityHeadersMiddleware, securityHeaders } from "./common/security-headers.middleware";
 import { SessionGuard } from "./common/session.guard";
 import { CsrfGuard } from "./common/csrf.guard";
 import { AuthErrorFilter } from "./common/auth-error.filter";
@@ -54,7 +55,7 @@ import { createMemoryDb } from "./common/memory.db";
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(RequestIdMiddleware).forRoutes("*");
+    consumer.apply(RequestIdMiddleware, SecurityHeadersMiddleware).forRoutes("*");
   }
 }
 
@@ -126,6 +127,9 @@ export async function createTestApp(): Promise<INestApplication> {
   }).compile();
   const app = moduleRef.createNestApplication();
   app.use(cookieParser() as RequestHandler);
+  // createTestApp bypasses AppModule.configure(), so apply shared
+  // middleware explicitly here (production covers it via configure()).
+  app.use(securityHeaders as RequestHandler);
   app.useLogger(false);
   await app.init();
   return app;

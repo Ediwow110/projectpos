@@ -5,6 +5,7 @@ import { SessionGuard } from "../../common/session.guard";
 import { CsrfGuard } from "../../common/csrf.guard";
 import { getCorrelationId } from "../../correlation";
 import { fail, statusFor } from "../../common/http-helpers";
+import { createRateLimiter } from "../../common/rate-limit";
 import { AuthService } from "../../auth/nest/auth.service";
 import { RefundService } from "./refund.service";
 
@@ -35,6 +36,9 @@ export class RefundController {
     return this.auth.rolePermissions(req.auth!.role);
   }
 
+  // Same abuse brake as sales money commands: 60/min/business.
+  private readonly approveLimiter = createRateLimiter(60, 60_000);
+
   @Post("sales/:id/refund-approve")
   @UseGuards(CsrfGuard)
   async approve(
@@ -55,6 +59,10 @@ export class RefundController {
     }
     try {
       const auth = req.auth!;
+      if (this.approveLimiter.hit(`${auth.businessId}:refund-approve`)) {
+        fail(res, 429, "RATE_LIMITED", "Too many attempts", req);
+        return;
+      }
       const { refund, sale, replayed } = await this.refunds.approveRefund(
         auth.businessId,
         auth.userId,

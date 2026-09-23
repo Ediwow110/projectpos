@@ -28,7 +28,7 @@ function rid(req: Request): string {
   return getCorrelationId(headers);
 }
 
-function cookieOpts(req: Request): {
+export function cookieOpts(req: Request): {
   httpOnly: boolean;
   secure: boolean;
   sameSite: "lax";

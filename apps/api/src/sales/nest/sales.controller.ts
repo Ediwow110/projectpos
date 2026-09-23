@@ -13,6 +13,7 @@ import { CsrfGuard } from "../../common/csrf.guard";
 import { getCorrelationId } from "../../correlation";
 import { fail, statusFor } from "../../common/http-helpers";
 import { toCsv } from "../../common/csv";
+import { createRateLimiter } from "../../common/rate-limit";
 import { AuthService } from "../../auth/nest/auth.service";
 import { SalesService } from "./sales.service";
 
@@ -32,6 +33,11 @@ function idemKey(req: Request): string | null {
 }
 
 const SELL_ROLES = new Set(["owner", "manager", "cashier"]);
+
+// Generous per-business ceiling on money-moving commands: abuse brake that
+// stays far above legitimate cashier throughput (and above every contract
+// suite's per-instance call count).
+const moneyLimiter = createRateLimiter(60, 60_000);
 
 @Controller("api/v1")
 @UseGuards(SessionGuard)
@@ -103,6 +109,10 @@ export class SalesController {
     }
     try {
       const auth = req.auth!;
+      if (moneyLimiter.hit(`${auth.businessId}:complete`)) {
+        fail(res, 429, "RATE_LIMITED", "Too many attempts", req);
+        return;
+      }
       const { sale, replayed } = await this.sales.completeSale(
         auth.businessId,
         auth.userId,
@@ -326,6 +336,10 @@ export class SalesController {
     }
     try {
       const auth = req.auth!;
+      if (moneyLimiter.hit(`${auth.businessId}:reconcile`)) {
+        fail(res, 429, "RATE_LIMITED", "Too many attempts", req);
+        return;
+      }
       res.status(200).json(
         await this.sales.reconcilePayment(
           auth.businessId,

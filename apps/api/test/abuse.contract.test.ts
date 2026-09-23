@@ -87,7 +87,7 @@ describe("phase8 abuse: identity and tenancy", () => {
     for (const p of paths) {
       const res = await request(app.getHttpServer())[p.method](p.path)
         .set("Cookie", cookieA)
-        .send(p.body);
+        .send(p.body as object);
       expect(res.status).toBe(403);
       expect(["CSRF_MISMATCH", "CSRF_REQUIRED"]).toContain(res.body.code);
     }
