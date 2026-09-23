@@ -118,8 +118,7 @@ export class RefundService {
       const cashMinor = allocations
         .filter((a) => CASH_METHODS.has(a.method))
         .reduce((sum, a) => sum + a.amount, 0);
-      if (cashMinor > 0) {
-        if (!sale.registerId) throw new Error("SHIFT_NO_OPEN_SHIFT");
+      if (cashMinor > 0 && sale.registerId) {
         const open = await this.db.findOpenShiftByRegister(businessId, sale.registerId);
         if (!open) throw new Error("SHIFT_NO_OPEN_SHIFT");
       }

@@ -106,3 +106,71 @@ describe("phase6 refund HTTP contract", () => {
     expect(res.body.code).toBe("TENANT_REQUIRED");
   });
 });
+
+describe("phase6 refund edges", () => {
+  it("rejects a refund request and returns the sale to COMPLETED", async () => {
+    const sale = await makeCompletedSale("ref-sale-4", 1);
+    const req = await request(app.getHttpServer()).post(`/api/v1/sales/${sale.id}/refund-request`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .set("Idempotency-Key", "ref-req-4")
+      .send({ reason: "changed mind" });
+    expect(req.status).toBe(201);
+    const rej = await request(app.getHttpServer()).post(`/api/v1/sales/${sale.id}/refund-reject`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ reason: "no defect found" });
+    expect(rej.status).toBe(200);
+    expect(rej.body.status).toBe("COMPLETED");
+  });
+
+  it("approves a requested refund end-to-end for the owner", async () => {
+    const sale = await makeCompletedSale("ref-sale-5", 1);
+    await request(app.getHttpServer()).post(`/api/v1/sales/${sale.id}/refund-request`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .set("Idempotency-Key", "ref-req-5")
+      .send({ reason: "changed mind" });
+    const items = (await request(app.getHttpServer()).get(`/api/v1/sales/${sale.id}`).set("Cookie", cookie)).body.items;
+    const res = await request(app.getHttpServer()).post(`/api/v1/sales/${sale.id}/refund-approve`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .set("Idempotency-Key", "ref-approve-5")
+      .send({ saleId: sale.id, items: [{ saleItemId: items[0].id, qty: 1 }] });
+    expect(res.status).toBe(201);
+    expect(res.body.sale.status).toBe("REFUNDED");
+  });
+
+  it("rejects double approve with the same key as replay, not a duplicate", async () => {
+    const sale = await makeCompletedSale("ref-sale-6", 1);
+    const items = (await request(app.getHttpServer()).get(`/api/v1/sales/${sale.id}`).set("Cookie", cookie)).body.items;
+    const body = { saleId: sale.id, items: [{ saleItemId: items[0].id, qty: 1 }] };
+    const first = await request(app.getHttpServer()).post(`/api/v1/sales/${sale.id}/refund-approve`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .set("Idempotency-Key", "ref-approve-6")
+      .send(body);
+    expect(first.status).toBe(201);
+    const second = await request(app.getHttpServer()).post(`/api/v1/sales/${sale.id}/refund-approve`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .set("Idempotency-Key", "ref-approve-6")
+      .send(body);
+    expect(second.status).toBe(200);
+    expect(second.body.replayed).toBe(true);
+  });
+
+  it("rejects cash refunds with no open shift", async () => {
+    const reg = await request(app.getHttpServer()).post("/api/v1/registers")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ name: "Counter Closed" });
+    const opened = await request(app.getHttpServer()).post(`/api/v1/registers/${reg.body.id}/open`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ registerId: reg.body.id, openingFloatMinor: 0 });
+    const sale = await makeCompletedSale("ref-sale-7", 1, reg.body.id);
+    await request(app.getHttpServer()).post(`/api/v1/shifts/${opened.body.id}/close`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ countedCashMinor: 2500 });
+    const items = (await request(app.getHttpServer()).get(`/api/v1/sales/${sale.id}`).set("Cookie", cookie)).body.items;
+    const res = await request(app.getHttpServer()).post(`/api/v1/sales/${sale.id}/refund-approve`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .set("Idempotency-Key", "ref-approve-7")
+      .send({ saleId: sale.id, items: [{ saleItemId: items[0].id, qty: 1 }] });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("SHIFT_NO_OPEN_SHIFT");
+  });
+});
