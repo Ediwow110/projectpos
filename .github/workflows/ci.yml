@@ -25,3 +25,4 @@ jobs:
       - run: node scripts/verify-phase4.test.mjs
       - run: node scripts/verify-phase5.test.mjs
       - run: node scripts/verify-phase6.test.mjs
+      - run: node scripts/verify-phase7.test.mjs
