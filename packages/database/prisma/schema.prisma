@@ -59,6 +59,7 @@ model Business {
   branches    Branch[]
   transfers   StockTransfer[]
   transferLines StockTransferLine[]
+  devices     Device[]
 }
 
 model BusinessMembership {
@@ -108,6 +109,8 @@ model Session {
   revokedAt  DateTime?
   ip         String?
   userAgent  String?
+  // Phase 9b: bound POS device; null = pre-9b sessions and non-device logins.
+  deviceId   String?
   createdAt  DateTime  @default(now())
   user       User      @relation(fields: [userId], references: [id])
   business   Business  @relation(fields: [businessId], references: [id])
@@ -488,4 +491,15 @@ model StockTransferLine {
   business   Business      @relation(fields: [businessId], references: [id])
   transfer   StockTransfer @relation(fields: [transferId], references: [id])
   @@index([businessId, transferId])
+}
+
+model Device {
+  id         String    @id @default(cuid())
+  businessId String
+  userId     String
+  label      String
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  business   Business  @relation(fields: [businessId], references: [id])
+  @@index([businessId, userId])
 }

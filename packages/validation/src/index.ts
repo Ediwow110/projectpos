@@ -10,3 +10,4 @@ export * from "./refunds.schema";
 export * from "./expenses.schema";
 export * from "./reports.schema";
 export * from "./branches.schema";
+export * from "./sync.schema";
