@@ -1,4 +1,4 @@
-import type { AuditEntry, DbBalance, DbBranch, DbBusiness, DbCategory, DbMembership, DbMovement, DbPort, DbProduct, DbResetToken, DbSession, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense } from "./db.port";
+import type { AuditEntry, DbBalance, DbBranch, DbBusiness, DbCategory, DbMembership, DbMovement, DbPort, DbProduct, DbResetToken, DbSession, DbStockTransfer, DbStockTransferLine, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense } from "./db.port";
 
 let n = 0;
 const nid = (p: string): string => `${p}_${Date.now().toString(36)}_${(n += 1)}`;
@@ -28,7 +28,12 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const refundItems = new Map<string, DbRefundItem>();
   const expenses = new Map<string, DbExpense>();
   const branches = new Map<string, DbBranch>();
+  const transfers = new Map<string, DbStockTransfer>();
+  const transferLines = new Map<string, DbStockTransferLine>();
   const audit: AuditEntry[] = [];
+
+  const balanceKey = (businessId: string, branchId: string | null | undefined, productId: string): string =>
+    `${businessId}:${branchId ?? ""}:${productId}`;
   return {
     audit,
     async findUserByEmail(email) {
@@ -157,23 +162,26 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       movements.set(row.id, row);
       return row;
     },
-    async listMovements(productId, businessId) {
+    async listMovements(productId, businessId, branchId?) {
       return [...movements.values()].filter(
-        (m) => m.productId === productId && m.businessId === businessId,
+        (m) =>
+          m.productId === productId &&
+          m.businessId === businessId &&
+          (branchId === undefined || (m.branchId ?? null) === (branchId ?? null)),
       );
     },
     async listMovementsByBusiness(businessId) {
       return [...movements.values()].filter((m) => m.businessId === businessId);
     },
     async upsertBalance(b) {
-      const key = `${b.businessId}:${b.productId}`;
+      const key = balanceKey(b.businessId, b.branchId, b.productId);
       const existing = balances.get(key);
       const row = existing ? { ...existing, qtyOnHand: b.qtyOnHand } : { ...b, id: nid("bal") };
       balances.set(key, row);
       return row;
     },
-    async findBalance(productId, businessId) {
-      const row = balances.get(`${businessId}:${productId}`) ?? null;
+    async findBalance(productId, businessId, branchId = null) {
+      const row = balances.get(balanceKey(businessId, branchId, productId)) ?? null;
       if (!row || row.businessId !== businessId) return null;
       return row;
     },
@@ -417,6 +425,36 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       const next = { ...b, ...patch };
       branches.set(id, next);
       return next;
+    },
+    async createTransfer(t) {
+      const row = { ...t, id: nid("trx") };
+      transfers.set(row.id, row);
+      return row;
+    },
+    async findTransferById(id, businessId) {
+      const t = transfers.get(id) ?? null;
+      if (!t || t.businessId !== businessId) return null;
+      return t;
+    },
+    async listTransfersByBusiness(businessId) {
+      return [...transfers.values()].filter((t) => t.businessId === businessId);
+    },
+    async updateTransfer(id, businessId, patch) {
+      const t = transfers.get(id) ?? null;
+      if (!t || t.businessId !== businessId) return null;
+      const next = { ...t, ...patch };
+      transfers.set(id, next);
+      return next;
+    },
+    async createTransferLine(l) {
+      const row = { ...l, id: nid("tline") };
+      transferLines.set(row.id, row);
+      return row;
+    },
+    async listTransferLines(transferId, businessId) {
+      return [...transferLines.values()].filter(
+        (l) => l.transferId === transferId && l.businessId === businessId,
+      );
     },
   };
 }

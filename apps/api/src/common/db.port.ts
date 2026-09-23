@@ -86,6 +86,8 @@ export interface DbMovement {
   referenceId: string | null;
   actorId: string;
   requestId: string;
+  // Phase 9a: nullable branch scope; undefined = legacy rows.
+  branchId?: string | null;
 }
 
 export interface DbBalance {
@@ -93,6 +95,8 @@ export interface DbBalance {
   businessId: string;
   productId: string;
   qtyOnHand: number;
+  // Phase 9a: nullable branch scope; null/undefined = legacy head-office scope.
+  branchId?: string | null;
 }
 
 export interface DbSale {
@@ -261,6 +265,26 @@ export interface DbBranch {
   isActive: boolean;
 }
 
+export interface DbStockTransfer {
+  id: string;
+  businessId: string;
+  fromBranchId: string;
+  toBranchId: string;
+  status: string;
+  requestedBy: string;
+  dispatchedBy: string | null;
+  receivedBy: string | null;
+  requestId: string;
+}
+
+export interface DbStockTransferLine {
+  id: string;
+  businessId: string;
+  transferId: string;
+  productId: string;
+  qty: number;
+}
+
 export interface DbPort {
   findUserByEmail(email: string): Promise<DbUser | null>;
   findUserById(id: string): Promise<DbUser | null>;
@@ -292,10 +316,10 @@ export interface DbPort {
   findProductById(id: string, businessId: string): Promise<DbProduct | null>;
   updateProduct(id: string, businessId: string, patch: Partial<Omit<DbProduct, "id" | "businessId">>): Promise<DbProduct | null>;
   createMovement(m: Omit<DbMovement, "id">): Promise<DbMovement>;
-  listMovements(productId: string, businessId: string): Promise<DbMovement[]>;
+  listMovements(productId: string, businessId: string, branchId?: string | null): Promise<DbMovement[]>;
   listMovementsByBusiness(businessId: string): Promise<DbMovement[]>;
   upsertBalance(b: Omit<DbBalance, "id">): Promise<DbBalance>;
-  findBalance(productId: string, businessId: string): Promise<DbBalance | null>;
+  findBalance(productId: string, businessId: string, branchId?: string | null): Promise<DbBalance | null>;
   listBalances(businessId: string): Promise<DbBalance[]>;
   createSale(s: Omit<DbSale, "id">): Promise<DbSale>;
   findSaleById(id: string, businessId: string): Promise<DbSale | null>;
@@ -343,4 +367,10 @@ export interface DbPort {
   listBranchesByBusiness(businessId: string): Promise<DbBranch[]>;
   findBranchById(id: string, businessId: string): Promise<DbBranch | null>;
   updateBranch(id: string, businessId: string, patch: Partial<Omit<DbBranch, "id" | "businessId">>): Promise<DbBranch | null>;
+  createTransfer(t: Omit<DbStockTransfer, "id">): Promise<DbStockTransfer>;
+  findTransferById(id: string, businessId: string): Promise<DbStockTransfer | null>;
+  listTransfersByBusiness(businessId: string): Promise<DbStockTransfer[]>;
+  updateTransfer(id: string, businessId: string, patch: Partial<Omit<DbStockTransfer, "id" | "businessId">>): Promise<DbStockTransfer | null>;
+  createTransferLine(l: Omit<DbStockTransferLine, "id">): Promise<DbStockTransferLine>;
+  listTransferLines(transferId: string, businessId: string): Promise<DbStockTransferLine[]>;
 }
