@@ -36,6 +36,7 @@ jobs:
       - run: node scripts/verify-phase9b.test.mjs
       - run: node scripts/verify-phase10.test.mjs
       - run: node scripts/verify-phase10-migration.mjs
+      - run: node scripts/verify-phase11.test.mjs
   e2e:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
