@@ -14,7 +14,15 @@ export default defineConfig({
       port: 3001,
       reuseExistingServer: true,
       timeout: 120_000,
-      env: { ...process.env, API_PORT: "3001" } as Record<string, string>,
+      env: {
+        ...process.env,
+        API_PORT: "3001",
+        // Platform routes are key-authed, not session-authed: the e2e suite
+        // drives them through the /platform page, so the key must exist in
+        // the dev API the browser talks to.
+        PLATFORM_API_KEY: process.env["PLATFORM_API_KEY"] ?? "test-platform-key",
+        BILLING_TEST_DOUBLE_SECRET: process.env["BILLING_TEST_DOUBLE_SECRET"] ?? "test-webhook-secret",
+      } as Record<string, string>,
     },
     {
       command: "pnpm --filter @pos/web exec next dev -p 3000",
