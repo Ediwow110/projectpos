@@ -102,3 +102,53 @@ describe("phase8 abuse: identity and tenancy", () => {
     expect(res.body.topProducts).toEqual([]);
   });
 });
+
+describe("phase11 threat coverage (PLAN 13.3)", () => {
+  it("denies ledger export to a role without export.run", async () => {
+    // Owner invites a cashier over HTTP, so the denial is proven end to end.
+    const invite = await request(app.getHttpServer()).post("/api/v1/memberships")
+      .set("Cookie", cookieA).set("X-CSRF-Token", csrfA)
+      .send({ email: "cashier-export@example.com", name: "Cash Export", role: "cashier" });
+    expect(invite.status).toBe(201);
+    const login = await request(app.getHttpServer()).post("/api/v1/auth/login")
+      .send({ email: "cashier-export@example.com", password: invite.body.tempPassword });
+    expect(login.status).toBe(201);
+    const cashierCookie = jar(login.headers["set-cookie"]);
+
+    const denied = await request(app.getHttpServer())
+      .get("/api/v1/sales/export?format=csv").set("Cookie", cashierCookie);
+    expect(denied.status).toBe(403);
+    expect(denied.body.code).toBe("FORBIDDEN");
+
+    const allowed = await request(app.getHttpServer())
+      .get("/api/v1/sales/export?format=csv").set("Cookie", cookieA);
+    expect(allowed.status).toBe(200);
+  });
+
+  it("denies a cross-cashier shift close without shift.close.override", async () => {
+    // Open a shift as the owner, then try to close it as the cashier.
+    const prod = await request(app.getHttpServer()).post("/api/v1/registers")
+      .set("Cookie", cookieA).set("X-CSRF-Token", csrfA)
+      .send({ name: `Export Reg ${Date.now()}` });
+    const registerId = prod.body.id as string;
+    const open = await request(app.getHttpServer()).post(`/api/v1/registers/${registerId}/open`)
+      .set("Cookie", cookieA).set("X-CSRF-Token", csrfA)
+      .send({ registerId, openingFloatMinor: 0 });
+    expect(open.status).toBe(201);
+
+    const invite = await request(app.getHttpServer()).post("/api/v1/memberships")
+      .set("Cookie", cookieA).set("X-CSRF-Token", csrfA)
+      .send({ email: "cashier-close@example.com", name: "Cash Close", role: "cashier" });
+    const login = await request(app.getHttpServer()).post("/api/v1/auth/login")
+      .send({ email: "cashier-close@example.com", password: invite.body.tempPassword });
+    const cashierCookie = jar(login.headers["set-cookie"]);
+    const cashierCsrf = login.body.csrfToken as string;
+
+    const denied = await request(app.getHttpServer())
+      .post(`/api/v1/shifts/${open.body.id}/close`)
+      .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf)
+      .send({ countedCashMinor: 0, overrideReason: "not mine" });
+    expect(denied.status).toBe(403);
+    expect(denied.body.code).toBe("FORBIDDEN");
+  });
+});

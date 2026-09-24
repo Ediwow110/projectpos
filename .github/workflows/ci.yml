@@ -20,6 +20,10 @@ jobs:
       - run: node scripts/verify-phase0.test.mjs
       - run: pnpm test
       - run: pnpm test:exit
+      # Phase 11 (PLAN 18 #14): the build must compile and the production
+      # dependency tree must stay free of known critical vulnerabilities.
+      - run: pnpm build
+      - run: pnpm audit --prod --audit-level critical
       - run: node scripts/verify-phase1.test.mjs
       - run: node scripts/verify-phase2.test.mjs
       - run: node scripts/verify-phase3.test.mjs
