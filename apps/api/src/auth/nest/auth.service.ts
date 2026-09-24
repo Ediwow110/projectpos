@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import { randomBytes } from "node:crypto";
 import { hashPassword, verifyPassword } from "../password";
 import { buildSessionRecord, hashToken, isReAuthFresh } from "../sessions";
 import { consumeResetToken, createResetToken } from "../reset-tokens";
@@ -10,18 +11,36 @@ import type { DbPort } from "../../common/db.port";
 export class AuthService {
   constructor(@Inject("DbPort") private readonly db: DbPort) {}
 
-  async register(input: { ownerName: string; email: string; password: string; businessName: string }, meta: { requestId: string; ip: string | null; userAgent: string | null }): Promise<{ user: { id: string; email: string; name: string }; business: { id: string; name: string; currency: string }; token: string; csrfToken: string }> {
+  async register(input: { ownerName: string; email: string; password: string; businessName: string }, meta: { requestId: string; ip: string | null; userAgent: string | null }): Promise<{ user: { id: string; email: string; name: string }; business: { id: string; name: string; currency: string }; token: string; csrfToken: string; verificationToken?: string }> {
     const existing = await this.db.findUserByEmail(input.email);
     if (existing) throw new Error("AUTH_EMAIL_TAKEN");
     const seed = await buildRegistrationSeed(input);
-    const user = await this.db.createUser({ name: seed.user.name, email: seed.user.email, passwordHash: seed.user.passwordHash });
+    // FR-AUTH-01: email verification is opt-in at the instance level. The
+    // initial owner is created unverified under the flag and receives a
+    // single-use token in the response (a mailer is a later integration).
+    const requireEmailVerification = process.env["AUTH_REQUIRE_EMAIL_VERIFICATION"] === "1";
+    const user = await this.db.createUser({
+      name: seed.user.name, email: seed.user.email, passwordHash: seed.user.passwordHash,
+      emailVerified: !requireEmailVerification,
+    });
+    let verificationToken: string | undefined;
+    if (requireEmailVerification) {
+      verificationToken = randomBytes(16).toString("hex");
+      await this.db.createEmailVerificationToken({
+        userId: user.id,
+        tokenHash: hashToken(verificationToken),
+        expiresAt: new Date(Date.now() + 24 * 3600 * 1000),
+      });
+    }
     const business = await this.db.createBusiness({ name: seed.business.name, currency: seed.business.currency });
     for (const [roleName, permissions] of Object.entries(seed.roles)) {
       void roleName;
       void permissions;
     }
     await this.db.createMembership({ businessId: business.id, userId: user.id, role: seed.ownerRoleName });
-    await this.db.saveSettings(business.id, { currency: seed.business.currency, onboarding: seed.onboarding });
+    const settings: Record<string, unknown> = { currency: seed.business.currency, onboarding: seed.onboarding };
+    for (const entry of seed.defaultSettings) settings[entry.key] = entry.value;
+    await this.db.saveSettings(business.id, settings);
     // Phase 10: every new business starts on a 14-day Pro trial. The memory
     // factory always seeds plans (as does migration 0011), so the row exists.
     const pro = await this.db.findPlanByKey("pro");
@@ -54,7 +73,24 @@ export class AuthService {
       business: { id: business.id, name: business.name, currency: business.currency },
       token: rec.token,
       csrfToken: issueCsrfToken(),
+      ...(verificationToken ? { verificationToken } : {}),
     };
+  }
+
+  // FR-AUTH-01: single-use redemption flips the account to verified and
+  // lifts the login gate.
+  async verifyEmail(token: string): Promise<{ verified: true }> {
+    const stored = await this.db.findEmailVerificationToken(hashToken(token));
+    if (!stored || stored.usedAt !== null || stored.expiresAt.getTime() <= Date.now()) {
+      throw new Error("VALIDATION");
+    }
+    await this.db.markEmailVerificationTokenUsed(stored.id);
+    await this.db.setUserEmailVerified(stored.userId, true);
+    await this.db.appendAudit({
+      businessId: null, actorId: stored.userId, action: "email.verified",
+      entityType: "User", entityId: stored.userId, requestId: "verify-email",
+    });
+    return { verified: true };
   }
 
   async login(input: { email: string; password: string }, meta: { requestId: string; ip: string | null; userAgent: string | null }, deviceId?: string): Promise<{ token: string; csrfToken: string; userId: string; businessId: string }> {
@@ -62,6 +98,9 @@ export class AuthService {
     if (!user || !(await verifyPassword(user.passwordHash, input.password))) {
       throw new Error("AUTH_INVALID_CREDENTIALS");
     }
+    // FR-AUTH-01: when email verification is enabled at the instance level,
+    // an unverified account cannot sign in until its token is redeemed.
+    if (user.emailVerified === false) throw new Error("EMAIL_UNVERIFIED");
     const memberships = await this.db.listMembershipsByUser(user.id);
     if (memberships.length === 0) throw new Error("TENANT_REQUIRED");
     const businessId = memberships[0].businessId;

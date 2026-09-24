@@ -7,6 +7,7 @@ import {
   passwordResetConfirmSchema,
   passwordResetRequestSchema,
   registerSchema,
+  verifyEmailSchema,
 } from "@pos/validation";
 import { hashToken } from "../sessions";
 import { issueCsrfToken } from "../csrf";
@@ -183,6 +184,25 @@ export class AuthController {
     } catch (e) {
       const code = e instanceof Error ? e.message : "AUTH_TOKEN_INVALID";
       fail(res, statusFor(code), code, "Reset failed", req);
+    }
+  }
+
+  @Post("verify-email")
+  async verifyEmail(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Body() body: unknown,
+  ): Promise<void> {
+    const parsed = verifyEmailSchema.safeParse(body);
+    if (!parsed.success) {
+      fail(res, 400, "VALIDATION", "Invalid verification payload", req);
+      return;
+    }
+    try {
+      await this.auth.verifyEmail(parsed.data.token);
+      res.json({ verified: true });
+    } catch {
+      fail(res, 400, "VALIDATION", "Email verification failed", req);
     }
   }
 
