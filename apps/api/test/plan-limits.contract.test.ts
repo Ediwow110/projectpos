@@ -127,6 +127,38 @@ describe("phase10 plan limits HTTP contract", () => {
       svc.voidExpense(business.id, "u1", "r3", expense.id, "duplicate entry", "manager"),
     ).rejects.toThrow("PLAN_LIMIT");
   });
+  it("gates every receipt setting key, not just receipt.*", async () => {
+    const reg = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
+      ownerName: "Receipt Owner", email: "receipt-caps@example.com",
+      password: "correct-horse-12", businessName: "Receipt Caps Store",
+    });
+    const receiptCookie = jar(reg.headers["set-cookie"]);
+    const receiptCsrf = reg.body.csrfToken;
+    const me = await request(app.getHttpServer()).get("/api/v1/me").set("Cookie", receiptCookie);
+    await request(app.getHttpServer())
+      .patch(`/api/v1/platform/businesses/${me.body.businessId}/plan`)
+      .set("x-platform-key", "test-platform-key")
+      .send({ planKey: "free" })
+      .expect(200);
+
+    for (const body of [{ receiptHeader: "Thanks!" }, { receiptFooter: "Come again" }]) {
+      const res = await request(app.getHttpServer()).patch("/api/v1/business/settings")
+        .set("Cookie", receiptCookie).set("X-CSRF-Token", receiptCsrf)
+        .send(body);
+      expect(res.status).toBe(402);
+      expect(res.body.code).toBe("PLAN_LIMIT");
+      expect(res.body.fields.feature).toEqual(["receipt_customization"]);
+    }
+    const settings = await request(app.getHttpServer()).get("/api/v1/business")
+      .set("Cookie", receiptCookie);
+    expect(settings.body.settings.receiptHeader).toBeUndefined();
+    expect(settings.body.settings.receiptFooter).toBeUndefined();
+    // Non-receipt settings stay available on Free.
+    const allowed = await request(app.getHttpServer()).patch("/api/v1/business/settings")
+      .set("Cookie", receiptCookie).set("X-CSRF-Token", receiptCsrf)
+      .send({ taxName: "VAT" });
+    expect(allowed.status).toBe(200);
+  });
   it("keeps the public API enterprise-only and catalog:write usable", async () => {
     const reg = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
       ownerName: "API Owner", email: "api-caps@example.com",

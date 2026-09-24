@@ -19,6 +19,12 @@ export function isTrialExpired(status: string, trialEndsAt: Date | null, now: Da
   return status === "trialing" && trialEndsAt !== null && trialEndsAt.getTime() <= now.getTime();
 }
 
+// Provider spellings differ ("cancelled" vs "canceled"); the store keeps one
+// canonical value so status comparisons never miss a cancellation.
+export function normalizeSubscriptionStatus(status: string): string {
+  return status === "cancelled" ? "canceled" : status;
+}
+
 export function monthPeriod(d: Date): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }

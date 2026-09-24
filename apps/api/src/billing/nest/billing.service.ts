@@ -3,7 +3,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { withScope } from "@pos/database";
 import type { DbInvoice, DbPort, DbWebhookEvent } from "../../common/db.port";
 import { PlanLimitError } from "../../common/plan-limit-error";
-import { ENTERPRISE, isTrialExpired, monthPeriod, PLAN_ALLOWANCES, type PlanAllowances } from "../entitlements";
+import { ENTERPRISE, isTrialExpired, monthPeriod, normalizeSubscriptionStatus, PLAN_ALLOWANCES, type PlanAllowances } from "../entitlements";
 
 export type CapKind = "users" | "products" | "registers" | "branches";
 
@@ -75,24 +75,46 @@ async function withBusinessLock<T>(businessId: string, fn: () => Promise<T>): Pr
 export class BillingService {
   constructor(@Inject("DbPort") private readonly db: DbPort) {}
 
+  // Only an active subscription (or an unexpired trial) grants its plan.
+  // Canceled, paused, and unknown statuses fall back to Free and are persisted
+  // as such, so every other reader (dashboards, exports, integrations) sees the
+  // same plan this method enforces. past_due keeps the plan: a failed payment is
+  // a grace period, not a silent downgrade.
   async resolvePlan(businessId: string, now: Date = new Date()): Promise<ResolvedPlan> {
     withScope(businessId, {});
     const sub = await this.db.getSubscription(businessId);
     if (!sub) return { key: "enterprise", allowances: ENTERPRISE, monthlyMinor: 0 };
     if (isTrialExpired(sub.status, sub.trialEndsAt, now)) {
-      await this.db.updateSubscription(sub.id, businessId, { status: "canceled" });
+      return this.downgradeToFree(businessId, sub, "canceled", "subscription.expired", `expiry-${sub.id}`);
+    }
+    const status = normalizeSubscriptionStatus(sub.status);
+    if (status === "canceled" || status === "paused" || status === "free") {
+      return this.downgradeToFree(businessId, sub, "canceled", "subscription.canceled", `status-${sub.id}`);
+    }
+    return this.allowancesOf(sub.planId);
+  }
+
+  private async downgradeToFree(
+    businessId: string,
+    sub: { id: string; status: string; planId: string },
+    status: string,
+    action: string,
+    requestId: string,
+  ): Promise<ResolvedPlan> {
+    const free = await this.db.findPlanByKey("free");
+    if (!free) throw new Error("VALIDATION");
+    if (sub.status !== status || sub.planId !== free.id) {
+      await this.db.updateSubscription(sub.id, businessId, { planId: free.id, status, trialEndsAt: null });
       await this.db.appendAudit({
         businessId,
         actorId: "system",
-        action: "subscription.expired",
+        action,
         entityType: "Subscription",
         entityId: sub.id,
-        requestId: `expiry-${sub.id}`,
+        requestId,
       });
-      const free = await this.db.findPlanByKey("free");
-      return { key: "free", allowances: free?.allowances ?? ENTERPRISE, monthlyMinor: free?.pricesMinor.monthlyMinor ?? 0 };
     }
-    return this.allowancesOf(sub.planId);
+    return { key: free.key, allowances: free.allowances, monthlyMinor: free.pricesMinor.monthlyMinor };
   }
 
   private async allowancesOf(planId: string): Promise<ResolvedPlan> {

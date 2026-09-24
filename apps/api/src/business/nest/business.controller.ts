@@ -49,13 +49,17 @@ export class BusinessController {
       fail(res, 400, "VALIDATION", "Invalid settings payload", req);
       return;
     }
-    const settings = await this.business.patchSettings(
-      auth.businessId,
-      auth.userId,
-      parsed.data as Record<string, unknown>,
-      rid(req),
-    );
-    res.json({ settings });
+    try {
+      const settings = await this.business.patchSettings(
+        auth.businessId,
+        auth.userId,
+        parsed.data as Record<string, unknown>,
+        rid(req),
+      );
+      res.json({ settings });
+    } catch (e) {
+      failFromError(res, e, "Settings update failed", req);
+    }
   }
 
   @Get("onboarding")

@@ -94,6 +94,43 @@ describe("phase10 usage metering", () => {
   });
 });
 
+describe("phase10 subscription status handling", () => {
+  async function subscription(status: string, planKey: string, trialEndsAt: Date | null) {
+    const db = createMemoryDb();
+    const business = await db.createBusiness({ name: "Status Store", currency: "PHP" });
+    const plan = (await db.findPlanByKey(planKey))!;
+    await db.upsertSubscription({
+      businessId: business.id, planId: plan.id, status,
+      trialEndsAt, currentPeriodEnd: new Date("2030-01-01T00:00:00.000Z"),
+    });
+    return { db, business, billing: new BillingService(db) };
+  }
+
+  it("keeps an expired trial on Free for every later read", async () => {
+    const { db, business, billing } = await subscription("trialing", "pro", new Date("2020-01-01T00:00:00.000Z"));
+    expect((await billing.resolvePlan(business.id)).key).toBe("free");
+    // Regression guard: the downgrade must be persisted, not recomputed from a
+    // stale plan id on the next call.
+    expect((await billing.resolvePlan(business.id)).key).toBe("free");
+    const stored = await db.getSubscription(business.id);
+    expect(stored!.status).toBe("canceled");
+    expect(stored!.planId).toBe((await db.findPlanByKey("free"))!.id);
+    await expect(billing.requireCreate(business.id, "u1", "r1", "branches")).rejects.toThrow("PLAN_LIMIT");
+  });
+
+  it("treats canceled (either spelling) and paused as Free, but keeps past_due", async () => {
+    for (const status of ["canceled", "cancelled", "paused"]) {
+      const { db, business, billing } = await subscription(status, "pro", null);
+      expect((await billing.resolvePlan(business.id)).key).toBe("free");
+      const stored = await db.getSubscription(business.id);
+      expect(stored!.planId).toBe((await db.findPlanByKey("free"))!.id);
+      expect(stored!.status).toBe("canceled");
+    }
+    const grace = await subscription("past_due", "pro", null);
+    expect((await grace.billing.resolvePlan(grace.business.id)).key).toBe("pro");
+  });
+});
+
 describe("phase10 trial on registration", () => {
   it("starts new businesses on a 14-day pro trial", async () => {
     const db = createMemoryDb();

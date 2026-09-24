@@ -30,7 +30,10 @@ export class BusinessService {
     requestId: string,
   ): Promise<Record<string, unknown>> {
     const current = await this.db.getSettings(businessId);
-    if (Object.keys(patch).some((k) => k === "receipt" || k.startsWith("receipt."))) {
+    // Receipt customization is a paid feature: the settings schema accepts
+    // receipt, receipt.*, receiptHeader and receiptFooter, so the gate matches
+    // the whole receipt* family rather than a single key spelling.
+    if (Object.keys(patch).some((k) => k === "receipt" || k.startsWith("receipt"))) {
       await new BillingService(this.db).requireFeature(businessId, "receipt_customization");
     }
     const next = mergeSettings(current, patch);
