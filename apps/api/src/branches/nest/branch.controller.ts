@@ -4,7 +4,7 @@ import { branchCreateSchema, branchUpdateSchema } from "@pos/validation";
 import { SessionGuard } from "../../common/session.guard";
 import { CsrfGuard } from "../../common/csrf.guard";
 import { getCorrelationId } from "../../correlation";
-import { fail, statusFor } from "../../common/http-helpers";
+import { fail, failFromError, statusFor } from "../../common/http-helpers";
 import { AuthService } from "../../auth/nest/auth.service";
 import { BranchService } from "./branch.service";
 
@@ -39,8 +39,7 @@ export class BranchController {
     try {
       res.status(200).json({ items: await this.branches.listBranches(req.auth!.businessId) });
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Branch fetch failed", req);
+      failFromError(res, e, "Branch fetch failed", req);
     }
   }
 
@@ -66,8 +65,7 @@ export class BranchController {
         }, auth.role),
       );
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Branch creation failed", req);
+      failFromError(res, e, "Branch creation failed", req);
     }
   }
 
@@ -94,8 +92,7 @@ export class BranchController {
         }, auth.role),
       );
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Branch update failed", req);
+      failFromError(res, e, "Branch update failed", req);
     }
   }
 }

@@ -2,7 +2,7 @@ import { Controller, Get, Inject, Query, Req, Res, UseGuards } from "@nestjs/com
 import type { Request, Response } from "express";
 import { SessionGuard } from "../../common/session.guard";
 import { getCorrelationId } from "../../correlation";
-import { fail, statusFor } from "../../common/http-helpers";
+import { fail, failFromError, statusFor } from "../../common/http-helpers";
 import { toCsv } from "../../common/csv";
 import { AuthService } from "../../auth/nest/auth.service";
 import { ExportService } from "./export.service";
@@ -45,8 +45,7 @@ export class ExportController {
       });
       res.status(200).set("Content-Type", "text/csv; charset=utf-8").send(toCsv(headers, rows));
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Ledger export failed", req);
+      failFromError(res, e, "Ledger export failed", req);
     }
   }
 }

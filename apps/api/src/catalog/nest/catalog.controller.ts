@@ -11,7 +11,7 @@ import {
 import { SessionGuard } from "../../common/session.guard";
 import { CsrfGuard } from "../../common/csrf.guard";
 import { getCorrelationId } from "../../correlation";
-import { fail, statusFor } from "../../common/http-helpers";
+import { fail, failFromError, statusFor } from "../../common/http-helpers";
 import { createRateLimiter } from "../../common/rate-limit";
 import { redactProductForRole } from "../search";
 import { AuthService } from "../../auth/nest/auth.service";
@@ -46,6 +46,10 @@ export class CatalogController {
   }
 
   private writeGuard(req: Request, res: Response): boolean {
+    // A Bearer token's authority is its scope, already enforced by
+    // @Scopes("catalog:write") in ApiTokenGuard; the synthetic "api" role has
+    // no role permissions, so the role check only applies to staff sessions.
+    if ((req.auth as { via?: string } | undefined)?.via === "api-token") return true;
     if (!this.canWrite(req)) {
       fail(res, 403, "FORBIDDEN", "Catalog write requires price.edit", req);
       return false;
@@ -60,6 +64,7 @@ export class CatalogController {
 
   @Post("categories")
   @UseGuards(CsrfGuard)
+  @Scopes("catalog:write")
   async createCategory(
     @Req() req: Request,
     @Res() res: Response,
@@ -80,13 +85,13 @@ export class CatalogController {
       });
       res.status(201).json(row);
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Category create failed", req);
+      failFromError(res, e, "Category create failed", req);
     }
   }
 
   @Patch("categories/:id")
   @UseGuards(CsrfGuard)
+  @Scopes("catalog:write")
   async updateCategory(
     @Req() req: Request,
     @Res() res: Response,
@@ -103,8 +108,7 @@ export class CatalogController {
       const auth = req.auth!;
       res.json(await this.catalog.updateCategory(auth.businessId, auth.userId, rid(req), id, parsed.data));
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Category update failed", req);
+      failFromError(res, e, "Category update failed", req);
     }
   }
 
@@ -129,13 +133,13 @@ export class CatalogController {
         items: out.items.map((row) => redactProductForRole(row, granted)),
       });
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Product search failed", req);
+      failFromError(res, e, "Product search failed", req);
     }
   }
 
   @Post("products")
   @UseGuards(CsrfGuard)
+  @Scopes("catalog:write")
   async createProduct(
     @Req() req: Request,
     @Res() res: Response,
@@ -152,8 +156,7 @@ export class CatalogController {
       const row = await this.catalog.createProduct(auth.businessId, auth.userId, rid(req), parsed.data);
       res.status(201).json(redactProductForRole(row, this.perms(req)));
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Product create failed", req);
+      failFromError(res, e, "Product create failed", req);
     }
   }
 
@@ -175,6 +178,7 @@ export class CatalogController {
 
   @Patch("products/:id")
   @UseGuards(CsrfGuard)
+  @Scopes("catalog:write")
   async updateProduct(
     @Req() req: Request,
     @Res() res: Response,
@@ -192,13 +196,13 @@ export class CatalogController {
       const row = await this.catalog.updateProduct(auth.businessId, auth.userId, rid(req), id, parsed.data);
       res.json(redactProductForRole(row, this.perms(req)));
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Product update failed", req);
+      failFromError(res, e, "Product update failed", req);
     }
   }
 
   @Post("products/:id/archive")
   @UseGuards(CsrfGuard)
+  @Scopes("catalog:write")
   async archiveProduct(
     @Req() req: Request,
     @Res() res: Response,
@@ -217,6 +221,7 @@ export class CatalogController {
 
   @Post("products/:id/restore")
   @UseGuards(CsrfGuard)
+  @Scopes("catalog:write")
   async restoreProduct(
     @Req() req: Request,
     @Res() res: Response,
@@ -235,6 +240,7 @@ export class CatalogController {
 
   @Post("products/import")
   @UseGuards(CsrfGuard)
+  @Scopes("catalog:write")
   async importProducts(
     @Req() req: Request,
     @Res() res: Response,
@@ -256,8 +262,7 @@ export class CatalogController {
       const out = await this.catalog.importProducts(auth.businessId, auth.userId, rid(req), parsed.data);
       res.status(201).json(out);
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Product import failed", req);
+      failFromError(res, e, "Product import failed", req);
     }
   }
 }

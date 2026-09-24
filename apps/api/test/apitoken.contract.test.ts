@@ -7,6 +7,7 @@ let app: INestApplication;
 let cookie: string;
 let csrf: string;
 let secret: string;
+let priorPlatformKey: string | undefined;
 
 function jar(h: unknown): string {
   const arr = Array.isArray(h) ? h : [String(h ?? "")];
@@ -14,6 +15,8 @@ function jar(h: unknown): string {
 }
 
 beforeAll(async () => {
+  priorPlatformKey = process.env["PLATFORM_API_KEY"];
+  process.env["PLATFORM_API_KEY"] = "test-platform-key";
   app = await createTestApp();
   const reg = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
     ownerName: "Ana", email: "ana-token@example.com",
@@ -21,9 +24,21 @@ beforeAll(async () => {
   });
   cookie = jar(reg.headers["set-cookie"]);
   csrf = reg.body.csrfToken;
+  // PLAN.md §16.2: the public API is an Enterprise entitlement, so the token
+  // business is upgraded before minting.
+  const me = await request(app.getHttpServer()).get("/api/v1/me").set("Cookie", cookie);
+  await request(app.getHttpServer())
+    .patch(`/api/v1/platform/businesses/${me.body.businessId}/plan`)
+    .set("x-platform-key", "test-platform-key")
+    .send({ planKey: "enterprise" })
+    .expect(200);
 });
 
-afterAll(async () => { await app.close(); });
+afterAll(async () => {
+  await app.close();
+  if (priorPlatformKey === undefined) delete process.env["PLATFORM_API_KEY"];
+  else process.env["PLATFORM_API_KEY"] = priorPlatformKey;
+});
 
 describe("phase10 public api tokens HTTP contract", () => {
   it("mints a token once and reads with its scope, cookieless", async () => {

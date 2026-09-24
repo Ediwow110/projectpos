@@ -570,7 +570,7 @@ model FeatureFlag {
   key        String
   enabled    Boolean
   business   Business? @relation(fields: [businessId], references: [id])
-  @@unique([businessId, key])
+  @@index([businessId, key])
 }
 
 model BillingWebhookEvent {
@@ -618,9 +618,11 @@ model PrintJob {
   status     String   @default("QUEUED")
   payload    String
   attempts   Int      @default(0)
+  createdAt  DateTime @default(now())
   business   Business      @relation(fields: [businessId], references: [id])
   printer    PrinterDevice @relation(fields: [printerId], references: [id])
   @@index([businessId, status])
+  @@index([printerId, createdAt])
 }
 
 model DisplayToken {

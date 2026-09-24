@@ -8,7 +8,7 @@ import {
 import { SessionGuard } from "../../common/session.guard";
 import { CsrfGuard } from "../../common/csrf.guard";
 import { getCorrelationId } from "../../correlation";
-import { fail, statusFor } from "../../common/http-helpers";
+import { fail, failFromError, statusFor } from "../../common/http-helpers";
 import { AuthService } from "../../auth/nest/auth.service";
 import { CustomerService } from "./customer.service";
 
@@ -51,8 +51,7 @@ export class CustomerController {
         }),
       );
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Customer fetch failed", req);
+      failFromError(res, e, "Customer fetch failed", req);
     }
   }
 
@@ -80,8 +79,7 @@ export class CustomerController {
         }),
       );
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Customer creation failed", req);
+      failFromError(res, e, "Customer creation failed", req);
     }
   }
 
@@ -95,8 +93,7 @@ export class CustomerController {
       const auth = req.auth!;
       res.status(200).json(await this.customers.getCustomer(auth.businessId, id, auth.role));
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Customer fetch failed", req);
+      failFromError(res, e, "Customer fetch failed", req);
     }
   }
 
@@ -128,8 +125,7 @@ export class CustomerController {
         await this.customers.updateCustomer(auth.businessId, auth.userId, rid(req), id, { ...rest }, auth.role),
       );
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Customer update failed", req);
+      failFromError(res, e, "Customer update failed", req);
     }
   }
 }

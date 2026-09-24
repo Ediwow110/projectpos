@@ -66,7 +66,8 @@ CREATE TABLE "FeatureFlag" (
   "enabled" BOOLEAN NOT NULL,
   CONSTRAINT "FeatureFlag_pkey" PRIMARY KEY ("id")
 );
-CREATE UNIQUE INDEX "FeatureFlag_businessId_key_key" ON "FeatureFlag"("businessId", "key");
+CREATE UNIQUE INDEX "FeatureFlag_businessId_key_key" ON "FeatureFlag"("businessId", "key") WHERE "businessId" IS NOT NULL;
+CREATE UNIQUE INDEX "FeatureFlag_global_key_key" ON "FeatureFlag"("key") WHERE "businessId" IS NULL;
 ALTER TABLE "FeatureFlag" ADD CONSTRAINT "FeatureFlag_businessId_fkey"
   FOREIGN KEY ("businessId") REFERENCES "Business"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
@@ -121,9 +122,11 @@ CREATE TABLE "PrintJob" (
   "status" TEXT NOT NULL DEFAULT 'QUEUED',
   "payload" TEXT NOT NULL,
   "attempts" INTEGER NOT NULL DEFAULT 0,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "PrintJob_pkey" PRIMARY KEY ("id")
 );
 CREATE INDEX "PrintJob_businessId_status_idx" ON "PrintJob"("businessId", "status");
+CREATE INDEX "PrintJob_printerId_createdAt_idx" ON "PrintJob"("printerId", "createdAt");
 ALTER TABLE "PrintJob" ADD CONSTRAINT "PrintJob_businessId_fkey"
   FOREIGN KEY ("businessId") REFERENCES "Business"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "PrintJob" ADD CONSTRAINT "PrintJob_printerId_fkey"
@@ -149,5 +152,5 @@ INSERT INTO "Plan" ("id", "key", "name", "allowances", "pricesMinor", "isActive"
   ('plan_pro', 'pro', 'Pro', '{"users":50,"products":20000,"registers":10,"branches":0,"features":["reports","customers","receipt_customization","advanced_reports","employee_permissions","expenses","advanced_analytics"]}', '{"monthlyMinor":149000}', true),
   ('plan_enterprise', 'enterprise', 'Enterprise', '{"users":null,"products":null,"registers":null,"branches":null,"features":["reports","customers","receipt_customization","advanced_reports","employee_permissions","expenses","advanced_analytics","branches","central_management","api","advanced_permissions","integrations"]}', '{"monthlyMinor":0}', true);
 
-INSERT INTO "Subscription" ("id", "businessId", "planId", "status", "currentPeriodEnd")
-  SELECT 'sub_' || "id", "id", 'plan_enterprise', 'active', CURRENT_TIMESTAMP + INTERVAL '30 days' FROM "Business";
+INSERT INTO "Subscription" ("id", "businessId", "planId", "status", "currentPeriodEnd", "updatedAt")
+  SELECT 'sub_' || "id", "id", 'plan_enterprise', 'active', CURRENT_TIMESTAMP + INTERVAL '30 days', CURRENT_TIMESTAMP FROM "Business";

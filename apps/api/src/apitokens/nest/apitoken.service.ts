@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { Inject, Injectable } from "@nestjs/common";
 import { withScope } from "@pos/database";
 import type { DbApiToken, DbPort } from "../../common/db.port";
+import { BillingService } from "../../billing/nest/billing.service";
 
 const TOKEN_MANAGERS = new Set(["owner", "manager"]);
 
@@ -34,6 +35,9 @@ export class ApiTokenService {
   ): Promise<{ id: string; prefix: string; secret: string; scopes: string[] }> {
     withScope(businessId, {});
     if (!TOKEN_MANAGERS.has(role)) throw new Error("FORBIDDEN");
+    // PLAN.md §16.2: the public API is an Enterprise entitlement, so a
+    // downgraded tenant can neither mint new tokens nor rely on old ones.
+    await new BillingService(this.db).requireFeature(businessId, "api");
     const name = input.name.trim();
     if (!name) throw new Error("VALIDATION");
     let expiresAt: Date | null = null;

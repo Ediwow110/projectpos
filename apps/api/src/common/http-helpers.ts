@@ -1,6 +1,7 @@
 import type { Response } from "express";
 import { error } from "../errors";
 import { getCorrelationId } from "../correlation";
+import { planLimitFields } from "./plan-limit-error";
 
 export function fail(res: Response, status: number, code: string, message: string, req: { headers: Record<string, unknown>; correlationId?: string }, fields?: Record<string, string[]>): void {
   const headers: Record<string, string | undefined> = {};
@@ -50,4 +51,18 @@ export const CODE_STATUS: Record<string, number> = {
 
 export function statusFor(code: string, fallback = 400): number {
   return CODE_STATUS[code] ?? fallback;
+}
+
+// Plan-limit breaches must reach the client with machine fields
+// ({ limit, used, plan } for caps, { feature, plan } for feature gates), so
+// the UI can render an upgrade path instead of a bare error code.
+export function failFromError(
+  res: Response,
+  e: unknown,
+  message: string,
+  req: { headers: Record<string, unknown>; correlationId?: string },
+  fallback = 400,
+): void {
+  const code = e instanceof Error ? e.message : "VALIDATION";
+  fail(res, statusFor(code, fallback), code, message, req, planLimitFields(e));
 }

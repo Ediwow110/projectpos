@@ -2,6 +2,7 @@ import { CanActivate, ExecutionContext, Inject, Injectable } from "@nestjs/commo
 import { createHash, timingSafeEqual } from "node:crypto";
 import "reflect-metadata";
 import type { DbPort } from "../common/db.port";
+import { BillingService } from "../billing/nest/billing.service";
 import { SCOPES_KEY, scopesSatisfied } from "./scopes.decorator";
 
 export const TOKEN_RATE_LIMIT = 60;
@@ -55,6 +56,12 @@ export class ApiTokenGuard implements CanActivate {
     const granted = row.scopes as string[];
     if (!scopesSatisfied(required, granted)) {
       req.authError = "FORBIDDEN";
+      return false;
+    }
+    try {
+      await new BillingService(this.db).requireFeature(row.businessId, "api");
+    } catch {
+      req.authError = "PLAN_LIMIT";
       return false;
     }
     const now = Date.now();

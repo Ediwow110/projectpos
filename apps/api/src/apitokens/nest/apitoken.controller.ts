@@ -4,7 +4,7 @@ import { apiTokenCreateSchema } from "@pos/validation";
 import { SessionGuard } from "../../common/session.guard";
 import { CsrfGuard } from "../../common/csrf.guard";
 import { getCorrelationId } from "../../correlation";
-import { fail, statusFor } from "../../common/http-helpers";
+import { fail, failFromError, statusFor } from "../../common/http-helpers";
 import { ApiTokenService } from "./apitoken.service";
 
 function rid(req: Request): string {
@@ -36,8 +36,7 @@ export class ApiTokenController {
     try {
       res.status(200).json({ items: await this.tokens.listTokens(req.auth!.businessId) });
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Token fetch failed", req);
+      failFromError(res, e, "Token fetch failed", req);
     }
   }
 
@@ -64,8 +63,7 @@ export class ApiTokenController {
         }, auth.role),
       );
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Token mint failed", req);
+      failFromError(res, e, "Token mint failed", req);
     }
   }
 
@@ -83,8 +81,7 @@ export class ApiTokenController {
         await this.tokens.revokeToken(auth.businessId, auth.userId, rid(req), id, auth.role),
       );
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Token revoke failed", req);
+      failFromError(res, e, "Token revoke failed", req);
     }
   }
 }

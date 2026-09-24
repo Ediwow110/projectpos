@@ -104,6 +104,7 @@ export interface DbPrintJob {
   status: string;
   payload: string;
   attempts: number;
+  createdAt: Date;
 }
 
 export interface DbDisplayToken {

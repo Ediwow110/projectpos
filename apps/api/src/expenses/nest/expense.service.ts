@@ -153,6 +153,7 @@ export class ExpenseService {
 
   async getExpense(businessId: string, id: string): Promise<DbExpense> {
     withScope(businessId, {});
+    await new BillingService(this.db).requireFeature(businessId, "expenses");
     const expense = await this.db.findExpenseById(id, businessId);
     if (!expense) throw new Error("NOT_FOUND");
     return expense;
@@ -168,6 +169,7 @@ export class ExpenseService {
   ): Promise<{ expense: DbExpense; cashAdjusted: boolean }> {
     withScope(businessId, {});
     if (!VOID_ROLES.has(role)) throw new Error("FORBIDDEN");
+    await new BillingService(this.db).requireFeature(businessId, "expenses");
     if (!reason || reason.trim().length < 3) throw new Error("VALIDATION");
     const expense = await this.db.findExpenseById(id, businessId);
     if (!expense) throw new Error("NOT_FOUND");

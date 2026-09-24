@@ -4,7 +4,7 @@ import { businessSettingsSchema, onboardingPatchSchema } from "@pos/validation";
 import { SessionGuard } from "../../common/session.guard";
 import { CsrfGuard } from "../../common/csrf.guard";
 import { getCorrelationId } from "../../correlation";
-import { fail, statusFor } from "../../common/http-helpers";
+import { fail, failFromError, statusFor } from "../../common/http-helpers";
 import { AuthService } from "../../auth/nest/auth.service";
 import { BusinessService } from "./business.service";
 
@@ -85,8 +85,7 @@ export class BusinessController {
       );
       res.json(state);
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Onboarding update failed", req);
+      failFromError(res, e, "Onboarding update failed", req);
     }
   }
 }

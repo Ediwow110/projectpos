@@ -90,7 +90,7 @@ export class PrintService {
     }
     const row = await this.db.createPrintJob({
       businessId, printerId: printer.id, receiptNo, layout,
-      status: "QUEUED", payload, attempts: 0,
+      status: "QUEUED", payload, attempts: 0, createdAt: new Date(),
     });
     await this.db.appendAudit({
       businessId, actorId, action: "print.queue",
@@ -103,7 +103,9 @@ export class PrintService {
     withScope(businessId, {});
     const queued = (await this.db.listPrintJobs(businessId, "QUEUED"))
       .filter((j) => j.printerId === printerId)
-      .sort((a, b) => (a.id < b.id ? -1 : 1));
+      .sort((a, b) =>
+        a.createdAt.getTime() - b.createdAt.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+      );
     const next = queued[0] ?? null;
     if (!next) throw new Error("NOT_FOUND");
     const claimed = await this.db.updatePrintJob(

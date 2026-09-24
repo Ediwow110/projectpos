@@ -8,7 +8,7 @@ import {
 import { SessionGuard } from "../../common/session.guard";
 import { CsrfGuard } from "../../common/csrf.guard";
 import { getCorrelationId } from "../../correlation";
-import { fail, statusFor } from "../../common/http-helpers";
+import { fail, failFromError, statusFor } from "../../common/http-helpers";
 import { toCsv } from "../../common/csv";
 import { AuthService } from "../../auth/nest/auth.service";
 import { ExpenseService } from "./expense.service";
@@ -69,8 +69,7 @@ export class ExpenseController {
       );
       res.status(200).set("Content-Type", "text/csv; charset=utf-8").send(csv);
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Expense export failed", req);
+      failFromError(res, e, "Expense export failed", req);
     }
   }
 
@@ -98,8 +97,7 @@ export class ExpenseController {
         }),
       );
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Expense fetch failed", req);
+      failFromError(res, e, "Expense fetch failed", req);
     }
   }
 
@@ -130,8 +128,7 @@ export class ExpenseController {
         }),
       );
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Expense creation failed", req);
+      failFromError(res, e, "Expense creation failed", req);
     }
   }
 
@@ -144,8 +141,7 @@ export class ExpenseController {
     try {
       res.status(200).json(await this.expenses.getExpense(req.auth!.businessId, id));
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Expense fetch failed", req);
+      failFromError(res, e, "Expense fetch failed", req);
     }
   }
 
@@ -169,8 +165,7 @@ export class ExpenseController {
       );
       res.status(200).json({ expense, cashAdjusted });
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Expense void failed", req);
+      failFromError(res, e, "Expense void failed", req);
     }
   }
 }

@@ -103,6 +103,7 @@ export class CustomerService {
 
   async getCustomer(businessId: string, id: string, role: string): Promise<CustomerDetail> {
     withScope(businessId, {});
+    await new BillingService(this.db).requireFeature(businessId, "customers");
     const row = await this.db.findCustomerById(id, businessId);
     if (!row) throw new Error("NOT_FOUND");
     const sales = (await this.db.listSalesByBusiness(businessId))
@@ -123,6 +124,7 @@ export class CustomerService {
   ): Promise<DbCustomer> {
     withScope(businessId, {});
     if (!MANAGE_ROLES.has(role)) throw new Error("FORBIDDEN");
+    await new BillingService(this.db).requireFeature(businessId, "customers");
     const current = await this.db.findCustomerById(id, businessId);
     if (!current) throw new Error("NOT_FOUND");
     const next: Partial<Omit<DbCustomer, "id" | "businessId">> = {};

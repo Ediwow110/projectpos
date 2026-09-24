@@ -7,7 +7,7 @@ import {
 } from "@pos/validation";
 import { SessionGuard } from "../../common/session.guard";
 import { getCorrelationId } from "../../correlation";
-import { fail, statusFor } from "../../common/http-helpers";
+import { fail, failFromError, statusFor } from "../../common/http-helpers";
 import { AuthService } from "../../auth/nest/auth.service";
 import { ReportingService } from "./reporting.service";
 import { ApiTokenGuard } from "../../apitokens/api-token.guard";
@@ -56,8 +56,7 @@ export class ReportingController {
         }, auth.role, this.perms(req)),
       );
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Dashboard fetch failed", req);
+      failFromError(res, e, "Dashboard fetch failed", req);
     }
   }
 
@@ -86,8 +85,7 @@ export class ReportingController {
         }, auth.role, this.perms(req)),
       );
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Sales report fetch failed", req);
+      failFromError(res, e, "Sales report fetch failed", req);
     }
   }
 
@@ -116,8 +114,7 @@ export class ReportingController {
         }, auth.role, this.perms(req)),
       );
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Products report fetch failed", req);
+      failFromError(res, e, "Products report fetch failed", req);
     }
   }
 
@@ -137,8 +134,7 @@ export class ReportingController {
         await this.reports.getInventoryReport(req.auth!.businessId, parsed.data.branchId),
       );
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Inventory report fetch failed", req);
+      failFromError(res, e, "Inventory report fetch failed", req);
     }
   }
 
@@ -164,8 +160,7 @@ export class ReportingController {
         }, auth.role, this.perms(req)),
       );
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Payments report fetch failed", req);
+      failFromError(res, e, "Payments report fetch failed", req);
     }
   }
 
@@ -191,8 +186,7 @@ export class ReportingController {
         }),
       );
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Cash report fetch failed", req);
+      failFromError(res, e, "Cash report fetch failed", req);
     }
   }
 
@@ -217,8 +211,7 @@ export class ReportingController {
         }, auth.role, this.perms(req)),
       );
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Branches report fetch failed", req);
+      failFromError(res, e, "Branches report fetch failed", req);
     }
   }
 
@@ -243,8 +236,7 @@ export class ReportingController {
         }, auth.role),
       );
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Customers report fetch failed", req);
+      failFromError(res, e, "Customers report fetch failed", req);
     }
   }
 
@@ -270,8 +262,7 @@ export class ReportingController {
         }, auth.role),
       );
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Cashiers report fetch failed", req);
+      failFromError(res, e, "Cashiers report fetch failed", req);
     }
   }
 }

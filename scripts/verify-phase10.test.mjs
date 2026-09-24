@@ -30,6 +30,7 @@ const checks = [
   existsSync("e2e/offline.spec.ts"),
   existsSync("e2e/billing.spec.ts"),
   existsSync("tests/phase10-exit.test.ts"),
+  existsSync("scripts/verify-phase10-migration.mjs"),
 ];
 if (checks.every(Boolean)) {
   console.log("PHASE10_OK");

@@ -11,7 +11,7 @@ import {
 import { SessionGuard } from "../../common/session.guard";
 import { CsrfGuard } from "../../common/csrf.guard";
 import { getCorrelationId } from "../../correlation";
-import { fail, statusFor } from "../../common/http-helpers";
+import { fail, failFromError, statusFor } from "../../common/http-helpers";
 import { AuthService } from "../../auth/nest/auth.service";
 import { ShiftService } from "./shift.service";
 import type { CashKind } from "../cash";
@@ -51,8 +51,7 @@ export class ShiftController {
     try {
       res.status(200).json({ items: await this.shifts.listRegisters(req.auth!.businessId) });
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Register fetch failed", req);
+      failFromError(res, e, "Register fetch failed", req);
     }
   }
 
@@ -78,8 +77,7 @@ export class ShiftController {
         }, auth.role),
       );
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Register creation failed", req);
+      failFromError(res, e, "Register creation failed", req);
     }
   }
 
@@ -107,8 +105,7 @@ export class ShiftController {
         }, auth.role),
       );
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Register update failed", req);
+      failFromError(res, e, "Register update failed", req);
     }
   }
 
@@ -137,8 +134,7 @@ export class ShiftController {
         }, auth.role),
       );
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Shift open failed", req);
+      failFromError(res, e, "Shift open failed", req);
     }
   }
 
@@ -164,8 +160,7 @@ export class ShiftController {
         }, auth.role, auth.userId),
       );
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Shift fetch failed", req);
+      failFromError(res, e, "Shift fetch failed", req);
     }
   }
 
@@ -182,8 +177,7 @@ export class ShiftController {
       );
       res.status(200).json({ shift, components, movements });
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Shift fetch failed", req);
+      failFromError(res, e, "Shift fetch failed", req);
     }
   }
 
@@ -210,8 +204,7 @@ export class ShiftController {
         }, this.perms(req)),
       );
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Cash record failed", req);
+      failFromError(res, e, "Cash record failed", req);
     }
   }
 
@@ -238,8 +231,7 @@ export class ShiftController {
       );
       res.status(200).json({ shift, report });
     } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Shift close failed", req);
+      failFromError(res, e, "Shift close failed", req);
     }
   }
 }

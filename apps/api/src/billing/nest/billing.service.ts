@@ -2,6 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { withScope } from "@pos/database";
 import type { DbPort } from "../../common/db.port";
+import { PlanLimitError } from "../../common/plan-limit-error";
 import { ENTERPRISE, isTrialExpired, monthPeriod, PLAN_ALLOWANCES, type PlanAllowances } from "../entitlements";
 
 export type CapKind = "users" | "products" | "registers" | "branches";
@@ -95,7 +96,7 @@ export class BillingService {
         entityId: `${kind}:${used}/${limit}`,
         requestId,
       });
-      throw new Error("PLAN_LIMIT");
+      throw new PlanLimitError({ limit, used, plan: plan.key, resource: kind });
     }
   }
 
@@ -110,7 +111,9 @@ export class BillingService {
   }
 
   async requireFeature(businessId: string, feature: string): Promise<void> {
-    if (!(await this.checkFeature(businessId, feature))) throw new Error("PLAN_LIMIT");
+    if (await this.checkFeature(businessId, feature)) return;
+    const plan = await this.resolvePlan(businessId);
+    throw new PlanLimitError({ feature, plan: plan.key });
   }
 
   async recordUsage(businessId: string, key: string, period: string): Promise<void> {
