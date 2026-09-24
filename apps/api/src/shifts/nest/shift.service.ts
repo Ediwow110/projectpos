@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { withScope } from "@pos/database";
 import type { DbCashMovement, DbPort, DbRegister, DbShift } from "../../common/db.port";
+import { BillingService } from "../../billing/nest/billing.service";
 import {
   computeExpectedCash,
   computeVariance,
@@ -110,6 +111,7 @@ export class ShiftService {
     if (existing.some((r) => r.name.toLowerCase() === name.toLowerCase())) {
       throw new Error("VALIDATION");
     }
+    await new BillingService(this.db).requireCreate(businessId, actorId, requestId, "registers");
     const row = await this.db.createRegister({ businessId, name, isActive: true, branchId });
     await this.db.appendAudit({
       businessId,

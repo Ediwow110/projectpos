@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { withScope } from "@pos/database";
 import type { DbPort, DbSale, DbSaleItem } from "../../common/db.port";
+import { BillingService } from "../../billing/nest/billing.service";
 import {
   bucketKey,
   bucketRange,
@@ -294,6 +295,7 @@ export class ReportingService {
     void role;
     const { range, compare, label } = this.resolved(query);
     const granularity = query.granularity === "hour" ? "hour" : "day";
+    await new BillingService(this.db).requireFeature(businessId, "reports");
     const cur = await this.metrics(businessId, range, query.registerId, query.branchId);
     const buckets = bucketRange(range.from, range.to, granularity);
     const byBucket = new Map<string, { netRevenue: number; orders: number }>();
@@ -340,6 +342,7 @@ export class ReportingService {
     const canSeeProfit = granted.includes("cost.view");
     const limit = Math.min(Math.max(query.limit ?? 20, 1), 100);
     const tab = query.tab ?? "top";
+    await new BillingService(this.db).requireFeature(businessId, "reports");
     const withLines = await this.linesFor(businessId, await this.settledSales(businessId, range, query.registerId, query.branchId));
     const agg = new Map<string, { name: string; qty: number; revenue: number; profit: number }>();
     for (const s of withLines) {
@@ -417,6 +420,7 @@ export class ReportingService {
     generatedAt: string;
   }> {
     withScope(businessId, {});
+    await new BillingService(this.db).requireFeature(businessId, "reports");
     const products = await this.db.listProducts(businessId);
     let healthy = 0;
     let low = 0;
@@ -494,6 +498,7 @@ export class ReportingService {
     withScope(businessId, {});
     void role;
     void granted;
+    await new BillingService(this.db).requireFeature(businessId, "reports");
     const { range, compare, label } = this.resolved(query);
     const sales = await this.settledSales(businessId, range, query.registerId);
     const byMethod = new Map<string, { total: number; count: number }>();
@@ -541,6 +546,7 @@ export class ReportingService {
     generatedAt: string;
   }> {
     withScope(businessId, {});
+    await new BillingService(this.db).requireFeature(businessId, "reports");
     // DbShift carries no timestamp fields, so no date filtering is applied;
     // date scoping arrives with a future openedAt column (no migration here).
     let shifts = await this.db.listShiftsByBusiness(businessId);
@@ -598,6 +604,7 @@ export class ReportingService {
     const { range, compare, label } = this.resolved(query);
     const canSeeProfit = granted.includes("cost.view");
     const branches = await this.db.listBranchesByBusiness(businessId);
+    await new BillingService(this.db).requireFeature(businessId, "reports");
     const withLines = await this.linesFor(businessId, await this.settledSales(businessId, range));
     const groups = new Map<string | null, SaleWithLines[]>();
     for (const s of withLines) {
@@ -650,6 +657,7 @@ export class ReportingService {
     void role;
     const { range, compare, label } = this.resolved(query);
     const customers = await this.db.listCustomersByBusiness(businessId);
+    await new BillingService(this.db).requireFeature(businessId, "customers");
     const sales = await this.settledSales(businessId, range);
     const withLines = await this.linesFor(businessId, sales);
     const spend = new Map<string, { spend: number; orders: number }>();
@@ -699,6 +707,7 @@ export class ReportingService {
   }> {
     withScope(businessId, {});
     if (role !== "owner" && role !== "manager") throw new Error("FORBIDDEN");
+    await new BillingService(this.db).requireFeature(businessId, "advanced_reports");
     const { range, compare, label } = this.resolved(query);
     const sales = await this.settledSales(businessId, range, query.registerId);
     const withLines = await this.linesFor(businessId, sales);

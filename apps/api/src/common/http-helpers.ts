@@ -45,6 +45,7 @@ export const CODE_STATUS: Record<string, number> = {
   REFUND_EXCEEDS_LIMIT: 400,
   PAYLOAD_TOO_LARGE: 413,
   TRANSFER_INVALID_STATE: 409,
+  PLAN_LIMIT: 402,
 };
 
 export function statusFor(code: string, fallback = 400): number {

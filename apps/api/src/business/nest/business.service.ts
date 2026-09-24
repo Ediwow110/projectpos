@@ -6,6 +6,7 @@ import {
   type OnboardingState,
 } from "../onboarding";
 import type { DbPort } from "../../common/db.port";
+import { BillingService } from "../../billing/nest/billing.service";
 
 @Injectable()
 export class BusinessService {
@@ -29,6 +30,9 @@ export class BusinessService {
     requestId: string,
   ): Promise<Record<string, unknown>> {
     const current = await this.db.getSettings(businessId);
+    if (Object.keys(patch).some((k) => k === "receipt" || k.startsWith("receipt."))) {
+      await new BillingService(this.db).requireFeature(businessId, "receipt_customization");
+    }
     const next = mergeSettings(current, patch);
     await this.db.saveSettings(businessId, next);
     await this.db.appendAudit({

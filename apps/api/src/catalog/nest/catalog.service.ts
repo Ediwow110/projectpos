@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { withScope } from "@pos/database";
 import type { DbCategory, DbPort, DbProduct } from "../../common/db.port";
+import { BillingService } from "../../billing/nest/billing.service";
 import {
   findDuplicateBarcode,
   findDuplicateSku,
@@ -145,6 +146,7 @@ export class CatalogService {
     await assertCategoryBelongs(this.db, businessId, input.categoryId);
     await assertUniqueSku(this.db, businessId, norm.sku);
     await assertUniqueBarcode(this.db, businessId, norm.barcode);
+    await new BillingService(this.db).requireCreate(businessId, actorId, requestId, "products");
     const row = await this.db.createProduct({
       businessId,
       categoryId: input.categoryId ?? null,

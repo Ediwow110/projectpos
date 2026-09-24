@@ -17,12 +17,20 @@ function jar(h: unknown): string {
 
 beforeAll(async () => {
   app = await createTestApp();
+  process.env["PLATFORM_API_KEY"] = "test-platform-key";
   const reg = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
     ownerName: "Ana", email: "ana-transfer@example.com",
     password: "correct-horse-12", businessName: "Transfer Store",
   });
   cookie = jar(reg.headers["set-cookie"]);
   csrf = reg.body.csrfToken;
+  // Trial Pro has no branches allowance: upgrade to Enterprise like an operator would.
+  const me = await request(app.getHttpServer()).get("/api/v1/business")
+    .set("Cookie", cookie);
+  const upgraded = await request(app.getHttpServer()).patch(`/api/v1/platform/businesses/${me.body.id}/plan`)
+    .set("x-platform-key", "test-platform-key")
+    .send({ planKey: "enterprise" });
+  expect(upgraded.status).toBe(200);
   const a = await request(app.getHttpServer()).post("/api/v1/branches")
     .set("Cookie", cookie).set("X-CSRF-Token", csrf)
     .send({ name: "North" });

@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { withScope } from "@pos/database";
 import type { DbBranch, DbPort } from "../../common/db.port";
+import { BillingService } from "../../billing/nest/billing.service";
 
 const BRANCH_MANAGERS = new Set(["owner", "manager"]);
 
@@ -30,6 +31,7 @@ export class BranchService {
       throw new Error("VALIDATION");
     }
     const type = input.type ?? "store";
+    await new BillingService(this.db).requireCreate(businessId, actorId, requestId, "branches");
     const row = await this.db.createBranch({
       businessId,
       name,

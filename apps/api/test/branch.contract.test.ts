@@ -26,6 +26,14 @@ afterAll(async () => { await app.close(); });
 
 describe("phase9a branch HTTP contract", () => {
   it("creates branches and rejects duplicates", async () => {
+    process.env["PLATFORM_API_KEY"] = "test-platform-key";
+    const me = await request(app.getHttpServer()).get("/api/v1/business")
+      .set("Cookie", cookie);
+    // Trial Pro has no branches allowance: upgrade to Enterprise like an operator would.
+    const upgraded = await request(app.getHttpServer()).patch(`/api/v1/platform/businesses/${me.body.id}/plan`)
+      .set("x-platform-key", "test-platform-key")
+      .send({ planKey: "enterprise" });
+    expect(upgraded.status).toBe(200);
     const first = await request(app.getHttpServer()).post("/api/v1/branches")
       .set("Cookie", cookie).set("X-CSRF-Token", csrf)
       .send({ name: "Main" });

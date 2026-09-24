@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { withScope } from "@pos/database";
 import type { DbExpense, DbPort } from "../../common/db.port";
+import { BillingService } from "../../billing/nest/billing.service";
 
 const VOID_ROLES = new Set(["owner", "manager"]);
 const METHODS = new Set(["cash", "card", "gcash", "maya", "bank_transfer", "other"]);
@@ -39,6 +40,7 @@ export class ExpenseService {
     now: Date = new Date(),
   ): Promise<DbExpense> {
     withScope(businessId, {});
+    await new BillingService(this.db).requireFeature(businessId, "expenses");
     const category = input.category.trim();
     if (!category || category.length > 80) throw new Error("VALIDATION");
     if (!Number.isInteger(input.amountMinor) || input.amountMinor <= 0) throw new Error("VALIDATION");
@@ -123,6 +125,7 @@ export class ExpenseService {
     },
   ): Promise<{ items: DbExpense[]; total: number; page: number; pageSize: number }> {
     withScope(businessId, {});
+    await new BillingService(this.db).requireFeature(businessId, "expenses");
     let rows = await this.db.listExpensesByBusiness(businessId);
     if (opts.category) rows = rows.filter((e) => e.category === opts.category);
     if (opts.method) rows = rows.filter((e) => e.method === opts.method);

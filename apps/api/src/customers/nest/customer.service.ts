@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { withScope } from "@pos/database";
 import type { DbCustomer, DbPort, DbSale } from "../../common/db.port";
+import { BillingService } from "../../billing/nest/billing.service";
 
 const MANAGE_ROLES = new Set(["owner", "manager"]);
 const FULL_PII_ROLES = new Set(["owner", "manager", "inventory"]);
@@ -45,6 +46,7 @@ export class CustomerService {
     input: CustomerInput,
   ): Promise<DbCustomer> {
     withScope(businessId, {});
+    await new BillingService(this.db).requireFeature(businessId, "customers");
     const name = input.name.trim();
     if (!name || name.length > 120) throw new Error("VALIDATION");
     const phone = cleanString(input.phone, 32);
@@ -80,6 +82,7 @@ export class CustomerService {
     opts: { q?: string; active: "true" | "false" | "all"; page: number; pageSize: number },
   ): Promise<{ items: DbCustomer[]; total: number; page: number; pageSize: number }> {
     withScope(businessId, {});
+    await new BillingService(this.db).requireFeature(businessId, "customers");
     let rows = await this.db.listCustomersByBusiness(businessId);
     if (opts.active === "true") rows = rows.filter((c) => c.isActive);
     else if (opts.active === "false") rows = rows.filter((c) => !c.isActive);
