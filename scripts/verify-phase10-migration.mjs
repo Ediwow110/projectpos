@@ -78,8 +78,18 @@ try {
     'SELECT p."key" FROM "Subscription" s JOIN "Plan" p ON p."id" = s."planId" WHERE s."businessId" = \'biz_legacy\';\n',
   ).trim();
   const indexes = psql(
-    "SELECT indexname FROM pg_indexes WHERE tablename = 'FeatureFlag' OR (tablename = 'PrintJob' AND indexname LIKE '%createdAt%');\n",
+    "SELECT indexname FROM pg_indexes WHERE tablename = 'FeatureFlag' OR (tablename = 'PrintJob' AND indexname LIKE '%createdAt%') OR (tablename = 'BillingWebhookEvent' AND indexname LIKE '%provider%') OR (tablename = 'Invoice' AND indexname LIKE '%period%');\n",
   );
+  // A global feature flag is audited without a tenant, which the audit table
+  // only allows because 0011 drops its NOT NULL.
+  psqlStrict(
+    `INSERT INTO "FeatureFlag" ("id", "businessId", "key", "enabled") VALUES ('flag_global', NULL, 'reports', false);\n` +
+      `INSERT INTO "AuditLog" ("id", "businessId", "actorId", "action", "entityType", "entityId", "requestId") VALUES ('aud_global', NULL, 'platform', 'flag.global', 'FeatureFlag', 'reports:false', 'r-global');\n` +
+      `INSERT INTO "BillingWebhookEvent" ("id", "provider", "eventId", "type", "payload", "status") VALUES ('whev_1', 'test-double', 'evt-1', 'invoice.paid', '{}'::jsonb, 'applied');\n` +
+      `INSERT INTO "BillingWebhookEvent" ("id", "provider", "eventId", "type", "payload", "status") VALUES ('whev_2', 'other', 'evt-1', 'invoice.paid', '{}'::jsonb, 'applied');\n`,
+  );
+  const globalFlag = psql(`SELECT count(*) FROM "FeatureFlag" WHERE "businessId" IS NULL;\n`).trim();
+  const crossProvider = psql(`SELECT count(*) FROM "BillingWebhookEvent" WHERE "eventId" = 'evt-1';\n`).trim();
 
   const problems = [];
   if (tables !== 40) problems.push(`expected 40 tables, found ${tables}`);
@@ -87,6 +97,10 @@ try {
   if (grandfathered !== "enterprise") problems.push(`legacy business plan is "${grandfathered}", expected "enterprise"`);
   if (!indexes.includes("FeatureFlag_global_key_key")) problems.push("missing partial unique index for global feature flags");
   if (!indexes.includes("PrintJob_printerId_createdAt_idx")) problems.push("missing print job FIFO index");
+  if (!indexes.includes("BillingWebhookEvent_provider_eventId_key")) problems.push("webhook uniqueness must be (provider, eventId)");
+  if (!indexes.includes("Invoice_subscriptionId_period_key")) problems.push("missing invoice period uniqueness index");
+  if (globalFlag !== "1") problems.push("global feature flag insert failed");
+  if (crossProvider !== "2") problems.push("the same eventId must be allowed across providers");
   if (problems.length > 0) throw new Error(problems.join("; "));
 } catch (e) {
   failed = e;

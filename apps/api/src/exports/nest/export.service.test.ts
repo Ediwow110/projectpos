@@ -168,6 +168,36 @@ describe("phase10 ledger export accounting", () => {
     expect(lastCell.startsWith("=")).toBe(false);
     expect(lastCell.startsWith("'=cmd")).toBe(true);
   });
+  it("credits refunds to the tenders the refund service actually used", async () => {
+    const { db, business, sales, product, exports } = await setup();
+    // 3,000 cash + 2,000 card, then a 1,000 refund: the refund service refunds
+    // the first payment in order, so 1,000 comes back out of cash.
+    const sale = await sell(sales, business.id, product.id, 2, [
+      { method: "cash", amountMinor: 3000 },
+      { method: "card", amountMinor: 2000 },
+    ], "refund-split");
+    const refunds = new RefundService(db);
+    const items = (await db.listSaleItems(sale.sale.id, business.id)).map((l) => ({ saleItemId: l.id, qty: 1 }));
+    await refunds.approveRefund(
+      business.id, "u1", "r-app", sale.sale.id,
+      { items, reason: "partial return", key: "split-refund-key" },
+      GRANT, "manager",
+    );
+    const { rows } = await exports.buildLedger(business.id, "u1", "r1", {});
+    const refundedCash = (await db.listPaymentsBySale(sale.sale.id, business.id))
+      .filter((p) => p.status === "REFUNDED" && p.method === "cash")
+      .reduce((s, p) => s + p.amountMinor, 0);
+    expect(refundedCash).toBeGreaterThan(0);
+    // The export must follow the recorded split, not re-derive one.
+    expect(accountTotal(rows, "1000", 5)).toBe(refundedCash);
+    const refundedCard = (await db.listPaymentsBySale(sale.sale.id, business.id))
+      .filter((p) => p.status === "REFUNDED" && p.method === "card")
+      .reduce((s, p) => s + p.amountMinor, 0);
+    expect(accountTotal(rows, "2100", 5)).toBe(refundedCard);
+    const sum = totals(rows);
+    expect(sum.debit).toBe(sum.credit);
+  });
+
   it("books nothing for draft sales", async () => {
     const { business, sales, product, exports } = await setup();
     const draft = await sales.createDraft(business.id, "u1", "r-draft", {

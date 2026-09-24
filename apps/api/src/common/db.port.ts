@@ -142,7 +142,9 @@ export interface DbResetToken {
 }
 
 export interface AuditEntry {
-  businessId: string;
+  // Null for platform-scoped actions (global feature flags), which belong to
+  // no tenant; the database allows it.
+  businessId: string | null;
   actorId: string;
   action: string;
   entityType: string;
@@ -531,6 +533,9 @@ export interface DbPort {
   createApiToken(t: Omit<DbApiToken, "id">): Promise<DbApiToken>;
   listApiTokens(businessId: string): Promise<DbApiToken[]>;
   findApiTokenByPrefix(prefix: string): Promise<DbApiToken | null>;
+  // Prefixes are short, so a collision is possible: the guard verifies the full
+  // hash against every candidate instead of trusting the first match.
+  listApiTokensByPrefix(prefix: string): Promise<DbApiToken[]>;
   revokeApiToken(id: string, businessId: string, revokedAt: Date): Promise<DbApiToken | null>;
   createPrinter(p: Omit<DbPrinter, "id">): Promise<DbPrinter>;
   listPrinters(businessId: string): Promise<DbPrinter[]>;

@@ -606,7 +606,8 @@ export class BillingService {
     }
     const row = await this.db.setFlag({ businessId, key, enabled });
     await this.db.appendAudit({
-      businessId: businessId ?? "platform",
+      // Platform rows carry no tenant: the audit table allows a null business.
+      businessId,
       actorId,
       action: businessId ? "flag.change" : "flag.global",
       entityType: "FeatureFlag",

@@ -171,7 +171,7 @@ export class RefundService {
           });
         }
       }
-      for (const a of allocations) {
+      for (const [legIndex, a] of allocations.entries()) {
         await this.db.createPayment({
           businessId,
           saleId: sale.id,
@@ -179,7 +179,8 @@ export class RefundService {
           amountMinor: a.amount,
           status: "REFUNDED",
           providerRef: null,
-          idempotencyKey: `${input.key}:refund:${a.method}`,
+          // Leg index, not just method: two cash legs must not collide.
+          idempotencyKey: `${input.key}:refund:${a.method}:${legIndex}`,
         });
       }
       if (cashMinor > 0 && sale.registerId) {

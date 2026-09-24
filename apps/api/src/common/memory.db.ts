@@ -642,6 +642,9 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       for (const t of apiTokens.values()) if (t.prefix === prefix) return t;
       return null;
     },
+    async listApiTokensByPrefix(prefix) {
+      return [...apiTokens.values()].filter((t) => t.prefix === prefix);
+    },
     async revokeApiToken(id, businessId, revokedAt) {
       const t = apiTokens.get(id) ?? null;
       if (!t || t.businessId !== businessId) return null;

@@ -83,7 +83,7 @@ CREATE TABLE "BillingWebhookEvent" (
   "receivedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "BillingWebhookEvent_pkey" PRIMARY KEY ("id")
 );
-CREATE UNIQUE INDEX "BillingWebhookEvent_eventId_key" ON "BillingWebhookEvent"("eventId");
+CREATE UNIQUE INDEX "BillingWebhookEvent_provider_eventId_key" ON "BillingWebhookEvent"("provider", "eventId");
 
 CREATE TABLE "ApiToken" (
   "id" TEXT NOT NULL,
@@ -148,6 +148,10 @@ CREATE UNIQUE INDEX "DisplayToken_tokenHash_key" ON "DisplayToken"("tokenHash");
 CREATE INDEX "DisplayToken_businessId_registerId_idx" ON "DisplayToken"("businessId", "registerId");
 ALTER TABLE "DisplayToken" ADD CONSTRAINT "DisplayToken_businessId_fkey"
   FOREIGN KEY ("businessId") REFERENCES "Business"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- Platform-scoped audit rows (global feature flags) have no tenant, so the
+-- business foreign key must allow null. Tenant rows still carry one.
+ALTER TABLE "AuditLog" ALTER COLUMN "businessId" DROP NOT NULL;
 
 INSERT INTO "Plan" ("id", "key", "name", "allowances", "pricesMinor", "isActive") VALUES
   ('plan_free', 'free', 'Free', '{"users":3,"products":100,"registers":1,"branches":0,"features":[]}', '{"monthlyMinor":0}', true),

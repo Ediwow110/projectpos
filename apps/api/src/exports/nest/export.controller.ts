@@ -4,7 +4,7 @@ import { SessionGuard } from "../../common/session.guard";
 import { getCorrelationId } from "../../correlation";
 import { fail, failFromError } from "../../common/http-helpers";
 import { AuthService } from "../../auth/nest/auth.service";
-import { ExportService, LEDGER_HEADERS, ledgerCsvLine } from "./export.service";
+import { ExportService, LEDGER_HEADERS, ledgerCsvLine, ledgerRange } from "./export.service";
 
 function rid(req: Request): string {
   const headers: Record<string, string | undefined> = {};
@@ -38,6 +38,14 @@ export class ExportController {
       return;
     }
     const auth = req.auth!;
+    try {
+      // Validate the range before any header goes out: an invalid range is a
+      // 400, not a 200 with an empty body.
+      ledgerRange({ dateFrom: query["dateFrom"], dateTo: query["dateTo"] });
+    } catch (e) {
+      failFromError(res, e, "Ledger export failed", req);
+      return;
+    }
     try {
       const iterator = this.exports
         .streamJournalRows(auth.businessId, auth.userId, rid(req), {

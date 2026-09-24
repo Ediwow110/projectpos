@@ -128,7 +128,8 @@ model Session {
 
 model AuditLog {
   id             String   @id @default(cuid())
-  businessId     String
+  // Phase 10: platform-scoped rows (global feature flags) have no tenant.
+  businessId     String?
   actorId        String
   action         String
   entityType     String
@@ -139,7 +140,7 @@ model AuditLog {
   requestId      String
   ip             String?
   createdAt      DateTime @default(now())
-  business       Business @relation(fields: [businessId], references: [id])
+  business       Business? @relation(fields: [businessId], references: [id])
   @@index([businessId, createdAt])
   @@index([businessId, entityType, entityId])
 }

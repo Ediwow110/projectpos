@@ -42,8 +42,11 @@ export class ApiTokenGuard implements CanActivate {
     if (!raw || !raw.startsWith("Bearer ")) return true;
     const secret = raw.slice("Bearer ".length).trim();
     const prefix = secret.split("_").slice(0, 2).join("_");
-    const row = await this.db.findApiTokenByPrefix(prefix);
-    if (!row || !this.timingSafeCompare(row.tokenHash, sha256Hex(secret))) return this.deny(req);
+    const candidates = await this.db.listApiTokensByPrefix(prefix);
+    // A short prefix can collide, so every candidate is checked against the
+    // presented secret's hash in constant time.
+    const row = candidates.find((t) => this.timingSafeCompare(t.tokenHash, sha256Hex(secret))) ?? null;
+    if (!row) return this.deny(req);
     if (row.revokedAt !== null) return this.deny(req);
     if (row.expiresAt !== null && row.expiresAt.getTime() <= Date.now()) return this.deny(req);
     const required: string[] | undefined =

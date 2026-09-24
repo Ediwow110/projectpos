@@ -81,6 +81,15 @@ export function ledgerCsvLine(row: JournalRow): string {
 
 export const LEDGER_HEADERS = "date,type,ref,account,debitMinor,creditMinor,memo";
 
+// Exported so the controller can reject a bad range with a 400 before any
+// header is written, instead of streaming a 200 with no rows.
+export function ledgerRange(query: LedgerQuery, now: Date = new Date()): { from: Date | null; to: Date } {
+  const from = parseBound(query.dateFrom, now);
+  const to = parseBound(query.dateTo, now) ?? now;
+  if (from && from.getTime() > to.getTime()) throw new Error("VALIDATION");
+  return { from, to };
+}
+
 @Injectable()
 export class ExportService {
   constructor(@Inject("DbPort") private readonly db: DbPort) {}
@@ -118,21 +127,25 @@ export class ExportService {
     }
   }
 
-  // Largest-remainder split so a refund's credit lands on exactly the same
-  // tender accounts the sale was debited to, with no lost minor units.
+  // Largest-remainder split in integer minor units (no floating point money),
+  // so the parts always sum to exactly `amountMinor`.
   private allocate(amountMinor: number, legs: Array<{ account: string; amountMinor: number }>): Array<{ account: string; amountMinor: number }> {
     const total = legs.reduce((s, l) => s + l.amountMinor, 0);
     if (total <= 0) return [];
-    const exact = legs.map((l) => ({ account: l.account, exact: (amountMinor * l.amountMinor) / total }));
-    const floors = exact.map((e) => ({ ...e, minor: Math.floor(e.exact) }));
-    let remainder = amountMinor - floors.reduce((s, f) => s + f.minor, 0);
-    const byFraction = [...floors].sort((a, b) => (b.exact - b.minor) - (a.exact - a.minor));
-    for (const f of byFraction) {
-      if (remainder <= 0) break;
-      f.minor += 1;
-      remainder -= 1;
+    const parts = legs.map((l) => {
+      const numerator = BigInt(amountMinor) * BigInt(l.amountMinor);
+      const share = numerator / BigInt(total);
+      const remainder = numerator % BigInt(total);
+      return { account: l.account, minor: Number(share), remainder };
+    });
+    let leftover = amountMinor - parts.reduce((s, p) => s + p.minor, 0);
+    const byRemainder = [...parts].sort((a, b) => (a.remainder < b.remainder ? 1 : a.remainder > b.remainder ? -1 : 0));
+    for (const part of byRemainder) {
+      if (leftover <= 0) break;
+      part.minor += 1;
+      leftover -= 1;
     }
-    return floors.filter((f) => f.minor > 0).map((f) => ({ account: f.account, amountMinor: f.minor }));
+    return parts.filter((p) => p.minor > 0).map((p) => ({ account: p.account, amountMinor: p.minor }));
   }
 
   private async saleRows(businessId: string, sale: DbSale, inRange: (d: Date) => boolean): Promise<JournalRow[]> {
@@ -167,30 +180,45 @@ export class ExportService {
       rows.push({ date: iso, type: "cogs", ref: sale.receiptNo, account: ACCT.inventory, debitMinor: 0, creditMinor: cost, memo: `COGS ${sale.receiptNo}` });
     }
 
-    // Refunds are compensating records, never deletions: reverse the revenue
-    // share, credit the original tender accounts, and return restocked goods
-    // to inventory at cost. Refund records carry no timestamp, so the entries
-    // post on the sale's date (same documented limitation as movements).
+    // Refunds are compensating records, never deletions. The credit goes to
+    // the tenders the refund service actually paid out (its REFUNDED payment
+    // rows), not a re-derived split: a 3,000 cash + 2,000 card sale refunded
+    // 1,000 must credit 1,000 of cash, which proportional math would get wrong.
     const refunds = (await this.db.listRefundsBySale(sale.id, businessId)).filter(
       (r) => r.status === "APPROVED",
     );
-    for (const refund of refunds) {
-      if (refund.totalMinor <= 0) continue;
-      rows.push({ date: iso, type: "refund", ref: refund.id, account: ACCT.revenue, debitMinor: refund.totalMinor, creditMinor: 0, memo: `Refund ${refund.id}` });
-      for (const leg of this.allocate(refund.totalMinor, legs)) {
-        rows.push({ date: iso, type: "refund", ref: refund.id, account: leg.account, debitMinor: 0, creditMinor: leg.amountMinor, memo: `Refund ${refund.id}` });
+    const refundTotal = refunds.reduce((sum, r) => sum + r.totalMinor, 0);
+    if (refundTotal > 0) {
+      const iso = sale.createdAt.toISOString();
+      const memo = `Refund ${sale.receiptNo}`;
+      rows.push({ date: iso, type: "refund", ref: sale.receiptNo, account: ACCT.revenue, debitMinor: refundTotal, creditMinor: 0, memo });
+      const recorded = new Map<string, number>();
+      for (const payment of await this.db.listPaymentsBySale(sale.id, businessId)) {
+        if (payment.status !== "REFUNDED") continue;
+        const account = accountForMethod(payment.method);
+        recorded.set(account, (recorded.get(account) ?? 0) + payment.amountMinor);
       }
-      const refundItems = await this.db.listRefundItems(refund.id, businessId);
-      let restockCost = 0;
-      for (const item of refundItems) {
-        if (!item.restocked || item.qty <= 0) continue;
-        const product = await this.db.findProductById(item.productId, businessId);
-        if (!product) continue;
-        restockCost += product.costMinor * item.qty;
+      const recordedTotal = [...recorded.values()].reduce((s, v) => s + v, 0);
+      const credits = recordedTotal === refundTotal
+        ? [...recorded.entries()].map(([account, amountMinor]) => ({ account, amountMinor }))
+        : this.allocate(refundTotal, legs);
+      for (const credit of credits) {
+        rows.push({ date: iso, type: "refund", ref: sale.receiptNo, account: credit.account, debitMinor: 0, creditMinor: credit.amountMinor, memo });
       }
-      if (restockCost > 0) {
-        rows.push({ date: iso, type: "refund", ref: refund.id, account: ACCT.inventory, debitMinor: restockCost, creditMinor: 0, memo: `Restock ${refund.id}` });
-        rows.push({ date: iso, type: "refund", ref: refund.id, account: ACCT.cogs, debitMinor: 0, creditMinor: restockCost, memo: `Restock ${refund.id}` });
+      for (const refund of refunds) {
+        const refundItems = await this.db.listRefundItems(refund.id, businessId);
+        let restockCost = 0;
+        for (const item of refundItems) {
+          if (!item.restocked || item.qty <= 0) continue;
+          const product = await this.db.findProductById(item.productId, businessId);
+          if (!product) continue;
+          restockCost += product.costMinor * item.qty;
+        }
+        if (restockCost > 0) {
+          const restockMemo = `Restock ${refund.id}`;
+          rows.push({ date: iso, type: "refund", ref: refund.id, account: ACCT.inventory, debitMinor: restockCost, creditMinor: 0, memo: restockMemo });
+          rows.push({ date: iso, type: "refund", ref: refund.id, account: ACCT.cogs, debitMinor: 0, creditMinor: restockCost, memo: restockMemo });
+        }
       }
     }
     return rows;
@@ -202,10 +230,7 @@ export class ExportService {
     requestId: string,
     query: LedgerQuery,
   ): AsyncGenerator<JournalRow[]> {
-    const now = new Date();
-    const from = parseBound(query.dateFrom, now);
-    const to = parseBound(query.dateTo, now) ?? now;
-    if (from && from.getTime() > to.getTime()) throw new Error("VALIDATION");
+    const { from, to } = ledgerRange(query);
     const inRange = (d: Date): boolean =>
       (!from || d.getTime() >= from.getTime()) && d.getTime() <= to.getTime();
     let emitted = 0;
