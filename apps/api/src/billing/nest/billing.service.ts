@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { withScope } from "@pos/database";
 import type { DbInvoice, DbPort, DbWebhookEvent } from "../../common/db.port";
 import { PlanLimitError } from "../../common/plan-limit-error";
+import { isSettled } from "../../reports/aggregate";
 import { ENTERPRISE, isTrialExpired, monthPeriod, normalizeSubscriptionStatus, PLAN_ALLOWANCES, type PlanAllowances } from "../entitlements";
 
 export type CapKind = "users" | "products" | "registers" | "branches";
@@ -183,6 +184,38 @@ export class BillingService {
     return plan.allowances.features.includes(feature);
   }
 
+  // Batch variant: the whole write runs inside the same critical section as the
+  // capacity check, so an import that does not fit leaves nothing behind.
+  async withCapBatch<T>(
+    businessId: string,
+    actorId: string,
+    requestId: string,
+    kind: CapKind,
+    count: number,
+    write: () => Promise<T>,
+  ): Promise<T> {
+    return withBusinessLock(businessId, async () => {
+      const plan = await this.resolvePlan(businessId);
+      const limit = plan.allowances[kind];
+      const used = await this.liveCount(businessId, kind);
+      if (limit !== null && used + count > limit) {
+        await this.db.setCounter(businessId, `cap.${kind}`, "all-time", used);
+        await this.db.appendAudit({
+          businessId,
+          actorId,
+          action: "plan.limit",
+          entityType: "Business",
+          entityId: `${kind}:${used}+${count}/${limit}`,
+          requestId,
+        });
+        throw new PlanLimitError({ limit, used, plan: plan.key, resource: kind });
+      }
+      const out = await write();
+      await this.db.setCounter(businessId, `cap.${kind}`, "all-time", await this.liveCount(businessId, kind));
+      return out;
+    });
+  }
+
   async requireFeature(businessId: string, feature: string): Promise<void> {
     if (await this.checkFeature(businessId, feature)) return;
     const plan = await this.resolvePlan(businessId);
@@ -201,6 +234,8 @@ export class BillingService {
     await this.recordUsage(businessId, "sales.monthly", monthPeriod(now));
   }
 
+  // Plan changes share the business lock with rollover: a period reset that
+  // interleaved with a lazy invoice could bill the outgoing plan.
   async changePlan(
     businessId: string,
     actorId: string,
@@ -216,27 +251,29 @@ export class BillingService {
     if (!SUBSCRIPTION_STATUSES.has(status)) throw new Error("VALIDATION");
     const plan = await this.db.findPlanByKey(planKey);
     if (!plan || !plan.isActive) throw new Error("VALIDATION");
-    const existing = await this.db.getSubscription(businessId);
-    const periodEnd = new Date(Date.now() + 30 * 86400000);
-    const trialEndsAt = status === "trialing" ? new Date(Date.now() + 14 * 86400000) : null;
-    if (existing) {
-      await this.db.updateSubscription(existing.id, businessId, {
-        planId: plan.id, status, trialEndsAt, currentPeriodEnd: periodEnd,
+    return withBusinessLock(businessId, async () => {
+      const existing = await this.db.getSubscription(businessId);
+      const periodEnd = new Date(Date.now() + 30 * 86400000);
+      const trialEndsAt = status === "trialing" ? new Date(Date.now() + 14 * 86400000) : null;
+      if (existing) {
+        await this.db.updateSubscription(existing.id, businessId, {
+          planId: plan.id, status, trialEndsAt, currentPeriodEnd: periodEnd,
+        });
+      } else {
+        await this.db.upsertSubscription({
+          businessId, planId: plan.id, status, trialEndsAt, currentPeriodEnd: periodEnd,
+        });
+      }
+      await this.db.appendAudit({
+        businessId,
+        actorId,
+        action: "plan.change",
+        entityType: "Subscription",
+        entityId: planKey,
+        requestId,
       });
-    } else {
-      await this.db.upsertSubscription({
-        businessId, planId: plan.id, status, trialEndsAt, currentPeriodEnd: periodEnd,
-      });
-    }
-    await this.db.appendAudit({
-      businessId,
-      actorId,
-      action: "plan.change",
-      entityType: "Subscription",
-      entityId: `${planKey}`,
-      requestId,
+      return { key: planKey };
     });
-    return { key: planKey };
   }
 
   async rebuildCounters(businessId: string): Promise<{ checked: number; drifts: Array<{ key: string; snapshot: number; live: number }> }> {    withScope(businessId, {});
@@ -262,7 +299,9 @@ export class BillingService {
   private async monthlySaleCount(businessId: string, now: Date = new Date()): Promise<number> {
     const [year, month] = monthPeriod(now).split("-").map((n) => Number(n));
     return (await this.db.listSalesByBusiness(businessId)).filter((s) => {
-      if (s.status === "DRAFT" || s.status === "VOIDED") return false;
+      // Only settled sales count as usage: drafts, failed payments, and
+      // unresolved unknown payments are not sales yet.
+      if (!isSettled(s.status)) return false;
       const at = new Date(s.createdAt);
       return at.getUTCFullYear() === year && at.getUTCMonth() + 1 === month;
     }).length;
@@ -348,6 +387,9 @@ export class BillingService {
     });
   }
 
+  // Manual issue shares the business lock with the lazy rollover, and a period
+  // is only ever billed once: re-issuing an open or paid period returns the
+  // existing invoice instead of a duplicate. A voided period can be re-issued.
   async issueInvoice(
     businessId: string,
     actorId: string,
@@ -355,28 +397,40 @@ export class BillingService {
     input: { periodStart: Date; periodEnd: Date },
   ): Promise<{ id: string; amountMinor: number; status: string }> {
     withScope(businessId, {});
-    const sub = await this.db.getSubscription(businessId);
-    if (!sub) throw new Error("NOT_FOUND");
-    const plan = await this.allowancesOf(sub.planId);
-    const row = await this.db.createInvoice({
-      businessId,
-      subscriptionId: sub.id,
-      periodStart: input.periodStart,
-      periodEnd: input.periodEnd,
-      amountMinor: plan.monthlyMinor,
-      currency: "PHP",
-      status: "open",
-      paidAt: null,
+    if (input.periodStart.getTime() >= input.periodEnd.getTime()) throw new Error("VALIDATION");
+    return withBusinessLock(businessId, async () => {
+      const sub = await this.db.getSubscription(businessId);
+      if (!sub) throw new Error("NOT_FOUND");
+      const samePeriod = (await this.db.listInvoices(businessId)).find(
+        (i) =>
+          i.periodStart.getTime() === input.periodStart.getTime() &&
+          i.periodEnd.getTime() === input.periodEnd.getTime() &&
+          i.status !== "void",
+      );
+      if (samePeriod) {
+        return { id: samePeriod.id, amountMinor: samePeriod.amountMinor, status: samePeriod.status };
+      }
+      const plan = await this.allowancesOf(sub.planId);
+      const row = await this.db.createInvoice({
+        businessId,
+        subscriptionId: sub.id,
+        periodStart: input.periodStart,
+        periodEnd: input.periodEnd,
+        amountMinor: plan.monthlyMinor,
+        currency: "PHP",
+        status: "open",
+        paidAt: null,
+      });
+      await this.db.appendAudit({
+        businessId,
+        actorId,
+        action: "invoice.issued",
+        entityType: "Invoice",
+        entityId: row.id,
+        requestId,
+      });
+      return { id: row.id, amountMinor: row.amountMinor, status: row.status };
     });
-    await this.db.appendAudit({
-      businessId,
-      actorId,
-      action: "invoice.issued",
-      entityType: "Invoice",
-      entityId: row.id,
-      requestId,
-    });
-    return { id: row.id, amountMinor: row.amountMinor, status: row.status };
   }
 
   // Signature first (constant-time), then claim the event id before touching

@@ -490,6 +490,9 @@ export class SalesService {
           entityId: payment.id,
           requestId,
         });
+        // The sale reaches COMPLETED here, so this is where its monthly usage
+        // is metered (a sale completed directly never reaches this path).
+        await new BillingService(this.db).recordSale(businessId);
         return { sale: await this.embed(updated), payment: updatedPayment };
       }
       const failedPayment =

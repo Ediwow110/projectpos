@@ -41,6 +41,7 @@ CREATE TABLE "Invoice" (
   CONSTRAINT "Invoice_pkey" PRIMARY KEY ("id")
 );
 CREATE INDEX "Invoice_businessId_issuedAt_idx" ON "Invoice"("businessId", "issuedAt");
+CREATE UNIQUE INDEX "Invoice_subscriptionId_period_key" ON "Invoice"("subscriptionId", "periodStart", "periodEnd") WHERE "status" <> 'void';
 ALTER TABLE "Invoice" ADD CONSTRAINT "Invoice_businessId_fkey"
   FOREIGN KEY ("businessId") REFERENCES "Business"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "Invoice" ADD CONSTRAINT "Invoice_subscriptionId_fkey"

@@ -62,6 +62,73 @@ describe("phase10 cap enforcement under concurrency", () => {
   });
 });
 
+describe("phase10 batch caps and metering", () => {
+  it("imports nothing when the batch does not fit under the cap", async () => {
+    const { db, business, catalog } = await freeBusiness(98);
+    const batch = Array.from({ length: 5 }, (_, i) => ({ name: `Batch${i}`, priceMinor: 100 }));
+    await expect(catalog.importProducts(business.id, "u1", "r-import", { items: batch }))
+      .rejects.toThrow("PLAN_LIMIT");
+    // Atomic batch: a rejected import must not leave half a catalog behind.
+    expect(await db.listProducts(business.id)).toHaveLength(98);
+  });
+
+  it("imports a batch that exactly fills the remaining slots", async () => {
+    const { db, business, catalog } = await freeBusiness(98);
+    const batch = Array.from({ length: 2 }, (_, i) => ({ name: `Fits${i}`, priceMinor: 100 }));
+    await expect(catalog.importProducts(business.id, "u1", "r-import-ok", { items: batch }))
+      .resolves.toEqual({ imported: 2 });
+    expect(await db.listProducts(business.id)).toHaveLength(100);
+  });
+
+  it("counts only settled sales in monthly usage and meters reconciliation once", async () => {
+    const { SalesService } = await import("../../sales/nest/sales.service");
+    const db = createMemoryDb();
+    const business = await db.createBusiness({ name: "Meter Store", currency: "PHP" });
+    const billing = new BillingService(db);
+    const sales = new SalesService(db);
+    const product = await db.createProduct({
+      businessId: business.id, categoryId: null, name: "Cola", sku: null, barcode: null,
+      brand: null, unit: "pc", costMinor: 1000, priceMinor: 2500, taxRateBps: null,
+      reorderLevel: 0, trackInventory: false, isActive: true, imageUrl: null,
+    });
+    const now = new Date().toISOString();
+
+    // A draft and an abandoned unknown payment are not sales.
+    await db.createSale({
+      businessId: business.id, receiptNo: "DRAFT-1", status: "DRAFT",
+      customerId: null, customerName: null, notes: null, actorId: "u1", requestId: "r1",
+      currency: "PHP", registerId: null, branchId: null,
+      subtotalMinor: 2500, discountMinor: 0, taxMinor: 0, totalMinor: 2500,
+      paidMinor: 0, changeMinor: 0, idempotencyKey: null, createdAt: new Date(),
+    });
+    await db.createSale({
+      businessId: business.id, receiptNo: "UNK-1", status: "PAYMENT_UNKNOWN",
+      customerId: null, customerName: null, notes: null, actorId: "u1", requestId: "r2",
+      currency: "PHP", registerId: null, branchId: null,
+      subtotalMinor: 2500, discountMinor: 0, taxMinor: 0, totalMinor: 2500,
+      paidMinor: 0, changeMinor: 0, idempotencyKey: null, createdAt: new Date(),
+    });
+    expect((await billing.usageSummary(business.id)).salesMonthly).toBe(0);
+
+    const draft = await sales.createDraft(business.id, "u1", "r3", {
+      lines: [{ productId: product.id, qty: 1, lineDiscountMinor: 0 }], orderDiscountMinor: 0,
+    }, []);
+    await sales.completeSale(business.id, "u1", "r3", draft.id, {
+      payments: [{ method: "gcash", amountMinor: draft.totalMinor, providerRef: "unknown-reconcile" }],
+      key: "meter-reconcile", granted: [],
+    });
+    expect((await billing.usageSummary(business.id)).salesMonthly).toBe(0);
+
+    // Reconciling the unknown payment completes the sale and meters it once.
+    const payments = await db.listPaymentsBySale(draft.id, business.id);
+    const pending = payments.find((p) => p.status === "UNKNOWN")!;
+    await sales.reconcilePayment(business.id, "u1", "r4", pending.id, "SUCCEEDED", "reconcile-key-1");
+    expect((await billing.usageSummary(business.id)).salesMonthly).toBe(1);
+    expect(pending.id).toBeTruthy();
+    expect(now.length).toBeGreaterThan(0);
+  });
+});
+
 describe("phase10 invoice rollover", () => {
   it("issues every due period exactly once when reads race", async () => {
     const db = createMemoryDb();
@@ -89,5 +156,32 @@ describe("phase10 invoice rollover", () => {
     expect(periods.length).toBeGreaterThanOrEqual(3);
     const sub = await db.getSubscription(business.id);
     expect(sub!.currentPeriodEnd.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it("never issues the same period twice when manual issue races rollover", async () => {
+    const db = createMemoryDb();
+    const business = await db.createBusiness({ name: "Manual Store", currency: "PHP" });
+    const billing = new BillingService(db);
+    const periodEnd = new Date("2026-06-01T00:00:00.000Z");
+    await db.upsertSubscription({
+      businessId: business.id, planId: (await db.findPlanByKey("pro"))!.id, status: "active",
+      trialEndsAt: null, currentPeriodEnd: periodEnd,
+    });
+    // A platform invoice for a period that is already due must not collide with
+    // the lazy rollover for the same period.
+    const periodStart = new Date(periodEnd.getTime() - 30 * 86400000);
+    await Promise.allSettled([
+      billing.getSubscription(business.id),
+      billing.issueInvoice(business.id, "platform", "r-manual", { periodStart, periodEnd }),
+    ]);
+    const invoices = await db.listInvoices(business.id);
+    const periods = invoices.map((i) => `${i.periodStart.toISOString()}|${i.periodEnd.toISOString()}`);
+    // Whatever wins the race, a period may appear at most twice when a human
+    // deliberately issues the same window, and never from two rollover paths.
+    const rolloverInvoices = invoices.filter((i) => i.periodEnd.getTime() <= periodEnd.getTime());
+    expect(new Set(rolloverInvoices.map((i) => i.periodEnd.toISOString())).size).toBe(
+      rolloverInvoices.length,
+    );
+    expect(periods.length).toBeGreaterThan(0);
   });
 });

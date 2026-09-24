@@ -134,37 +134,37 @@ export class CatalogService {
     return next;
   }
 
-  async createProduct(
+  // Validation plus the row write, shared by the single-create path (which
+  // wraps it in a cap-locked section) and the import path (which wraps the whole
+  // batch in one capacity-checked section). Keeping the insert separate is what
+  // lets both paths hold exactly one business lock at a time.
+  private async insertProduct(
     businessId: string,
     actorId: string,
     requestId: string,
     input: ProductInput,
   ): Promise<DbProduct> {
-    withScope(businessId, {});
     const norm = normalizeProductInput({ name: input.name, sku: input.sku, barcode: input.barcode });
     if (!norm.name) throw new Error("VALIDATION");
     await assertCategoryBelongs(this.db, businessId, input.categoryId);
     await assertUniqueSku(this.db, businessId, norm.sku);
     await assertUniqueBarcode(this.db, businessId, norm.barcode);
-    const row = await new BillingService(this.db).withCap(
-      businessId, actorId, requestId, "products",
-      () => this.db.createProduct({
-        businessId,
-        categoryId: input.categoryId ?? null,
-        name: norm.name,
-        sku: norm.sku,
-        barcode: norm.barcode,
-        brand: input.brand?.trim() ? input.brand.trim() : null,
-        unit: input.unit?.trim() ? input.unit.trim() : "pc",
-        costMinor: input.costMinor ?? 0,
-        priceMinor: input.priceMinor,
-        taxRateBps: input.taxRateBps ?? null,
-        reorderLevel: input.reorderLevel ?? 0,
-        trackInventory: input.trackInventory ?? true,
-        isActive: input.isActive ?? true,
-        imageUrl: input.imageUrl?.trim() ? input.imageUrl.trim() : null,
-      }),
-    );
+    const row = await this.db.createProduct({
+      businessId,
+      categoryId: input.categoryId ?? null,
+      name: norm.name,
+      sku: norm.sku,
+      barcode: norm.barcode,
+      brand: input.brand?.trim() ? input.brand.trim() : null,
+      unit: input.unit?.trim() ? input.unit.trim() : "pc",
+      costMinor: input.costMinor ?? 0,
+      priceMinor: input.priceMinor,
+      taxRateBps: input.taxRateBps ?? null,
+      reorderLevel: input.reorderLevel ?? 0,
+      trackInventory: input.trackInventory ?? true,
+      isActive: input.isActive ?? true,
+      imageUrl: input.imageUrl?.trim() ? input.imageUrl.trim() : null,
+    });
     await this.db.appendAudit({
       businessId,
       actorId,
@@ -174,6 +174,19 @@ export class CatalogService {
       requestId,
     });
     return row;
+  }
+
+  async createProduct(
+    businessId: string,
+    actorId: string,
+    requestId: string,
+    input: ProductInput,
+  ): Promise<DbProduct> {
+    withScope(businessId, {});
+    return new BillingService(this.db).withCap(
+      businessId, actorId, requestId, "products",
+      () => this.insertProduct(businessId, actorId, requestId, input),
+    );
   }
 
   async getProduct(businessId: string, id: string, _granted: string[]): Promise<DbProduct> {
@@ -292,9 +305,16 @@ export class CatalogService {
       }
       if (p.item.categoryId) await assertCategoryBelongs(this.db, businessId, p.item.categoryId);
     }
-    for (const p of prepared) {
-      await this.createProduct(businessId, actorId, `${requestId}#${p.name}`, p.item);
-    }
+    // Whole-batch capacity check under one lock: an import that cannot fit
+    // creates nothing, instead of stopping halfway with partial state.
+    await new BillingService(this.db).withCapBatch(
+      businessId, actorId, requestId, "products", prepared.length,
+      async () => {
+        for (const p of prepared) {
+          await this.insertProduct(businessId, actorId, `${requestId}#${p.name}`, p.item);
+        }
+      },
+    );
     await this.db.appendAudit({
       businessId,
       actorId,
