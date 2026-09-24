@@ -1,4 +1,4 @@
-import type { AuditEntry, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbMembership, DbMovement, DbPort, DbProduct, DbResetToken, DbSession, DbStockTransfer, DbStockTransferLine, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense } from "./db.port";
+import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbDisplayToken, DbFeatureFlag, DbInvoice, DbMembership, DbMovement, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbResetToken, DbSession, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent } from "./db.port";
 
 let n = 0;
 const nid = (p: string): string => `${p}_${Date.now().toString(36)}_${(n += 1)}`;
@@ -31,6 +31,21 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const transfers = new Map<string, DbStockTransfer>();
   const transferLines = new Map<string, DbStockTransferLine>();
   const devices = new Map<string, DbDevice>();
+  const plans = new Map<string, DbPlan>([
+    ["plan_free", { id: "plan_free", key: "free", name: "Free", allowances: { users: 3, products: 100, registers: 1, branches: 0, features: [] }, pricesMinor: { monthlyMinor: 0 }, isActive: true }],
+    ["plan_basic", { id: "plan_basic", key: "basic", name: "Basic", allowances: { users: 10, products: 2000, registers: 3, branches: 0, features: ["reports", "customers", "receipt_customization"] }, pricesMinor: { monthlyMinor: 49000 }, isActive: true }],
+    ["plan_pro", { id: "plan_pro", key: "pro", name: "Pro", allowances: { users: 50, products: 20000, registers: 10, branches: 0, features: ["reports", "customers", "receipt_customization", "advanced_reports", "employee_permissions", "expenses", "advanced_analytics"] }, pricesMinor: { monthlyMinor: 149000 }, isActive: true }],
+    ["plan_enterprise", { id: "plan_enterprise", key: "enterprise", name: "Enterprise", allowances: { users: null, products: null, registers: null, branches: null, features: ["reports", "customers", "receipt_customization", "advanced_reports", "employee_permissions", "expenses", "advanced_analytics", "branches", "central_management", "api", "advanced_permissions", "integrations"] }, pricesMinor: { monthlyMinor: 0 }, isActive: true }],
+  ]);
+  const subscriptions = new Map<string, DbSubscription>();
+  const invoices = new Map<string, DbInvoice>();
+  const counters = new Map<string, DbUsageCounter>();
+  const flags = new Map<string, DbFeatureFlag>();
+  const webhookEvents = new Map<string, DbWebhookEvent>();
+  const apiTokens = new Map<string, DbApiToken>();
+  const printers = new Map<string, DbPrinter>();
+  const printJobs = new Map<string, DbPrintJob>();
+  const displayTokens = new Map<string, DbDisplayToken>();
   const audit: AuditEntry[] = [];
 
   const balanceKey = (businessId: string, branchId: string | null | undefined, productId: string): string =>
@@ -63,6 +78,9 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     },
     async listMembershipsByUser(userId) {
       return [...memberships.values()].filter((m) => m.userId === userId);
+    },
+    async listMembershipsByBusiness(businessId) {
+      return [...memberships.values()].filter((m) => m.businessId === businessId);
     },
     async findMembership(userId, businessId) {
       for (const m of memberships.values()) {
@@ -483,6 +501,145 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
           sessions.set(s.id, { ...s, revokedAt: new Date() });
         }
       }
+    },
+    async listPlans() {
+      return [...plans.values()];
+    },
+    async findPlanByKey(key) {
+      for (const p of plans.values()) if (p.key === key) return p;
+      return null;
+    },
+    async getSubscription(businessId) {
+      for (const s of subscriptions.values()) if (s.businessId === businessId) return s;
+      return null;
+    },
+    async upsertSubscription(s) {
+      let existing = null;
+      for (const cur of subscriptions.values()) {
+        if (cur.businessId === s.businessId) { existing = cur; break; }
+      }
+      const row = existing
+        ? { ...existing, ...s, id: existing.id, providerRef: s.providerRef ?? existing.providerRef }
+        : { ...s, id: nid("sub"), providerRef: s.providerRef ?? null };
+      subscriptions.set(row.id, row);
+      return row;
+    },
+    async updateSubscription(id, businessId, patch) {
+      const s = subscriptions.get(id) ?? null;
+      if (!s || s.businessId !== businessId) return null;
+      const next = { ...s, ...patch };
+      subscriptions.set(id, next);
+      return next;
+    },
+    async listInvoices(businessId) {
+      return [...invoices.values()].filter((i) => i.businessId === businessId);
+    },
+    async createInvoice(i) {
+      const row = { ...i, id: nid("inv"), issuedAt: new Date() };
+      invoices.set(row.id, row);
+      return row;
+    },
+    async updateInvoice(id, businessId, patch) {
+      const i = invoices.get(id) ?? null;
+      if (!i || i.businessId !== businessId) return null;
+      const next = { ...i, ...patch };
+      invoices.set(id, next);
+      return next;
+    },
+    async listCounters(businessId) {
+      return [...counters.values()].filter((c) => c.businessId === businessId);
+    },
+    async setCounter(businessId, key, period, count) {
+      const id = `${businessId}:${key}:${period}`;
+      const row = { id, businessId, key, period, count };
+      counters.set(id, row);
+      return row;
+    },
+    async getFlag(businessId, key) {
+      for (const f of flags.values()) {
+        if ((f.businessId ?? null) === (businessId ?? null) && f.key === key) return f;
+      }
+      return null;
+    },
+    async setFlag(f) {
+      const { businessId, key, enabled } = f;
+      let existing = null;
+      for (const cur of flags.values()) {
+        if ((cur.businessId ?? null) === (businessId ?? null) && cur.key === key) { existing = cur; break; }
+      }
+      const row = existing ? { ...existing, enabled } : { id: nid("flag"), businessId, key, enabled };
+      flags.set(row.id, row);
+      return row;
+    },
+    async findWebhookEvent(provider, eventId) {
+      for (const e of webhookEvents.values()) {
+        if (e.provider === provider && e.eventId === eventId) return e;
+      }
+      return null;
+    },
+    async createWebhookEvent(e) {
+      const row = { ...e, id: nid("whev"), receivedAt: new Date() };
+      webhookEvents.set(row.id, row);
+      return row;
+    },
+    async createApiToken(t) {
+      const row = { ...t, id: nid("tok") };
+      apiTokens.set(row.id, row);
+      return row;
+    },
+    async listApiTokens(businessId) {
+      return [...apiTokens.values()].filter((t) => t.businessId === businessId);
+    },
+    async findApiTokenByPrefix(prefix) {
+      for (const t of apiTokens.values()) if (t.prefix === prefix) return t;
+      return null;
+    },
+    async revokeApiToken(id, businessId, revokedAt) {
+      const t = apiTokens.get(id) ?? null;
+      if (!t || t.businessId !== businessId) return null;
+      const next = { ...t, revokedAt };
+      apiTokens.set(id, next);
+      return next;
+    },
+    async createPrinter(p) {
+      const row = { ...p, id: nid("prt") };
+      printers.set(row.id, row);
+      return row;
+    },
+    async listPrinters(businessId) {
+      return [...printers.values()].filter((p) => p.businessId === businessId);
+    },
+    async findPrinterById(id, businessId) {
+      const p = printers.get(id) ?? null;
+      if (!p || p.businessId !== businessId) return null;
+      return p;
+    },
+    async createPrintJob(j) {
+      const row = { ...j, id: nid("pjob") };
+      printJobs.set(row.id, row);
+      return row;
+    },
+    async listPrintJobs(businessId, status) {
+      return [...printJobs.values()].filter(
+        (j) => j.businessId === businessId && (status === undefined || j.status === status),
+      );
+    },
+    async updatePrintJob(id, businessId, patch, expectedStatus) {
+      const j = printJobs.get(id) ?? null;
+      if (!j || j.businessId !== businessId) return null;
+      if (expectedStatus !== undefined && j.status !== expectedStatus) return null;
+      const next = { ...j, ...patch };
+      printJobs.set(id, next);
+      return next;
+    },
+    async createDisplayToken(t) {
+      const row = { ...t, id: nid("dtok") };
+      displayTokens.set(row.id, row);
+      return row;
+    },
+    async findDisplayToken(tokenHash) {
+      for (const t of displayTokens.values()) if (t.tokenHash === tokenHash) return t;
+      return null;
     },
   };
 }

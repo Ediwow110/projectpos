@@ -18,6 +18,102 @@ export interface DbMembership {
   role: string;
 }
 
+export interface DbPlan {
+  id: string;
+  key: string;
+  name: string;
+  allowances: { users: number | null; products: number | null; registers: number | null; branches: number | null; features: string[] };
+  pricesMinor: { monthlyMinor: number };
+  isActive: boolean;
+}
+
+export interface DbSubscription {
+  id: string;
+  businessId: string;
+  planId: string;
+  status: string;
+  trialEndsAt: Date | null;
+  currentPeriodEnd: Date;
+  providerRef: string | null;
+}
+
+export interface DbInvoice {
+  id: string;
+  businessId: string;
+  subscriptionId: string;
+  periodStart: Date;
+  periodEnd: Date;
+  amountMinor: number;
+  currency: string;
+  status: string;
+  issuedAt: Date;
+  paidAt: Date | null;
+}
+
+export interface DbUsageCounter {
+  id: string;
+  businessId: string;
+  key: string;
+  period: string;
+  count: number;
+}
+
+export interface DbFeatureFlag {
+  id: string;
+  businessId: string | null;
+  key: string;
+  enabled: boolean;
+}
+
+export interface DbWebhookEvent {
+  id: string;
+  businessId: string | null;
+  provider: string;
+  eventId: string;
+  type: string;
+  payload: unknown;
+  status: string;
+}
+
+export interface DbApiToken {
+  id: string;
+  businessId: string;
+  name: string;
+  tokenHash: string;
+  prefix: string;
+  scopes: string[];
+  revokedAt: Date | null;
+  expiresAt: Date | null;
+}
+
+export interface DbPrinter {
+  id: string;
+  businessId: string;
+  branchId: string | null;
+  name: string;
+  width: string;
+  connection: string;
+}
+
+export interface DbPrintJob {
+  id: string;
+  businessId: string;
+  printerId: string;
+  receiptNo: string | null;
+  layout: string;
+  status: string;
+  payload: string;
+  attempts: number;
+}
+
+export interface DbDisplayToken {
+  id: string;
+  businessId: string;
+  registerId: string;
+  tokenHash: string;
+  expiresAt: Date;
+}
+
 export interface DbSession {
   id: string;
   userId: string;
@@ -398,4 +494,31 @@ export interface DbPort {
   findDeviceById(id: string, businessId: string): Promise<DbDevice | null>;
   revokeDevice(id: string, businessId: string, revokedAt: Date): Promise<DbDevice | null>;
   revokeSessionsByDevice(businessId: string, deviceId: string): Promise<void>;
+  listMembershipsByBusiness(businessId: string): Promise<DbMembership[]>;
+  listPlans(): Promise<DbPlan[]>;
+  findPlanByKey(key: string): Promise<DbPlan | null>;
+  getSubscription(businessId: string): Promise<DbSubscription | null>;
+  upsertSubscription(s: Omit<DbSubscription, "id" | "providerRef"> & { providerRef?: string | null }): Promise<DbSubscription>;
+  updateSubscription(id: string, businessId: string, patch: Partial<Omit<DbSubscription, "id" | "businessId">>): Promise<DbSubscription | null>;
+  listInvoices(businessId: string): Promise<DbInvoice[]>;
+  createInvoice(i: Omit<DbInvoice, "id" | "issuedAt">): Promise<DbInvoice>;
+  updateInvoice(id: string, businessId: string, patch: Partial<Omit<DbInvoice, "id" | "businessId">>): Promise<DbInvoice | null>;
+  listCounters(businessId: string): Promise<DbUsageCounter[]>;
+  setCounter(businessId: string, key: string, period: string, count: number): Promise<DbUsageCounter>;
+  getFlag(businessId: string | null, key: string): Promise<DbFeatureFlag | null>;
+  setFlag(f: { businessId: string | null; key: string; enabled: boolean }): Promise<DbFeatureFlag>;
+  findWebhookEvent(provider: string, eventId: string): Promise<DbWebhookEvent | null>;
+  createWebhookEvent(e: Omit<DbWebhookEvent, "id" | "receivedAt">): Promise<DbWebhookEvent>;
+  createApiToken(t: Omit<DbApiToken, "id">): Promise<DbApiToken>;
+  listApiTokens(businessId: string): Promise<DbApiToken[]>;
+  findApiTokenByPrefix(prefix: string): Promise<DbApiToken | null>;
+  revokeApiToken(id: string, businessId: string, revokedAt: Date): Promise<DbApiToken | null>;
+  createPrinter(p: Omit<DbPrinter, "id">): Promise<DbPrinter>;
+  listPrinters(businessId: string): Promise<DbPrinter[]>;
+  findPrinterById(id: string, businessId: string): Promise<DbPrinter | null>;
+  createPrintJob(j: Omit<DbPrintJob, "id">): Promise<DbPrintJob>;
+  listPrintJobs(businessId: string, status?: string): Promise<DbPrintJob[]>;
+  updatePrintJob(id: string, businessId: string, patch: Partial<Omit<DbPrintJob, "id" | "businessId">>, expectedStatus?: string): Promise<DbPrintJob | null>;
+  createDisplayToken(t: Omit<DbDisplayToken, "id">): Promise<DbDisplayToken>;
+  findDisplayToken(tokenHash: string): Promise<DbDisplayToken | null>;
 }
