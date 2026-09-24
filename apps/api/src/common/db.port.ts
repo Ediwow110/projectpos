@@ -223,6 +223,9 @@ export interface DbSale {
   // Phase 9a: register's branch, else explicit input, else null.
   branchId?: string | null;
   createdAt: Date;
+  // Set when the sale reaches COMPLETED; usage metering buckets by this, not by
+  // when the draft was created.
+  completedAt?: Date | null;
 }
 
 export interface DbSaleItem {

@@ -285,7 +285,7 @@ export class SalesService {
       }
       const unknown = input.payments.some((p) => (p.providerRef ?? "").startsWith("unknown-"));
       if (unknown) {
-        for (const p of input.payments) {
+        for (const [legIndex, p] of input.payments.entries()) {
           await this.db.createPayment({
             businessId,
             saleId: sale.id,
@@ -293,7 +293,7 @@ export class SalesService {
             amountMinor: p.amountMinor,
             status: "UNKNOWN",
             providerRef: p.providerRef ?? null,
-            idempotencyKey: `${input.key}:${p.method}`,
+            idempotencyKey: `${input.key}:${p.method}:${legIndex}`,
           });
         }
         const fromStatus = sale.status === "DRAFT" ? "PENDING_PAYMENT" : sale.status;
@@ -326,7 +326,9 @@ export class SalesService {
         return { sale: await this.embed(updated), replayed: false };
       }
         await this.applyStockEffect(businessId, actorId, requestId, sale.id, items, sale.branchId ?? null);
-      for (const p of input.payments) {
+      // A split may repeat a method (two cash legs), so the idempotency key
+      // carries the leg index, not just the method.
+      for (const [legIndex, p] of input.payments.entries()) {
         await this.db.createPayment({
           businessId,
           saleId: sale.id,
@@ -334,16 +336,19 @@ export class SalesService {
           amountMinor: p.amountMinor,
           status: "SUCCEEDED",
           providerRef: p.providerRef ?? null,
-          idempotencyKey: `${input.key}:${p.method}`,
+          idempotencyKey: `${input.key}:${p.method}:${legIndex}`,
         });
       }
       if (registerId && cashMinor > 0) {
-        await this.shifts.postCashSale(businessId, actorId, requestId, registerId, sale.id, cashMinor);
+        // Cash in the drawer is what the customer handed over minus the change
+        // returned: posting the gross would overstate expected cash at close.
+        await this.shifts.postCashSale(businessId, actorId, requestId, registerId, sale.id, Math.max(0, cashMinor - change));
       }
       let status = sale.status;
       if (status === "DRAFT") status = transitionSale(status, "PENDING_PAYMENT");
       status = transitionSale(status, "PAID");
       status = transitionSale(status, "COMPLETED");
+      const completedAt = new Date();
       const updated =
         (await this.db.updateSale(sale.id, businessId, {
           status,
@@ -354,6 +359,7 @@ export class SalesService {
           changeMinor: change,
           idempotencyKey: input.key,
           branchId,
+          completedAt,
           ...(input.registerId !== undefined ? { registerId: input.registerId } : {}),
         })) ?? sale;
       await this.db.claimIdempotency({
@@ -457,49 +463,10 @@ export class SalesService {
       if (payment.status !== "UNKNOWN") throw new Error("SALE_INVALID_TRANSITION");
       const sale = await this.requireSale(businessId, payment.saleId);
       if (sale.status !== "PAYMENT_UNKNOWN") throw new Error("SALE_INVALID_TRANSITION");
-      let status = transitionSale(sale.status, "RECONCILED");
-      status = transitionSale(status, "PENDING_PAYMENT");
-      if (outcome === "SUCCEEDED") {
-        const items = await this.db.listSaleItems(sale.id, businessId);
-        if (sale.registerId && CASH_METHODS.has(payment.method)) {
-          const open = await this.db.findOpenShiftByRegister(businessId, sale.registerId);
-          if (!open) throw new Error("SHIFT_NO_OPEN_SHIFT");
-        }
-      await this.applyStockEffect(businessId, actorId, requestId, sale.id, items, sale.branchId ?? null);
-        const updatedPayment =
-          (await this.db.updatePayment(payment.id, businessId, { status: "SUCCEEDED" })) ?? payment;
-        if (sale.registerId && CASH_METHODS.has(payment.method)) {
-          await this.shifts.postCashSale(businessId, actorId, requestId, sale.registerId, sale.id, payment.amountMinor);
-        }
-        status = transitionSale(status, "PAID");
-        status = transitionSale(status, "COMPLETED");
-        const updated =
-          (await this.db.updateSale(sale.id, businessId, { status })) ?? sale;
-        await this.db.claimIdempotency({
-          businessId,
-          key,
-          commandType: "payment.reconcile",
-          fingerprint,
-          resultId: payment.id,
-        });
-        await this.db.appendAudit({
-          businessId,
-          actorId,
-          action: "payment.reconcile",
-          entityType: "Payment",
-          entityId: payment.id,
-          requestId,
-        });
-        // The sale reaches COMPLETED here, so this is where its monthly usage
-        // is metered (a sale completed directly never reaches this path).
-        await new BillingService(this.db).recordSale(businessId);
-        return { sale: await this.embed(updated), payment: updatedPayment };
-      }
-      const failedPayment =
-        (await this.db.updatePayment(payment.id, businessId, { status: "FAILED" })) ?? payment;
-      status = transitionSale(status, "PAYMENT_FAILED");
-      const updated =
-        (await this.db.updateSale(sale.id, businessId, { status })) ?? sale;
+      const updatedPayment =
+        (await this.db.updatePayment(payment.id, businessId, {
+          status: outcome === "SUCCEEDED" ? "SUCCEEDED" : "FAILED",
+        })) ?? payment;
       await this.db.claimIdempotency({
         businessId,
         key,
@@ -515,7 +482,53 @@ export class SalesService {
         entityId: payment.id,
         requestId,
       });
-      return { sale: await this.embed(updated), payment: failedPayment };
+
+      // A split sale is only settled when every leg is: one settled leg must not
+      // complete the sale (or apply stock) while another payment is unresolved.
+      const legs = await this.db.listPaymentsBySale(sale.id, businessId);
+      const unresolved = legs.some((p) => p.status === "UNKNOWN");
+      if (unresolved) {
+        return { sale: await this.embed(sale), payment: updatedPayment };
+      }
+      const succeeded = legs
+        .filter((p) => p.status === "SUCCEEDED")
+        .reduce((sum, p) => sum + p.amountMinor, 0);
+      const anyFailed = legs.some((p) => p.status === "FAILED");
+
+      if (anyFailed || succeeded < sale.totalMinor) {
+        // Follow the established chain: a resolved payment reconciles the sale,
+        // then the shortfall moves it to PAYMENT_FAILED.
+        const failed = transitionSale(transitionSale(sale.status, "RECONCILED"), "PENDING_PAYMENT");
+        const failedSale =
+          (await this.db.updateSale(sale.id, businessId, {
+            status: transitionSale(failed, "PAYMENT_FAILED"),
+          })) ?? sale;
+        return { sale: await this.embed(failedSale), payment: updatedPayment };
+      }
+
+      const items = await this.db.listSaleItems(sale.id, businessId);
+      await this.applyStockEffect(businessId, actorId, requestId, sale.id, items, sale.branchId ?? null);
+      const cashMinor = legs
+        .filter((p) => p.status === "SUCCEEDED" && CASH_METHODS.has(p.method))
+        .reduce((sum, p) => sum + p.amountMinor, 0);
+      if (sale.registerId && cashMinor > 0) {
+        const open = await this.db.findOpenShiftByRegister(businessId, sale.registerId);
+        if (!open) throw new Error("SHIFT_NO_OPEN_SHIFT");
+        await this.shifts.postCashSale(
+          businessId, actorId, requestId, sale.registerId, sale.id, Math.max(0, cashMinor - sale.changeMinor),
+        );
+      }
+      let status = transitionSale(sale.status, "RECONCILED");
+      status = transitionSale(status, "PENDING_PAYMENT");
+      status = transitionSale(status, "PAID");
+      status = transitionSale(status, "COMPLETED");
+      const completedAt = new Date();
+      const updated =
+        (await this.db.updateSale(sale.id, businessId, { status, completedAt })) ?? sale;
+      // The sale reaches COMPLETED here, so this is where its monthly usage
+      // is metered (a sale completed directly never reaches this path).
+      await new BillingService(this.db).recordSale(businessId, completedAt);
+      return { sale: await this.embed(updated), payment: updatedPayment };
     });
   }
 

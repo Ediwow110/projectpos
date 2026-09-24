@@ -89,8 +89,17 @@ export class BillingService {
       return this.downgradeToFree(businessId, sub, "canceled", "subscription.expired", `expiry-${sub.id}`);
     }
     const status = normalizeSubscriptionStatus(sub.status);
-    if (status === "canceled" || status === "paused" || status === "free") {
+    // Allowlist, not denylist: only a known-good status grants the paid plan
+    // (an unexpired trial, an active subscription, or past_due as a grace
+    // period). Anything else — unknown provider vocabulary, a typo,
+    // "incomplete" — fails closed to Free rather than silently keeping paid
+    // entitlements.
+    if (status !== "active" && status !== "past_due" && status !== "trialing") {
       return this.downgradeToFree(businessId, sub, "canceled", "subscription.canceled", `status-${sub.id}`);
+    }
+    const plan = (await this.db.listPlans()).find((p) => p.id === sub.planId) ?? null;
+    if (!plan || !plan.isActive) {
+      return this.downgradeToFree(businessId, sub, "canceled", "subscription.canceled", `plan-${sub.id}`);
     }
     return this.allowancesOf(sub.planId);
   }
@@ -216,9 +225,19 @@ export class BillingService {
     });
   }
 
-  async requireFeature(businessId: string, feature: string): Promise<void> {
+  // Entitlement breaches are auditable, not just enforced: a denied feature is
+  // exactly the kind of event an owner support review needs to see.
+  async requireFeature(businessId: string, feature: string, actorId = "system", requestId = "feature-gate"): Promise<void> {
     if (await this.checkFeature(businessId, feature)) return;
     const plan = await this.resolvePlan(businessId);
+    await this.db.appendAudit({
+      businessId,
+      actorId,
+      action: "plan.limit",
+      entityType: "Feature",
+      entityId: feature,
+      requestId,
+    });
     throw new PlanLimitError({ feature, plan: plan.key });
   }
 
@@ -230,8 +249,8 @@ export class BillingService {
     await this.db.setCounter(businessId, key, period, (existing?.count ?? 0) + 1);
   }
 
-  async recordSale(businessId: string, now: Date = new Date()): Promise<void> {
-    await this.recordUsage(businessId, "sales.monthly", monthPeriod(now));
+  async recordSale(businessId: string, completedAt: Date = new Date()): Promise<void> {
+    await this.recordUsage(businessId, "sales.monthly", monthPeriod(completedAt));
   }
 
   // Plan changes share the business lock with rollover: a period reset that
@@ -302,7 +321,10 @@ export class BillingService {
       // Only settled sales count as usage: drafts, failed payments, and
       // unresolved unknown payments are not sales yet.
       if (!isSettled(s.status)) return false;
-      const at = new Date(s.createdAt);
+      // Bucket by settlement time, matching recordSale, so the live count and
+      // the counter never disagree for a sale drafted in one month and paid in
+      // the next.
+      const at = new Date(s.completedAt ?? s.createdAt);
       return at.getUTCFullYear() === year && at.getUTCMonth() + 1 === month;
     }).length;
   }

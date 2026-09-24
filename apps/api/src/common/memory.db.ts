@@ -229,7 +229,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       return [...balances.values()].filter((b) => b.businessId === businessId);
     },
     async createSale(s) {
-      const row = { ...s, id: nid("sale") };
+      const row = { completedAt: null, ...s, id: nid("sale") };
       sales.set(row.id, row);
       return row;
     },

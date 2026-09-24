@@ -129,6 +129,30 @@ describe("phase10 subscription status handling", () => {
     const grace = await subscription("past_due", "pro", null);
     expect((await grace.billing.resolvePlan(grace.business.id)).key).toBe("pro");
   });
+
+  it("fails closed on unknown statuses and dangling plans", async () => {
+    for (const status of ["incomplete", "unpaid", "TYPO", "pro"]) {
+      const { db, business, billing } = await subscription(status, "pro", null);
+      expect((await billing.resolvePlan(business.id)).key).toBe("free");
+      await expect(billing.requireFeature(business.id, "reports")).rejects.toThrow("PLAN_LIMIT");
+    }
+    const { db, business, billing } = await subscription("active", "pro", null);
+    // A subscription pointing at a plan row that no longer exists must not
+    // silently resolve to the widest allowance set.
+    await db.updateSubscription(
+      (await db.getSubscription(business.id))!.id, business.id, { planId: "plan_missing" },
+    );
+    expect((await billing.resolvePlan(business.id)).key).toBe("free");
+  });
+
+  it("audits feature-gate breaches", async () => {
+    const { db, business, billing } = await subscription("active", "free", null);
+    await expect(billing.requireFeature(business.id, "reports", "u1", "r1")).rejects.toThrow("PLAN_LIMIT");
+    const breach = (await db.listAudit()).find((a) => a.action === "plan.limit");
+    expect(breach).toBeDefined();
+    expect(breach!.entityType).toBe("Feature");
+    expect(breach!.entityId).toBe("reports");
+  });
 });
 
 describe("phase10 trial on registration", () => {
