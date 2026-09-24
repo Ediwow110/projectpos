@@ -653,4 +653,18 @@ export class BillingService {
     });
     return { key: row.key, enabled: row.enabled };
   }
+
+  // FR-PLATFORM-01: every action taken under a support grant is audited with
+  // the grant id and its declared purpose, next to the action's own row.
+  async auditGrantUse(businessId: string | null, grantId: string, purpose: string, requestId: string): Promise<void> {
+    await this.db.appendAudit({
+      businessId,
+      actorId: "platform",
+      action: "platform.grant.use",
+      entityType: "PlatformSupportGrant",
+      entityId: grantId,
+      requestId,
+      reason: purpose,
+    });
+  }
 }

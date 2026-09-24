@@ -36,6 +36,7 @@ import { ShiftService } from "./shifts/nest/shift.service";
 import { CustomerService } from "./customers/nest/customer.service";
 import { ExpenseService } from "./expenses/nest/expense.service";
 import { MembershipService } from "./memberships/nest/membership.service";
+import { SupportGrantService } from "./billing/nest/support-grant.service";
 import { RefundService } from "./refunds/nest/refund.service";
 import { ReportingService } from "./reports/nest/reporting.service";
 import { BranchService } from "./branches/nest/branch.service";
@@ -68,6 +69,7 @@ import { createMemoryDb } from "./common/memory.db";
     CustomerService,
     ExpenseService,
     MembershipService,
+    SupportGrantService,
     RefundService,
     ReportingService,
     BranchService,
@@ -144,6 +146,11 @@ export async function createTestApp(): Promise<INestApplication> {
       {
         provide: MembershipService,
         useFactory: (d: DbPort) => new MembershipService(d),
+        inject: ["DbPort"],
+      },
+      {
+        provide: SupportGrantService,
+        useFactory: (d: DbPort) => new SupportGrantService(d),
         inject: ["DbPort"],
       },
       {
