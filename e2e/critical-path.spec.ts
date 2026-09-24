@@ -25,7 +25,7 @@ test("critical path: register to reconciled close", async ({ page, request }) =>
     businessName: "E2E Store",
   });
 
-  const { headers } = await apiAuthedContext(request, email, password);
+  const { headers } = await apiAuthedContext(request, email, password, page);
   await seedProduct(request, headers, { name: "E2E Coke", priceMinor: 2500, stock: 50 });
 
   // Register + open shift via UI.

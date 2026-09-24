@@ -168,7 +168,7 @@ test("an offline cash sale still syncs after a downgrade to Free", async ({ page
     headers: { "x-platform-key": PLATFORM_KEY },
     data: { planKey: "free" },
   });
-  const { headers } = await apiAuthedContext(request, email, "correct-horse-12");
+  const { headers } = await apiAuthedContext(request, email, "correct-horse-12", page);
   await seedProduct(request, headers, { name: "Free Cola", priceMinor: 2500, stock: 20 });
 
   await page.goto("/pos");
@@ -204,7 +204,7 @@ test("the customer display shows the last completed sale", async ({ page, reques
     password,
     businessName: `Display Store ${stamp}`,
   });
-  const { headers } = await apiAuthedContext(request, email, password);
+  const { headers } = await apiAuthedContext(request, email, password, page);
   await seedProduct(request, headers, { name: "Display Cola", priceMinor: 2500, stock: 10 });
 
   const register = await request.post(`${API}/api/v1/registers`, {

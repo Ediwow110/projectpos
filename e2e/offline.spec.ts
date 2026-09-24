@@ -26,7 +26,7 @@ test("offline cash sale syncs on reconnect", async ({ page, context, request }) 
     businessName: "E2E Offline Store",
   });
 
-  const { headers } = await apiAuthedContext(request, email, password);
+  const { headers } = await apiAuthedContext(request, email, password, page);
   await seedProduct(request, headers, { name: "Offline Cola", priceMinor: 2500, stock: 50 });
 
   // Online: search fills the catalog cache, add to cart.
@@ -78,7 +78,7 @@ test("oversell conflict lands in review and resolves", async ({ page, context, r
     businessName: "E2E Conflict Store",
   });
 
-  const { headers } = await apiAuthedContext(request, email, password);
+  const { headers } = await apiAuthedContext(request, email, password, page);
   const productId = await seedProduct(request, headers, { name: "Last Unit", priceMinor: 1000, stock: 1 });
 
   await page.goto("/pos");

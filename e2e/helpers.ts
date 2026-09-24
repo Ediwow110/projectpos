@@ -19,7 +19,28 @@ export async function apiAuthedContext(
   request: APIRequestContext,
   email: string,
   password: string,
+  page?: Page,
 ): Promise<{ headers: Record<string, string>; csrf: string }> {
+  // Prefer the browser's live session: the API login endpoint allows 5 attempts
+  // per minute per IP, and a full parallel e2e run would otherwise spend that
+  // budget on redundant logins instead of on the flows under test.
+  if (page) {
+    // Reuse the browser's live session: the API login endpoint allows 5 attempts
+    // per minute per IP, and a full parallel e2e run would otherwise spend that
+    // budget on redundant logins. GET /auth/csrf issues a fresh pos_csrf cookie
+    // and returns the matching token, so both sides are set from that one value
+    // (the standalone request context does not persist response cookies).
+    const cookies = await page.context().cookies(API);
+    const session = cookies.find((c) => c.name === "pos_session")?.value ?? "";
+    expect(session).not.toBe("");
+    const csrfRes = await request.get(`${API}/api/v1/auth/csrf`, {
+      headers: { Cookie: `pos_session=${session}` },
+    });
+    expect(csrfRes.ok()).toBe(true);
+    const csrf = ((await csrfRes.json()) as { csrfToken: string }).csrfToken;
+    const cookie = `pos_session=${session}; pos_csrf=${csrf}`;
+    return { headers: { Cookie: cookie, "X-CSRF-Token": csrf }, csrf };
+  }
   const login = await request.post(`${API}/api/v1/auth/login`, { data: { email, password } });
   expect(login.ok()).toBe(true);
   const cookies = login.headersArray().filter((h) => h.name.toLowerCase() === "set-cookie").map((h) => h.value.split(";")[0]);
