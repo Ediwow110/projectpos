@@ -4,6 +4,9 @@ export const SENSITIVE_ACTIONS = [
   "discount.override",
   "sale.void",
   "sale.refund",
+  // Phase 11 (FR-REFUND-02): refunds above the configured threshold are
+  // approver-restricted; the role seed grants this to owners only.
+  "refund.override",
   "inventory.adjust",
   "user.manage",
   "settings.write",

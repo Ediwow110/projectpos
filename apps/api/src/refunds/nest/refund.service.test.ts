@@ -74,3 +74,33 @@ describe("phase6 refund service", () => {
     expect((await db.listRefundsBySale(saleId, "b1")).length).toBe(1);
   });
 });
+
+describe("phase11 refund approval threshold", () => {
+  it("requires refund.override above the configured threshold", async () => {
+    const { db, svc, saleId } = await setupRefund();
+    const settings = await db.getSettings("b1");
+    await db.saveSettings("b1", { ...settings, refundApprovalThresholdMinor: 3000 });
+    const items = await db.listSaleItems(saleId, "b1");
+    // 2 x 25.00 = 50.00, above the 30.00 threshold: the approver needs refund.override.
+    await expect(
+      svc.approveRefund("b1", "u2", "r-th1", saleId, {
+        items: [{ saleItemId: items[0].id, qty: 2 }], key: "ref-th-1",
+      }, ALL, "manager"),
+    ).rejects.toThrow("FORBIDDEN");
+    const ok = await svc.approveRefund("b1", "u2", "r-th2", saleId, {
+      items: [{ saleItemId: items[0].id, qty: 2 }], key: "ref-th-2",
+    }, [...ALL, "refund.override"], "manager");
+    expect(ok.refund.status).toBe("APPROVED");
+  });
+
+  it("leaves refunds at or below the threshold unchanged", async () => {
+    const { db, svc, saleId } = await setupRefund();
+    const settings = await db.getSettings("b1");
+    await db.saveSettings("b1", { ...settings, refundApprovalThresholdMinor: 10000 });
+    const items = await db.listSaleItems(saleId, "b1");
+    const out = await svc.approveRefund("b1", "u2", "r-th3", saleId, {
+      items: [{ saleItemId: items[0].id, qty: 1 }], key: "ref-th-3",
+    }, ALL, "manager");
+    expect(out.refund.status).toBe("APPROVED");
+  });
+});

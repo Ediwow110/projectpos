@@ -102,6 +102,12 @@ export class RefundService {
         return { line, qty: req.qty, amount: lineRefundAmount(line.lineTotalMinor, line.qty, req.qty) };
       });
       const totalMinor = resolved.reduce((sum, r) => sum + r.amount, 0);
+      // FR-REFUND-02: approval follows role AND threshold policy. Above the
+      // configured threshold only a role holding refund.override may approve.
+      const threshold = (await this.db.getSettings(businessId))["refundApprovalThresholdMinor"];
+      if (typeof threshold === "number" && totalMinor > threshold && !granted.includes("refund.override")) {
+        throw new Error("FORBIDDEN");
+      }
       // Allocate across original SUCCEEDED payments in order.
       const succeeded = (await this.db.listPaymentsBySale(sale.id, businessId)).filter(
         (p) => p.status === "SUCCEEDED",

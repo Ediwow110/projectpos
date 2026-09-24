@@ -6,7 +6,9 @@ export const ALL_PERMISSIONS: readonly string[] = SENSITIVE_ACTIONS as unknown a
 
 export const ROLE_SEED: Record<"owner" | "manager" | "cashier" | "inventory", string[]> = {
   owner: [...ALL_PERMISSIONS],
-  manager: ALL_PERMISSIONS.filter((p) => p !== "user.manage" && p !== "settings.write"),
+  // refund.override is owner-only: refunds above the configured threshold
+  // need an owner decision (FR-REFUND-02).
+  manager: ALL_PERMISSIONS.filter((p) => p !== "user.manage" && p !== "settings.write" && p !== "refund.override"),
   cashier: ALL_PERMISSIONS.filter(
     (p) =>
       p !== "price.edit" &&
@@ -14,6 +16,7 @@ export const ROLE_SEED: Record<"owner" | "manager" | "cashier" | "inventory", st
       p !== "discount.override" &&
       p !== "sale.refund" &&
       p !== "sale.void" &&
+      p !== "refund.override" &&
       p !== "inventory.adjust" &&
       p !== "shift.close.override" &&
       p !== "settings.write" &&
@@ -21,7 +24,7 @@ export const ROLE_SEED: Record<"owner" | "manager" | "cashier" | "inventory", st
       p !== "export.run",
   ),
   inventory: ALL_PERMISSIONS.filter(
-    (p) => p !== "sale.refund" && p !== "user.manage" && p !== "settings.write",
+    (p) => p !== "sale.refund" && p !== "refund.override" && p !== "user.manage" && p !== "settings.write",
   ),
 };
 
