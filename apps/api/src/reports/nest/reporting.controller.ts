@@ -10,6 +10,8 @@ import { getCorrelationId } from "../../correlation";
 import { fail, statusFor } from "../../common/http-helpers";
 import { AuthService } from "../../auth/nest/auth.service";
 import { ReportingService } from "./reporting.service";
+import { ApiTokenGuard } from "../../apitokens/api-token.guard";
+import { Scopes } from "../../apitokens/scopes.decorator";
 
 function rid(req: Request): string {
   const headers: Record<string, string | undefined> = {};
@@ -20,7 +22,7 @@ function rid(req: Request): string {
 }
 
 @Controller("api/v1")
-@UseGuards(SessionGuard)
+@UseGuards(ApiTokenGuard, SessionGuard)
 export class ReportingController {
   constructor(
     @Inject(ReportingService) private readonly reports: ReportingService,
@@ -60,6 +62,7 @@ export class ReportingController {
   }
 
   @Get("reports/sales")
+  @Scopes("reports:read")
   async sales(
     @Req() req: Request,
     @Res() res: Response,
@@ -272,3 +275,4 @@ export class ReportingController {
     }
   }
 }
+

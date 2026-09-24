@@ -16,6 +16,8 @@ import { createRateLimiter } from "../../common/rate-limit";
 import { redactProductForRole } from "../search";
 import { AuthService } from "../../auth/nest/auth.service";
 import { CatalogService } from "./catalog.service";
+import { ApiTokenGuard } from "../../apitokens/api-token.guard";
+import { Scopes } from "../../apitokens/scopes.decorator";
 
 const importLimiter = createRateLimiter(5, 60_000);
 
@@ -28,7 +30,7 @@ function rid(req: Request): string {
 }
 
 @Controller("api/v1")
-@UseGuards(SessionGuard)
+@UseGuards(ApiTokenGuard, SessionGuard)
 export class CatalogController {
   constructor(
     @Inject(CatalogService) private readonly catalog: CatalogService,
@@ -107,6 +109,7 @@ export class CatalogController {
   }
 
   @Get("products")
+  @Scopes("catalog:read")
   async searchProducts(
     @Req() req: Request,
     @Res() res: Response,
@@ -258,3 +261,4 @@ export class CatalogController {
     }
   }
 }
+

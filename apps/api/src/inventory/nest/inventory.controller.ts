@@ -11,6 +11,8 @@ import { getCorrelationId } from "../../correlation";
 import { fail, statusFor } from "../../common/http-helpers";
 import { AuthService } from "../../auth/nest/auth.service";
 import { InventoryService } from "./inventory.service";
+import { ApiTokenGuard } from "../../apitokens/api-token.guard";
+import { Scopes } from "../../apitokens/scopes.decorator";
 import type { MovementType } from "../signs";
 
 function rid(req: Request): string {
@@ -22,7 +24,7 @@ function rid(req: Request): string {
 }
 
 @Controller("api/v1")
-@UseGuards(SessionGuard)
+@UseGuards(ApiTokenGuard, SessionGuard)
 export class InventoryController {
   constructor(
     @Inject(InventoryService) private readonly inventory: InventoryService,
@@ -73,6 +75,7 @@ export class InventoryController {
   }
 
   @Get("inventory/balances")
+  @Scopes("inventory:read")
   async getBalances(
     @Req() req: Request,
     @Res() res: Response,
@@ -136,3 +139,4 @@ export class InventoryController {
     }
   }
 }
+

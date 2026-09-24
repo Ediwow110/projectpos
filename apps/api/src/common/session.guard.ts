@@ -9,6 +9,9 @@ export class SessionGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest();
+    // Phase 10: ApiTokenGuard may have already authenticated a Bearer token
+    // and set req.auth. Honor it instead of demanding a session cookie.
+    if ((req.auth as { via?: string } | undefined)?.via === "api-token") return true;
     const token: string | undefined = req.cookies?.pos_session;
     if (!token) {
       req.authError = "TENANT_REQUIRED";

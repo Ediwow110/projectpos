@@ -16,6 +16,8 @@ import { toCsv } from "../../common/csv";
 import { createRateLimiter } from "../../common/rate-limit";
 import { AuthService } from "../../auth/nest/auth.service";
 import { SalesService } from "./sales.service";
+import { ApiTokenGuard } from "../../apitokens/api-token.guard";
+import { Scopes } from "../../apitokens/scopes.decorator";
 
 function rid(req: Request): string {
   const headers: Record<string, string | undefined> = {};
@@ -41,7 +43,7 @@ const SELL_ROLES = new Set(["owner", "manager", "cashier"]);
 const moneyLimiter = createRateLimiter(1000, 60_000);
 
 @Controller("api/v1")
-@UseGuards(SessionGuard)
+@UseGuards(ApiTokenGuard, SessionGuard)
 export class SalesController {
   constructor(
     @Inject(SalesService) private readonly sales: SalesService,
@@ -149,6 +151,7 @@ export class SalesController {
   }
 
   @Get("sales")
+  @Scopes("sales:read")
   async listSales(
     @Req() req: Request,
     @Res() res: Response,
