@@ -403,4 +403,41 @@ export class SalesController {
       fail(res, statusFor(code), code, "Receipt fetch failed", req);
     }
   }
+
+  // FR-RECEIPT-01: downloadable receipt (plain text).
+  @Get("receipts/:saleId/download")
+  async receiptDownload(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Param("saleId") saleId: string,
+  ): Promise<void> {
+    try {
+      const { filename, text } = await this.sales.downloadReceipt(req.auth!.businessId, saleId);
+      res.status(200)
+        .set("Content-Type", "text/plain; charset=utf-8")
+        .set("Content-Disposition", `attachment; filename="${filename}"`)
+        .send(text);
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "VALIDATION";
+      fail(res, statusFor(code), code, "Receipt download failed", req);
+    }
+  }
+
+  // FR-RECEIPT-01: mint a short-lived public share link for the receipt.
+  @Post("receipts/:saleId/share")
+  @UseGuards(CsrfGuard)
+  async receiptShare(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Param("saleId") saleId: string,
+  ): Promise<void> {
+    try {
+      const auth = req.auth!;
+      const out = await this.sales.createShareToken(auth.businessId, auth.userId, rid(req), saleId);
+      res.status(201).json(out);
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "VALIDATION";
+      fail(res, statusFor(code), code, "Receipt share failed", req);
+    }
+  }
 }

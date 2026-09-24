@@ -29,6 +29,7 @@ import { ExportController } from "./exports/nest/export.controller";
 import { PrintController } from "./print/nest/print.controller";
 import { DisplayController } from "./display/nest/display.controller";
 import { MembershipController } from "./memberships/nest/membership.controller";
+import { ReceiptShareController } from "./sales/nest/receipt-share.controller";
 import { CatalogService } from "./catalog/nest/catalog.service";
 import { InventoryService } from "./inventory/nest/inventory.service";
 import { SalesService } from "./sales/nest/sales.service";
@@ -57,7 +58,7 @@ import type { DbPort } from "./common/db.port";
 import { createMemoryDb } from "./common/memory.db";
 
 @Module({
-    controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController],
+    controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController],
   providers: [
     AuthService,
     TenantService,
@@ -99,7 +100,7 @@ export class AppModule implements NestModule {
 export async function createTestApp(): Promise<INestApplication> {
   const db: DbPort = createMemoryDb();
   const moduleRef = await Test.createTestingModule({
-  controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController],
+  controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController],
     providers: [
       { provide: "DbPort", useValue: db },
       { provide: AuthService, useFactory: (d: DbPort) => new AuthService(d), inject: ["DbPort"] },

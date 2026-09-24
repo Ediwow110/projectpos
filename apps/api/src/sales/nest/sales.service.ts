@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import { createHash, randomBytes } from "node:crypto";
 import { withScope } from "@pos/database";
 import type {
   DbCustomer,
@@ -16,6 +17,7 @@ import { BillingService } from "../../billing/nest/billing.service";
 import { fingerprintPayload } from "../idempotency";
 import { queryProviderStatus, type ProviderVerdict } from "../../payments/provider";
 import { resolvePaymentMethods } from "../payment-methods";
+import { renderReceiptText } from "../receipt-text";
 import { ShiftService } from "../../shifts/nest/shift.service";
 
 export interface DraftLineInput {
@@ -778,6 +780,62 @@ export class SalesService {
       paidMinor: sale.paidMinor,
       changeMinor: sale.changeMinor,
       payments: full.payments,
+    };
+  }
+
+  // FR-RECEIPT-01: the downloadable form of the receipt.
+  async downloadReceipt(businessId: string, saleId: string): Promise<{ filename: string; text: string }> {
+    const receipt = await this.receiptData(businessId, saleId);
+    const text = renderReceiptText({
+      receiptNo: receipt.receiptNo,
+      status: receipt.status,
+      items: receipt.items.map((i) => ({ name: i.name, qty: i.qty, lineTotalMinor: i.lineTotalMinor })),
+      subtotalMinor: receipt.subtotalMinor,
+      discountMinor: receipt.discountMinor,
+      taxMinor: receipt.taxMinor,
+      totalMinor: receipt.totalMinor,
+      paidMinor: receipt.paidMinor,
+      changeMinor: receipt.changeMinor,
+      tenders: receipt.payments.map((p) => ({ method: p.method, amountMinor: p.amountMinor })),
+    });
+    return { filename: `receipt-${receipt.receiptNo}.txt`, text };
+  }
+
+  // FR-RECEIPT-01: a share link renders the receipt readable without a
+  // session; the token is single-secret, hashed at rest, and short-lived.
+  async createShareToken(businessId: string, actorId: string, requestId: string, saleId: string): Promise<{ token: string; expiresAt: Date }> {
+    await this.receiptData(businessId, saleId);
+    const token = randomBytes(16).toString("hex");
+    const expiresAt = new Date(Date.now() + 24 * 3600 * 1000);
+    await this.db.createReceiptShare({ businessId, saleId, tokenHash: createHash("sha256").update(token).digest("hex"), expiresAt });
+    await this.db.appendAudit({
+      businessId, actorId, action: "receipt.shared", entityType: "Sale", entityId: saleId, requestId,
+    });
+    return { token, expiresAt };
+  }
+
+  async sharedReceipt(token: string): Promise<{
+    receiptNo: string; status: string;
+    items: Array<{ name: string; qty: number; lineTotalMinor: number }>;
+    subtotalMinor: number; discountMinor: number; taxMinor: number;
+    totalMinor: number; paidMinor: number; changeMinor: number;
+    tenders: Array<{ method: string; amountMinor: number }>;
+  }> {
+    if (typeof token !== "string" || token.length < 16) throw new Error("NOT_FOUND");
+    const share = await this.db.findValidReceiptShare(createHash("sha256").update(token).digest("hex"));
+    if (!share) throw new Error("NOT_FOUND");
+    const receipt = await this.receiptData(share.businessId, share.saleId);
+    return {
+      receiptNo: receipt.receiptNo,
+      status: receipt.status,
+      items: receipt.items.map((i) => ({ name: i.name, qty: i.qty, lineTotalMinor: i.lineTotalMinor })),
+      subtotalMinor: receipt.subtotalMinor,
+      discountMinor: receipt.discountMinor,
+      taxMinor: receipt.taxMinor,
+      totalMinor: receipt.totalMinor,
+      paidMinor: receipt.paidMinor,
+      changeMinor: receipt.changeMinor,
+      tenders: receipt.payments.map((p) => ({ method: p.method, amountMinor: p.amountMinor })),
     };
   }
 }

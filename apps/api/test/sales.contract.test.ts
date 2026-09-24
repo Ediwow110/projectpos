@@ -216,3 +216,35 @@ describe("phase11 configured payment methods", () => {
     expect(accepted.status).toBe(201);
   });
 });
+
+describe("phase11 receipt download and share", () => {
+  it("downloads a receipt as text and shares it without a session", async () => {
+    const draft = await request(app.getHttpServer()).post("/api/v1/sales/drafts")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ lines: [{ productId, qty: 1 }] });
+    const complete = await request(app.getHttpServer()).post("/api/v1/sales/complete")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .set("Idempotency-Key", `share-${Date.now()}`)
+      .send({ saleId: draft.body.id, payments: [{ method: "cash", amountMinor: draft.body.totalMinor }] });
+    const saleId = complete.body.id as string;
+
+    const download = await request(app.getHttpServer())
+      .get(`/api/v1/receipts/${saleId}/download`).set("Cookie", cookie);
+    expect(download.status).toBe(200);
+    expect(download.headers["content-type"]).toContain("text/plain");
+    expect(download.headers["content-disposition"]).toContain("attachment");
+    expect(download.text).toContain(`Receipt ${complete.body.receiptNo}`);
+
+    const share = await request(app.getHttpServer())
+      .post(`/api/v1/receipts/${saleId}/share`).set("Cookie", cookie).set("X-CSRF-Token", csrf);
+    expect(share.status).toBe(201);
+    const shared = await request(app.getHttpServer())
+      .get(`/api/v1/receipts/shared/${share.body.token}`);
+    expect(shared.status).toBe(200);
+    expect(shared.body.receiptNo).toBe(complete.body.receiptNo);
+    expect(shared.body.tenders).toHaveLength(1);
+
+    const bad = await request(app.getHttpServer()).get("/api/v1/receipts/shared/ffffffffffffffffffffffffffffffff");
+    expect(bad.status).toBe(404);
+  });
+});
