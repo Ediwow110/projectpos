@@ -428,7 +428,9 @@ export class SalesService {
     withScope(businessId, {});
     const payment = await this.db.findPaymentById(paymentId, businessId);
     if (!payment) throw new Error("NOT_FOUND");
-    return { status: await queryProviderStatus(payment.method, payment.providerRef, provider) };
+    return {
+      status: await queryProviderStatus(payment.method, payment.providerRef, provider, businessId),
+    };
   }
 
   async reconcilePayment(

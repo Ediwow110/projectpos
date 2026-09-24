@@ -26,4 +26,13 @@ describe("phase10 provider adapters", () => {
     clearTestDoubleOutcomes();
     expect(await queryProviderStatus("gcash", "ref-succeed", "test-double")).toBe("UNKNOWN");
   });
+  it("keeps scripted outcomes tenant-scoped", async () => {
+    clearTestDoubleOutcomes();
+    setTestDoubleOutcome("shared-ref", "SUCCEEDED", "biz-1");
+    // The same provider reference belonging to another tenant must stay
+    // UNKNOWN: one business cannot script another business's settlement.
+    expect(await queryProviderStatus("gcash", "shared-ref", "test-double", "biz-1")).toBe("SUCCEEDED");
+    expect(await queryProviderStatus("gcash", "shared-ref", "test-double", "biz-2")).toBe("UNKNOWN");
+    clearTestDoubleOutcomes();
+  });
 });

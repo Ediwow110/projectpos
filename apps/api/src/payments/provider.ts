@@ -10,10 +10,21 @@ export type ProviderName = "manual" | "test-double";
 
 const ELECTRONIC_METHODS = new Set(["gcash", "maya", "card"]);
 
+// Scripted outcomes are keyed by tenant as well as provider reference: payment
+// references are business-scoped, so one tenant's script must never settle
+// another tenant's payment.
 const testDoubleOutcomes = new Map<string, ProviderVerdict>();
 
-export function setTestDoubleOutcome(providerRef: string, outcome: ProviderVerdict): void {
-  testDoubleOutcomes.set(providerRef, outcome);
+function outcomeKey(businessId: string | null, providerRef: string): string {
+  return `${businessId ?? ""}:${providerRef}`;
+}
+
+export function setTestDoubleOutcome(
+  providerRef: string,
+  outcome: ProviderVerdict,
+  businessId: string | null = null,
+): void {
+  testDoubleOutcomes.set(outcomeKey(businessId, providerRef), outcome);
 }
 
 export function clearTestDoubleOutcomes(): void {
@@ -24,12 +35,16 @@ async function manualAdapter(): Promise<ProviderVerdict> {
   return "UNKNOWN";
 }
 
-async function testDoubleAdapter(providerRef: string): Promise<ProviderVerdict> {
-  return testDoubleOutcomes.get(providerRef) ?? "UNKNOWN";
+async function testDoubleAdapter(providerRef: string, businessId: string | null): Promise<ProviderVerdict> {
+  return (
+    testDoubleOutcomes.get(outcomeKey(businessId, providerRef)) ??
+    testDoubleOutcomes.get(outcomeKey(null, providerRef)) ??
+    "UNKNOWN"
+  );
 }
 
-const ADAPTERS: Record<ProviderName, (providerRef: string) => Promise<ProviderVerdict>> = {
-  manual: manualAdapter,
+const ADAPTERS: Record<ProviderName, (providerRef: string, businessId: string | null) => Promise<ProviderVerdict>> = {
+  manual: async () => manualAdapter(),
   "test-double": testDoubleAdapter,
 };
 
@@ -41,8 +56,9 @@ export async function queryProviderStatus(
   method: string,
   providerRef: string | null,
   provider: string = "manual",
+  businessId: string | null = null,
 ): Promise<ProviderVerdict> {
   if (!ELECTRONIC_METHODS.has(method)) return "UNKNOWN";
   if (!providerRef) return "UNKNOWN";
-  return ADAPTERS[resolveAdapter(provider)](providerRef);
+  return ADAPTERS[resolveAdapter(provider)](providerRef, businessId);
 }
