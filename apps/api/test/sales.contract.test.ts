@@ -7,6 +7,7 @@ let app: INestApplication;
 let cookie: string;
 let csrf: string;
 let productId: string;
+let businessId: string;
 
 function jar(h: unknown): string {
   const arr = Array.isArray(h) ? h : [String(h ?? "")];
@@ -21,6 +22,8 @@ beforeAll(async () => {
   });
   cookie = jar(reg.headers["set-cookie"]);
   csrf = reg.body.csrfToken;
+  const me = await request(app.getHttpServer()).get("/api/v1/me").set("Cookie", cookie);
+  businessId = me.body.businessId as string;
   const prod = await request(app.getHttpServer()).post("/api/v1/products")
     .set("Cookie", cookie).set("X-CSRF-Token", csrf)
     .send({ name: "Coke", priceMinor: 2500, costMinor: 1000 });
@@ -137,12 +140,13 @@ describe("phase4 sales permissions, unknown, and cross-tenant", () => {
       .set("Cookie", cookie);
     expect(before.status).toBe(200);
     expect(before.body.status).toBe("UNKNOWN");
-    setTestDoubleOutcome("unknown-td-1", "SUCCEEDED");
+    setTestDoubleOutcome("unknown-td-1", "SUCCEEDED", businessId);
     try {
       const after = await request(app.getHttpServer())
         .get(`/api/v1/payments/${paymentId}/provider-status?provider=test-double`)
         .set("Cookie", cookie);
-      expect(after.body.status).toBe("SUCCEEDED");      const rec = await request(app.getHttpServer()).post(`/api/v1/payments/${paymentId}/reconcile`)
+      expect(after.body.status).toBe("SUCCEEDED");
+      const rec = await request(app.getHttpServer()).post(`/api/v1/payments/${paymentId}/reconcile`)
         .set("Cookie", cookie).set("X-CSRF-Token", csrf)
         .set("Idempotency-Key", "rec-key-provider")
         .send({ outcome: "SUCCEEDED" });

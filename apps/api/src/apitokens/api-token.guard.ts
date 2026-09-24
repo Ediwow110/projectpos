@@ -60,8 +60,17 @@ export class ApiTokenGuard implements CanActivate {
     }
     try {
       await new BillingService(this.db).requireFeature(row.businessId, "api");
-    } catch {
-      req.authError = "PLAN_LIMIT";
+    } catch (e) {
+      // Keep the machine fields so the caller sees which entitlement is
+      // missing, exactly like a session-authenticated 402. The error envelope
+      // carries string arrays, so shape them here.
+      const err = e as { message?: string; fields?: Record<string, string> };
+      req.authError = err.message === "PLAN_LIMIT" ? "PLAN_LIMIT" : "FORBIDDEN";
+      if (err.message === "PLAN_LIMIT" && err.fields) {
+        req.authErrorFields = Object.fromEntries(
+          Object.entries(err.fields).map(([k, v]) => [k, [v]]),
+        );
+      }
       return false;
     }
     const now = Date.now();

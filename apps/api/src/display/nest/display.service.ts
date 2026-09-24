@@ -52,12 +52,10 @@ export class DisplayService {
     const business = await this.db.findBusinessById(businessId);
     if (!business) throw new Error("NOT_FOUND");
     const open = await this.db.findOpenShiftByRegister(businessId, registerId);
-    const shifts = await this.db.listShiftsByBusiness(businessId);
-    const anyForRegister = shifts.some((s) => s.registerId === registerId);
-    const completed = (await this.db.listSalesByBusiness(businessId))
-      .filter((s) => s.status === "COMPLETED" && s.registerId === registerId)
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-    const last = completed[0] ?? null;
+    const anyForRegister = await this.db.hasShiftForRegister(businessId, registerId);
+    // Two indexed point reads, not a full-table scan: this endpoint is polled
+    // every few seconds by every customer display.
+    const last = await this.db.findLatestSaleForRegister(businessId, registerId);
     return {
       businessName: business.name,
       shiftStatus: open ? "OPEN" : anyForRegister ? "CLOSED" : "NONE",

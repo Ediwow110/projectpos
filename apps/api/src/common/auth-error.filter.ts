@@ -19,9 +19,10 @@ export class AuthErrorFilter implements ExceptionFilter {
     const correlationId =
       (req as Request & { correlationId?: string }).correlationId ?? getCorrelationId(headers);
     if (authError) {
+      const fields = (req as Request & { authErrorFields?: Record<string, string[]> }).authErrorFields;
       res
         .status(statusFor(authError, 401))
-        .json(error(authError, authError, correlationId));
+        .json(error(authError, authError, correlationId, fields));
       return;
     }
     if (exception instanceof Error) {

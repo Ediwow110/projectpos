@@ -12,18 +12,20 @@ const ELECTRONIC_METHODS = new Set(["gcash", "maya", "card"]);
 
 // Scripted outcomes are keyed by tenant as well as provider reference: payment
 // references are business-scoped, so one tenant's script must never settle
-// another tenant's payment.
+// another tenant's payment. A script without a businessId is rejected outright
+// rather than applied globally.
 const testDoubleOutcomes = new Map<string, ProviderVerdict>();
 
 function outcomeKey(businessId: string | null, providerRef: string): string {
-  return `${businessId ?? ""}:${providerRef}`;
+  return `${businessId}:${providerRef}`;
 }
 
 export function setTestDoubleOutcome(
   providerRef: string,
   outcome: ProviderVerdict,
-  businessId: string | null = null,
+  businessId: string,
 ): void {
+  if (businessId.length === 0) throw new Error("VALIDATION");
   testDoubleOutcomes.set(outcomeKey(businessId, providerRef), outcome);
 }
 
@@ -36,11 +38,8 @@ async function manualAdapter(): Promise<ProviderVerdict> {
 }
 
 async function testDoubleAdapter(providerRef: string, businessId: string | null): Promise<ProviderVerdict> {
-  return (
-    testDoubleOutcomes.get(outcomeKey(businessId, providerRef)) ??
-    testDoubleOutcomes.get(outcomeKey(null, providerRef)) ??
-    "UNKNOWN"
-  );
+  if (businessId === null) return "UNKNOWN";
+  return testDoubleOutcomes.get(outcomeKey(businessId, providerRef)) ?? "UNKNOWN";
 }
 
 const ADAPTERS: Record<ProviderName, (providerRef: string, businessId: string | null) => Promise<ProviderVerdict>> = {

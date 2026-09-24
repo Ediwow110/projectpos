@@ -16,6 +16,11 @@ export interface EscposInput {
   businessName: string;
   receiptNo: string;
   lines: EscposLine[];
+  // Printed when non-zero so a discounted or taxed sale reconciles line by
+  // line instead of showing a total that does not add up.
+  subtotalMinor?: number;
+  discountMinor?: number;
+  taxMinor?: number;
   totalMinor: number;
   paidMinor: number;
   changeMinor: number;
@@ -66,6 +71,15 @@ export function escposReceipt(input: EscposInput): number[] {
   for (const l of input.lines) {
     const amount = l.lineTotalMinor ?? l.priceMinor * l.qty;
     out.push(...row(`${l.name} x${l.qty}`, moneyText(amount), width));
+  }
+  if (input.subtotalMinor !== undefined && input.subtotalMinor > 0) {
+    out.push(...row("SUBTOTAL", moneyText(input.subtotalMinor), width));
+  }
+  if (input.discountMinor !== undefined && input.discountMinor > 0) {
+    out.push(...row("DISCOUNT", `-${moneyText(input.discountMinor)}`, width));
+  }
+  if (input.taxMinor !== undefined && input.taxMinor > 0) {
+    out.push(...row("TAX", moneyText(input.taxMinor), width));
   }
   out.push(...row("TOTAL", moneyText(input.totalMinor), width));
   out.push(...row("PAID", moneyText(input.paidMinor), width));

@@ -84,4 +84,49 @@ describe("phase10 public api tokens HTTP contract", () => {
       .set("Authorization", "Bearer pos_deadbeef_deadbeefdeadbeefdeadbeef");
     expect(garbage.status).toBe(401);
   });
+  it("stops honoring an existing token after a downgrade, with machine fields", async () => {
+    const reg = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
+      ownerName: "Downgrade Owner", email: "downgrade-token@example.com",
+      password: "correct-horse-12", businessName: "Downgrade Store",
+    });
+    const downCookie = jar(reg.headers["set-cookie"]);
+    const downCsrf = reg.body.csrfToken;
+    const me = await request(app.getHttpServer()).get("/api/v1/me").set("Cookie", downCookie);
+    await request(app.getHttpServer())
+      .patch(`/api/v1/platform/businesses/${me.body.businessId}/plan`)
+      .set("x-platform-key", "test-platform-key")
+      .send({ planKey: "enterprise" })
+      .expect(200);
+    const minted = await request(app.getHttpServer()).post("/api/v1/apitokens")
+      .set("Cookie", downCookie).set("X-CSRF-Token", downCsrf)
+      .send({ name: "survivor", scopes: ["sales:read"] });
+    const downSecret = minted.body.secret as string;
+    await request(app.getHttpServer())
+      .get("/api/v1/sales?limit=1")
+      .set("Authorization", `Bearer ${downSecret}`)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .patch(`/api/v1/platform/businesses/${me.body.businessId}/plan`)
+      .set("x-platform-key", "test-platform-key")
+      .send({ planKey: "pro" })
+      .expect(200);
+
+    const after = await request(app.getHttpServer())
+      .get("/api/v1/sales?limit=1")
+      .set("Authorization", `Bearer ${downSecret}`);
+    expect(after.status).toBe(402);
+    expect(after.body.code).toBe("PLAN_LIMIT");
+    expect(after.body.fields).toEqual({ feature: ["api"], plan: ["pro"] });
+  });
+  it("manages a global flag through the platform key", async () => {
+    const set = await request(app.getHttpServer()).patch("/api/v1/platform/flags")
+      .set("x-platform-key", "test-platform-key")
+      .send({ key: "reports", enabled: false });
+    expect(set.status).toBe(200);
+    expect(set.body).toEqual({ key: "reports", enabled: false });
+    const denied = await request(app.getHttpServer()).patch("/api/v1/platform/flags")
+      .send({ key: "reports", enabled: true });
+    expect(denied.status).toBe(403);
+  });
 });

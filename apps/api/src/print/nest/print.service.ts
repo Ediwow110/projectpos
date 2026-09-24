@@ -8,6 +8,28 @@ import { escposReceipt } from "../escpos";
 const PRINT_MANAGERS = new Set(["owner", "manager"]);
 const SELL_ROLES = new Set(["owner", "manager", "cashier"]);
 
+export interface PrinterView {
+  id: string;
+  businessId: string;
+  branchId: string | null;
+  name: string;
+  width: string;
+  connection: string;
+}
+
+// Responses never carry agentTokenHash: it is verifier material, not a field
+// any client needs.
+function printerView(row: DbPrinter): PrinterView {
+  return {
+    id: row.id,
+    businessId: row.businessId,
+    branchId: row.branchId,
+    name: row.name,
+    width: row.width,
+    connection: row.connection,
+  };
+}
+
 export interface PrinterInput {
   name: string;
   branchId?: string;
@@ -25,7 +47,7 @@ export class PrintService {
     requestId: string,
     input: PrinterInput,
     role: string,
-  ): Promise<DbPrinter & { agentToken: string }> {
+  ): Promise<PrinterView & { agentToken: string }> {
     withScope(businessId, {});
     if (!PRINT_MANAGERS.has(role)) throw new Error("FORBIDDEN");
     const name = input.name.trim();
@@ -47,12 +69,12 @@ export class PrintService {
       entityType: "PrinterDevice", entityId: row.id, requestId,
     });
     // The agent token is returned exactly once; only its hash is stored.
-    return { ...row, agentToken };
+    return { ...printerView(row), agentToken };
   }
 
-  async listPrinters(businessId: string): Promise<DbPrinter[]> {
+  async listPrinters(businessId: string): Promise<PrinterView[]> {
     withScope(businessId, {});
-    return this.db.listPrinters(businessId);
+    return (await this.db.listPrinters(businessId)).map(printerView);
   }
 
   async queueJob(
@@ -89,6 +111,9 @@ export class PrintService {
           lineTotalMinor: Math.max(0, l.qty * l.priceMinor - l.lineDiscountMinor),
         })),
         totalMinor: receipt.totalMinor,
+        subtotalMinor: receipt.subtotalMinor,
+        discountMinor: receipt.discountMinor,
+        taxMinor: receipt.taxMinor,
         paidMinor: receipt.paidMinor,
         changeMinor: receipt.changeMinor,
         layout,

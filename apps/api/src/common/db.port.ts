@@ -502,6 +502,10 @@ export interface DbPort {
   revokeDevice(id: string, businessId: string, revokedAt: Date): Promise<DbDevice | null>;
   revokeSessionsByDevice(businessId: string, deviceId: string): Promise<void>;
   listMembershipsByBusiness(businessId: string): Promise<DbMembership[]>;
+  // Cheap reads for high-frequency polling: latest row for a register instead
+  // of loading the tenant's whole sales/shift history on every tick.
+  findLatestSaleForRegister(businessId: string, registerId: string): Promise<DbSale | null>;
+  hasShiftForRegister(businessId: string, registerId: string): Promise<boolean>;
   listPlans(): Promise<DbPlan[]>;
   findPlanByKey(key: string): Promise<DbPlan | null>;
   getSubscription(businessId: string): Promise<DbSubscription | null>;

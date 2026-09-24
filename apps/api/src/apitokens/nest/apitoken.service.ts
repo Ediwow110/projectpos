@@ -77,7 +77,6 @@ export class ApiTokenService {
       expiresAt: t.expiresAt,
     }));
   }
-
   async revokeToken(businessId: string, actorId: string, requestId: string, id: string, role: string): Promise<{ id: string }> {
     withScope(businessId, {});
     if (!TOKEN_MANAGERS.has(role)) throw new Error("FORBIDDEN");

@@ -568,15 +568,25 @@ export class BillingService {
     });
   }
 
-  async setFlag(businessId: string, actorId: string, requestId: string, key: string, enabled: boolean): Promise<{ key: string; enabled: boolean }> {
-    withScope(businessId, {});
-    const business = await this.db.findBusinessById(businessId);
-    if (!business) throw new Error("NOT_FOUND");
+  // businessId null means a global flag (platform-wide default); a tenant id
+  // must exist, because a per-business override always targets a real tenant.
+  async setFlag(
+    businessId: string | null,
+    actorId: string,
+    requestId: string,
+    key: string,
+    enabled: boolean,
+  ): Promise<{ key: string; enabled: boolean }> {
+    withScope(businessId ?? "platform", {});
+    if (businessId) {
+      const business = await this.db.findBusinessById(businessId);
+      if (!business) throw new Error("NOT_FOUND");
+    }
     const row = await this.db.setFlag({ businessId, key, enabled });
     await this.db.appendAudit({
-      businessId,
+      businessId: businessId ?? "platform",
       actorId,
-      action: "flag.change",
+      action: businessId ? "flag.change" : "flag.global",
       entityType: "FeatureFlag",
       entityId: `${key}:${enabled}`,
       requestId,

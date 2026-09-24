@@ -101,4 +101,27 @@ export class PlatformController {
       fail(res, statusFor(code), code, "Flag update failed", req);
     }
   }
+
+  // Global default for every business that has no override of its own.
+  @Patch("flags")
+  async setGlobalFlag(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Body() body: unknown,
+  ): Promise<void> {
+    if (!this.platformGuard(req, res)) return;
+    const parsed = flagOverrideSchema.safeParse(body);
+    if (!parsed.success) {
+      fail(res, 400, "VALIDATION", "Invalid flag payload", req);
+      return;
+    }
+    try {
+      res.status(200).json(
+        await this.billing.setFlag(null, "platform", rid(req), parsed.data.key, parsed.data.enabled),
+      );
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "VALIDATION";
+      fail(res, statusFor(code), code, "Global flag update failed", req);
+    }
+  }
 }

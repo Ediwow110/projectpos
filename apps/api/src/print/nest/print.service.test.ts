@@ -66,4 +66,45 @@ describe("phase10 print jobs", () => {
     await expect(service.claimNextJob(printer.id, undefined)).rejects.toThrow("TENANT_REQUIRED");
     await expect(service.claimNextJob(printer.id, "prn_00000000_" + "0".repeat(32))).rejects.toThrow("TENANT_REQUIRED");
   });
+
+  it("prints subtotal, discount and tax so a discounted sale reconciles", async () => {
+    const db = createMemoryDb();
+    const service = new PrintService(db);
+    const business = await db.createBusiness({ name: "Receipt Shop", currency: "PHP" });
+    const { agentTokenHash } = mintAgentToken();
+    const printer = await db.createPrinter({
+      businessId: business.id, branchId: null, name: "Till 1", width: "80",
+      connection: "test-double", agentTokenHash,
+    });
+    const product = await db.createProduct({
+      businessId: business.id, categoryId: null, name: "Gadget", sku: null, barcode: null,
+      brand: null, unit: "pc", costMinor: 1000, priceMinor: 10000, taxRateBps: 1000,
+      reorderLevel: 0, trackInventory: true, isActive: true, imageUrl: null,
+    });
+    await db.upsertBalance({ businessId: business.id, branchId: null, productId: product.id, qtyOnHand: 20 });
+    const { SalesService } = await import("../../sales/nest/sales.service");
+    const sales = new SalesService(db);
+    const draft = await sales.createDraft(business.id, "u1", "r1", {
+      lines: [{ productId: product.id, qty: 2, lineDiscountMinor: 0 }],
+      orderDiscountMinor: 1000,
+    }, ["discount.override"]);
+    const done = await sales.completeSale(business.id, "u1", "r1", draft.id, {
+      payments: [{ method: "cash", amountMinor: draft.totalMinor }],
+      key: "receipt-discount", granted: ["discount.override"],
+    });
+    const job = await service.queueJob(business.id, "u1", "r2", {
+      printerId: printer.id, receiptNo: done.sale.receiptNo,
+    }, "owner");
+    const text = Buffer.from(job.payload, "base64").toString("ascii");
+    expect(text).toContain("SUBTOTAL");
+    expect(text).toContain("DISCOUNT");
+    expect(text).toContain("TAX");
+    // Whatever the tax basis is, the printed rows must reconcile to the total.
+    expect(text).toContain((done.sale.totalMinor / 100).toFixed(2));
+    expect(done.sale.taxMinor).toBeGreaterThan(0);
+    expect(done.sale.subtotalMinor - done.sale.discountMinor + done.sale.taxMinor)
+      .toBe(done.sale.totalMinor);
+    expect(text).toContain((done.sale.subtotalMinor / 100).toFixed(2));
+    expect(text).toContain((done.sale.taxMinor / 100).toFixed(2));
+  });
 });

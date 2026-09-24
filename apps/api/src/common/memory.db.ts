@@ -82,6 +82,21 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     async listMembershipsByBusiness(businessId) {
       return [...memberships.values()].filter((m) => m.businessId === businessId);
     },
+    async findLatestSaleForRegister(businessId, registerId) {
+      let latest = null;
+      for (const s of sales.values()) {
+        if (s.businessId !== businessId || s.registerId !== registerId) continue;
+        if (s.status !== "COMPLETED") continue;
+        if (!latest || s.createdAt.getTime() > latest.createdAt.getTime()) latest = s;
+      }
+      return latest;
+    },
+    async hasShiftForRegister(businessId, registerId) {
+      for (const s of shifts.values()) {
+        if (s.businessId === businessId && s.registerId === registerId) return true;
+      }
+      return false;
+    },
     async findMembership(userId, businessId) {
       for (const m of memberships.values()) {
         if (m.userId === userId && m.businessId === businessId) return m;
