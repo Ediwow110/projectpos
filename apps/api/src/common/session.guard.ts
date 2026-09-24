@@ -30,7 +30,10 @@ export class SessionGuard implements CanActivate {
       req.authError = "SESSION_REVOKED";
       return false;
     }
-    const membership = await this.db.findMembership(session.userId, session.businessId);
+    // FR-TENANT-02: the active business is whatever the user switched to on
+    // this session, falling back to the login home business.
+    const targetBusinessId = session.activeBusinessId ?? session.businessId;
+    const membership = await this.db.findMembership(session.userId, targetBusinessId);
     // Phase 11: a deactivated member has no access, same as no membership.
     if (!membership || membership.deactivatedAt) {
       req.authError = "TENANT_MISMATCH";
@@ -38,7 +41,7 @@ export class SessionGuard implements CanActivate {
     }
     req.auth = {
       userId: session.userId,
-      businessId: session.businessId,
+      businessId: targetBusinessId,
       role: membership.role,
       sessionId: session.id,
       authenticatedAt: session.authenticatedAt,

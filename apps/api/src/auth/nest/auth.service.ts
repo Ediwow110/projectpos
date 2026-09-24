@@ -119,9 +119,9 @@ export class AuthService {
   async switchBusiness(userId: string, businessId: string, sessionId: string, requestId: string): Promise<void> {
     const memberships = await this.db.listMembershipsByUser(userId);
     resolveActiveBusiness(memberships.map((m) => m.businessId), businessId);
-    const sessions = await this.db.listSessionsByUser(userId);
-    const current = sessions.find((s) => s.id === sessionId);
-    void current;
+    // FR-TENANT-02: the active business is explicit in session context, so
+    // the choice is persisted on the session, not merely audited.
+    await this.db.updateSession(sessionId, { activeBusinessId: businessId });
     await this.db.appendAudit({ businessId, actorId: userId, action: "auth.switch-business", entityType: "Session", entityId: sessionId, requestId });
   }
 
