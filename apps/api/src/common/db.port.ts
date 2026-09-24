@@ -93,6 +93,9 @@ export interface DbPrinter {
   name: string;
   width: string;
   connection: string;
+  // Hash of the paired-agent token; null for printers enrolled before agent
+  // tokens existed (they simply cannot poll until re-enrolled).
+  agentTokenHash: string | null;
 }
 
 export interface DbPrintJob {
@@ -524,6 +527,7 @@ export interface DbPort {
   createPrinter(p: Omit<DbPrinter, "id">): Promise<DbPrinter>;
   listPrinters(businessId: string): Promise<DbPrinter[]>;
   findPrinterById(id: string, businessId: string): Promise<DbPrinter | null>;
+  findPrinterByAgentTokenHash(tokenHash: string): Promise<DbPrinter | null>;
   createPrintJob(j: Omit<DbPrintJob, "id">): Promise<DbPrintJob>;
   listPrintJobs(businessId: string, status?: string): Promise<DbPrintJob[]>;
   updatePrintJob(id: string, businessId: string, patch: Partial<Omit<DbPrintJob, "id" | "businessId">>, expectedStatus?: string): Promise<DbPrintJob | null>;

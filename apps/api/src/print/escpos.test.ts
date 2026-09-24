@@ -55,6 +55,30 @@ describe("phase10 escpos bytes", () => {
       0x1d, 0x56, 0x00,
     ]);
   });
+  it("prints the discounted line total so the receipt reconciles", () => {
+    const bytes = escposReceipt({
+      businessName: "AB",
+      receiptNo: "0003",
+      // 3 x 250 with a 100 minor line discount = 650 line total.
+      lines: [{ name: "C", qty: 3, priceMinor: 250, lineTotalMinor: 650 }],
+      totalMinor: 650,
+      paidMinor: 1000,
+      changeMinor: 350,
+      layout: "58",
+    });
+    const rendered: string[] = [];
+    let cur: number[] = [];
+    for (let i = 0; i < bytes.length; i++) {
+      const b = bytes[i]!;
+      if (b === 0x1b || b === 0x1d) { i += 2; continue; }
+      if (b === 0x0a) { rendered.push(Buffer.from(cur).toString("ascii")); cur = []; continue; }
+      cur.push(b);
+    }
+    const line = rendered.find((l) => l.startsWith("C x3"))!;
+    expect(line.trimEnd().endsWith("6.50")).toBe(true);
+    // The printed line total must match the sale total, not the gross price.
+    expect(line).not.toContain("7.50");
+  });
   it("replaces non-ascii text and truncates overlong lines", () => {
     const bytes = escposReceipt({
       businessName: "Café ★",

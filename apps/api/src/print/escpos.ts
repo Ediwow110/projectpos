@@ -6,6 +6,10 @@ export interface EscposLine {
   name: string;
   qty: number;
   priceMinor: number;
+  // Amount actually charged for the line (unit price x qty minus any line
+  // discount). Printed in place of priceMinor x qty so the receipt reconciles
+  // with the sale total; defaults to the gross amount when not supplied.
+  lineTotalMinor?: number;
 }
 
 export interface EscposInput {
@@ -60,7 +64,8 @@ export function escposReceipt(input: EscposInput): number[] {
   out.push(...centered(input.receiptNo, width));
   out.push(...FEED, ...LEFT);
   for (const l of input.lines) {
-    out.push(...row(`${l.name} x${l.qty}`, moneyText(l.priceMinor * l.qty), width));
+    const amount = l.lineTotalMinor ?? l.priceMinor * l.qty;
+    out.push(...row(`${l.name} x${l.qty}`, moneyText(amount), width));
   }
   out.push(...row("TOTAL", moneyText(input.totalMinor), width));
   out.push(...row("PAID", moneyText(input.paidMinor), width));

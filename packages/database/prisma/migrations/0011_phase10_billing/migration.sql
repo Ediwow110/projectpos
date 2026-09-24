@@ -108,8 +108,10 @@ CREATE TABLE "PrinterDevice" (
   "name" TEXT NOT NULL,
   "width" TEXT NOT NULL DEFAULT '80',
   "connection" TEXT NOT NULL DEFAULT 'test-double',
+  "agentTokenHash" TEXT,
   CONSTRAINT "PrinterDevice_pkey" PRIMARY KEY ("id")
 );
+CREATE UNIQUE INDEX "PrinterDevice_agentTokenHash_key" ON "PrinterDevice"("agentTokenHash") WHERE "agentTokenHash" IS NOT NULL;
 ALTER TABLE "PrinterDevice" ADD CONSTRAINT "PrinterDevice_businessId_fkey"
   FOREIGN KEY ("businessId") REFERENCES "Business"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 

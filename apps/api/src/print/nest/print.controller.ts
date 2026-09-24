@@ -16,8 +16,11 @@ function rid(req: Request): string {
   return getCorrelationId(headers);
 }
 
+// Management routes (enroll, list, queue) use the staff session. Pickup is a
+// device route: the paired print agent authenticates with its per-printer agent
+// token in x-printer-agent and is deliberately outside SessionGuard, so no
+// staff session can pull jobs off a queue.
 @Controller("api/v1")
-@UseGuards(SessionGuard)
 export class PrintController {
   constructor(
     @Inject(PrintService) private readonly printers: PrintService,
@@ -25,6 +28,7 @@ export class PrintController {
   ) {}
 
   @Get("printers")
+  @UseGuards(SessionGuard)
   async listPrinters(@Req() req: Request, @Res() res: Response): Promise<void> {
     try {
       res.status(200).json({ items: await this.printers.listPrinters(req.auth!.businessId) });
@@ -35,7 +39,7 @@ export class PrintController {
   }
 
   @Post("printers")
-  @UseGuards(CsrfGuard)
+  @UseGuards(SessionGuard, CsrfGuard)
   async enrollPrinter(
     @Req() req: Request,
     @Res() res: Response,
@@ -63,7 +67,7 @@ export class PrintController {
   }
 
   @Post("print-jobs")
-  @UseGuards(CsrfGuard)
+  @UseGuards(SessionGuard, CsrfGuard)
   async queueJob(
     @Req() req: Request,
     @Res() res: Response,
@@ -95,17 +99,18 @@ export class PrintController {
     @Res() res: Response,
     @Query() query: Record<string, string>,
   ): Promise<void> {
+    const printerId = query["printerId"];
+    if (!printerId) {
+      fail(res, 400, "VALIDATION", "printerId required", req);
+      return;
+    }
+    const provided = req.headers["x-printer-agent"];
+    const agentToken = Array.isArray(provided) ? provided[0] : provided;
     try {
-      const auth = req.auth!;
-      const printerId = query["printerId"];
-      if (!printerId) {
-        fail(res, 400, "VALIDATION", "printerId required", req);
-        return;
-      }
-      res.status(200).json(await this.printers.claimNextJob(auth.businessId, printerId));
+      res.status(200).json(await this.printers.claimNextJob(printerId, agentToken));
     } catch (e) {
       const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Print pickup failed", req);
+      fail(res, statusFor(code, 401), code, "Print pickup failed", req);
     }
   }
 }

@@ -599,14 +599,15 @@ model ApiToken {
 }
 
 model PrinterDevice {
-  id         String   @id @default(cuid())
-  businessId String
-  branchId   String?
-  name       String
-  width      String   @default("80")
-  connection String   @default("test-double")
-  business   Business @relation(fields: [businessId], references: [id])
-  jobs       PrintJob[]
+  id             String   @id @default(cuid())
+  businessId     String
+  branchId       String?
+  name           String
+  width          String   @default("80")
+  connection     String   @default("test-double")
+  agentTokenHash String?  @unique
+  business       Business  @relation(fields: [businessId], references: [id])
+  jobs           PrintJob[]
 }
 
 model PrintJob {

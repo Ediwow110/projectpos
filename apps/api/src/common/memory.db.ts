@@ -644,6 +644,12 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       if (!p || p.businessId !== businessId) return null;
       return p;
     },
+    async findPrinterByAgentTokenHash(tokenHash) {
+      for (const p of printers.values()) {
+        if (p.agentTokenHash !== null && p.agentTokenHash === tokenHash) return p;
+      }
+      return null;
+    },
     async createPrintJob(j) {
       const row = { ...j, id: nid("pjob") };
       printJobs.set(row.id, row);

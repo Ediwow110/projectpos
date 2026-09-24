@@ -1,5 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { withScope } from "@pos/database";
 import type { DbPort, DbPrinter, DbPrintJob } from "../../common/db.port";
 import { SalesService } from "../../sales/nest/sales.service";
@@ -25,7 +25,7 @@ export class PrintService {
     requestId: string,
     input: PrinterInput,
     role: string,
-  ): Promise<DbPrinter> {
+  ): Promise<DbPrinter & { agentToken: string }> {
     withScope(businessId, {});
     if (!PRINT_MANAGERS.has(role)) throw new Error("FORBIDDEN");
     const name = input.name.trim();
@@ -40,12 +40,14 @@ export class PrintService {
       if (!branch) throw new Error("VALIDATION");
       branchId = branch.id;
     }
-    const row = await this.db.createPrinter({ businessId, branchId, name, width, connection });
+    const { agentToken, agentTokenHash } = mintAgentToken();
+    const row = await this.db.createPrinter({ businessId, branchId, name, width, connection, agentTokenHash });
     await this.db.appendAudit({
       businessId, actorId, action: "printer.enroll",
       entityType: "PrinterDevice", entityId: row.id, requestId,
     });
-    return row;
+    // The agent token is returned exactly once; only its hash is stored.
+    return { ...row, agentToken };
   }
 
   async listPrinters(businessId: string): Promise<DbPrinter[]> {
@@ -80,7 +82,12 @@ export class PrintService {
       const bytes = escposReceipt({
         businessName: business.name,
         receiptNo: receipt.receiptNo,
-        lines: receipt.items.map((l) => ({ name: l.name, qty: l.qty, priceMinor: l.priceMinor })),
+        lines: receipt.items.map((l) => ({
+          name: l.name,
+          qty: l.qty,
+          priceMinor: l.priceMinor,
+          lineTotalMinor: Math.max(0, l.qty * l.priceMinor - l.lineDiscountMinor),
+        })),
         totalMinor: receipt.totalMinor,
         paidMinor: receipt.paidMinor,
         changeMinor: receipt.changeMinor,
@@ -99,7 +106,13 @@ export class PrintService {
     return row;
   }
 
-  async claimNextJob(businessId: string, printerId: string): Promise<DbPrintJob> {
+  // Pickup is a device operation: the caller proves it holds this printer's
+  // agent token, not merely some staff session in the same business.
+  async claimNextJob(printerId: string, agentToken: string | undefined): Promise<DbPrintJob> {
+    if (!agentToken) throw new Error("TENANT_REQUIRED");
+    const printer = await this.db.findPrinterByAgentTokenHash(sha256Hex(agentToken));
+    if (!printer || printer.id !== printerId) throw new Error("TENANT_REQUIRED");
+    const businessId = printer.businessId;
     withScope(businessId, {});
     const queued = (await this.db.listPrintJobs(businessId, "QUEUED"))
       .filter((j) => j.printerId === printerId)
@@ -122,4 +135,12 @@ export class PrintService {
 
 export function sha256Hex(s: string): string {
   return createHash("sha256").update(s).digest("hex");
+}
+
+// Paired-agent token: prn_<8 hex prefix>_<32 hex secret>, shown once at
+// enrollment and stored only as a hash, like display and API tokens.
+export function mintAgentToken(): { agentToken: string; agentTokenHash: string } {
+  const secret = randomBytes(16).toString("hex");
+  const agentToken = `prn_${randomBytes(4).toString("hex")}_${secret}`;
+  return { agentToken, agentTokenHash: sha256Hex(agentToken) };
 }

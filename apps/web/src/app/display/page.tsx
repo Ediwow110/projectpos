@@ -2,7 +2,7 @@
 
 import type { JSX } from "react";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiFetch } from "../../lib/api";
 import { money } from "../../lib/reports";
@@ -17,16 +17,15 @@ function moneyMinor(minor: number): string {
   return money(minor);
 }
 
-export default function DisplayPage(): JSX.Element {
+function DisplayFeed(): JSX.Element {
   const params = useSearchParams();
   const registerId = params.get("registerId") ?? "";
   const token = params.get("token") ?? "";
-  const businessId = params.get("businessId") ?? "";
   const [feed, setFeed] = useState<Feed | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!registerId || !token || !businessId) {
+    if (!registerId || !token) {
       setError("This display link is incomplete.");
       return;
     }
@@ -34,7 +33,7 @@ export default function DisplayPage(): JSX.Element {
     const load = async (): Promise<void> => {
       try {
         const next = await apiFetch<Feed>(
-          `/api/v1/display/${registerId}?token=${encodeURIComponent(token)}&businessId=${encodeURIComponent(businessId)}`,
+          `/api/v1/display/${registerId}?token=${encodeURIComponent(token)}`,
         );
         if (alive) {
           setFeed(next);
@@ -50,7 +49,7 @@ export default function DisplayPage(): JSX.Element {
       alive = false;
       clearInterval(timer);
     };
-  }, [registerId, token, businessId]);
+  }, [registerId, token]);
 
   return (
     <main>
@@ -72,5 +71,15 @@ export default function DisplayPage(): JSX.Element {
         </section>
       )}
     </main>
+  );
+}
+
+// Next.js 15 requires a Suspense boundary around useSearchParams when the route
+// is statically prerendered; without it `next build` fails.
+export default function DisplayPage(): JSX.Element {
+  return (
+    <Suspense fallback={<main>Loading display…</main>}>
+      <DisplayFeed />
+    </Suspense>
   );
 }

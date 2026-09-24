@@ -46,20 +46,34 @@ beforeAll(async () => {
 afterAll(async () => { await app.close(); });
 
 describe("phase10 printers and display HTTP contract", () => {
-  it("enrolls a printer, queues a job, and fulfills it once", async () => {
+  it("enrolls a printer, queues a job, and fulfills it once with the agent token", async () => {
     const enrolled = await request(app.getHttpServer()).post("/api/v1/printers")
       .set("Cookie", cookie).set("X-CSRF-Token", csrf)
       .send({ name: "Counter printer", width: "58" });
     expect(enrolled.status).toBe(201);
     const printerId = enrolled.body.id as string;
+    const agentToken = enrolled.body.agentToken as string;
+    expect(agentToken).toMatch(/^prn_[0-9a-f]{8}_[0-9a-f]{32}$/);
     const queued = await request(app.getHttpServer()).post("/api/v1/print-jobs")
       .set("Cookie", cookie).set("X-CSRF-Token", csrf)
       .send({ printerId, receiptNo });
     expect(queued.status).toBe(201);
     expect(queued.body.status).toBe("QUEUED");
-    const next = await request(app.getHttpServer())
+
+    // A staff session alone must not pick up jobs: the paired agent proves it
+    // holds the printer's device token.
+    const viaSession = await request(app.getHttpServer())
       .get(`/api/v1/print-jobs/next?printerId=${printerId}`)
       .set("Cookie", cookie);
+    expect(viaSession.status).toBe(401);
+    const viaWrongToken = await request(app.getHttpServer())
+      .get(`/api/v1/print-jobs/next?printerId=${printerId}`)
+      .set("x-printer-agent", "prn_deadbeef_" + "0".repeat(32));
+    expect(viaWrongToken.status).toBe(401);
+
+    const next = await request(app.getHttpServer())
+      .get(`/api/v1/print-jobs/next?printerId=${printerId}`)
+      .set("x-printer-agent", agentToken);
     expect(next.status).toBe(200);
     expect(next.body.status).toBe("SENT");
     expect(next.body.attempts).toBe(1);
@@ -69,9 +83,24 @@ describe("phase10 printers and display HTTP contract", () => {
     expect(payload.toString("ascii")).toContain("Print Store");
     const empty = await request(app.getHttpServer())
       .get(`/api/v1/print-jobs/next?printerId=${printerId}`)
-      .set("Cookie", cookie);
+      .set("x-printer-agent", agentToken);
     expect(empty.status).toBe(404);
     expect(empty.body.code).toBe("NOT_FOUND");
+  });
+  it("refuses an agent token that belongs to another printer", async () => {
+    const first = await request(app.getHttpServer()).post("/api/v1/printers")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ name: "Agent A" });
+    const second = await request(app.getHttpServer()).post("/api/v1/printers")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ name: "Agent B" });
+    await request(app.getHttpServer()).post("/api/v1/print-jobs")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ printerId: second.body.id, receiptNo });
+    const crossed = await request(app.getHttpServer())
+      .get(`/api/v1/print-jobs/next?printerId=${second.body.id}`)
+      .set("x-printer-agent", first.body.agentToken);
+    expect(crossed.status).toBe(401);
   });
   it("rejects print jobs for unknown printers and receipts", async () => {
     const badPrinter = await request(app.getHttpServer()).post("/api/v1/print-jobs")
@@ -108,13 +137,20 @@ describe("phase10 printers and display HTTP contract", () => {
     expect(minted.status).toBe(201);
     expect(typeof minted.body.token).toBe("string");
     const feed = await request(app.getHttpServer())
-      .get(`/api/v1/display/${registerId}?token=${minted.body.token}&businessId=${businessId}`);
+      .get(`/api/v1/display/${registerId}?token=${minted.body.token}`);
     expect(feed.status).toBe(200);
     expect(feed.body.businessName).toBe("Print Store");
     expect(feed.body.lastSale.receiptNo).toBe(saleDone.body.receiptNo);
     const bad = await request(app.getHttpServer())
-      .get(`/api/v1/display/${registerId}?token=nope&businessId=${businessId}`);
+      .get(`/api/v1/display/${registerId}?token=nope`);
     expect(bad.status).toBe(404);
+    // A token minted for one register never serves another register's feed.
+    const otherRegister = await request(app.getHttpServer()).post("/api/v1/registers")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ name: "Counter 2" });
+    const crossed = await request(app.getHttpServer())
+      .get(`/api/v1/display/${otherRegister.body.id}?token=${minted.body.token}`);
+    expect(crossed.status).toBe(404);
   });
   it("returns NOT_FOUND for another tenant's printer", async () => {
     const reg2 = await request(app.getHttpServer()).post("/api/v1/auth/register").send({

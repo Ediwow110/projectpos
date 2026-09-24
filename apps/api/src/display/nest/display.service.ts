@@ -41,13 +41,14 @@ export class DisplayService {
     return { token, expiresAt: row.expiresAt.toISOString() };
   }
 
-  async feed(businessId: string, registerId: string, token: string, now: Date = new Date()): Promise<DisplayFeed> {
-    withScope(businessId, {});
+  // The token is the only credential: it names the business and the register,
+  // so the caller never supplies a tenant id that could be tampered with.
+  async feed(registerId: string, token: string, now: Date = new Date()): Promise<DisplayFeed> {
     const stored = await this.db.findDisplayToken(createHash("sha256").update(token).digest("hex"));
-    if (!stored || stored.businessId !== businessId || stored.registerId !== registerId) {
-      throw new Error("NOT_FOUND");
-    }
+    if (!stored || stored.registerId !== registerId) throw new Error("NOT_FOUND");
     if (stored.expiresAt.getTime() <= now.getTime()) throw new Error("NOT_FOUND");
+    const businessId = stored.businessId;
+    withScope(businessId, {});
     const business = await this.db.findBusinessById(businessId);
     if (!business) throw new Error("NOT_FOUND");
     const open = await this.db.findOpenShiftByRegister(businessId, registerId);

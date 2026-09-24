@@ -51,21 +51,18 @@ export class DisplayController {
     @Param("registerId") registerId: string,
     @Query() query: Record<string, string>,
   ): Promise<void> {
+    const token = query["token"];
+    if (!token) {
+      fail(res, 401, "TENANT_REQUIRED", "Display token required", req);
+      return;
+    }
     try {
-      const token = query["token"];
-      if (!token) {
-        fail(res, 401, "TENANT_REQUIRED", "Display token required", req);
-        return;
-      }
-      const businessId = query["businessId"];
-      if (!businessId) {
-        fail(res, 400, "VALIDATION", "businessId required", req);
-        return;
-      }
-      res.status(200).json(await this.display.feed(businessId, registerId, token));
+      // The token identifies both the business and the register, so the feed
+      // needs no tenant parameter from the caller.
+      res.status(200).json(await this.display.feed(registerId, token));
     } catch (e) {
       const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Display feed failed", req);
+      fail(res, statusFor(code, 404), code, "Display feed failed", req);
     }
   }
 }
