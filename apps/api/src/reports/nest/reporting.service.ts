@@ -28,7 +28,9 @@ export interface ReportQuery {
 }
 
 export interface Kpi {
-  value: number;
+  // Nullable only for entitlement-gated metrics: a plan without the feature
+  // gets an absent value rather than a misleading zero.
+  value: number | null;
   previous: number | null;
   deltaMinor: number | null;
   deltaPct: number | null;
@@ -93,6 +95,13 @@ export class ReportingService {
     }
     const d = delta(value, previous);
     return { value, previous, deltaMinor: d.deltaMinor, deltaPct: d.deltaPct };
+  }
+
+  // Kpi for a metric the plan may not be entitled to see: no entitlement
+  // means no value and no comparison, not a zero that reads as "spent nothing".
+  private kpiMaybe(value: number | null, previous: number | null): Kpi {
+    if (value === null) return { value: null, previous: null, deltaMinor: null, deltaPct: null };
+    return this.kpi(value, previous);
   }
 
   private profitOf(lines: SaleWithLines[], businessId: string): Promise<number> {
@@ -171,10 +180,13 @@ export class ReportingService {
     withScope(businessId, {});
     void role;
     const { range, prev, compare, label } = this.resolved(query);
+    // Expenses are a paid feature (PLAN.md 16.2): a plan without the
+    // entitlement gets the daily loop, not the expense total.
+    const canSeeExpenses = await new BillingService(this.db).checkFeature(businessId, "expenses");
     const cur = await this.metrics(businessId, range, query.registerId, query.branchId);
-    const curExpenses = await this.expensesTotal(businessId, range);
+    const curExpenses = canSeeExpenses ? await this.expensesTotal(businessId, range) : null;
     const old = prev ? await this.metrics(businessId, prev, query.registerId, query.branchId) : null;
-    const oldExpenses = prev ? await this.expensesTotal(businessId, prev) : null;
+    const oldExpenses = canSeeExpenses && prev ? await this.expensesTotal(businessId, prev) : null;
     const canSeeProfit = granted.includes("cost.view");
     const kpis: {
       netRevenue: Kpi;
@@ -190,7 +202,7 @@ export class ReportingService {
       avgOrder: this.kpi(cur.avgOrder, old?.avgOrder ?? null),
       refundTotal: this.kpi(cur.refundTotal, old?.refundTotal ?? null),
       discountTotal: this.kpi(cur.discountTotal, old?.discountTotal ?? null),
-      expenseTotal: this.kpi(curExpenses, oldExpenses),
+      expenseTotal: this.kpiMaybe(curExpenses, oldExpenses),
     };
     if (canSeeProfit) kpis.grossProfit = this.kpi(cur.grossProfit, old?.grossProfit ?? null);
     const granularity = "day";

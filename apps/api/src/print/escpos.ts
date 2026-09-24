@@ -15,6 +15,10 @@ export interface EscposLine {
 export interface EscposInput {
   businessName: string;
   receiptNo: string;
+  // Paid receipt customization (PLAN.md 16.2): stored by the business and
+  // printed on the thermal receipt.
+  header?: string | null;
+  footer?: string | null;
   lines: EscposLine[];
   // Printed when non-zero so a discounted or taxed sale reconciles line by
   // line instead of showing a total that does not add up.
@@ -62,12 +66,40 @@ function row(left: string, amount: string, width: number): number[] {
   return [...nameBytes, ...pad, ...amountBytes, 0x0a];
 }
 
+function leftText(text: string, width: number): number[] {
+  const bytes = ascii(text).slice(0, width);
+  return [...bytes, ...Array(Math.max(0, width - bytes.length)).fill(0x20), 0x0a];
+}
+
+// Free-text header/footer lines wrap to the paper width (they are the only
+// place text may span more than one line).
+function wrapped(text: string, width: number): string[] {
+  const out: string[] = [];
+  for (const paragraph of text.split(/\r?\n/)) {
+    let current = "";
+    for (const word of paragraph.split(/\s+/).filter((w) => w !== "")) {
+      const candidate = current === "" ? word : `${current} ${word}`;
+      if (ascii(candidate).length > width && current !== "") {
+        out.push(current);
+        current = word;
+      } else {
+        current = candidate;
+      }
+    }
+    out.push(current);
+  }
+  return out.filter((l) => l !== "");
+}
+
 export function escposReceipt(input: EscposInput): number[] {
   const width = WIDTHS[input.layout];
   const out: number[] = [...INIT, ...CENTER];
   out.push(...centered(input.businessName, width));
   out.push(...centered(input.receiptNo, width));
   out.push(...FEED, ...LEFT);
+  if (input.header !== null && input.header !== undefined && input.header.trim() !== "") {
+    for (const line of wrapped(input.header, width)) out.push(...leftText(line, width));
+  }
   for (const l of input.lines) {
     const amount = l.lineTotalMinor ?? l.priceMinor * l.qty;
     out.push(...row(`${l.name} x${l.qty}`, moneyText(amount), width));
@@ -84,6 +116,9 @@ export function escposReceipt(input: EscposInput): number[] {
   out.push(...row("TOTAL", moneyText(input.totalMinor), width));
   out.push(...row("PAID", moneyText(input.paidMinor), width));
   out.push(...row("CHANGE", moneyText(input.changeMinor), width));
+  if (input.footer !== null && input.footer !== undefined && input.footer.trim() !== "") {
+    for (const line of wrapped(input.footer, width)) out.push(...centered(line, width), 0x0a);
+  }
   out.push(...FEED, ...FEED, ...CUT);
   return out;
 }

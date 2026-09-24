@@ -14,6 +14,10 @@ const SUBSCRIPTION_STATUSES = new Set([
   "trialing", "active", "past_due", "canceled", "paused",
 ]);
 
+// A webhook claim older than this is assumed to belong to a crashed process
+// and may be taken over by a redelivery.
+const WEBHOOK_CLAIM_TTL_MS = 5 * 60 * 1000;
+
 export interface ResolvedPlan {
   key: string;
   allowances: PlanAllowances;
@@ -479,10 +483,24 @@ export class BillingService {
     const b = Buffer.from(expected);
     if (a.length !== b.length || !timingSafeEqual(a, b)) throw new Error("FORBIDDEN");
     const seen = await this.db.findWebhookEvent(provider, eventId);
-    if (seen) return { ok: true as const, handled: seen.status === "applied", deduplicated: true };
+    if (seen) {
+      // A claim still in flight is not a duplicate: answering 200 would make
+      // the provider stop retrying while the winner may still fail. A stale
+      // claim (crashed process) is taken over instead.
+      if (seen.status === "processing" && seen.receivedAt.getTime() + WEBHOOK_CLAIM_TTL_MS > Date.now()) {
+        throw new Error("WEBHOOK_IN_PROGRESS");
+      }
+      if (seen.status === "processing") {
+        await this.db.deleteWebhookEvent(seen.id);
+      } else {
+        return { ok: true as const, handled: seen.status === "applied", deduplicated: true };
+      }
+    }
     // Claim before any mutation. A concurrent redelivery of the same eventId
-    // loses the claim and is reported as a deduplicated replay, so exactly one
-    // delivery applies the state change.
+    // loses the claim and is told the event is already being processed, so it
+    // does not ack an outcome that does not exist yet; the provider retries
+    // and the retry is answered from the applied state. Exactly one delivery
+    // applies the state change.
     const claim = await this.db.claimWebhookEvent({
       businessId: typeof (payload as { businessId?: unknown }).businessId === "string"
         ? ((payload as { businessId: string }).businessId)
@@ -495,6 +513,7 @@ export class BillingService {
     });
     if (!claim) {
       const stored = await this.db.findWebhookEvent(provider, eventId);
+      if (stored?.status === "processing") throw new Error("WEBHOOK_IN_PROGRESS");
       return { ok: true as const, handled: stored?.status === "applied", deduplicated: true };
     }
 
@@ -505,9 +524,22 @@ export class BillingService {
       planKey?: string;
       status?: string;
       reason?: string;
+      providerRef?: string;
     };
     const businessId = typeof p.businessId === "string" ? p.businessId : null;
     if (businessId) withScope(businessId, {});
+    // A provider secret authenticates a provider *account*, not a tenant. When
+    // the target subscription records which account it belongs to, the event
+    // must present that same account: otherwise a validly signed event could
+    // name another business. Subscriptions without a providerRef (the local
+    // test-double setup) are trusted, since there is nothing to compare.
+    if (businessId) {
+      const subscription = await this.db.getSubscription(businessId);
+      if (subscription?.providerRef) {
+        const presented = typeof p.providerRef === "string" ? p.providerRef : null;
+        if (presented !== subscription.providerRef) throw new Error("FORBIDDEN");
+      }
+    }
 
     // From here on the event is claimed. Any failure releases the claim so the
     // provider can redeliver it: a permanently blocked event id would turn a

@@ -73,6 +73,9 @@ export interface DbWebhookEvent {
   type: string;
   payload: unknown;
   status: string;
+  // When the claim was taken; a "processing" row older than the claim TTL is
+  // treated as crashed and taken over by a redelivery.
+  receivedAt: Date;
 }
 
 export interface DbApiToken {
@@ -529,6 +532,7 @@ export interface DbPort {
   // concurrent redelivery gets false. Backed by the unique index on eventId.
   claimWebhookEvent(e: Omit<DbWebhookEvent, "id" | "receivedAt">): Promise<DbWebhookEvent | null>;
   updateWebhookEventStatus(id: string, status: string): Promise<void>;
+  updateWebhookEventReceivedAt(id: string, receivedAt: Date): Promise<void>;
   deleteWebhookEvent(id: string): Promise<void>;
   createApiToken(t: Omit<DbApiToken, "id">): Promise<DbApiToken>;
   listApiTokens(businessId: string): Promise<DbApiToken[]>;

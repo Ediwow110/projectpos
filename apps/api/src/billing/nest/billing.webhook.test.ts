@@ -42,12 +42,27 @@ describe("phase10 webhook event coverage", () => {
     });
     const payload = { businessId: business.id, invoiceId: invoice.id, amountMinor: invoice.amountMinor };
 
-    const results = await Promise.all([
+    const results = await Promise.allSettled([
       send(billing, "evt-race", "invoice.paid", payload, "r1"),
       send(billing, "evt-race", "invoice.paid", payload, "r2"),
       send(billing, "evt-race", "invoice.paid", payload, "r3"),
     ]);
-    expect(results.filter((r) => !r.deduplicated)).toHaveLength(1);
+    // Exactly one delivery applies the event. The losers must not ack a claim
+    // that is still in flight: they answer WEBHOOK_IN_PROGRESS so the provider
+    // retries, and that retry is answered from the applied state.
+    const applied = results.filter(
+      (r): r is PromiseFulfilledResult<{ ok: true; handled: boolean; deduplicated: boolean }> =>
+        r.status === "fulfilled" && !r.value.deduplicated,
+    );
+    expect(applied).toHaveLength(1);
+    for (const r of results) {
+      if (r.status === "rejected") {
+        expect(r.reason).toBeInstanceOf(Error);
+        expect((r.reason as Error).message).toBe("WEBHOOK_IN_PROGRESS");
+      } else if (r.value.deduplicated) {
+        expect(r.value.handled).toBe(true);
+      }
+    }
     const paid = (await db.listInvoices(business.id)).filter((i) => i.status === "paid");
     expect(paid).toHaveLength(1);
     expect(paid[0].id).toBe(invoice.id);
@@ -132,5 +147,42 @@ describe("phase10 webhook event coverage", () => {
     const { business, billing } = await setup();
     const out = await send(billing, "evt-unknown", "customer.created", { businessId: business.id }, "r1");
     expect(out).toEqual({ ok: true, handled: false, deduplicated: false });
+  });
+
+  it("refuses an event whose provider account does not match the subscription", async () => {
+    const { db, business, billing } = await setup();
+    const sub = await db.getSubscription(business.id);
+    await db.updateSubscription(sub!.id, business.id, { providerRef: "acct-tenant-1" });
+    await expect(
+      send(billing, "evt-wrong-account", "subscription.updated", {
+        businessId: business.id, planKey: "basic", status: "active", providerRef: "acct-other",
+      }, "r1"),
+    ).rejects.toThrow("FORBIDDEN");
+    // The matching account still applies.
+    const ok = await send(billing, "evt-right-account", "subscription.updated", {
+      businessId: business.id, planKey: "basic", status: "active", providerRef: "acct-tenant-1",
+    }, "r2");
+    expect(ok.handled).toBe(true);
+  });
+
+  it("takes over a stale processing claim instead of acking it as a replay", async () => {
+    const { db, business, billing } = await setup();
+    const invoice = await billing.issueInvoice(business.id, "platform", "r-issue", {
+      periodStart: new Date("2026-09-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-10-01T00:00:00.000Z"),
+    });
+    // Simulate a crashed worker: a claim left in "processing".
+    await db.claimWebhookEvent({
+      businessId: business.id, provider: "test-double", eventId: "evt-stale",
+      type: "invoice.paid", payload: {}, status: "processing",
+    });
+    const stored = (await db.findWebhookEvent("test-double", "evt-stale"))!;
+    await db.updateWebhookEventReceivedAt(stored.id, new Date(Date.now() - 60 * 60 * 1000));
+
+    const out = await send(billing, "evt-stale", "invoice.paid", {
+      businessId: business.id, invoiceId: invoice.id, amountMinor: invoice.amountMinor,
+    }, "r1");
+    expect(out).toEqual({ ok: true, handled: true, deduplicated: false });
+    expect((await db.listInvoices(business.id))[0]!.status).toBe("paid");
   });
 });

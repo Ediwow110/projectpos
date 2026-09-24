@@ -168,6 +168,9 @@ export class SalesService {
     let customerId: string | null = null;
     let customerName: string | null = input.customerName?.trim() ? input.customerName.trim() : null;
     if (input.customerId !== undefined && input.customerId !== null) {
+      // Customer profiles are a paid feature: attaching one on a plan without
+      // customers would smuggle paid data into the daily loop.
+      await new BillingService(this.db).requireFeature(businessId, "customers", actorId, requestId);
       const customer = await this.db.findCustomerById(input.customerId, businessId);
       if (!customer) throw new Error("VALIDATION");
       customerId = customer.id;

@@ -107,4 +107,40 @@ describe("phase10 print jobs", () => {
     expect(text).toContain((done.sale.subtotalMinor / 100).toFixed(2));
     expect(text).toContain((done.sale.taxMinor / 100).toFixed(2));
   });
+
+  it("prints the stored receipt header and footer", async () => {
+    const db = createMemoryDb();
+    const service = new PrintService(db);
+    const business = await db.createBusiness({ name: "Custom Shop", currency: "PHP" });
+    const { agentTokenHash } = mintAgentToken();
+    const printer = await db.createPrinter({
+      businessId: business.id, branchId: null, name: "Till 1", width: "80",
+      connection: "test-double", agentTokenHash,
+    });
+    const product = await db.createProduct({
+      businessId: business.id, categoryId: null, name: "Item", sku: null, barcode: null,
+      brand: null, unit: "pc", costMinor: 500, priceMinor: 1500, taxRateBps: null,
+      reorderLevel: 0, trackInventory: false, isActive: true, imageUrl: null,
+    });
+    await db.saveSettings(business.id, {
+      ...(await db.getSettings(business.id)),
+      receiptHeader: "Salamat Shop",
+      receiptFooter: "Salamat ulit kayo",
+    });
+    const { SalesService } = await import("../../sales/nest/sales.service");
+    const sales = new SalesService(db);
+    const draft = await sales.createDraft(business.id, "u1", "r1", {
+      lines: [{ productId: product.id, qty: 1, lineDiscountMinor: 0 }], orderDiscountMinor: 0,
+    }, []);
+    const done = await sales.completeSale(business.id, "u1", "r1", draft.id, {
+      payments: [{ method: "cash", amountMinor: draft.totalMinor }],
+      key: "custom-receipt", granted: [],
+    });
+    const job = await service.queueJob(business.id, "u1", "r2", {
+      printerId: printer.id, receiptNo: done.sale.receiptNo,
+    }, "owner");
+    const text = Buffer.from(job.payload, "base64").toString("ascii");
+    expect(text).toContain("Salamat Shop");
+    expect(text).toContain("Salamat ulit kayo");
+  });
 });

@@ -16,6 +16,71 @@ async function setup() {
   return { db, business, product, sales: new SalesService(db) };
 }
 
+describe("phase10 gated data on paid surfaces", () => {
+  it("hides the expense total from plans without the expenses entitlement", async () => {
+    const { db, business, product, sales } = await setup();
+    const { BillingService } = await import("../../billing/nest/billing.service");
+    const { ReportingService } = await import("../../reports/nest/reporting.service");
+    const billing = new BillingService(db);
+    const draft = await sales.createDraft(business.id, "u1", "r1", {
+      lines: [{ productId: product.id, qty: 1, lineDiscountMinor: 0 }], orderDiscountMinor: 0,
+    }, GRANT);
+    await sales.completeSale(business.id, "u1", "r1", draft.id, {
+      payments: [{ method: "cash", amountMinor: draft.totalMinor }],
+      key: "overview-sale", granted: GRANT,
+    });
+    await db.createExpense({
+      businessId: business.id, category: "misc", amountMinor: 5000, description: null,
+      method: "cash", shiftId: null, branchId: null, expenseDate: new Date(),
+      actorId: "u1", requestId: "r-exp", attachmentUrl: null,
+      voidedAt: null, voidReason: null, cashAdjusted: true,
+    });
+    const reporting = new ReportingService(db);
+    const range = {
+      from: new Date(Date.now() - 7 * 86400000).toISOString(),
+      to: new Date(Date.now() + 86400000).toISOString(),
+    };
+    const free = await db.findPlanByKey("free");
+    await db.upsertSubscription({
+      businessId: business.id, planId: free!.id, status: "active",
+      trialEndsAt: null, currentPeriodEnd: new Date("2030-01-01T00:00:00.000Z"),
+    });
+    const freeOverview = await reporting.getOverview(business.id, { ...range, compare: "none" }, "owner", ["cost.view"]);
+    expect(freeOverview.kpis.expenseTotal.value).toBeNull();
+
+    await billing.changePlan(business.id, "platform", "r-plan", "pro");
+    const proOverview = await reporting.getOverview(business.id, { ...range, compare: "none" }, "owner", ["cost.view"]);
+    expect(proOverview.kpis.expenseTotal.value).toBe(5000);
+  });
+
+  it("refuses to attach a customer on a plan without customers", async () => {
+    const { db, business, product, sales } = await setup();
+    const { BillingService } = await import("../../billing/nest/billing.service");
+    const customer = await db.createCustomer({
+      businessId: business.id, name: "Ana", phone: null, email: null,
+      address: null, notes: null, isActive: true,
+    });
+    const free = await db.findPlanByKey("free");
+    await db.upsertSubscription({
+      businessId: business.id, planId: free!.id, status: "active",
+      trialEndsAt: null, currentPeriodEnd: new Date("2030-01-01T00:00:00.000Z"),
+    });
+    await expect(
+      sales.createDraft(business.id, "u1", "r1", {
+        lines: [{ productId: product.id, qty: 1, lineDiscountMinor: 0 }],
+        orderDiscountMinor: 0, customerId: customer.id,
+      }, GRANT),
+    ).rejects.toThrow("PLAN_LIMIT");
+
+    await new BillingService(db).changePlan(business.id, "platform", "r-plan", "pro");
+    const ok = await sales.createDraft(business.id, "u1", "r2", {
+      lines: [{ productId: product.id, qty: 1, lineDiscountMinor: 0 }],
+      orderDiscountMinor: 0, customerId: customer.id,
+    }, GRANT);
+    expect(ok.customerId).toBe(customer.id);
+  });
+});
+
 describe("phase10 split payment settlement", () => {
   it("waits for every unknown leg before completing the sale", async () => {
     const { db, business, product, sales } = await setup();

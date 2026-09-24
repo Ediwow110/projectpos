@@ -101,9 +101,16 @@ export class PrintService {
       );
       if (!found) throw new Error("NOT_FOUND");
       const receipt = await sales.receiptData(businessId, found.id);
+      // Receipt customization is a paid feature the business can store; the
+      // printed receipt must actually show it.
+      const settings = await this.db.getSettings(businessId);
+      const header = typeof settings["receiptHeader"] === "string" ? settings["receiptHeader"] : null;
+      const footer = typeof settings["receiptFooter"] === "string" ? settings["receiptFooter"] : null;
       const bytes = escposReceipt({
         businessName: business.name,
         receiptNo: receipt.receiptNo,
+        header,
+        footer,
         lines: receipt.items.map((l) => ({
           name: l.name,
           qty: l.qty,
