@@ -13,6 +13,7 @@ import type {
 import { computeSaleTotals, requiresDiscountOverride } from "../totals";
 import { transitionSale } from "../state-machine";
 import { fingerprintPayload } from "../idempotency";
+import { queryProviderStatus, type ProviderVerdict } from "../../payments/provider";
 import { ShiftService } from "../../shifts/nest/shift.service";
 
 export interface DraftLineInput {
@@ -412,6 +413,17 @@ export class SalesService {
         qtyOnHand: onHand - item.qty,
       });
     }
+  }
+
+  async queryProvider(
+    businessId: string,
+    paymentId: string,
+    provider = "manual",
+  ): Promise<{ status: ProviderVerdict }> {
+    withScope(businessId, {});
+    const payment = await this.db.findPaymentById(paymentId, businessId);
+    if (!payment) throw new Error("NOT_FOUND");
+    return { status: await queryProviderStatus(payment.method, payment.providerRef, provider) };
   }
 
   async reconcilePayment(

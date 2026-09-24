@@ -118,6 +118,41 @@ describe("phase4 sales permissions, unknown, and cross-tenant", () => {
     expect(rec.body.sale.status).toBe("COMPLETED");
   });
 
+  it("queries the test-double provider then reconciles to completed", async () => {
+    const { setTestDoubleOutcome, clearTestDoubleOutcomes } = await import("../src/payments/provider");
+    const draft = await request(app.getHttpServer()).post("/api/v1/sales/drafts")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ lines: [{ productId, qty: 1 }] });
+    const res = await request(app.getHttpServer()).post("/api/v1/sales/complete")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .set("Idempotency-Key", "sale-key-provider")
+      .send({
+        saleId: draft.body.id,
+        payments: [{ method: "gcash", amountMinor: draft.body.totalMinor, providerRef: "unknown-td-1" }],
+      });
+    expect(res.status).toBe(202);
+    const paymentId = res.body.sale.payments[0].id;
+    const before = await request(app.getHttpServer())
+      .get(`/api/v1/payments/${paymentId}/provider-status?provider=test-double`)
+      .set("Cookie", cookie);
+    expect(before.status).toBe(200);
+    expect(before.body.status).toBe("UNKNOWN");
+    setTestDoubleOutcome("unknown-td-1", "SUCCEEDED");
+    try {
+      const after = await request(app.getHttpServer())
+        .get(`/api/v1/payments/${paymentId}/provider-status?provider=test-double`)
+        .set("Cookie", cookie);
+      expect(after.body.status).toBe("SUCCEEDED");      const rec = await request(app.getHttpServer()).post(`/api/v1/payments/${paymentId}/reconcile`)
+        .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+        .set("Idempotency-Key", "rec-key-provider")
+        .send({ outcome: "SUCCEEDED" });
+      expect(rec.status).toBe(200);
+      expect(rec.body.sale.status).toBe("COMPLETED");
+    } finally {
+      clearTestDoubleOutcomes();
+    }
+  });
+
   it("returns NOT_FOUND for another tenant's sale", async () => {
     const res2 = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
       ownerName: "Bo", email: "bo-sale@example.com",

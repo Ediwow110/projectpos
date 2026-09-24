@@ -359,6 +359,24 @@ export class SalesController {
     }
   }
 
+  @Get("payments/:id/provider-status")
+  async providerStatus(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Param("id") id: string,
+    @Query() query: Record<string, string>,
+  ): Promise<void> {
+    try {
+      const auth = req.auth!;
+      res.status(200).json(
+        await this.sales.queryProvider(auth.businessId, id, query["provider"]),
+      );
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "VALIDATION";
+      fail(res, statusFor(code), code, "Provider query failed", req);
+    }
+  }
+
   @Get("payments/methods")
   async paymentMethods(@Req() req: Request, @Res() res: Response): Promise<void> {
     void req;
