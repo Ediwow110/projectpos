@@ -61,10 +61,11 @@ describe("phase10 usage metering", () => {
     lastMonth.setUTCMonth(lastMonth.getUTCMonth() - 1);
     await db.createSale({
       businessId: "b1", receiptNo: "OLD-0001", status: "COMPLETED",
-      customerId: null, customerName: null, userId: "u1", registerId: null, branchId: null,
+      customerId: null, customerName: null, notes: null, actorId: "u1", requestId: "r-old",
+      currency: "PHP", registerId: null, branchId: null,
       subtotalMinor: 2500, discountMinor: 0, taxMinor: 0, totalMinor: 2500,
-      paidMinor: 2500, changeMinor: 0, idempotencyKey: null, shiftId: null,
-      completedAt: lastMonth, createdAt: lastMonth, items: [], payments: [],
+      paidMinor: 2500, changeMinor: 0, idempotencyKey: null,
+      createdAt: lastMonth,
     });
 
     const draft = await sales.createDraft("b1", "u1", "r1", {

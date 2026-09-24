@@ -241,7 +241,7 @@ export class BillingService {
     const [year, month] = monthPeriod(now).split("-").map((n) => Number(n));
     return (await this.db.listSalesByBusiness(businessId)).filter((s) => {
       if (s.status === "DRAFT" || s.status === "VOIDED") return false;
-      const at = new Date(s.completedAt ?? s.createdAt);
+      const at = new Date(s.createdAt);
       return at.getUTCFullYear() === year && at.getUTCMonth() + 1 === month;
     }).length;
   }

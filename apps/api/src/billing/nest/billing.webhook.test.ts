@@ -51,7 +51,7 @@ describe("phase10 webhook event coverage", () => {
     const paid = (await db.listInvoices(business.id)).filter((i) => i.status === "paid");
     expect(paid).toHaveLength(1);
     expect(paid[0].id).toBe(invoice.id);
-    expect((await db.listAudit(business.id)).filter((a) => a.action === "webhook.invoice")).toHaveLength(1);
+    expect((await db.listAudit()).filter((a) => a.action === "webhook.invoice")).toHaveLength(1);
   });
 
   it("pays the invoice named by the event, not the oldest open one", async () => {
@@ -98,7 +98,7 @@ describe("phase10 webhook event coverage", () => {
     expect(out.handled).toBe(true);
     const rows = await db.listInvoices(business.id);
     expect(rows.find((i) => i.id === invoice.id)!.status).toBe("void");
-    expect((await db.listAudit(business.id)).some((a) => a.action === "invoice.void")).toBe(true);
+    expect((await db.listAudit()).some((a) => a.action === "invoice.void")).toBe(true);
   });
 
   it("records subscription.created and status transitions from subscription.updated", async () => {
@@ -120,7 +120,7 @@ describe("phase10 webhook event coverage", () => {
       businessId: business.id, planKey: "basic", status: "cancelled",
     }, "r3");
     expect((await db.getSubscription(business.id))!.status).toBe("cancelled");
-    const audits = await db.listAudit(business.id);
+    const audits = await db.listAudit();
     expect(audits.some((a) => a.action === "subscription.created")).toBe(true);
     expect(audits.some((a) => a.action === "subscription.updated")).toBe(true);
   });

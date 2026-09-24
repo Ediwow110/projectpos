@@ -129,10 +129,11 @@ describe("phase10 ledger export accounting", () => {
     for (let i = 0; i < pageSize + 1; i++) {
       await db.createSale({
         businessId: business.id, receiptNo: `BULK-${String(i).padStart(4, "0")}`, status: "COMPLETED",
-        customerId: null, customerName: null, userId: "u1", registerId: null, branchId: null,
+        customerId: null, customerName: null, notes: null, actorId: "u1", requestId: "r-bulk",
+        currency: "PHP", registerId: null, branchId: null,
         subtotalMinor: 1000, discountMinor: 0, taxMinor: 0, totalMinor: 1000,
-        paidMinor: 1000, changeMinor: 0, idempotencyKey: null, shiftId: null,
-        completedAt: new Date(), createdAt: new Date(), items: [], payments: [],
+        paidMinor: 1000, changeMinor: 0, idempotencyKey: null,
+        createdAt: new Date(),
       });
     }
     const limits: number[] = [];

@@ -53,7 +53,7 @@ describe("phase10 cap enforcement under concurrency", () => {
     const branches = new BranchService(db);
     const results = await Promise.allSettled(
       Array.from({ length: 4 }, (_, i) =>
-        branches.createBranch(business.id, "u1", `b-${i}`, { name: `Branch ${i}` }),
+        branches.createBranch(business.id, "u1", `b-${i}`, { name: `Branch ${i}` }, "owner"),
       ),
     );
     // Free allows zero branches: every racing create is refused.
