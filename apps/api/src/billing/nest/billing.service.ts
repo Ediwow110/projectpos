@@ -1,11 +1,17 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { withScope } from "@pos/database";
-import type { DbPort } from "../../common/db.port";
+import type { DbInvoice, DbPort, DbWebhookEvent } from "../../common/db.port";
 import { PlanLimitError } from "../../common/plan-limit-error";
 import { ENTERPRISE, isTrialExpired, monthPeriod, PLAN_ALLOWANCES, type PlanAllowances } from "../entitlements";
 
 export type CapKind = "users" | "products" | "registers" | "branches";
+
+const MAX_CATCHUP_PERIODS = 120;
+
+const SUBSCRIPTION_STATUSES = new Set([
+  "trialing", "active", "past_due", "cancelled", "paused",
+]);
 
 export interface ResolvedPlan {
   key: string;
@@ -37,6 +43,32 @@ function sortKeys(value: unknown): unknown {
 function webhookSecret(provider: string): string {
   const envKey = `BILLING_${provider.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_SECRET`;
   return process.env[envKey] ?? "";
+}
+
+// Process-wide per-business serialization. Cap checks and invoice rollover are
+// read-then-write sequences, so without this two concurrent requests could both
+// pass the same check (overselling a plan cap) or both invoice the same period.
+// Lives at module scope because every domain service builds its own
+// BillingService around the shared DbPort. A multi-process deployment needs the
+// same guarantee from the database (SELECT ... FOR UPDATE / unique period),
+// which arrives with the Prisma-backed port.
+const businessLocks = new Map<string, Promise<void>>();
+
+async function withBusinessLock<T>(businessId: string, fn: () => Promise<T>): Promise<T> {
+  const previous = businessLocks.get(businessId) ?? Promise.resolve();
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const chain = previous.then(() => held);
+  businessLocks.set(businessId, chain);
+  await previous;
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (businessLocks.get(businessId) === chain) businessLocks.delete(businessId);
+  }
 }
 
 @Injectable()
@@ -100,6 +132,25 @@ export class BillingService {
     }
   }
 
+  // The cap check and the write it guards must not interleave with another
+  // request for the same business, otherwise the limit is advisory. Callers
+  // pass the actual write so the check, the insert, and the counter snapshot
+  // happen inside one critical section.
+  async withCap<T>(
+    businessId: string,
+    actorId: string,
+    requestId: string,
+    kind: CapKind,
+    write: () => Promise<T>,
+  ): Promise<T> {
+    return withBusinessLock(businessId, async () => {
+      await this.requireCreate(businessId, actorId, requestId, kind);
+      const out = await write();
+      await this.db.setCounter(businessId, `cap.${kind}`, "all-time", await this.liveCount(businessId, kind));
+      return out;
+    });
+  }
+
   async checkFeature(businessId: string, feature: string): Promise<boolean> {
     withScope(businessId, {});
     const override = await this.db.getFlag(businessId, feature);
@@ -128,23 +179,31 @@ export class BillingService {
     await this.recordUsage(businessId, "sales.monthly", monthPeriod(now));
   }
 
-  async changePlan(businessId: string, actorId: string, requestId: string, planKey: string): Promise<{ key: string }> {
+  async changePlan(
+    businessId: string,
+    actorId: string,
+    requestId: string,
+    planKey: string,
+    status = "active",
+  ): Promise<{ key: string }> {
     withScope(businessId, {});
     const business = await this.db.findBusinessById(businessId);
     if (!business) throw new Error("NOT_FOUND");
     const allowances = PLAN_ALLOWANCES[planKey];
     if (!allowances) throw new Error("VALIDATION");
+    if (!SUBSCRIPTION_STATUSES.has(status)) throw new Error("VALIDATION");
     const plan = await this.db.findPlanByKey(planKey);
     if (!plan || !plan.isActive) throw new Error("VALIDATION");
     const existing = await this.db.getSubscription(businessId);
     const periodEnd = new Date(Date.now() + 30 * 86400000);
+    const trialEndsAt = status === "trialing" ? new Date(Date.now() + 14 * 86400000) : null;
     if (existing) {
       await this.db.updateSubscription(existing.id, businessId, {
-        planId: plan.id, status: "active", trialEndsAt: null, currentPeriodEnd: periodEnd,
+        planId: plan.id, status, trialEndsAt, currentPeriodEnd: periodEnd,
       });
     } else {
       await this.db.upsertSubscription({
-        businessId, planId: plan.id, status: "active", trialEndsAt: null, currentPeriodEnd: periodEnd,
+        businessId, planId: plan.id, status, trialEndsAt, currentPeriodEnd: periodEnd,
       });
     }
     await this.db.appendAudit({
@@ -168,9 +227,23 @@ export class BillingService {
       await this.db.setCounter(businessId, `cap.${kind}`, "all-time", live);
       if (snap && snap.count !== live) drifts.push({ key: `cap.${kind}`, snapshot: snap.count, live });
     }
-    const sales = (await this.db.listSalesByBusiness(businessId)).length;
-    await this.db.setCounter(businessId, "sales.monthly", monthPeriod(new Date()), sales);
+    const period = monthPeriod(new Date());
+    const sales = await this.monthlySaleCount(businessId);
+    const salesSnap = snapshots.find((c) => c.key === "sales.monthly" && c.period === period);
+    await this.db.setCounter(businessId, "sales.monthly", period, sales);
+    if (salesSnap && salesSnap.count !== sales) {
+      drifts.push({ key: `sales.monthly:${period}`, snapshot: salesSnap.count, live: sales });
+    }
     return { checked: kinds.length + 1, drifts };
+  }
+
+  private async monthlySaleCount(businessId: string, now: Date = new Date()): Promise<number> {
+    const [year, month] = monthPeriod(now).split("-").map((n) => Number(n));
+    return (await this.db.listSalesByBusiness(businessId)).filter((s) => {
+      if (s.status === "DRAFT" || s.status === "VOIDED") return false;
+      const at = new Date(s.completedAt ?? s.createdAt);
+      return at.getUTCFullYear() === year && at.getUTCMonth() + 1 === month;
+    }).length;
   }
 
   async listInvoices(businessId: string) {
@@ -188,7 +261,7 @@ export class BillingService {
       this.liveCount(businessId, "registers"),
       this.liveCount(businessId, "branches"),
     ]);
-    const sales = (await this.db.listSalesByBusiness(businessId)).length;
+    const sales = await this.monthlySaleCount(businessId);
     return {
       users: { used: users, limit: plan.allowances.users },
       products: { used: products, limit: plan.allowances.products },
@@ -215,33 +288,41 @@ export class BillingService {
     };
   }
 
+  // Lazy time resolution (no cron per the design): every subscription read
+  // catches up any period that has already ended. The lock makes concurrent
+  // readers issue each period once, and the loop covers subscriptions that are
+  // several periods behind instead of advancing a single month per request.
   async rolloverIfDue(businessId: string, now: Date = new Date()): Promise<void> {
     withScope(businessId, {});
-    const sub = await this.db.getSubscription(businessId);
-    if (!sub || sub.status !== "active") return;
-    if (sub.currentPeriodEnd.getTime() > now.getTime()) return;
-    const plan = await this.allowancesOf(sub.planId);
-    const periodStart = new Date(sub.currentPeriodEnd.getTime() - 30 * 86400000);
-    await this.db.createInvoice({
-      businessId,
-      subscriptionId: sub.id,
-      periodStart,
-      periodEnd: sub.currentPeriodEnd,
-      amountMinor: plan.monthlyMinor,
-      currency: "PHP",
-      status: "open",
-      paidAt: null,
-    });
-    await this.db.updateSubscription(sub.id, businessId, {
-      currentPeriodEnd: new Date(sub.currentPeriodEnd.getTime() + 30 * 86400000),
-    });
-    await this.db.appendAudit({
-      businessId,
-      actorId: "system",
-      action: "invoice.issued",
-      entityType: "Invoice",
-      entityId: `${periodStart.toISOString()}`,
-      requestId: `rollover-${sub.id}`,
+    await withBusinessLock(businessId, async () => {
+      const sub = await this.db.getSubscription(businessId);
+      if (!sub || sub.status !== "active") return;
+      const plan = await this.allowancesOf(sub.planId);
+      let periodEnd = sub.currentPeriodEnd;
+      for (let billed = 0; billed < MAX_CATCHUP_PERIODS; billed++) {
+        if (periodEnd.getTime() > now.getTime()) break;
+        const periodStart = new Date(periodEnd.getTime() - 30 * 86400000);
+        const invoice = await this.db.createInvoice({
+          businessId,
+          subscriptionId: sub.id,
+          periodStart,
+          periodEnd,
+          amountMinor: plan.monthlyMinor,
+          currency: "PHP",
+          status: "open",
+          paidAt: null,
+        });
+        periodEnd = new Date(periodEnd.getTime() + 30 * 86400000);
+        await this.db.updateSubscription(sub.id, businessId, { currentPeriodEnd: periodEnd });
+        await this.db.appendAudit({
+          businessId,
+          actorId: "system",
+          action: "invoice.issued",
+          entityType: "Invoice",
+          entityId: invoice.id,
+          requestId: `rollover-${sub.id}`,
+        });
+      }
     });
   }
 
@@ -276,6 +357,10 @@ export class BillingService {
     return { id: row.id, amountMinor: row.amountMinor, status: row.status };
   }
 
+  // Signature first (constant-time), then claim the event id before touching
+  // any billing state: the claim is what makes concurrent redeliveries of the
+  // same event apply exactly once, instead of both mutating and one of them
+  // losing the race on the insert.
   async ingestWebhook(
     provider: string,
     eventId: string,
@@ -293,29 +378,106 @@ export class BillingService {
     if (a.length !== b.length || !timingSafeEqual(a, b)) throw new Error("FORBIDDEN");
     const seen = await this.db.findWebhookEvent(provider, eventId);
     if (seen) return { ok: true as const, handled: seen.status === "applied", deduplicated: true };
-    if (type === "invoice.paid") {
-      const p = payload as { businessId?: string; amountMinor?: number };
-      if (typeof p.businessId !== "string") throw new Error("VALIDATION");
-      withScope(p.businessId, {});
-      const open = (await this.db.listInvoices(p.businessId)).find((i) => i.status === "open") ?? null;
-      if (!open) throw new Error("NOT_FOUND");
-      await this.db.updateInvoice(open.id, p.businessId, { status: "paid", paidAt: new Date() });
-      await this.db.createWebhookEvent({ businessId: p.businessId, provider, eventId, type, payload: body, status: "applied" });
+    // Claim before any mutation. A concurrent redelivery of the same eventId
+    // loses the claim and is reported as a deduplicated replay, so exactly one
+    // delivery applies the state change.
+    const claim = await this.db.claimWebhookEvent({
+      businessId: typeof (payload as { businessId?: unknown }).businessId === "string"
+        ? ((payload as { businessId: string }).businessId)
+        : null,
+      provider,
+      eventId,
+      type,
+      payload: body as DbWebhookEvent["payload"],
+      status: "processing",
+    });
+    if (!claim) {
+      const stored = await this.db.findWebhookEvent(provider, eventId);
+      return { ok: true as const, handled: stored?.status === "applied", deduplicated: true };
+    }
+
+    const p = payload as {
+      businessId?: string;
+      invoiceId?: string;
+      amountMinor?: number;
+      planKey?: string;
+      status?: string;
+      reason?: string;
+    };
+    const businessId = typeof p.businessId === "string" ? p.businessId : null;
+    if (businessId) withScope(businessId, {});
+
+    if (type === "invoice.paid" || type === "invoice.void") {
+      if (!businessId) throw new Error("VALIDATION");
+      const target = await this.resolveInvoiceForEvent(businessId, p);
+      if (type === "invoice.paid") {
+        if (target.status !== "open") throw new Error("VALIDATION");
+        await this.db.updateInvoice(target.id, businessId, { status: "paid", paidAt: new Date() });
+      } else {
+        if (target.status === "void") throw new Error("VALIDATION");
+        await this.db.updateInvoice(target.id, businessId, { status: "void" });
+      }
+      await this.db.updateWebhookEventStatus(claim.id, "applied");
       await this.db.appendAudit({
-        businessId: p.businessId, actorId: "webhook", action: "webhook.invoice",
-        entityType: "Invoice", entityId: open.id, requestId,
+        businessId,
+        actorId: "webhook",
+        action: type === "invoice.paid" ? "webhook.invoice" : "invoice.void",
+        entityType: "Invoice",
+        entityId: target.id,
+        requestId,
       });
       return { ok: true as const, handled: true, deduplicated: false };
     }
-    if (type === "subscription.updated") {
-      const p = payload as { businessId?: string; planKey?: string };
-      if (typeof p.businessId !== "string" || typeof p.planKey !== "string") throw new Error("VALIDATION");
-      await this.changePlan(p.businessId, "webhook", requestId, p.planKey);
-      await this.db.createWebhookEvent({ businessId: p.businessId, provider, eventId, type, payload: body, status: "applied" });
+
+    if (type === "subscription.created" || type === "subscription.updated") {
+      if (!businessId || typeof p.planKey !== "string") throw new Error("VALIDATION");
+      const status = SUBSCRIPTION_STATUSES.has(p.status ?? "active") ? (p.status as string) : null;
+      if (status === null) throw new Error("VALIDATION");
+      await this.applySubscriptionState(businessId, requestId, p.planKey, status);
+      await this.db.updateWebhookEventStatus(claim.id, "applied");
       return { ok: true as const, handled: true, deduplicated: false };
     }
-    await this.db.createWebhookEvent({ businessId: null, provider, eventId, type, payload: body, status: "unhandled" });
+
+    await this.db.updateWebhookEventStatus(claim.id, "unhandled");
     return { ok: true as const, handled: false, deduplicated: false };
+  }
+
+  // Events name their invoice. Amount is verified when the provider sends it,
+  // so a signed-but-wrong event can never mark an unrelated invoice paid.
+  private async resolveInvoiceForEvent(
+    businessId: string,
+    p: { invoiceId?: string; amountMinor?: number },
+  ): Promise<DbInvoice> {
+    const invoices = await this.db.listInvoices(businessId);
+    if (typeof p.invoiceId === "string") {
+      const byId = invoices.find((i) => i.id === p.invoiceId);
+      if (!byId) throw new Error("NOT_FOUND");
+      if (typeof p.amountMinor === "number" && byId.amountMinor !== p.amountMinor) {
+        throw new Error("VALIDATION");
+      }
+      return byId;
+    }
+    if (typeof p.amountMinor !== "number") throw new Error("VALIDATION");
+    const byAmount = invoices.filter((i) => i.amountMinor === p.amountMinor && i.status === "open");
+    if (byAmount.length !== 1) throw byAmount.length === 0 ? new Error("NOT_FOUND") : new Error("VALIDATION");
+    return byAmount[0]!;
+  }
+
+  private async applySubscriptionState(
+    businessId: string,
+    requestId: string,
+    planKey: string,
+    status: string,
+  ): Promise<void> {
+    await this.changePlan(businessId, "webhook", requestId, planKey, status);
+    await this.db.appendAudit({
+      businessId,
+      actorId: "webhook",
+      action: status === "trialing" ? "subscription.created" : "subscription.updated",
+      entityType: "Subscription",
+      entityId: `${planKey}:${status}`,
+      requestId,
+    });
   }
 
   async setFlag(businessId: string, actorId: string, requestId: string, key: string, enabled: boolean): Promise<{ key: string; enabled: boolean }> {

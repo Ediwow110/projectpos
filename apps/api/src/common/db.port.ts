@@ -510,6 +510,10 @@ export interface DbPort {
   setFlag(f: { businessId: string | null; key: string; enabled: boolean }): Promise<DbFeatureFlag>;
   findWebhookEvent(provider: string, eventId: string): Promise<DbWebhookEvent | null>;
   createWebhookEvent(e: Omit<DbWebhookEvent, "id" | "receivedAt">): Promise<DbWebhookEvent>;
+  // Atomic claim: the first caller for an eventId wins and gets true, every
+  // concurrent redelivery gets false. Backed by the unique index on eventId.
+  claimWebhookEvent(e: Omit<DbWebhookEvent, "id" | "receivedAt">): Promise<DbWebhookEvent | null>;
+  updateWebhookEventStatus(id: string, status: string): Promise<void>;
   createApiToken(t: Omit<DbApiToken, "id">): Promise<DbApiToken>;
   listApiTokens(businessId: string): Promise<DbApiToken[]>;
   findApiTokenByPrefix(prefix: string): Promise<DbApiToken | null>;

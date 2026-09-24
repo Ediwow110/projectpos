@@ -31,13 +31,15 @@ export class BranchService {
       throw new Error("VALIDATION");
     }
     const type = input.type ?? "store";
-    await new BillingService(this.db).requireCreate(businessId, actorId, requestId, "branches");
-    const row = await this.db.createBranch({
-      businessId,
-      name,
-      type,
-      isActive: input.isActive ?? true,
-    });
+    const row = await new BillingService(this.db).withCap(
+      businessId, actorId, requestId, "branches",
+      () => this.db.createBranch({
+        businessId,
+        name,
+        type,
+        isActive: input.isActive ?? true,
+      }),
+    );
     await this.db.appendAudit({
       businessId,
       actorId,

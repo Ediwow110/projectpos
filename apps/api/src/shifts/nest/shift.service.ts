@@ -111,8 +111,10 @@ export class ShiftService {
     if (existing.some((r) => r.name.toLowerCase() === name.toLowerCase())) {
       throw new Error("VALIDATION");
     }
-    await new BillingService(this.db).requireCreate(businessId, actorId, requestId, "registers");
-    const row = await this.db.createRegister({ businessId, name, isActive: true, branchId });
+    const row = await new BillingService(this.db).withCap(
+      businessId, actorId, requestId, "registers",
+      () => this.db.createRegister({ businessId, name, isActive: true, branchId }),
+    );
     await this.db.appendAudit({
       businessId,
       actorId,

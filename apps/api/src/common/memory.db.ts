@@ -582,6 +582,18 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       webhookEvents.set(row.id, row);
       return row;
     },
+    async claimWebhookEvent(e) {
+      for (const existing of webhookEvents.values()) {
+        if (existing.provider === e.provider && existing.eventId === e.eventId) return null;
+      }
+      const row = { ...e, id: nid("whev"), receivedAt: new Date() };
+      webhookEvents.set(row.id, row);
+      return row;
+    },
+    async updateWebhookEventStatus(id, status) {
+      const row = webhookEvents.get(id);
+      if (row) webhookEvents.set(id, { ...row, status });
+    },
     async createApiToken(t) {
       const row = { ...t, id: nid("tok") };
       apiTokens.set(row.id, row);

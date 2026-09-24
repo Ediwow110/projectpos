@@ -12,6 +12,7 @@ import type {
 } from "../../common/db.port";
 import { computeSaleTotals, requiresDiscountOverride } from "../totals";
 import { transitionSale } from "../state-machine";
+import { BillingService } from "../../billing/nest/billing.service";
 import { fingerprintPayload } from "../idempotency";
 import { queryProviderStatus, type ProviderVerdict } from "../../payments/provider";
 import { ShiftService } from "../../shifts/nest/shift.service";
@@ -370,6 +371,10 @@ export class SalesService {
         entityId: sale.id,
         requestId,
       });
+      // Phase 10 metering: the auditable monthly sales counter moves with the
+      // completed sale (same critical section as the write above, so replays
+      // never double-count and failures never leave a phantom sale counted).
+      await new BillingService(this.db).recordSale(businessId);
       return { sale: await this.embed(updated), replayed: false };
     });
   }

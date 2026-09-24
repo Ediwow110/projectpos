@@ -45,6 +45,54 @@ describe("phase10 entitlement service", () => {
   });
 });
 
+describe("phase10 usage metering", () => {
+  it("counts only this month's sales and advances the counter on completion", async () => {
+    const db = createMemoryDb();
+    const { SalesService } = await import("../../sales/nest/sales.service");
+    const sales = new SalesService(db);
+    const billing = new BillingService(db);
+    const product = await db.createProduct({
+      businessId: "b1", categoryId: null, name: "Cola", sku: null, barcode: null,
+      brand: null, unit: "pc", costMinor: 1000, priceMinor: 2500, taxRateBps: null,
+      reorderLevel: 0, trackInventory: false, isActive: true, imageUrl: null,
+    });
+    // A completed sale from last month must not inflate this month's usage.
+    const lastMonth = new Date();
+    lastMonth.setUTCMonth(lastMonth.getUTCMonth() - 1);
+    await db.createSale({
+      businessId: "b1", receiptNo: "OLD-0001", status: "COMPLETED",
+      customerId: null, customerName: null, userId: "u1", registerId: null, branchId: null,
+      subtotalMinor: 2500, discountMinor: 0, taxMinor: 0, totalMinor: 2500,
+      paidMinor: 2500, changeMinor: 0, idempotencyKey: null, shiftId: null,
+      completedAt: lastMonth, createdAt: lastMonth, items: [], payments: [],
+    });
+
+    const draft = await sales.createDraft("b1", "u1", "r1", {
+      lines: [{ productId: product.id, qty: 1, lineDiscountMinor: 0 }], orderDiscountMinor: 0,
+    }, []);
+    await sales.completeSale("b1", "u1", "r1", draft.id, {
+      payments: [{ method: "cash", amountMinor: draft.totalMinor }], key: "meter-1", granted: [],
+    });
+
+    const summary = await billing.usageSummary("b1");
+    expect(summary.salesMonthly).toBe(1);
+    const period = new Date().toISOString().slice(0, 7);
+    const counter = (await db.listCounters("b1")).find((c) => c.key === "sales.monthly");
+    expect(counter?.period).toBe(period);
+    expect(counter?.count).toBe(1);
+  });
+
+  it("rebuilds the monthly counter from live sales and reports drift", async () => {
+    const db = createMemoryDb();
+    const billing = new BillingService(db);
+    await db.setCounter("b1", "sales.monthly", new Date().toISOString().slice(0, 7), 9);
+    const rebuilt = await billing.rebuildCounters("b1");
+    const counter = (await db.listCounters("b1")).find((c) => c.key === "sales.monthly");
+    expect(counter?.count).toBe(0);
+    expect(rebuilt.drifts.some((d) => d.key.startsWith("sales.monthly"))).toBe(true);
+  });
+});
+
 describe("phase10 trial on registration", () => {
   it("starts new businesses on a 14-day pro trial", async () => {
     const db = createMemoryDb();

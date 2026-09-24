@@ -146,23 +146,25 @@ export class CatalogService {
     await assertCategoryBelongs(this.db, businessId, input.categoryId);
     await assertUniqueSku(this.db, businessId, norm.sku);
     await assertUniqueBarcode(this.db, businessId, norm.barcode);
-    await new BillingService(this.db).requireCreate(businessId, actorId, requestId, "products");
-    const row = await this.db.createProduct({
-      businessId,
-      categoryId: input.categoryId ?? null,
-      name: norm.name,
-      sku: norm.sku,
-      barcode: norm.barcode,
-      brand: input.brand?.trim() ? input.brand.trim() : null,
-      unit: input.unit?.trim() ? input.unit.trim() : "pc",
-      costMinor: input.costMinor ?? 0,
-      priceMinor: input.priceMinor,
-      taxRateBps: input.taxRateBps ?? null,
-      reorderLevel: input.reorderLevel ?? 0,
-      trackInventory: input.trackInventory ?? true,
-      isActive: input.isActive ?? true,
-      imageUrl: input.imageUrl?.trim() ? input.imageUrl.trim() : null,
-    });
+    const row = await new BillingService(this.db).withCap(
+      businessId, actorId, requestId, "products",
+      () => this.db.createProduct({
+        businessId,
+        categoryId: input.categoryId ?? null,
+        name: norm.name,
+        sku: norm.sku,
+        barcode: norm.barcode,
+        brand: input.brand?.trim() ? input.brand.trim() : null,
+        unit: input.unit?.trim() ? input.unit.trim() : "pc",
+        costMinor: input.costMinor ?? 0,
+        priceMinor: input.priceMinor,
+        taxRateBps: input.taxRateBps ?? null,
+        reorderLevel: input.reorderLevel ?? 0,
+        trackInventory: input.trackInventory ?? true,
+        isActive: input.isActive ?? true,
+        imageUrl: input.imageUrl?.trim() ? input.imageUrl.trim() : null,
+      }),
+    );
     await this.db.appendAudit({
       businessId,
       actorId,
