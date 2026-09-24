@@ -1,4 +1,4 @@
-import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbDisplayToken, DbFeatureFlag, DbInvoice, DbMembership, DbMovement, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbResetToken, DbSession, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent } from "./db.port";
+import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbDisplayToken, DbFeatureFlag, DbInvoice, DbMembership, DbMovement, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbResetToken, DbSession, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent } from "./db.port";
 
 let n = 0;
 const nid = (p: string): string => `${p}_${Date.now().toString(36)}_${(n += 1)}`;
@@ -46,6 +46,10 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const printers = new Map<string, DbPrinter>();
   const printJobs = new Map<string, DbPrintJob>();
   const displayTokens = new Map<string, DbDisplayToken>();
+  const emailVerifications = new Map<string, { id: string; userId: string; tokenHash: string; expiresAt: Date; usedAt: Date | null }>();
+  const supportGrants = new Map<string, { id: string; purpose: string; actorId: string; tokenHash: string; expiresAt: Date; usedAt: Date | null }>();
+  const shiftCorrections = new Map<string, DbShiftCorrection>();
+  const receiptShares = new Map<string, { id: string; businessId: string; saleId: string; tokenHash: string; expiresAt: Date }>();
   const audit: AuditEntry[] = [];
 
   const balanceKey = (businessId: string, branchId: string | null | undefined, productId: string): string =>
@@ -67,6 +71,10 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     async updateUserPassword(id, passwordHash) {
       const u = users.get(id);
       if (u) users.set(id, { ...u, passwordHash });
+    },
+    async setUserEmailVerified(id, verified) {
+      const u = users.get(id);
+      if (u) users.set(id, { ...u, emailVerified: verified });
     },
     async createBusiness(b) {
       const row = { ...b, id: nid("biz") };
@@ -108,10 +116,18 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       memberships.set(row.id, row);
       return row;
     },
+    async updateMembership(id, businessId, patch) {
+      const m = memberships.get(id);
+      if (m && m.businessId === businessId) memberships.set(id, { ...m, deactivatedAt: patch.deactivatedAt });
+    },
     async createSession(s) {
       const row = { ...s, id: nid("sess") };
       sessions.set(row.id, row);
       return row;
+    },
+    async updateSession(id, patch) {
+      const s = sessions.get(id);
+      if (s) sessions.set(id, { ...s, activeBusinessId: patch.activeBusinessId });
     },
     async findSessionByTokenHash(tokenHash) {
       for (const s of sessions.values()) if (s.tokenHash === tokenHash) return s;
@@ -139,6 +155,54 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       const t = resets.get(tokenHash);
       if (t) resets.set(tokenHash, { ...t, usedAt });
     },
+    async createEmailVerificationToken(t) {
+      const row = { ...t, usedAt: null, id: nid("evt") };
+      emailVerifications.set(row.tokenHash, row);
+      return { id: row.id };
+    },
+    async findEmailVerificationToken(tokenHash) {
+      return emailVerifications.get(tokenHash) ?? null;
+    },
+    async markEmailVerificationTokenUsed(id) {
+      for (const t of emailVerifications.values()) {
+        if (t.id === id) emailVerifications.set(t.tokenHash, { ...t, usedAt: new Date() });
+      }
+    },
+    async createSupportGrant(g) {
+      const row = { ...g, usedAt: null, id: nid("sup") };
+      supportGrants.set(row.tokenHash, row);
+      return { id: row.id };
+    },
+    async findValidSupportGrant(tokenHash) {
+      const g = supportGrants.get(tokenHash);
+      if (!g || g.usedAt !== null || g.expiresAt.getTime() <= Date.now()) return null;
+      return g;
+    },
+    async markSupportGrantUsed(id) {
+      for (const g of supportGrants.values()) {
+        if (g.id === id) supportGrants.set(g.tokenHash, { ...g, usedAt: new Date() });
+      }
+    },
+    async createShiftCorrection(c) {
+      const row = { ...c, id: nid("shcor"), createdAt: new Date() };
+      shiftCorrections.set(row.id, row);
+      return row;
+    },
+    async listShiftCorrections(businessId, shiftId) {
+      return [...shiftCorrections.values()]
+        .filter((c) => c.businessId === businessId && c.shiftId === shiftId)
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    },
+    async createReceiptShare(s) {
+      const row = { ...s, id: nid("rsh") };
+      receiptShares.set(row.tokenHash, row);
+      return { id: row.id };
+    },
+    async findValidReceiptShare(tokenHash) {
+      const r = receiptShares.get(tokenHash);
+      if (!r || r.expiresAt.getTime() <= Date.now()) return null;
+      return r;
+    },
     async getSettings(businessId) {
       return settings.get(businessId) ?? {};
     },
@@ -146,7 +210,9 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       settings.set(businessId, next);
     },
     async appendAudit(e) {
-      audit.push(e);
+      // Phase 11: every audit row is orderable (PLAN 6.7) — stamp the time
+      // when the caller does not supply one.
+      audit.push({ ...e, at: e.at ?? new Date() });
     },
     async listAudit() {
       return audit;

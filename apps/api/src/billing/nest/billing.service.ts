@@ -294,6 +294,7 @@ export class BillingService {
         entityType: "Subscription",
         entityId: planKey,
         requestId,
+        reason: `plan ${planKey} -> ${status}`,
       });
       return { key: planKey };
     });
@@ -645,6 +646,7 @@ export class BillingService {
       entityType: "FeatureFlag",
       entityId: `${key}:${enabled}`,
       requestId,
+      reason: `flag ${key}=${String(enabled)}${businessId ? "" : " (global)"}`,
     });
     return { key: row.key, enabled: row.enabled };
   }

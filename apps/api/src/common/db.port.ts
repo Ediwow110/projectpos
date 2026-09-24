@@ -3,6 +3,9 @@ export interface DbUser {
   name: string;
   email: string;
   passwordHash: string;
+  // Phase 11: undefined/true = verified (legacy rows, invited members);
+  // false only when the business opts into email verification.
+  emailVerified?: boolean;
 }
 
 export interface DbBusiness {
@@ -16,6 +19,8 @@ export interface DbMembership {
   businessId: string;
   userId: string;
   role: string;
+  // Phase 11: set when the member is deactivated; deactivated members have no access.
+  deactivatedAt?: Date | null;
 }
 
 export interface DbPlan {
@@ -125,6 +130,9 @@ export interface DbSession {
   id: string;
   userId: string;
   businessId: string;
+  // Phase 11: explicit active business chosen via POST /auth/active-business;
+  // null/undefined = home business from login.
+  activeBusinessId?: string | null;
   tokenHash: string;
   expiresAt: Date;
   revokedAt: Date | null;
@@ -153,6 +161,23 @@ export interface AuditEntry {
   entityType: string;
   entityId: string;
   requestId: string;
+  // Phase 11 (PLAN 6.7): the store stamps `at` when the caller omits it;
+  // reason and before/after snapshots are optional context for sensitive writes.
+  at?: Date;
+  reason?: string;
+  before?: unknown;
+  after?: unknown;
+}
+
+export interface DbShiftCorrection {
+  id: string;
+  businessId: string;
+  shiftId: string;
+  amountMinor: number;
+  reason: string;
+  actorId: string;
+  requestId: string;
+  createdAt: Date;
 }
 
 export interface DbCategory {
@@ -418,19 +443,32 @@ export interface DbPort {
   findUserById(id: string): Promise<DbUser | null>;
   createUser(u: Omit<DbUser, "id">): Promise<DbUser>;
   updateUserPassword(id: string, passwordHash: string): Promise<void>;
+  setUserEmailVerified(id: string, verified: boolean): Promise<void>;
   createBusiness(b: Omit<DbBusiness, "id">): Promise<DbBusiness>;
   findBusinessById(id: string): Promise<DbBusiness | null>;
   listMembershipsByUser(userId: string): Promise<DbMembership[]>;
   findMembership(userId: string, businessId: string): Promise<DbMembership | null>;
   createMembership(m: Omit<DbMembership, "id">): Promise<DbMembership>;
+  updateMembership(id: string, businessId: string, patch: { deactivatedAt: Date | null }): Promise<void>;
   createSession(s: Omit<DbSession, "id">): Promise<DbSession>;
   findSessionByTokenHash(tokenHash: string): Promise<DbSession | null>;
   listSessionsByUser(userId: string): Promise<DbSession[]>;
+  updateSession(id: string, patch: { activeBusinessId: string | null }): Promise<void>;
   revokeSession(id: string): Promise<void>;
   revokeAllUserSessions(userId: string, exceptId?: string): Promise<void>;
   saveResetToken(t: DbResetToken): Promise<void>;
   findResetToken(tokenHash: string): Promise<DbResetToken | null>;
   markResetTokenUsed(tokenHash: string, usedAt: Date): Promise<void>;
+  createEmailVerificationToken(t: { userId: string; tokenHash: string; expiresAt: Date }): Promise<{ id: string }>;
+  findEmailVerificationToken(tokenHash: string): Promise<{ id: string; userId: string; expiresAt: Date; usedAt: Date | null } | null>;
+  markEmailVerificationTokenUsed(id: string): Promise<void>;
+  createSupportGrant(g: { purpose: string; actorId: string; tokenHash: string; expiresAt: Date }): Promise<{ id: string }>;
+  findValidSupportGrant(tokenHash: string): Promise<{ id: string; purpose: string; actorId: string; expiresAt: Date } | null>;
+  markSupportGrantUsed(id: string): Promise<void>;
+  createShiftCorrection(c: { businessId: string; shiftId: string; amountMinor: number; reason: string; actorId: string; requestId: string }): Promise<DbShiftCorrection>;
+  listShiftCorrections(businessId: string, shiftId: string): Promise<DbShiftCorrection[]>;
+  createReceiptShare(s: { businessId: string; saleId: string; tokenHash: string; expiresAt: Date }): Promise<{ id: string }>;
+  findValidReceiptShare(tokenHash: string): Promise<{ id: string; businessId: string; saleId: string; expiresAt: Date } | null>;
   getSettings(businessId: string): Promise<Record<string, unknown>>;
   saveSettings(businessId: string, settings: Record<string, unknown>): Promise<void>;
   appendAudit(e: AuditEntry): Promise<void>;

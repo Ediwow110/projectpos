@@ -55,6 +55,7 @@ export class BusinessController {
         auth.userId,
         parsed.data as Record<string, unknown>,
         rid(req),
+        this.auth.rolePermissions(auth.role),
       );
       res.json({ settings });
     } catch (e) {

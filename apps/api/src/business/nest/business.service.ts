@@ -28,7 +28,11 @@ export class BusinessService {
     actorId: string,
     patch: Record<string, unknown>,
     requestId: string,
+    granted: string[] = [],
   ): Promise<Record<string, unknown>> {
+    // PLAN FR-RBAC-02: settings changes are a permission-sensitive action; the
+    // role seed withholds settings.write from manager/cashier.
+    if (!granted.includes("settings.write")) throw new Error("FORBIDDEN");
     const current = await this.db.getSettings(businessId);
     // Receipt customization is a paid feature: the settings schema accepts
     // receipt, receipt.*, receiptHeader and receiptFooter, so the gate matches
@@ -45,6 +49,8 @@ export class BusinessService {
       entityType: "Business",
       entityId: businessId,
       requestId,
+      before: current,
+      after: next,
     });
     return next;
   }
