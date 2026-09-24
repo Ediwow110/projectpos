@@ -16,8 +16,9 @@ export default function LoginPage(): JSX.Element {
     e.preventDefault();
     setError("");
     try {
+      const deviceId = window.localStorage.getItem("pos-device-id");
       await apiFetch("/api/v1/auth/login", {
-        init: { method: "POST", body: JSON.stringify({ email, password }) },
+        init: { method: "POST", body: JSON.stringify({ email, password, ...(deviceId ? { deviceId } : {}) }) },
       });
       router.push("/");
     } catch (err) {

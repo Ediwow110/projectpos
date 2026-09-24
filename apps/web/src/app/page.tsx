@@ -8,6 +8,8 @@ import { useQuery } from "@tanstack/react-query";
 import { ApiError, apiFetch } from "../lib/api";
 import { TrendChart } from "../lib/charts";
 import { availableMetrics, buildOverviewQuery, formatDelta, money } from "../lib/reports";
+import { IndexedDbSyncStore } from "../lib/sync-store";
+import { ConnectivityBanner, SyncAttentionItems } from "../lib/sync-ui";
 import type { BranchRow } from "./branches/page";
 
 interface Me {
@@ -108,11 +110,13 @@ export default function DashboardPage(): JSX.Element {
     showMetric === "orders" ? s.orders : s.netRevenue;
 
   const hasData = (data?.kpis.orders.value ?? 0) > 0;
+  const [syncStore] = useState(() => new IndexedDbSyncStore());
 
   return (
     <main>
       <h1>{meQuery.data!.businessName}</h1>
       <p>Signed in as {meQuery.data!.role}</p>
+      <ConnectivityBanner store={syncStore} />
       <div>
         <label>
           Range
@@ -255,6 +259,7 @@ export default function DashboardPage(): JSX.Element {
                   <Link href={a.href}>{a.label}</Link>
                 </li>
               ))}
+              <SyncAttentionItems store={syncStore} />
             </ul>
           </section>
         </>

@@ -3,11 +3,15 @@
 import type { JSX } from "react";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError, apiFetch } from "../../lib/api";
 import { buildProductSearch } from "../../lib/catalog";
 import { buildCompletePayload, cartTotal } from "../../lib/sales";
+import { watchConnectivity } from "../../lib/connectivity";
+import { IndexedDbSyncStore } from "../../lib/sync-store";
+import { fingerprintPayload, provisionalReceipt } from "../../lib/sync-state";
+import { ConnectivityBanner } from "../../lib/sync-ui";
 
 interface Me {
   role: string;
@@ -62,6 +66,10 @@ export default function PosPage(): JSX.Element {
   const [customerQ, setCustomerQ] = useState("");
   const [customerId, setCustomerId] = useState("");
   const [walkIn, setWalkIn] = useState("");
+  const [store] = useState(() => new IndexedDbSyncStore());
+  const [offline, setOffline] = useState(false);
+  const [catalogAt, setCatalogAt] = useState<string | null>(null);
+  const [cachedItems, setCachedItems] = useState<ProductRow[]>([]);
 
   const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<Me>("/api/v1/me"), retry: false });
   const customersQuery = useQuery({
@@ -85,6 +93,37 @@ export default function PosPage(): JSX.Element {
   const role = meQuery.data?.role ?? "cashier";
   const canSell = role === "owner" || role === "manager" || role === "cashier";
   const due = cartTotal(cart.map((c) => ({ qty: c.qty, priceMinor: c.priceMinor, lineDiscountMinor: 0 })));
+  const effectiveMethod = offline ? "cash" : method;
+
+  useEffect(() => {
+    const stop = watchConnectivity({
+      isOnline: () => navigator.onLine,
+      ping: () => apiFetch<{ ok: boolean }>("/api/v1/health").then(() => true).catch(() => false),
+      intervalMs: 15000,
+      onChange: (s) => setOffline(s === "offline"),
+    });
+    return stop;
+  }, []);
+
+  useEffect(() => {
+    if (!searchQuery.data) return;
+    const now = new Date().toISOString();
+    void (async () => {
+      for (const p of searchQuery.data!.items) {
+        await store.cachePut("catalog", p.id, p, now);
+      }
+      await store.metaSet("lastSyncAt", now);
+    })();
+  }, [searchQuery.data, store]);
+
+  useEffect(() => {
+    if (!offline) return;
+    void (async () => {
+      const cached = await store.cacheList<ProductRow>("catalog");
+      setCachedItems(cached.map((c) => c.value));
+      setCatalogAt(await store.metaGet("lastSyncAt"));
+    })();
+  }, [offline, store]);
 
   function addToCart(p: ProductRow): void {
     setCart((prev) => {
@@ -104,6 +143,10 @@ export default function PosPage(): JSX.Element {
 
   async function holdCart(): Promise<void> {
     setStatus("");
+    if (offline) {
+      setStatus("Holding carts requires connectivity.");
+      return;
+    }
     try {
       const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
       const draft = await apiFetch<{ id: string }>("/api/v1/sales/drafts", {
@@ -129,12 +172,56 @@ export default function PosPage(): JSX.Element {
     }
   }
 
+  async function payOffline(): Promise<void> {
+    setStatus("");
+    setReceiptId(null);
+    setReconcileId(null);
+    if (cart.length === 0) {
+      setStatus("Cart is empty.");
+      return;
+    }
+    const tendered = received.trim() === "" ? due : Math.round(Number(received) * 100);
+    const key = crypto.randomUUID();
+    const payload = {
+      lines: cart.map((c) => ({ productId: c.productId, qty: c.qty })),
+      ...(registerId !== "" ? { registerId } : {}),
+      ...(customerId !== "" ? { customerId } : {}),
+      ...(customerId === "" && walkIn.trim() !== "" ? { customerName: walkIn.trim() } : {}),
+      payments: [{ method: "cash", amountMinor: tendered }],
+    };
+    try {
+      const fingerprint = await fingerprintPayload({ ...payload, key });
+      const provisional = provisionalReceipt(key.slice(0, 8));
+      await store.enqueue({
+        localId: key,
+        commandType: "sale.complete",
+        key,
+        fingerprint,
+        payload,
+        queuedAt: new Date().toISOString(),
+        lastAttemptAt: null,
+        provisionalReceipt: provisional,
+      });
+      setCart([]);
+      setReceived("");
+      setStatus(
+        `Sale queued offline. Provisional receipt ${provisional} — pending sync, not yet final. Review it on the sync page.`,
+      );
+    } catch {
+      setStatus("Could not queue the offline sale.");
+    }
+  }
+
   async function pay(): Promise<void> {
     setStatus("");
     setReceiptId(null);
     setReconcileId(null);
     if (cart.length === 0) {
       setStatus("Cart is empty.");
+      return;
+    }
+    if (offline) {
+      await payOffline();
       return;
     }
     try {
@@ -188,6 +275,7 @@ export default function PosPage(): JSX.Element {
     <main>
       <Link href="/">Back to dashboard</Link>
       <h1>Point of sale</h1>
+      <ConnectivityBanner store={store} />
       {!canSell && <p role="alert">Your role cannot complete sales.</p>}
       <label>
         Register
@@ -261,7 +349,7 @@ export default function PosPage(): JSX.Element {
             <button type="submit">Search</button>
           </form>
           {searchQuery.isLoading && <p>Loading products…</p>}
-          {searchQuery.data && (
+          {!offline && searchQuery.data && (
             <ul>
               {searchQuery.data.items.map((p) => (
                 <li key={p.id}>
@@ -272,7 +360,30 @@ export default function PosPage(): JSX.Element {
               ))}
             </ul>
           )}
-          {searchQuery.data?.items.length === 0 && <p>No products found.</p>}
+          {!offline && searchQuery.data?.items.length === 0 && <p>No products found.</p>}
+          {offline && (
+            <>
+              <p>
+                Offline catalog{catalogAt ? ` as of ${catalogAt}` : " (never synced)"} — prices and stock are last known.
+              </p>
+              <ul>
+                {cachedItems
+                  .filter(
+                    (p) =>
+                      q.trim() === "" ||
+                      p.name.toLowerCase().includes(q.trim().toLowerCase()) ||
+                      (p.sku ?? "").toLowerCase().includes(q.trim().toLowerCase()),
+                  )
+                  .map((p) => (
+                    <li key={p.id}>
+                      <button onClick={() => addToCart(p)}>
+                        {p.name} — {money(p.priceMinor)}
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            </>
+          )}
         </section>
         <section aria-label="Cart">
           <h2>Cart</h2>
@@ -291,12 +402,13 @@ export default function PosPage(): JSX.Element {
           </p>
           <label>
             Method
-            <select value={method} onChange={(e) => setMethod(e.target.value)}>
+            <select value={effectiveMethod} onChange={(e) => setMethod(e.target.value)} disabled={offline}>
               {METHODS.map((m) => (
                 <option key={m} value={m}>{m}</option>
               ))}
             </select>
           </label>
+          {offline && <p>Offline sales accept cash only. Cards and e-wallets need connectivity.</p>}
           <label>
             Amount received (cash)
             <input
