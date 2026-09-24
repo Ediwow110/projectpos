@@ -18,6 +18,7 @@ import { fingerprintPayload } from "../idempotency";
 import { queryProviderStatus, type ProviderVerdict } from "../../payments/provider";
 import { resolvePaymentMethods } from "../payment-methods";
 import { renderReceiptText } from "../receipt-text";
+import { incrementMetric } from "../../common/metrics";
 import { ShiftService } from "../../shifts/nest/shift.service";
 
 export interface DraftLineInput {
@@ -336,6 +337,7 @@ export class SalesService {
           entityId: sale.id,
           requestId,
         });
+        incrementMetric("pos_payment_unknown_total");
         return { sale: await this.embed(updated), replayed: false };
       }
         await this.applyStockEffect(businessId, actorId, requestId, sale.id, items, sale.branchId ?? null);
@@ -394,6 +396,7 @@ export class SalesService {
       // completed sale (same critical section as the write above, so replays
       // never double-count and failures never leave a phantom sale counted).
       await new BillingService(this.db).recordSale(businessId);
+      incrementMetric("pos_sales_completed_total");
       return { sale: await this.embed(updated), replayed: false };
     });
   }
@@ -411,7 +414,10 @@ export class SalesService {
       if (!product.trackInventory) continue;
       const current = await this.db.findBalance(item.productId, businessId, branchId);
       const onHand = current?.qtyOnHand ?? 0;
-      if (onHand - item.qty < 0) throw new Error("INSUFFICIENT_STOCK");
+      if (onHand - item.qty < 0) {
+        incrementMetric("pos_inventory_failures_total");
+        throw new Error("INSUFFICIENT_STOCK");
+      }
     }
     for (const item of items) {
       const product = await this.requireProduct(businessId, item.productId);

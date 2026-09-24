@@ -4,6 +4,7 @@ import { hashPassword, verifyPassword } from "../password";
 import { buildSessionRecord, hashToken, isReAuthFresh } from "../sessions";
 import { consumeResetToken, createResetToken } from "../reset-tokens";
 import { issueCsrfToken } from "../csrf";
+import { incrementMetric } from "../../common/metrics";
 import { buildRegistrationSeed, resolveActiveBusiness, ROLE_SEED } from "../../tenant/seed";
 import type { DbPort } from "../../common/db.port";
 
@@ -96,6 +97,7 @@ export class AuthService {
   async login(input: { email: string; password: string }, meta: { requestId: string; ip: string | null; userAgent: string | null }, deviceId?: string): Promise<{ token: string; csrfToken: string; userId: string; businessId: string }> {
     const user = await this.db.findUserByEmail(input.email);
     if (!user || !(await verifyPassword(user.passwordHash, input.password))) {
+      incrementMetric("pos_auth_failures_total");
       throw new Error("AUTH_INVALID_CREDENTIALS");
     }
     // FR-AUTH-01: when email verification is enabled at the instance level,

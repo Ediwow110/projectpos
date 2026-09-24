@@ -51,6 +51,8 @@ import { PrintService } from "./print/nest/print.service";
 import { DisplayService } from "./display/nest/display.service";
 import { RequestIdMiddleware } from "./common/request-id.middleware";
 import { SecurityHeadersMiddleware, securityHeaders } from "./common/security-headers.middleware";
+import { MetricsMiddleware, httpMetrics } from "./common/metrics.middleware";
+import { MetricsController } from "./common/metrics.controller";
 import { SessionGuard } from "./common/session.guard";
 import { CsrfGuard } from "./common/csrf.guard";
 import { AuthErrorFilter } from "./common/auth-error.filter";
@@ -58,7 +60,7 @@ import type { DbPort } from "./common/db.port";
 import { createMemoryDb } from "./common/memory.db";
 
 @Module({
-    controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController],
+    controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, MetricsController],
   providers: [
     AuthService,
     TenantService,
@@ -93,14 +95,14 @@ import { createMemoryDb } from "./common/memory.db";
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(RequestIdMiddleware, SecurityHeadersMiddleware).forRoutes("*");
+    consumer.apply(RequestIdMiddleware, SecurityHeadersMiddleware, MetricsMiddleware).forRoutes("*");
   }
 }
 
 export async function createTestApp(): Promise<INestApplication> {
   const db: DbPort = createMemoryDb();
   const moduleRef = await Test.createTestingModule({
-  controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController],
+  controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, MetricsController],
     providers: [
       { provide: "DbPort", useValue: db },
       { provide: AuthService, useFactory: (d: DbPort) => new AuthService(d), inject: ["DbPort"] },
@@ -223,6 +225,7 @@ export async function createTestApp(): Promise<INestApplication> {
   // createTestApp bypasses AppModule.configure(), so apply shared
   // middleware explicitly here (production covers it via configure()).
   app.use(securityHeaders as RequestHandler);
+  app.use(httpMetrics as RequestHandler);
   app.useLogger(false);
   await app.init();
   return app;
