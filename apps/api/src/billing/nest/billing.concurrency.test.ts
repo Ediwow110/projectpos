@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { createMemoryDb } from "../../common/memory.db";
 import { BillingService } from "./billing.service";
 import { CatalogService } from "../../catalog/nest/catalog.service";
-import { BranchService } from "../../branches/nest/branch.service";
 
 async function freeBusiness(products: number) {
   const db = createMemoryDb();
@@ -48,17 +47,21 @@ describe("phase10 cap enforcement under concurrency", () => {
     expect(await db.listProducts(business.id)).toHaveLength(100);
   });
 
-  it("admits exactly one branch per slot on enterprise limits", async () => {
+  it("admits exactly one register when a free tenant races three creates", async () => {
     const { db, business } = await freeBusiness(0);
-    const branches = new BranchService(db);
+    const { ShiftService } = await import("../../shifts/nest/shift.service");
+    const shifts = new ShiftService(db);
     const results = await Promise.allSettled(
-      Array.from({ length: 4 }, (_, i) =>
-        branches.createBranch(business.id, "u1", `b-${i}`, { name: `Branch ${i}` }, "owner"),
+      Array.from({ length: 3 }, (_, i) =>
+        shifts.createRegister(business.id, "u1", `reg-${i}`, { name: `Till ${i}` }, "owner"),
       ),
     );
-    // Free allows zero branches: every racing create is refused.
-    expect(results.every((r) => r.status === "rejected")).toBe(true);
-    expect(await db.listBranchesByBusiness(business.id)).toHaveLength(0);
+    // Free allows one register: exactly one racing create may win.
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(
+      results.filter((r) => r.status === "rejected" && (r.reason as Error).message === "PLAN_LIMIT"),
+    ).toHaveLength(2);
+    expect(await db.listRegisters(business.id)).toHaveLength(1);
   });
 });
 

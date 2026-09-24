@@ -5,7 +5,8 @@ import type { JSX } from "react";
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ApiError, apiFetch } from "../../../lib/api";
+import { apiFetch } from "../../../lib/api";
+import { RequestError } from "../../../lib/billing-ui";
 import { TrendChart } from "../../../lib/charts";
 import { money } from "../../../lib/reports";
 
@@ -38,11 +39,10 @@ export default function SalesReportPage(): JSX.Element {
         </select>
       </label>
       {query.isLoading && <p>Loading…</p>}
-      {query.isError && (
-        <p role="alert">
-          {query.error instanceof ApiError ? query.error.code + ": " + query.error.message : "Could not load report."}
-        </p>
-      )}
+      <RequestError
+        error={query.isError ? query.error : null}
+        fallback="Could not load report."
+      />
       {query.data && (
         <>
           <dl style={{ fontVariantNumeric: "tabular-nums" }}>

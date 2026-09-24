@@ -5,7 +5,8 @@ import type { JSX } from "react";
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ApiError, apiFetch } from "../../lib/api";
+import { apiFetch } from "../../lib/api";
+import { RequestError } from "../../lib/billing-ui";
 import { canVoidExpense } from "../../lib/expenses";
 
 interface Me {
@@ -37,7 +38,7 @@ export default function ExpensesPage(): JSX.Element {
   const [method, setMethod] = useState("cash");
   const [description, setDescription] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState<unknown>(null);
 
   const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<Me>("/api/v1/me"), retry: false });
   const listQuery = useQuery({
@@ -57,7 +58,7 @@ export default function ExpensesPage(): JSX.Element {
   const exportable = meQuery.data !== undefined && ["owner", "manager", "inventory"].includes(meQuery.data.role);
 
   async function create(): Promise<void> {
-    setError("");
+    setError(null);
     try {
       const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
       await apiFetch("/api/v1/expenses", {
@@ -77,12 +78,12 @@ export default function ExpensesPage(): JSX.Element {
       setDescription("");
       await listQuery.refetch();
     } catch (err) {
-      setError(err instanceof ApiError ? err.code + ": " + err.message : "Create failed");
+      setError(err);
     }
   }
 
   async function voidExpense(id: string): Promise<void> {
-    setError("");
+    setError(null);
     try {
       const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
       await apiFetch("/api/v1/expenses/" + id + "/void", {
@@ -91,7 +92,7 @@ export default function ExpensesPage(): JSX.Element {
       });
       await listQuery.refetch();
     } catch (err) {
-      setError(err instanceof ApiError ? err.code + ": " + err.message : "Void failed");
+      setError(err);
     }
   }
 
@@ -145,7 +146,8 @@ export default function ExpensesPage(): JSX.Element {
           ))}
         </ul>
       </section>
-      {error !== "" && <p role="alert">{error}</p>}
+      <RequestError error={error} fallback="Action failed" />
+      <RequestError error={listQuery.isError ? listQuery.error : null} fallback="Could not load expenses." />
     </main>
   );
 }

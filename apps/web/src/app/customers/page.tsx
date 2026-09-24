@@ -5,7 +5,8 @@ import type { JSX } from "react";
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ApiError, apiFetch } from "../../lib/api";
+import { apiFetch } from "../../lib/api";
+import { RequestError } from "../../lib/billing-ui";
 import { canManageCustomers, customerLabel } from "../../lib/customers";
 
 interface Me {
@@ -27,7 +28,7 @@ export default function CustomersPage(): JSX.Element {
   const [q, setQ] = useState("");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState<unknown>(null);
 
   const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<Me>("/api/v1/me"), retry: false });
   const listQuery = useQuery({
@@ -41,7 +42,7 @@ export default function CustomersPage(): JSX.Element {
   const manageable = canManageCustomers(meQuery.data?.role ?? "cashier");
 
   async function create(): Promise<void> {
-    setError("");
+    setError(null);
     try {
       const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
       await apiFetch("/api/v1/customers", {
@@ -58,7 +59,7 @@ export default function CustomersPage(): JSX.Element {
       setPhone("");
       await listQuery.refetch();
     } catch (err) {
-      setError(err instanceof ApiError ? err.code + ": " + err.message : "Create failed");
+      setError(err);
     }
   }
 
@@ -102,7 +103,8 @@ export default function CustomersPage(): JSX.Element {
         </button>
       </section>
       {!manageable && <p>Only owners and managers can edit or archive customers.</p>}
-      {error !== "" && <p role="alert">{error}</p>}
+      <RequestError error={error} fallback="Create failed" />
+      <RequestError error={listQuery.isError ? listQuery.error : null} fallback="Could not load customers." />
     </main>
   );
 }
