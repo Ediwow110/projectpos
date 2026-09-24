@@ -10,7 +10,7 @@ import { TrendChart } from "../lib/charts";
 import { availableMetrics, buildOverviewQuery, formatDelta, money } from "../lib/reports";
 import { IndexedDbSyncStore } from "../lib/sync-store";
 import { ConnectivityBanner, SyncAttentionItems } from "../lib/sync-ui";
-import { trialDaysLeft } from "../lib/billing";
+import { errorText, planLimitNotice, trialDaysLeft } from "../lib/billing";
 import type { BranchRow } from "./branches/page";
 
 interface Me {
@@ -174,9 +174,8 @@ export default function DashboardPage(): JSX.Element {
       {overviewQuery.isLoading && <p>Loading dashboard…</p>}
       {overviewQuery.isError && (
         <p role="alert">
-          {overviewQuery.error instanceof ApiError
-            ? overviewQuery.error.code + ": " + overviewQuery.error.message
-            : "Could not load dashboard."}
+          {errorText(overviewQuery.error, "Could not load dashboard.")}{" "}
+          {planLimitNotice(overviewQuery.error) !== null && <Link href="/billing">Manage plan</Link>}
         </p>
       )}
       {data && !hasData && (

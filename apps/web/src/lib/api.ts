@@ -2,11 +2,19 @@ export class ApiError extends Error {
   code: string;
   correlationId: string;
   status: number;
-  constructor(code: string, message: string, correlationId: string, status: number) {
+  fields: Record<string, string[]>;
+  constructor(
+    code: string,
+    message: string,
+    correlationId: string,
+    status: number,
+    fields: Record<string, string[]> = {},
+  ) {
     super(message);
     this.code = code;
     this.correlationId = correlationId;
     this.status = status;
+    this.fields = fields;
   }
 }
 
@@ -35,6 +43,7 @@ export async function apiFetch<T>(
     code?: string;
     message?: string;
     correlationId?: string;
+    fields?: Record<string, string[]>;
   };
   if (!res.ok) {
     throw new ApiError(
@@ -42,6 +51,7 @@ export async function apiFetch<T>(
       body.message ?? "Request failed",
       body.correlationId ?? "",
       res.status,
+      body.fields ?? {},
     );
   }
   return body as T;

@@ -5,8 +5,8 @@ import type { JSX } from "react";
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ApiError, apiFetch } from "../../lib/api";
-import { trialDaysLeft, usagePct } from "../../lib/billing";
+import { apiFetch } from "../../lib/api";
+import { errorText, trialDaysLeft, usagePct } from "../../lib/billing";
 import { money } from "../../lib/reports";
 
 interface Me {
@@ -107,7 +107,7 @@ export default function BillingPage(): JSX.Element {
       setTokenName("");
       await tokensQuery.refetch();
     } catch (err) {
-      setError(err instanceof ApiError ? err.code + ": " + err.message : "Mint failed");
+      setError(errorText(err, "Mint failed"));
     }
   }
 
@@ -121,7 +121,7 @@ export default function BillingPage(): JSX.Element {
       });
       await tokensQuery.refetch();
     } catch (err) {
-      setError(err instanceof ApiError ? err.code + ": " + err.message : "Revoke failed");
+      setError(errorText(err, "Revoke failed"));
     }
   }
 
@@ -130,6 +130,9 @@ export default function BillingPage(): JSX.Element {
       <Link href="/">Back to dashboard</Link>
       <h1>Billing</h1>
       {subQuery.isLoading && <p>Loading subscription…</p>}
+      {subQuery.isError && (
+        <p role="alert">{errorText(subQuery.error, "Could not load your subscription.")}</p>
+      )}
       {sub && (
         <section aria-label="Plan">
           <h2>Plan: {sub.planKey}</h2>
@@ -149,7 +152,10 @@ export default function BillingPage(): JSX.Element {
       <section aria-label="Invoices">
         <h2>Invoices</h2>
         {invoicesQuery.isLoading && <p>Loading invoices…</p>}
-        {(invoicesQuery.data?.items.length ?? 0) === 0 && <p>No invoices yet.</p>}
+        {invoicesQuery.isError && (
+          <p role="alert">{errorText(invoicesQuery.error, "Could not load invoices.")}</p>
+        )}
+        {!invoicesQuery.isError && (invoicesQuery.data?.items.length ?? 0) === 0 && <p>No invoices yet.</p>}
         {(invoicesQuery.data?.items ?? []).map((inv) => (
           <p key={inv.id} style={{ fontVariantNumeric: "tabular-nums" }}>
             {inv.periodStart.slice(0, 10)} → {inv.periodEnd.slice(0, 10)}: {money(inv.amountMinor)} {inv.currency} — {inv.status}
@@ -158,6 +164,13 @@ export default function BillingPage(): JSX.Element {
       </section>
       <section aria-label="API tokens">
         <h2>API tokens</h2>
+        {tokensQuery.isLoading && <p>Loading API tokens…</p>}
+        {tokensQuery.isError && (
+          <p role="alert">
+            {errorText(tokensQuery.error, "Could not load API tokens.")}{" "}
+            <Link href="/">Back to dashboard</Link>
+          </p>
+        )}
         {newSecret !== null && (
           <p role="status" style={{ fontVariantNumeric: "tabular-nums" }}>
             New token secret (shown once): {newSecret}
