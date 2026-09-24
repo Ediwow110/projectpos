@@ -22,6 +22,18 @@ export class AuthService {
     }
     await this.db.createMembership({ businessId: business.id, userId: user.id, role: seed.ownerRoleName });
     await this.db.saveSettings(business.id, { currency: seed.business.currency, onboarding: seed.onboarding });
+    // Phase 10: every new business starts on a 14-day Pro trial. The memory
+    // factory always seeds plans (as does migration 0011), so the row exists.
+    const pro = await this.db.findPlanByKey("pro");
+    const trialEndsAt = new Date(Date.now() + 14 * 86400000);
+    const sub = await this.db.upsertSubscription({
+      businessId: business.id,
+      planId: pro!.id,
+      status: "trialing",
+      trialEndsAt,
+      currentPeriodEnd: trialEndsAt,
+    });
+    await this.db.appendAudit({ businessId: business.id, actorId: user.id, action: "subscription.created", entityType: "Subscription", entityId: sub.id, requestId: meta.requestId });
     const rec = buildSessionRecord({ userId: user.id, businessId: business.id, ip: meta.ip, userAgent: meta.userAgent });
     const created = await this.db.createSession({
       userId: rec.userId,

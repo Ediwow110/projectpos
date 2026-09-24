@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createMemoryDb } from "../../common/memory.db";
 import { BillingService } from "./billing.service";
+import { AuthService } from "../../auth/nest/auth.service";
 
 describe("phase10 entitlement port", () => {
   it("seeds the four plans in a fresh store", async () => {
@@ -41,5 +42,27 @@ describe("phase10 entitlement service", () => {
     await db.setFlag({ businessId: "b1", key: "reports", enabled: true });
     expect(await svc.checkFeature("b1", "reports")).toBe(true);
     await svc.requireFeature("b1", "reports");
+  });
+});
+
+describe("phase10 trial on registration", () => {
+  it("starts new businesses on a 14-day pro trial", async () => {
+    const db = createMemoryDb();
+    const auth = new AuthService(db);
+    const out = await auth.register(
+      { ownerName: "Ana", email: "ana@example.com", password: "correct-horse-12", businessName: "Sari Store" },
+      { requestId: "r1", ip: null, userAgent: null },
+    );
+    const sub = await db.getSubscription(out.business.id);
+    expect(sub).not.toBeNull();
+    expect(sub!.status).toBe("trialing");
+    const pro = await db.findPlanByKey("pro");
+    expect(sub!.planId).toBe(pro!.id);
+    const trialMs = sub!.trialEndsAt!.getTime() - Date.now();
+    expect(trialMs).toBeGreaterThan(13 * 86400000);
+    expect(trialMs).toBeLessThanOrEqual(14 * 86400000);
+    expect((await db.listAudit()).some((a) => a.action === "subscription.created")).toBe(true);
+    const svc = new BillingService(db);
+    expect((await svc.resolvePlan(out.business.id)).key).toBe("pro");
   });
 });
