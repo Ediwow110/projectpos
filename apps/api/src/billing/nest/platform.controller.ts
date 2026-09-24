@@ -1,6 +1,6 @@
-import { Body, Controller, Inject, Param, Patch, Req, Res } from "@nestjs/common";
+import { Body, Controller, Inject, Param, Patch, Post, Req, Res } from "@nestjs/common";
 import type { Request, Response } from "express";
-import { platformPlanSchema } from "@pos/validation";
+import { flagOverrideSchema, invoiceIssueSchema, platformPlanSchema } from "@pos/validation";
 import { getCorrelationId } from "../../correlation";
 import { fail, statusFor } from "../../common/http-helpers";
 import { BillingService } from "./billing.service";
@@ -50,6 +50,55 @@ export class PlatformController {
     } catch (e) {
       const code = e instanceof Error ? e.message : "VALIDATION";
       fail(res, statusFor(code), code, "Plan change failed", req);
+    }
+  }
+
+  @Post("invoices/issue")
+  async issueInvoice(@Req() req: Request, @Res() res: Response, @Body() body: unknown): Promise<void> {
+    if (!this.platformGuard(req, res)) return;
+    const raw = body as { businessId?: unknown; periodStart?: unknown; periodEnd?: unknown };
+    if (typeof raw.businessId !== "string" || raw.businessId.length === 0) {
+      fail(res, 400, "VALIDATION", "Invalid invoice payload", req);
+      return;
+    }
+    const dates = invoiceIssueSchema.safeParse({ periodStart: raw.periodStart, periodEnd: raw.periodEnd });
+    if (!dates.success) {
+      fail(res, 400, "VALIDATION", "Invalid invoice payload", req);
+      return;
+    }
+    try {
+      res.status(201).json(
+        await this.billing.issueInvoice(raw.businessId, "platform", rid(req), {
+          periodStart: new Date(dates.data.periodStart),
+          periodEnd: new Date(dates.data.periodEnd),
+        }),
+      );
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "VALIDATION";
+      fail(res, statusFor(code), code, "Invoice issue failed", req);
+    }
+  }
+
+  @Patch("businesses/:id/flags")
+  async setFlag(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Param("id") id: string,
+    @Body() body: unknown,
+  ): Promise<void> {
+    if (!this.platformGuard(req, res)) return;
+    const parsed = flagOverrideSchema.safeParse(body);
+    if (!parsed.success) {
+      fail(res, 400, "VALIDATION", "Invalid flag payload", req);
+      return;
+    }
+    try {
+      res.status(200).json(
+        await this.billing.setFlag(id, "platform", rid(req), parsed.data.key, parsed.data.enabled),
+      );
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "VALIDATION";
+      fail(res, statusFor(code), code, "Flag update failed", req);
     }
   }
 }
