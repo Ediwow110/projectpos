@@ -192,6 +192,12 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     async listMovementsByBusiness(businessId) {
       return [...movements.values()].filter((m) => m.businessId === businessId);
     },
+    async listMovementsPage(businessId, afterId, limit) {
+      const rows = [...movements.values()]
+        .filter((m) => m.businessId === businessId && (afterId === null || m.id > afterId))
+        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+      return rows.slice(0, limit);
+    },
     async upsertBalance(b) {
       const key = balanceKey(b.businessId, b.branchId, b.productId);
       const existing = balances.get(key);
@@ -219,6 +225,12 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     },
     async listSalesByBusiness(businessId) {
       return [...sales.values()].filter((s) => s.businessId === businessId);
+    },
+    async listSalesPage(businessId, afterId, limit) {
+      const rows = [...sales.values()]
+        .filter((s) => s.businessId === businessId && (afterId === null || s.id > afterId))
+        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+      return rows.slice(0, limit);
     },
     async updateSale(id, businessId, patch) {
       const s = sales.get(id) ?? null;
@@ -410,6 +422,12 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     },
     async listExpensesByBusiness(businessId) {
       return [...expenses.values()].filter((e) => e.businessId === businessId);
+    },
+    async listExpensesPage(businessId, afterId, limit) {
+      const rows = [...expenses.values()]
+        .filter((e) => e.businessId === businessId && (afterId === null || e.id > afterId))
+        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+      return rows.slice(0, limit);
     },
     async findExpenseById(id, businessId) {
       const e = expenses.get(id) ?? null;

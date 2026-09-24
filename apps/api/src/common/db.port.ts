@@ -435,12 +435,14 @@ export interface DbPort {
   createMovement(m: Omit<DbMovement, "id">): Promise<DbMovement>;
   listMovements(productId: string, businessId: string, branchId?: string | null): Promise<DbMovement[]>;
   listMovementsByBusiness(businessId: string): Promise<DbMovement[]>;
+  listMovementsPage(businessId: string, afterId: string | null, limit: number): Promise<DbMovement[]>;
   upsertBalance(b: Omit<DbBalance, "id">): Promise<DbBalance>;
   findBalance(productId: string, businessId: string, branchId?: string | null): Promise<DbBalance | null>;
   listBalances(businessId: string): Promise<DbBalance[]>;
   createSale(s: Omit<DbSale, "id">): Promise<DbSale>;
   findSaleById(id: string, businessId: string): Promise<DbSale | null>;
   listSalesByBusiness(businessId: string): Promise<DbSale[]>;
+  listSalesPage(businessId: string, afterId: string | null, limit: number): Promise<DbSale[]>;
   updateSale(id: string, businessId: string, patch: Partial<Omit<DbSale, "id" | "businessId">>): Promise<DbSale | null>;
   createSaleItem(i: Omit<DbSaleItem, "id">): Promise<DbSaleItem>;
   listSaleItems(saleId: string, businessId: string): Promise<DbSaleItem[]>;
@@ -478,6 +480,7 @@ export interface DbPort {
   listRefundItemsBySale(saleId: string, businessId: string): Promise<DbRefundItem[]>;
   createExpense(e: Omit<DbExpense, "id">): Promise<DbExpense>;
   listExpensesByBusiness(businessId: string): Promise<DbExpense[]>;
+  listExpensesPage(businessId: string, afterId: string | null, limit: number): Promise<DbExpense[]>;
   findExpenseById(id: string, businessId: string): Promise<DbExpense | null>;
   updateExpense(id: string, businessId: string, patch: Partial<Omit<DbExpense, "id" | "businessId">>): Promise<DbExpense | null>;
   createBranch(b: Omit<DbBranch, "id">): Promise<DbBranch>;
