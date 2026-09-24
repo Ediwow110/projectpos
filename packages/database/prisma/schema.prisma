@@ -60,6 +60,14 @@ model Business {
   transfers   StockTransfer[]
   transferLines StockTransferLine[]
   devices     Device[]
+  subscriptions Subscription[]
+  invoices    Invoice[]
+  counters    UsageCounter[]
+  flags       FeatureFlag[]
+  tokens      ApiToken[]
+  printers    PrinterDevice[]
+  printJobs   PrintJob[]
+  displayTokens DisplayToken[]
 }
 
 model BusinessMembership {
@@ -502,4 +510,126 @@ model Device {
   createdAt  DateTime  @default(now())
   business   Business  @relation(fields: [businessId], references: [id])
   @@index([businessId, userId])
+}
+
+model Plan {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  name        String
+  allowances  Json
+  pricesMinor Json
+  isActive    Boolean  @default(true)
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id               String    @id @default(cuid())
+  businessId       String    @unique
+  planId           String
+  status           String    @default("trialing")
+  trialEndsAt      DateTime?
+  currentPeriodEnd DateTime
+  providerRef      String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  business         Business  @relation(fields: [businessId], references: [id])
+  plan             Plan      @relation(fields: [planId], references: [id])
+  invoices         Invoice[]
+}
+
+model Invoice {
+  id             String    @id @default(cuid())
+  businessId     String
+  subscriptionId String
+  periodStart    DateTime
+  periodEnd      DateTime
+  amountMinor    Int
+  currency       String    @default("PHP")
+  status         String    @default("open")
+  issuedAt       DateTime  @default(now())
+  paidAt         DateTime?
+  business       Business     @relation(fields: [businessId], references: [id])
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id])
+  @@index([businessId, issuedAt])
+}
+
+model UsageCounter {
+  id         String   @id @default(cuid())
+  businessId String
+  key        String
+  period     String
+  count      Int      @default(0)
+  updatedAt  DateTime @updatedAt
+  business   Business @relation(fields: [businessId], references: [id])
+  @@unique([businessId, key, period])
+}
+
+model FeatureFlag {
+  id         String   @id @default(cuid())
+  businessId String?
+  key        String
+  enabled    Boolean
+  business   Business? @relation(fields: [businessId], references: [id])
+  @@unique([businessId, key])
+}
+
+model BillingWebhookEvent {
+  id         String   @id @default(cuid())
+  businessId String?
+  provider   String
+  eventId    String   @unique
+  type       String
+  payload    Json
+  status     String   @default("applied")
+  receivedAt DateTime @default(now())
+}
+
+model ApiToken {
+  id         String    @id @default(cuid())
+  businessId String
+  name       String
+  tokenHash  String    @unique
+  prefix     String
+  scopes     Json
+  revokedAt  DateTime?
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+  business   Business  @relation(fields: [businessId], references: [id])
+  @@index([businessId])
+}
+
+model PrinterDevice {
+  id         String   @id @default(cuid())
+  businessId String
+  branchId   String?
+  name       String
+  width      String   @default("80")
+  connection String   @default("test-double")
+  business   Business @relation(fields: [businessId], references: [id])
+  jobs       PrintJob[]
+}
+
+model PrintJob {
+  id         String   @id @default(cuid())
+  businessId String
+  printerId  String
+  receiptNo  String?
+  layout     String   @default("80")
+  status     String   @default("QUEUED")
+  payload    String
+  attempts   Int      @default(0)
+  business   Business      @relation(fields: [businessId], references: [id])
+  printer    PrinterDevice @relation(fields: [printerId], references: [id])
+  @@index([businessId, status])
+}
+
+model DisplayToken {
+  id         String   @id @default(cuid())
+  businessId String
+  registerId String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+  business   Business  @relation(fields: [businessId], references: [id])
+  @@index([businessId, registerId])
 }

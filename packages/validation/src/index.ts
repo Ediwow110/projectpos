@@ -11,3 +11,4 @@ export * from "./expenses.schema";
 export * from "./reports.schema";
 export * from "./branches.schema";
 export * from "./sync.schema";
+export * from "./billing.schema";
