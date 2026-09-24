@@ -1,7 +1,6 @@
 import { Body, Controller, Get, Inject, Param, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
 import type { Request, Response } from "express";
 import {
-  PAYMENT_METHODS,
   completeSchema,
   draftCreateSchema,
   reconcileSchema,
@@ -16,6 +15,8 @@ import { toCsv } from "../../common/csv";
 import { createRateLimiter } from "../../common/rate-limit";
 import { AuthService } from "../../auth/nest/auth.service";
 import { SalesService } from "./sales.service";
+import { resolvePaymentMethods } from "../payment-methods";
+import type { DbPort } from "../../common/db.port";
 import { ApiTokenGuard } from "../../apitokens/api-token.guard";
 import { Scopes } from "../../apitokens/scopes.decorator";
 
@@ -48,6 +49,7 @@ export class SalesController {
   constructor(
     @Inject(SalesService) private readonly sales: SalesService,
     @Inject(AuthService) private readonly auth: AuthService,
+    @Inject("DbPort") private readonly db: DbPort,
   ) {}
 
   private perms(req: Request): string[] {
@@ -382,8 +384,10 @@ export class SalesController {
 
   @Get("payments/methods")
   async paymentMethods(@Req() req: Request, @Res() res: Response): Promise<void> {
-    void req;
-    res.json({ methods: [...PAYMENT_METHODS] });
+    // FR-PAY-01: methods are configuration — the business's list, not a
+    // hard-coded enum.
+    const methods = await resolvePaymentMethods(this.db, req.auth!.businessId);
+    res.json({ methods });
   }
 
   @Get("receipts/:saleId")

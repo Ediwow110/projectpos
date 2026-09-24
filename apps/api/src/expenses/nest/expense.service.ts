@@ -2,9 +2,9 @@ import { Inject, Injectable } from "@nestjs/common";
 import { withScope } from "@pos/database";
 import type { DbExpense, DbPort } from "../../common/db.port";
 import { BillingService } from "../../billing/nest/billing.service";
+import { resolvePaymentMethods } from "../../sales/payment-methods";
 
 const VOID_ROLES = new Set(["owner", "manager"]);
-const METHODS = new Set(["cash", "card", "gcash", "maya", "bank_transfer", "other"]);
 const BACKDATE_WINDOW_MS = 90 * 24 * 3600 * 1000;
 
 export interface ExpenseInput {
@@ -44,7 +44,9 @@ export class ExpenseService {
     const category = input.category.trim();
     if (!category || category.length > 80) throw new Error("VALIDATION");
     if (!Number.isInteger(input.amountMinor) || input.amountMinor <= 0) throw new Error("VALIDATION");
-    if (!METHODS.has(input.method)) throw new Error("VALIDATION");
+    // FR-PAY-01: expense tenders use the same configured method list as sales.
+    const methods = await resolvePaymentMethods(this.db, businessId);
+    if (!new Set(methods.map((m) => m.key)).has(input.method)) throw new Error("VALIDATION");
     const expenseDate = parseExpenseDate(input.expenseDate, now);
     if (input.attachmentUrl !== undefined) {
       try {

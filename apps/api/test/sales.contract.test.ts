@@ -185,3 +185,34 @@ describe("phase4 sales permissions, unknown, and cross-tenant", () => {
     expect(resumed.body.status).toBe("DRAFT");
   });
 });
+
+describe("phase11 configured payment methods", () => {
+  it("exposes the configured method list and rejects an unconfigured tender", async () => {
+    const db = app.get<{ saveSettings: (b: string, s: Record<string, unknown>) => Promise<void>; getSettings: (b: string) => Promise<Record<string, unknown>> }>("DbPort");
+    await db.saveSettings(businessId, {
+      ...(await db.getSettings(businessId)),
+      paymentMethods: [{ key: "cash", label: "Cash" }],
+    });
+
+    const methods = await request(app.getHttpServer()).get("/api/v1/payments/methods").set("Cookie", cookie);
+    expect(methods.status).toBe(200);
+    expect(methods.body.methods.map((m: { key: string }) => m.key)).toEqual(["cash"]);
+
+    const draft = await request(app.getHttpServer()).post("/api/v1/sales/drafts")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ lines: [{ productId, qty: 1 }] });
+    expect(draft.status).toBe(201);
+    const rejected = await request(app.getHttpServer()).post("/api/v1/sales/complete")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .set("Idempotency-Key", `pm-config-${Date.now()}`)
+      .send({ saleId: draft.body.id, payments: [{ method: "gcash", amountMinor: draft.body.totalMinor }] });
+    expect(rejected.status).toBe(400);
+    expect(rejected.body.code).toBe("VALIDATION");
+
+    const accepted = await request(app.getHttpServer()).post("/api/v1/sales/complete")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .set("Idempotency-Key", `pm-config-ok-${Date.now()}`)
+      .send({ saleId: draft.body.id, payments: [{ method: "cash", amountMinor: draft.body.totalMinor }] });
+    expect(accepted.status).toBe(201);
+  });
+});

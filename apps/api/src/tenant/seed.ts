@@ -1,5 +1,6 @@
 import { SENSITIVE_ACTIONS } from "@pos/auth";
 import { hashPassword } from "../auth/password";
+import { DEFAULT_PAYMENT_METHODS } from "../sales/payment-methods";
 
 export const ALL_PERMISSIONS: readonly string[] = SENSITIVE_ACTIONS as unknown as readonly string[];
 
@@ -54,7 +55,12 @@ export async function buildRegistrationSeed(input: RegistrationInput): Promise<R
       inventory: ROLE_SEED.inventory,
     },
     allPermissions: ALL_PERMISSIONS,
-    defaultSettings: [{ key: "currency", value: "PHP" }],
+    defaultSettings: [
+      { key: "currency", value: "PHP" },
+      // FR-PAY-01: methods are data; every new business starts with the
+      // plan's initial six and can reconfigure them.
+      { key: "paymentMethods", value: DEFAULT_PAYMENT_METHODS },
+    ],
     onboarding: {
       currentStep: "taxCurrency",
       steps: {

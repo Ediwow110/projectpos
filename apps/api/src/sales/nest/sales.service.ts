@@ -15,6 +15,7 @@ import { transitionSale } from "../state-machine";
 import { BillingService } from "../../billing/nest/billing.service";
 import { fingerprintPayload } from "../idempotency";
 import { queryProviderStatus, type ProviderVerdict } from "../../payments/provider";
+import { resolvePaymentMethods } from "../payment-methods";
 import { ShiftService } from "../../shifts/nest/shift.service";
 
 export interface DraftLineInput {
@@ -261,6 +262,13 @@ export class SalesService {
       }
       const items = await this.db.listSaleItems(sale.id, businessId);
       if (items.length === 0) throw new Error("VALIDATION");
+      // FR-PAY-01: every tender must be one of the business's configured
+      // methods; the static enum in the wire schema only bounds the shape.
+      const methods = await resolvePaymentMethods(this.db, businessId);
+      const configured = new Set(methods.map((m) => m.key));
+      for (const p of input.payments) {
+        if (!configured.has(p.method)) throw new Error("VALIDATION");
+      }
       const businessTax = await this.businessTaxRateBps(businessId);
       const totals = computeSaleTotals({
         lines: items.map((i) => ({
