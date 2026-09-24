@@ -96,3 +96,35 @@ describe("phase5 shift service", () => {
     void registerId;
   });
 });
+
+describe("phase11 post-close corrections", () => {
+  it("records an audited correction on a closed shift and surfaces it in the report", async () => {
+    const { db, svc, registerId } = await setupShift();
+    const shift = await svc.openShift("b1", "u1", "r1", registerId, { openingFloatMinor: 10000 }, "cashier");
+    const closed = await svc.closeShift("b1", "u1", "r3", shift.id, { countedCashMinor: 10000 }, []);
+    await expect(
+      svc.addCorrection("b1", "u1", "r4", ["shift.close.override"], closed.shift.id, { amountMinor: 0, reason: "nothing" }),
+    ).rejects.toThrow("VALIDATION");
+    await expect(
+      svc.addCorrection("b1", "u1", "r4", [], closed.shift.id, { amountMinor: -500, reason: "counted before last drop" }),
+    ).rejects.toThrow("FORBIDDEN");
+    const correction = await svc.addCorrection("b1", "u1", "r5", ["shift.close.override"], closed.shift.id, {
+      amountMinor: -500, reason: "counted before last drop",
+    });
+    expect(correction.amountMinor).toBe(-500);
+    // The closed shift itself is untouched (FR-CASH-04).
+    expect((await db.findShiftById(closed.shift.id, "b1"))!.expectedCashMinor).toBe(closed.shift.expectedCashMinor);
+    const report = await svc.getShift("b1", closed.shift.id, "owner", "u1");
+    expect(report.corrections).toHaveLength(1);
+    expect(report.correctedExpectedCash).toBe(closed.report.expectedCash - 500);
+    expect((await db.listAudit()).some((a) => a.action === "shift.corrected")).toBe(true);
+  });
+
+  it("refuses corrections on an open shift", async () => {
+    const { svc, registerId } = await setupShift();
+    const shift = await svc.openShift("b1", "u1", "r1", registerId, { openingFloatMinor: 0 }, "cashier");
+    await expect(
+      svc.addCorrection("b1", "u1", "r2", ["shift.close.override"], shift.id, { amountMinor: 100, reason: "too early" }),
+    ).rejects.toThrow("VALIDATION");
+  });
+});

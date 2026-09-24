@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import {
   cashInputSchema,
   closeShiftSchema,
+  correctionSchema,
   openShiftSchema,
   registerCreateSchema,
   registerUpdateSchema,
@@ -232,6 +233,32 @@ export class ShiftController {
       res.status(200).json({ shift, report });
     } catch (e) {
       failFromError(res, e, "Shift close failed", req);
+    }
+  }
+
+  // Phase 11 (FR-CASH-04): audited corrections for closed shifts; the closed
+  // shift record itself stays immutable.
+  @Post("shifts/:id/corrections")
+  @UseGuards(CsrfGuard)
+  async addCorrection(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Param("id") id: string,
+    @Body() body: unknown,
+  ): Promise<void> {
+    const parsed = correctionSchema.safeParse(body);
+    if (!parsed.success) {
+      fail(res, 400, "VALIDATION", "Invalid correction payload", req);
+      return;
+    }
+    try {
+      const auth = req.auth!;
+      const correction = await this.shifts.addCorrection(
+        auth.businessId, auth.userId, rid(req), this.perms(req), id, parsed.data,
+      );
+      res.status(201).json({ correction });
+    } catch (e) {
+      failFromError(res, e, "Shift correction failed", req);
     }
   }
 }

@@ -1,6 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { withScope } from "@pos/database";
-import type { DbCashMovement, DbPort, DbRegister, DbShift } from "../../common/db.port";
+import type { DbCashMovement, DbPort, DbRegister, DbShift, DbShiftCorrection } from "../../common/db.port";
 import { BillingService } from "../../billing/nest/billing.service";
 import {
   computeExpectedCash,
@@ -358,7 +358,13 @@ export class ShiftService {
     shiftId: string,
     role: string,
     actorId: string,
-  ): Promise<{ shift: DbShift; components: ShiftComponents; movements: DbCashMovement[] }> {
+  ): Promise<{
+    shift: DbShift;
+    components: ShiftComponents;
+    movements: DbCashMovement[];
+    corrections: DbShiftCorrection[];
+    correctedExpectedCash: number | null;
+  }> {
     withScope(businessId, {});
     const shift = await this.requireShift(businessId, shiftId);
     if (role === "cashier" && shift.openedBy !== actorId) throw new Error("FORBIDDEN");
@@ -375,7 +381,52 @@ export class ShiftService {
         components.expectedCash !== shift.expectedCashMinor;
       if (drift) throw new Error("INTERNAL");
     }
-    return { shift, components, movements };
+    // Phase 11 (FR-CASH-04): a closed shift is immutable, but its recorded
+    // variance can be explained by audited corrections that adjust the
+    // expected figure without touching the original record.
+    const corrections = await this.db.listShiftCorrections(businessId, shiftId);
+    const correctedExpectedCash = corrections.length
+      ? components.expectedCash + corrections.reduce((sum, c) => sum + c.amountMinor, 0)
+      : null;
+    return { shift, components, movements, corrections, correctedExpectedCash };
+  }
+
+  // FR-CASH-04: corrections use an audited adjustment workflow. Only closed
+  // shifts are correctable (open shifts take live cash movements), the shift
+  // record itself is never mutated.
+  async addCorrection(
+    businessId: string,
+    actorId: string,
+    requestId: string,
+    granted: string[],
+    shiftId: string,
+    input: { amountMinor: number; reason: string },
+  ): Promise<DbShiftCorrection> {
+    withScope(businessId, {});
+    if (!granted.includes("shift.close.override")) throw new Error("FORBIDDEN");
+    if (!Number.isInteger(input.amountMinor) || input.amountMinor === 0) throw new Error("VALIDATION");
+    const reason = input.reason.trim();
+    if (reason.length < 3 || reason.length > 200) throw new Error("VALIDATION");
+    const shift = await this.requireShift(businessId, shiftId);
+    if (shift.status !== "CLOSED") throw new Error("VALIDATION");
+    const correction = await this.db.createShiftCorrection({
+      businessId,
+      shiftId,
+      amountMinor: input.amountMinor,
+      reason,
+      actorId,
+      requestId,
+    });
+    await this.db.appendAudit({
+      businessId,
+      actorId,
+      action: "shift.corrected",
+      entityType: "Shift",
+      entityId: shiftId,
+      requestId,
+      reason,
+    });
+    return correction;
   }
 
   async listShifts(
