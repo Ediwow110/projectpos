@@ -31,7 +31,8 @@ export class SessionGuard implements CanActivate {
       return false;
     }
     const membership = await this.db.findMembership(session.userId, session.businessId);
-    if (!membership) {
+    // Phase 11: a deactivated member has no access, same as no membership.
+    if (!membership || membership.deactivatedAt) {
       req.authError = "TENANT_MISMATCH";
       return false;
     }

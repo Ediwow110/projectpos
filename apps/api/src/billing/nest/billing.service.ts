@@ -139,7 +139,10 @@ export class BillingService {
   }
 
   private async liveCount(businessId: string, kind: CapKind): Promise<number> {
-    if (kind === "users") return (await this.db.listMembershipsByBusiness(businessId)).length;
+    // Deactivated members no longer occupy a seat (Phase 11 memberships).
+    if (kind === "users") {
+      return (await this.db.listMembershipsByBusiness(businessId)).filter((m) => !m.deactivatedAt).length;
+    }
     if (kind === "products") return (await this.db.listProducts(businessId)).length;
     if (kind === "registers") return (await this.db.listRegisters(businessId)).length;
     return (await this.db.listBranchesByBusiness(businessId)).length;

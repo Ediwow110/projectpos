@@ -28,12 +28,14 @@ import { BillingController } from "./billing/nest/billing.controller";
 import { ExportController } from "./exports/nest/export.controller";
 import { PrintController } from "./print/nest/print.controller";
 import { DisplayController } from "./display/nest/display.controller";
+import { MembershipController } from "./memberships/nest/membership.controller";
 import { CatalogService } from "./catalog/nest/catalog.service";
 import { InventoryService } from "./inventory/nest/inventory.service";
 import { SalesService } from "./sales/nest/sales.service";
 import { ShiftService } from "./shifts/nest/shift.service";
 import { CustomerService } from "./customers/nest/customer.service";
 import { ExpenseService } from "./expenses/nest/expense.service";
+import { MembershipService } from "./memberships/nest/membership.service";
 import { RefundService } from "./refunds/nest/refund.service";
 import { ReportingService } from "./reports/nest/reporting.service";
 import { BranchService } from "./branches/nest/branch.service";
@@ -54,7 +56,7 @@ import type { DbPort } from "./common/db.port";
 import { createMemoryDb } from "./common/memory.db";
 
 @Module({
-    controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController],
+    controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController],
   providers: [
     AuthService,
     TenantService,
@@ -65,6 +67,7 @@ import { createMemoryDb } from "./common/memory.db";
     ShiftService,
     CustomerService,
     ExpenseService,
+    MembershipService,
     RefundService,
     ReportingService,
     BranchService,
@@ -94,7 +97,7 @@ export class AppModule implements NestModule {
 export async function createTestApp(): Promise<INestApplication> {
   const db: DbPort = createMemoryDb();
   const moduleRef = await Test.createTestingModule({
-  controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController],
+  controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController],
     providers: [
       { provide: "DbPort", useValue: db },
       { provide: AuthService, useFactory: (d: DbPort) => new AuthService(d), inject: ["DbPort"] },
@@ -136,6 +139,11 @@ export async function createTestApp(): Promise<INestApplication> {
       {
         provide: ExpenseService,
         useFactory: (d: DbPort) => new ExpenseService(d),
+        inject: ["DbPort"],
+      },
+      {
+        provide: MembershipService,
+        useFactory: (d: DbPort) => new MembershipService(d),
         inject: ["DbPort"],
       },
       {

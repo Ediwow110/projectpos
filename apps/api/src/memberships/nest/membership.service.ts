@@ -1,0 +1,114 @@
+import { Inject, Injectable } from "@nestjs/common";
+import { randomBytes } from "node:crypto";
+import { withScope } from "@pos/database";
+import type { DbPort } from "../../common/db.port";
+import { hashPassword } from "../../auth/password";
+import { BillingService } from "../../billing/nest/billing.service";
+
+const ASSIGNABLE_ROLES = new Set(["manager", "cashier", "inventory"]);
+
+export interface MembershipCreateInput {
+  email: string;
+  name: string;
+  role: string;
+}
+
+@Injectable()
+export class MembershipService {
+  constructor(@Inject("DbPort") private readonly db: DbPort) {}
+
+  // FR-RBAC-02: user management is a permission-sensitive action. The seat is
+  // counted and capped through the same entitlement path as every other cap
+  // (PLAN 16.2), which makes this the live caller of the `users` cap.
+  async create(
+    businessId: string,
+    actorId: string,
+    requestId: string,
+    granted: string[],
+    input: MembershipCreateInput,
+  ): Promise<{ membershipId: string; userId: string; tempPassword?: string }> {
+    withScope(businessId, {});
+    if (!granted.includes("user.manage")) throw new Error("FORBIDDEN");
+    const email = input.email.trim().toLowerCase();
+    const name = input.name.trim();
+    if (!email.includes("@") || !name || name.length > 80) throw new Error("VALIDATION");
+    if (!ASSIGNABLE_ROLES.has(input.role)) throw new Error("VALIDATION");
+    await new BillingService(this.db).requireCreate(businessId, actorId, requestId, "users");
+
+    const existing = await this.db.findUserByEmail(email);
+    let userId: string;
+    let tempPassword: string | undefined;
+    if (existing) {
+      userId = existing.id;
+    } else {
+      tempPassword = randomBytes(12).toString("base64url").slice(0, 16);
+      const user = await this.db.createUser({
+        name,
+        email,
+        passwordHash: await hashPassword(tempPassword),
+        emailVerified: true,
+      });
+      userId = user.id;
+    }
+    const membership = await this.db.createMembership({ businessId, userId, role: input.role });
+    await this.db.appendAudit({
+      businessId,
+      actorId,
+      action: "member.invited",
+      entityType: "BusinessMembership",
+      entityId: membership.id,
+      requestId,
+      reason: `role ${input.role}${tempPassword ? " (new user)" : " (existing user)"}`,
+    });
+    return { membershipId: membership.id, userId, ...(tempPassword ? { tempPassword } : {}) };
+  }
+
+  async list(businessId: string): Promise<{
+    items: Array<{ id: string; userId: string; name: string; email: string; role: string; deactivatedAt: Date | null }>;
+  }> {
+    withScope(businessId, {});
+    const members = (await this.db.listMembershipsByBusiness(businessId)).filter((m) => !m.deactivatedAt);
+    const items = [];
+    for (const m of members) {
+      const user = await this.db.findUserById(m.userId);
+      items.push({
+        id: m.id,
+        userId: m.userId,
+        name: user?.name ?? "",
+        email: user?.email ?? "",
+        role: m.role,
+        deactivatedAt: m.deactivatedAt ?? null,
+      });
+    }
+    return { items };
+  }
+
+  async deactivate(
+    businessId: string,
+    actorId: string,
+    requestId: string,
+    granted: string[],
+    membershipId: string,
+  ): Promise<{ ok: true }> {
+    withScope(businessId, {});
+    if (!granted.includes("user.manage")) throw new Error("FORBIDDEN");
+    const members = (await this.db.listMembershipsByBusiness(businessId)).filter((m) => !m.deactivatedAt);
+    const target = members.find((m) => m.id === membershipId);
+    if (!target) throw new Error("NOT_FOUND");
+    const activeOwners = members.filter((m) => m.role === "owner");
+    if (target.role === "owner" && activeOwners.length <= 1) {
+      throw new Error("VALIDATION");
+    }
+    await this.db.updateMembership(membershipId, businessId, { deactivatedAt: new Date() });
+    await this.db.appendAudit({
+      businessId,
+      actorId,
+      action: "member.deactivated",
+      entityType: "BusinessMembership",
+      entityId: membershipId,
+      requestId,
+      reason: `role ${target.role}`,
+    });
+    return { ok: true };
+  }
+}

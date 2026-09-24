@@ -27,3 +27,13 @@ export const supportGrantSchema = z.object({
   ttlMinutes: z.number().int("VALIDATION").min(1, "VALIDATION").max(60, "VALIDATION"),
   actorId: z.string().trim().min(1, "VALIDATION").max(80, "VALIDATION"),
 });
+
+export const membershipCreateSchema = z.object({
+  email: z.string().trim().email("VALIDATION").max(160, "VALIDATION"),
+  name: z.string().trim().min(1, "VALIDATION").max(80, "VALIDATION"),
+  role: z.enum(["manager", "cashier", "inventory"]),
+});
+
+export const verifyEmailSchema = z.object({
+  token: z.string().trim().min(10, "VALIDATION").max(128, "VALIDATION"),
+});
