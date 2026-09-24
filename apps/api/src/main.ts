@@ -6,7 +6,10 @@ import cookieParser from "cookie-parser";
 import { AppModule } from "./app.module";
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // rawBody preserves the exact request bytes so billing webhooks can verify a
+  // provider's signature over what was actually sent instead of over
+  // re-serialized JSON.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
   app.use(cookieParser() as RequestHandler);
   // Explicit JSON body limit through Nest's own parser (a second manual
   // json() middleware would double-parse and break requests).

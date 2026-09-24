@@ -202,7 +202,7 @@ export async function createTestApp(): Promise<INestApplication> {
       { provide: APP_FILTER, useClass: AuthErrorFilter },
     ],
   }).compile();
-  const app = moduleRef.createNestApplication();
+  const app = moduleRef.createNestApplication({ rawBody: true });
   app.use(cookieParser() as RequestHandler);
   // createTestApp bypasses AppModule.configure(), so apply shared
   // middleware explicitly here (production covers it via configure()).

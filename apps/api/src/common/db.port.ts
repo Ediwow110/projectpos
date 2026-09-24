@@ -520,6 +520,7 @@ export interface DbPort {
   // concurrent redelivery gets false. Backed by the unique index on eventId.
   claimWebhookEvent(e: Omit<DbWebhookEvent, "id" | "receivedAt">): Promise<DbWebhookEvent | null>;
   updateWebhookEventStatus(id: string, status: string): Promise<void>;
+  deleteWebhookEvent(id: string): Promise<void>;
   createApiToken(t: Omit<DbApiToken, "id">): Promise<DbApiToken>;
   listApiTokens(businessId: string): Promise<DbApiToken[]>;
   findApiTokenByPrefix(prefix: string): Promise<DbApiToken | null>;

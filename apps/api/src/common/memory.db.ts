@@ -612,6 +612,9 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       const row = webhookEvents.get(id);
       if (row) webhookEvents.set(id, { ...row, status });
     },
+    async deleteWebhookEvent(id) {
+      webhookEvents.delete(id);
+    },
     async createApiToken(t) {
       const row = { ...t, id: nid("tok") };
       apiTokens.set(row.id, row);

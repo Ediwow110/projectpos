@@ -10,7 +10,7 @@ export type CapKind = "users" | "products" | "registers" | "branches";
 const MAX_CATCHUP_PERIODS = 120;
 
 const SUBSCRIPTION_STATUSES = new Set([
-  "trialing", "active", "past_due", "cancelled", "paused",
+  "trialing", "active", "past_due", "canceled", "paused",
 ]);
 
 export interface ResolvedPlan {
@@ -382,7 +382,9 @@ export class BillingService {
   // Signature first (constant-time), then claim the event id before touching
   // any billing state: the claim is what makes concurrent redeliveries of the
   // same event apply exactly once, instead of both mutating and one of them
-  // losing the race on the insert.
+  // losing the race on the insert. When the caller has the raw request bytes
+  // (HTTP ingest) the signature is verified over them, because providers sign
+  // exactly what they sent; without raw bytes the canonical JSON form is used.
   async ingestWebhook(
     provider: string,
     eventId: string,
@@ -390,11 +392,13 @@ export class BillingService {
     payload: unknown,
     signature: string | undefined,
     requestId: string,
+    rawBody?: string,
   ): Promise<{ ok: true; handled: boolean; deduplicated: boolean }> {
     const secret = webhookSecret(provider);
     if (secret.length === 0) throw new Error("FORBIDDEN");
     const body = { eventId, type, ...(payload as Record<string, unknown>) };
-    const expected = createHmac("sha256", secret).update(canonicalWebhookBody(body)).digest("hex");
+    const signedBytes = rawBody ?? canonicalWebhookBody(body);
+    const expected = createHmac("sha256", secret).update(signedBytes).digest("hex");
     const a = Buffer.from(signature ?? "");
     const b = Buffer.from(expected);
     if (a.length !== b.length || !timingSafeEqual(a, b)) throw new Error("FORBIDDEN");
@@ -429,39 +433,47 @@ export class BillingService {
     const businessId = typeof p.businessId === "string" ? p.businessId : null;
     if (businessId) withScope(businessId, {});
 
-    if (type === "invoice.paid" || type === "invoice.void") {
-      if (!businessId) throw new Error("VALIDATION");
-      const target = await this.resolveInvoiceForEvent(businessId, p);
-      if (type === "invoice.paid") {
-        if (target.status !== "open") throw new Error("VALIDATION");
-        await this.db.updateInvoice(target.id, businessId, { status: "paid", paidAt: new Date() });
-      } else {
-        if (target.status === "void") throw new Error("VALIDATION");
-        await this.db.updateInvoice(target.id, businessId, { status: "void" });
+    // From here on the event is claimed. Any failure releases the claim so the
+    // provider can redeliver it: a permanently blocked event id would turn a
+    // transient failure (invoice not synced yet) into a silent data loss.
+    try {
+      if (type === "invoice.paid" || type === "invoice.void") {
+        if (!businessId) throw new Error("VALIDATION");
+        const target = await this.resolveInvoiceForEvent(businessId, p);
+        if (type === "invoice.paid") {
+          if (target.status !== "open") throw new Error("VALIDATION");
+          await this.db.updateInvoice(target.id, businessId, { status: "paid", paidAt: new Date() });
+        } else {
+          if (target.status === "void") throw new Error("VALIDATION");
+          await this.db.updateInvoice(target.id, businessId, { status: "void" });
+        }
+        await this.db.updateWebhookEventStatus(claim.id, "applied");
+        await this.db.appendAudit({
+          businessId,
+          actorId: "webhook",
+          action: type === "invoice.paid" ? "webhook.invoice" : "invoice.void",
+          entityType: "Invoice",
+          entityId: target.id,
+          requestId,
+        });
+        return { ok: true as const, handled: true, deduplicated: false };
       }
-      await this.db.updateWebhookEventStatus(claim.id, "applied");
-      await this.db.appendAudit({
-        businessId,
-        actorId: "webhook",
-        action: type === "invoice.paid" ? "webhook.invoice" : "invoice.void",
-        entityType: "Invoice",
-        entityId: target.id,
-        requestId,
-      });
-      return { ok: true as const, handled: true, deduplicated: false };
-    }
 
-    if (type === "subscription.created" || type === "subscription.updated") {
-      if (!businessId || typeof p.planKey !== "string") throw new Error("VALIDATION");
-      const status = SUBSCRIPTION_STATUSES.has(p.status ?? "active") ? (p.status as string) : null;
-      if (status === null) throw new Error("VALIDATION");
-      await this.applySubscriptionState(businessId, requestId, p.planKey, status);
-      await this.db.updateWebhookEventStatus(claim.id, "applied");
-      return { ok: true as const, handled: true, deduplicated: false };
-    }
+      if (type === "subscription.created" || type === "subscription.updated") {
+        if (!businessId || typeof p.planKey !== "string") throw new Error("VALIDATION");
+        const requested = normalizeSubscriptionStatus(p.status ?? "active");
+        if (!SUBSCRIPTION_STATUSES.has(requested)) throw new Error("VALIDATION");
+        await this.applySubscriptionState(businessId, requestId, p.planKey, requested);
+        await this.db.updateWebhookEventStatus(claim.id, "applied");
+        return { ok: true as const, handled: true, deduplicated: false };
+      }
 
-    await this.db.updateWebhookEventStatus(claim.id, "unhandled");
-    return { ok: true as const, handled: false, deduplicated: false };
+      await this.db.updateWebhookEventStatus(claim.id, "unhandled");
+      return { ok: true as const, handled: false, deduplicated: false };
+    } catch (e) {
+      await this.db.deleteWebhookEvent(claim.id);
+      throw e;
+    }
   }
 
   // Events name their invoice. Amount is verified when the provider sends it,

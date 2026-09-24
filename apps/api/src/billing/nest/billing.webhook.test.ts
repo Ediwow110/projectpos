@@ -119,7 +119,10 @@ describe("phase10 webhook event coverage", () => {
     await send(billing, "evt-sub-cancelled", "subscription.updated", {
       businessId: business.id, planKey: "basic", status: "cancelled",
     }, "r3");
-    expect((await db.getSubscription(business.id))!.status).toBe("cancelled");
+    // Provider spellings are normalized: the store keeps "canceled", and a
+    // canceled subscription no longer grants the paid plan.
+    expect((await db.getSubscription(business.id))!.status).toBe("canceled");
+    expect((await billing.resolvePlan(business.id)).key).toBe("free");
     const audits = await db.listAudit();
     expect(audits.some((a) => a.action === "subscription.created")).toBe(true);
     expect(audits.some((a) => a.action === "subscription.updated")).toBe(true);

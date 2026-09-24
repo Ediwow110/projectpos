@@ -59,7 +59,14 @@ export class BillingController {
       const sig = req.headers["x-webhook-signature"];
       const signature = Array.isArray(sig) ? sig[0] : sig;
       const { eventId, type, ...rest } = parsed.data;
-      const out = await this.billing.ingestWebhook(provider, eventId, type, rest, signature, rid(req));
+      // Prefer the untouched request bytes: providers sign exactly what they
+      // sent, and re-serializing the parsed payload would break any provider
+      // that orders keys or formats whitespace differently.
+      const raw = (req as Request & { rawBody?: Buffer }).rawBody;
+      const out = await this.billing.ingestWebhook(
+        provider, eventId, type, rest, signature, rid(req),
+        raw ? raw.toString("utf8") : undefined,
+      );
       res.status(200).json(out);
     } catch (e) {
       const code = e instanceof Error ? e.message : "VALIDATION";
