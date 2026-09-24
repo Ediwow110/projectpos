@@ -4,19 +4,24 @@ import type { DbExpense, DbMovement, DbPayment, DbPort, DbSale } from "../../com
 import { isSettled } from "../../reports/aggregate";
 
 // Account map [SPEC-DEFAULT]: 1000 Cash, 1400 Inventory, 2100 Card/Bank
-// Clearing, 2110 E-Wallet Clearing, 2120 Other Clearing, 4000 Revenue,
-// 5000 COGS, 6000 Expenses. Clearing accounts exist because card, bank, and
-// wallet tenders are not cash: booking them to 1000 would overstate the cash
-// balance. Every journal below is balanced by construction.
+// Clearing, 2110 E-Wallet Clearing, 2120 Other Clearing, 2200 Change Payable,
+// 4000 Revenue, 5000 COGS, 6000 Expenses, 7000 Inventory Receipts.
+// Clearing accounts exist because card, bank, and wallet tenders are not cash:
+// booking them to 1000 would overstate the cash balance. Change payable holds
+// overpayments the cashier must return. Inventory receipts (not COGS) absorb
+// the value of stock coming in; only stock leaving inventory hits COGS. Every
+// journal below is balanced by construction.
 const ACCT = {
   cash: "1000",
   inventory: "1400",
   cardClearing: "2100",
   walletClearing: "2110",
   otherClearing: "2120",
+  changePayable: "2200",
   revenue: "4000",
   cogs: "5000",
   expenses: "6000",
+  purchases: "7000",
 } as const;
 
 const PAYMENT_ACCOUNTS: Record<string, string> = {
@@ -62,7 +67,10 @@ export const LEDGER_PAGE = 500;
 
 function csvCell(value: string | number): string {
   const s = String(value);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  // Neutralize spreadsheet formula injection: a memo or product name starting
+  // with =, +, -, @, tab, or CR would otherwise execute when opened in Excel.
+  const guarded = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+  return /[",\n]/.test(guarded) ? `"${guarded.replace(/"/g, '""')}"` : guarded;
 }
 
 export function ledgerCsvLine(row: JournalRow): string {
@@ -143,6 +151,14 @@ export class ExportService {
       rows.push({ date: iso, type: "sale", ref: sale.receiptNo, account: leg.account, debitMinor: leg.amountMinor, creditMinor: 0, memo: sale.receiptNo });
     }
     rows.push({ date: iso, type: "sale", ref: sale.receiptNo, account: ACCT.revenue, debitMinor: 0, creditMinor: sale.totalMinor, memo: sale.receiptNo });
+    // Cash handed back as change is a liability, not revenue: without this the
+    // tender debits would not balance against the sale total.
+    if (sale.changeMinor > 0) {
+      rows.push({
+        date: iso, type: "sale", ref: sale.receiptNo, account: ACCT.changePayable,
+        debitMinor: 0, creditMinor: sale.changeMinor, memo: `Change ${sale.receiptNo}`,
+      });
+    }
 
     const items = await this.db.listSaleItems(sale.id, businessId);
     const cost = items.reduce((sum, l) => sum + l.costMinor * l.qty, 0);
@@ -213,7 +229,10 @@ export class ExportService {
         rows.push({ date: iso, type: "expense", ref: e.id, account: ACCT.expenses, debitMinor: e.amountMinor, creditMinor: 0, memo });
         rows.push({ date: iso, type: "expense", ref: e.id, account: credit, debitMinor: 0, creditMinor: e.amountMinor, memo });
       }
-      if (rows.length > 0) yield rows;
+      if (rows.length > 0) {
+        emitted += rows.length;
+        yield rows;
+      }
     }
 
     // Movements carry no timestamp, so they cannot be date-filtered and are
@@ -232,9 +251,11 @@ export class ExportService {
         if (value <= 0) continue;
         const memo = `${m.type} ${product.name}`;
         if (m.qtyDelta > 0) {
+          // Stock received: inventory up, purchases up. Never COGS.
           rows.push({ date: "", type: "inventory", ref: m.id, account: ACCT.inventory, debitMinor: value, creditMinor: 0, memo });
-          rows.push({ date: "", type: "inventory", ref: m.id, account: ACCT.cogs, debitMinor: 0, creditMinor: value, memo });
+          rows.push({ date: "", type: "inventory", ref: m.id, account: ACCT.purchases, debitMinor: 0, creditMinor: value, memo });
         } else {
+          // Damage, shrinkage, or an unexplained outbound adjustment is COGS.
           rows.push({ date: "", type: "inventory", ref: m.id, account: ACCT.cogs, debitMinor: value, creditMinor: 0, memo });
           rows.push({ date: "", type: "inventory", ref: m.id, account: ACCT.inventory, debitMinor: 0, creditMinor: value, memo });
         }

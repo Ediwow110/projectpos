@@ -76,6 +76,20 @@ describe("phase10 ledger export HTTP contract", () => {
       .set("Cookie", cookie);
     expect(report.body.totals.netRevenue).toBe(5000);
   });
+  it("returns a header-only CSV for a business with no activity", async () => {
+    const reg = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
+      ownerName: "Quiet", email: "quiet-export@example.com",
+      password: "correct-horse-12", businessName: "Quiet Export Store",
+    });
+    const quietCookie = jar(reg.headers["set-cookie"]);
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/exports/ledger.csv?format=csv&dateFrom=${SINCE}`)
+      .set("Cookie", quietCookie);
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toContain("text/csv");
+    const lines = res.text.replace(/^\uFEFF/, "").trim().split("\n");
+    expect(lines).toEqual(["date,type,ref,account,debitMinor,creditMinor,memo"]);
+  });
   it("rejects non-csv formats and accepts the default date range", async () => {
     const bad = await request(app.getHttpServer()).get("/api/v1/exports/ledger.csv?format=xlsx")
       .set("Cookie", cookie);

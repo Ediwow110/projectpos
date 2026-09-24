@@ -45,11 +45,10 @@ export class ExportController {
           dateTo: query["dateTo"],
         })
         [Symbol.asyncIterator]();
-      const first = await iterator.next();
-      if (first.done) throw new Error("VALIDATION");
+      // Headers go out before the first page: an empty ledger is a valid
+      // header-only CSV, not an error.
       res.status(200).set("Content-Type", "text/csv; charset=utf-8");
       res.write("\uFEFF" + LEDGER_HEADERS + "\n");
-      for (const row of first.value) res.write(ledgerCsvLine(row) + "\n");
       for (;;) {
         const next = await iterator.next();
         if (next.done) break;

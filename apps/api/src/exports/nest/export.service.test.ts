@@ -112,6 +112,62 @@ describe("phase10 ledger export accounting", () => {
     expect(accountTotal(after.rows, "5000", 5)).toBe(1000);
   });
 
+  it("books change to a change-payable account so overpayment stays balanced", async () => {
+    const { business, sales, product, exports } = await setup();
+    await sell(
+      sales, business.id, product.id, 1,
+      [{ method: "cash", amountMinor: 3000 }],
+      "change-1",
+    );
+    const { rows } = await exports.buildLedger(business.id, "u1", "r1", {});
+    const sum = totals(rows);
+    expect(sum.debit).toBe(sum.credit);
+    expect(accountTotal(rows, "1000", 4)).toBe(3000);
+    expect(accountTotal(rows, "4000", 5)).toBe(2500);
+    expect(accountTotal(rows, "2200", 5)).toBe(500);
+  });
+
+  it("books inbound stock to purchases, not to COGS", async () => {
+    const { db, business, exports } = await setup();
+    const product = await db.createProduct({
+      businessId: business.id, categoryId: null, name: "Bulk", sku: null, barcode: null,
+      brand: null, unit: "pc", costMinor: 1000, priceMinor: 2500, taxRateBps: null,
+      reorderLevel: 0, trackInventory: true, isActive: true, imageUrl: null,
+    });
+    await db.createMovement({
+      businessId: business.id, branchId: null, productId: product.id, type: "opening_stock",
+      qtyDelta: 10, reason: "opening", referenceType: null, referenceId: null,
+      actorId: "u1", requestId: "r-open",
+    });
+    const { rows } = await exports.buildLedger(business.id, "u1", "r1", {});
+    const sum = totals(rows);
+    expect(sum.debit).toBe(sum.credit);
+    // Stock in raises inventory and credits purchases; it is not a COGS credit.
+    expect(accountTotal(rows, "1400", 4)).toBe(10000);
+    expect(accountTotal(rows, "7000", 5)).toBe(10000);
+    expect(accountTotal(rows, "5000", 5)).toBe(0);
+  });
+
+  it("escapes spreadsheet formulas in CSV cells", async () => {
+    const { db, business, exports } = await setup();
+    const { ledgerCsvLine } = await import("./export.service");
+    await db.createExpense({
+      businessId: business.id, category: "misc", amountMinor: 100,
+      description: "=cmd|'/c calc'!A1", method: "cash", shiftId: null, branchId: null,
+      expenseDate: new Date(), actorId: "u1", requestId: "r-x",
+      attachmentUrl: null, voidedAt: null, voidReason: null, cashAdjusted: true,
+    });
+    const { rows } = await exports.buildLedger(business.id, "u1", "r1", {});
+    const memoRow = rows.find((r) => r[1] === "expense")!;
+    const line = ledgerCsvLine({
+      date: String(memoRow[0]), type: String(memoRow[1]), ref: String(memoRow[2]),
+      account: String(memoRow[3]), debitMinor: Number(memoRow[4]), creditMinor: Number(memoRow[5]),
+      memo: String(memoRow[6]),
+    });
+    const lastCell = line.split(",").at(-1)!;
+    expect(lastCell.startsWith("=")).toBe(false);
+    expect(lastCell.startsWith("'=cmd")).toBe(true);
+  });
   it("books nothing for draft sales", async () => {
     const { business, sales, product, exports } = await setup();
     const draft = await sales.createDraft(business.id, "u1", "r-draft", {
