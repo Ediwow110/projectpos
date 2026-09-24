@@ -11,11 +11,26 @@ model User {
   id                String               @id @default(cuid())
   email             String               @unique
   passwordHash      String
+  // Phase 11: false only when the business opts into email verification;
+  // legacy rows and invited members default to verified.
+  emailVerified     Boolean              @default(true)
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
   memberships       BusinessMembership[]
   sessions          Session[]
   passwordResetTokens PasswordResetToken[]
+  verificationTokens EmailVerificationToken[]
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id])
+  @@index([userId])
 }
 
 model PasswordResetToken {
@@ -68,6 +83,9 @@ model Business {
   printers    PrinterDevice[]
   printJobs   PrintJob[]
   displayTokens DisplayToken[]
+  corrections ShiftCorrection[]
+  receiptShares ReceiptShare[]
+  activeSessions Session[] @relation("SessionActiveBusiness")
 }
 
 model BusinessMembership {
@@ -112,6 +130,9 @@ model Session {
   id         String    @id @default(cuid())
   userId     String
   businessId String
+  // Phase 11: explicit active business chosen via POST /auth/active-business;
+  // null = home business from login.
+  activeBusinessId String?
   tokenHash  String    @unique
   expiresAt  DateTime
   revokedAt  DateTime?
@@ -122,6 +143,7 @@ model Session {
   createdAt  DateTime  @default(now())
   user       User      @relation(fields: [userId], references: [id])
   business   Business  @relation(fields: [businessId], references: [id])
+  activeBusiness Business? @relation("SessionActiveBusiness", fields: [activeBusinessId], references: [id], onDelete: SetNull)
   @@index([businessId])
   @@index([userId])
 }
@@ -361,6 +383,7 @@ model Shift {
   business             Business  @relation(fields: [businessId], references: [id])
   register             Register  @relation(fields: [registerId], references: [id])
   movements            CashMovement[]
+  corrections          ShiftCorrection[]
   @@index([businessId, registerId, status])
   @@index([businessId, status, openedAt])
 }
@@ -636,4 +659,41 @@ model DisplayToken {
   createdAt  DateTime  @default(now())
   business   Business  @relation(fields: [businessId], references: [id])
   @@index([businessId, registerId])
+}
+
+model PlatformSupportGrant {
+  id        String    @id @default(cuid())
+  purpose   String
+  actorId   String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model ShiftCorrection {
+  id          String   @id @default(cuid())
+  businessId  String
+  shiftId     String
+  amountMinor Int
+  reason      String
+  actorId     String
+  requestId   String
+  createdAt   DateTime @default(now())
+  business    Business @relation(fields: [businessId], references: [id])
+  shift       Shift    @relation(fields: [shiftId], references: [id])
+
+  @@index([businessId, shiftId])
+}
+
+model ReceiptShare {
+  id         String   @id @default(cuid())
+  businessId String
+  saleId     String
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  business   Business @relation(fields: [businessId], references: [id])
+
+  @@index([businessId, saleId])
 }
