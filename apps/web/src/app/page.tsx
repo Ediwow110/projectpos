@@ -10,6 +10,7 @@ import { TrendChart } from "../lib/charts";
 import { availableMetrics, buildOverviewQuery, formatDelta, money } from "../lib/reports";
 import { IndexedDbSyncStore } from "../lib/sync-store";
 import { ConnectivityBanner, SyncAttentionItems } from "../lib/sync-ui";
+import { trialDaysLeft } from "../lib/billing";
 import type { BranchRow } from "./branches/page";
 
 interface Me {
@@ -93,6 +94,14 @@ export default function DashboardPage(): JSX.Element {
     retry: false,
     enabled: !meQuery.isError,
   });
+  const billingQuery = useQuery({
+    queryKey: ["billing-subscription"],
+    queryFn: () =>
+      apiFetch<{ planKey: string; status: string; trialEndsAt: string | null }>("/api/v1/billing/subscription"),
+    retry: false,
+    enabled: !meQuery.isError,
+  });
+  const [syncStore] = useState(() => new IndexedDbSyncStore());
 
   if (meQuery.isLoading) return <main>Loading…</main>;
   if (meQuery.isError)
@@ -110,12 +119,18 @@ export default function DashboardPage(): JSX.Element {
     showMetric === "orders" ? s.orders : s.netRevenue;
 
   const hasData = (data?.kpis.orders.value ?? 0) > 0;
-  const [syncStore] = useState(() => new IndexedDbSyncStore());
+  const trialDays = billingQuery.data ? trialDaysLeft(billingQuery.data.trialEndsAt) : null;
+  const showTrialNotice = billingQuery.data?.status === "trialing" && trialDays !== null;
 
   return (
     <main>
       <h1>{meQuery.data!.businessName}</h1>
       <p>Signed in as {meQuery.data!.role}</p>
+      {showTrialNotice && (
+        <p role="status" style={{ fontVariantNumeric: "tabular-nums" }}>
+          <Link href="/billing">Pro trial: {trialDays} day(s) left</Link>
+        </p>
+      )}
       <ConnectivityBanner store={syncStore} />
       <div>
         <label>
@@ -151,6 +166,9 @@ export default function DashboardPage(): JSX.Element {
         </nav>
         <nav aria-label="Locations">
           <Link href="/branches">Branches</Link> | <Link href="/transfers">Transfers</Link>
+        </nav>
+        <nav aria-label="Account">
+          <Link href="/billing">Billing</Link>
         </nav>
       </div>
       {overviewQuery.isLoading && <p>Loading dashboard…</p>}
