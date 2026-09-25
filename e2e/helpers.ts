@@ -7,12 +7,19 @@ export async function registerBusiness(
   input: { ownerName: string; email: string; password: string; businessName: string },
 ): Promise<void> {
   await page.goto("/register");
+  // Two Playwright projects can start the same spec in the same millisecond;
+  // a worker-unique suffix keeps their registrations from colliding on the
+  // unique email (AUTH_EMAIL_TAKEN would leave the browser stuck on /register).
+  const unique = `${process.env.TEST_WORKER_INDEX ?? "w"}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const email = input.email.replace(/@/, `-${unique}@`);
   await page.getByLabel("Your name").fill(input.ownerName);
-  await page.getByLabel("Email").fill(input.email);
+  await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password (12+ characters)").fill(input.password);
   await page.getByLabel("Business name").fill(input.businessName);
   await page.getByRole("button", { name: "Create business" }).click();
-  await expect(page).toHaveURL(/\/onboarding/);
+  // Cold-start tolerance: the first registration of a run pays Next dev page
+  // compilation plus the API's first queries and argon2 warm-up.
+  await expect(page).toHaveURL(/\/onboarding/, { timeout: 30_000 });
 }
 
 export async function apiAuthedContext(

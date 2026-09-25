@@ -86,5 +86,12 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Phase 12: the browser workflows run against the PostgreSQL-backed API,
+      # the same configuration production uses.
+      - run: node scripts/apply-migrations.mjs
+        env:
+          DATABASE_URL: postgres://pos:pos@localhost:5432/pos
       - run: npx playwright install --with-deps chromium
       - run: pnpm e2e
+        env:
+          DATABASE_URL: postgres://pos:pos@localhost:5432/pos

@@ -50,7 +50,9 @@ test("critical path: register to reconciled close", async ({ page, request }) =>
   await page.getByRole("button", { name: "Pay", exact: true }).click();
   await expect(page.getByText("Sale completed.")).toBeVisible();
   await page.getByRole("link", { name: "View receipt" }).click();
-  await expect(page.getByText(/Receipt \d{4}-\d{6}/)).toBeVisible();
+  // Next dev compiles the receipts route on first visit; under parallel load
+  // that plus the API round-trip can exceed the default 5s.
+  await expect(page.getByText(/Receipt \d{4}-\d{6}/)).toBeVisible({ timeout: 30_000 });
 
   // Sales history shows the sale (by receipt number).
   await page.goto("/sales");
