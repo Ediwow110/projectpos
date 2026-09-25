@@ -707,3 +707,10 @@ model ReceiptShare {
 
   @@index([businessId, saleId])
 }
+
+model ReceiptCounter {
+  id         String   @id @default(cuid())
+  businessId String   @unique
+  seq        Int
+  business   Business @relation(fields: [businessId], references: [id])
+}

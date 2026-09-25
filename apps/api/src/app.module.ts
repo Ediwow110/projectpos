@@ -58,6 +58,8 @@ import { CsrfGuard } from "./common/csrf.guard";
 import { AuthErrorFilter } from "./common/auth-error.filter";
 import type { DbPort } from "./common/db.port";
 import { createMemoryDb } from "./common/memory.db";
+import { PgContext } from "./common/pg/context";
+import { PgDbPort } from "./common/pg/pg.db";
 
 @Module({
     controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, MetricsController],
@@ -86,10 +88,18 @@ import { createMemoryDb } from "./common/memory.db";
     DisplayService,
     SessionGuard,
     CsrfGuard,
-    // Standalone boot store: single-process ephemeral memory database.
-    // Correct for local dev and E2E; a Postgres-backed DbPort is a
-    // dated follow-up required before production launch (see audit doc).
-    { provide: "DbPort", useFactory: () => createMemoryDb() },
+    // Phase 12: DATABASE_URL selects the PostgreSQL runtime store (the
+    // migrations under packages/database must be applied to that database
+    // first — see scripts/verify-phase11-migration.mjs). Unset keeps the
+    // single-process memory store for local dev and tests.
+    {
+      provide: "DbPort",
+      useFactory: () => {
+        const url = process.env["DATABASE_URL"];
+        if (url) return new PgDbPort(new PgContext(url));
+        return createMemoryDb();
+      },
+    },
     { provide: APP_FILTER, useClass: AuthErrorFilter },
   ],
 })

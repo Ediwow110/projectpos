@@ -3,13 +3,16 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
 const FAMILIES = {
+  devices: ['createDevice','listDevicesByBusiness','findDeviceById','revokeDevice','revokeSessionsByDevice'],
+  billing: ['listPlans','findPlanByKey','getSubscription','upsertSubscription','updateSubscription','listInvoices','createInvoice','updateInvoice','listCounters','setCounter','getFlag','setFlag','findWebhookEvent','createWebhookEvent','claimWebhookEvent','updateWebhookEventStatus','updateWebhookEventReceivedAt','deleteWebhookEvent'],
+  integrations: ['createApiToken','listApiTokens','findApiTokenByPrefix','listApiTokensByPrefix','revokeApiToken','createPrinter','listPrinters','findPrinterById','findPrinterByAgentTokenHash','createPrintJob','listPrintJobs','updatePrintJob','createDisplayToken','findDisplayToken','createSupportGrant','findValidSupportGrant','markSupportGrantUsed','createShiftCorrection','listShiftCorrections','createReceiptShare','findValidReceiptShare'],
   people: ['createCustomer','listCustomersByBusiness','findCustomerById','updateCustomer','createRefund','listRefundsBySale','findRefundById','createRefundItem','listRefundItems','listRefundItemsBySale','createExpense','listExpensesByBusiness','listExpensesPage','findExpenseById','updateExpense'],
   branches: ['createBranch','listBranchesByBusiness','findBranchById','updateBranch','createTransfer','findTransferById','listTransfersByBusiness','updateTransfer','createTransferLine','listTransferLines'],
-  sales: ["createSale", "findSaleById", "listSalesByBusiness", "listSalesPage", "updateSale", "createSaleItem", "listSaleItems", "createPayment", "findPaymentById", "listPaymentsBySale", "updatePayment", "createHeldSale", "findHeldSaleById", "listHeldSales", "markHeldResumed", "claimIdempotency", "findIdempotency", "findLatestSaleForRegister"],
+  sales: ["createSale", "findSaleById", "listSalesByBusiness", "listSalesPage", "updateSale", "createSaleItem", "listSaleItems", "createPayment", "findPaymentById", "listPaymentsBySale", "updatePayment", "createHeldSale", "findHeldSaleById", "listHeldSales", "markHeldResumed", "claimIdempotency", "findIdempotency", "findLatestSaleForRegister", "nextReceiptNo"],
   shifts: ["createRegister", "listRegisters", "findRegisterById", "updateRegister", "createShift", "findShiftById", "findOpenShiftByRegister", "listShiftsByBusiness", "updateShift", "createCashMovement", "listCashMovementsByShift", "hasShiftForRegister"],
 };
 
-const port = readFileSync("apps/api/src/common/db.port.ts", "utf8");
+const port = readFileSync("apps/api/src/common/db.port.ts", "utf8").replace(/\r\n/g, "\n");
 const iface = port.match(/export interface DbPort \{([\s\S]*?)\n\}/)[1];
 
 const out = [];
@@ -17,7 +20,7 @@ const types = new Set();
 for (const [family, methods] of Object.entries(FAMILIES)) {
   out.push(`  // ${family[0].toUpperCase()}${family.slice(1)} family.`);
   for (const m of methods) {
-    const re = new RegExp(`  ${m}\\(([^)]*)\\): Promise<([^;]+)>;`);
+    const re = new RegExp(`  ${m}\\(([^)]*)\\): Promise<(.+)>;`);
     const match = iface.match(re);
     if (!match) {
       console.error(`MISSING: ${m}`);
@@ -42,7 +45,7 @@ for (const [family, methods] of Object.entries(FAMILIES)) {
     }
     segments.push(current);
     const argList = segments
-      .map((a) => a.slice(0, a.indexOf(":")).trim())
+      .map((a) => a.slice(0, a.indexOf(":")).trim().replace(/\?$/, ""))
       .filter(Boolean)
       .join(", ");
     out.push(`  ${m}(${args}): Promise<${ret}> {`);

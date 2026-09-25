@@ -110,7 +110,7 @@ try {
   ).trim();
 
   const problems = [];
-  if (tables !== 44) problems.push(`expected 44 tables, found ${tables}`);
+  if (tables !== 45) problems.push(`expected 45 tables, found ${tables}`);
   if (activeBusiness !== business) problems.push(`session active business is "${activeBusiness}", expected "${business}"`);
   if (!["t", "true"].includes(emailVerified)) problems.push(`emailVerified default is "${emailVerified}", expected "true"`);
   if (corrections !== 1) problems.push(`expected 1 correction, found ${corrections}`);

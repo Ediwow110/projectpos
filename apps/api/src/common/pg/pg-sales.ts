@@ -342,6 +342,25 @@ export function salesFamily(ctx: PgContext) {
         if (ctx.owns()) c.release();
       }
     },
+
+    // Per-business receipt sequence. The atomic upsert-increment is safe
+    // across processes on its own; callers also hold the sales advisory lock,
+    // which keeps draft creation serialized as in memory.
+    async nextReceiptNo(businessId: string): Promise<string> {
+      const c = await ctx.client();
+      try {
+        const year = new Date().getUTCFullYear();
+        const r = await c.query(
+          'INSERT INTO "ReceiptCounter" ("id", "businessId", "seq") VALUES ($1, $2, 1)' +
+            ' ON CONFLICT ("businessId") DO UPDATE SET "seq" = "ReceiptCounter"."seq" + 1' +
+            ' RETURNING "seq"',
+          [nid("rcpt"), businessId],
+        );
+        return `${year}-${String(r.rows[0]!.seq as number).padStart(6, "0")}`;
+      } finally {
+        if (ctx.owns()) c.release();
+      }
+    },
   };
 }
 
