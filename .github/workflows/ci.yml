@@ -37,6 +37,34 @@ jobs:
       - run: node scripts/verify-phase10.test.mjs
       - run: node scripts/verify-phase10-migration.mjs
       - run: node scripts/verify-phase11.test.mjs
+  pg:
+    # Phase 12: the PostgreSQL-backed DbPort must pass its parity and
+    # concurrency suites against a real Postgres on every push.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: pos
+          POSTGRES_PASSWORD: pos
+          POSTGRES_DB: pos
+        ports: ["5432:5432"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # CI's service publishes on 5432; the harness default targets the local
+      # compose port 5433, so point it at the service.
+      - run: pnpm --filter @pos/api exec vitest run --config vitest.pg.config.ts
+        env:
+          PGTEST_URL: postgres://pos:pos@localhost:5432/postgres
+      - run: node scripts/verify-phase12.test.mjs
   e2e:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
