@@ -63,3 +63,32 @@ describe("phase11 port additions", () => {
     expect((await db.findValidReceiptShare("rh1"))!.saleId).toBe("sale1");
   });
 });
+
+describe("phase12 port locks", () => {
+  it("serializes same-key lock bodies on the memory port", async () => {
+    const db = createMemoryDb();
+    const order: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const first = db.withLock("sales:b1", async () => {
+      order.push("first:start");
+      await gate;
+      order.push("first:end");
+    });
+    const second = db.withLock("sales:b1", async () => {
+      order.push("second:start");
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(order).toEqual(["first:start"]);
+    release();
+    await first;
+    await second;
+    expect(order).toEqual(["first:start", "first:end", "second:start"]);
+  });
+
+  it("runs withTransaction bodies (memory: atomic by construction)", async () => {
+    const db = createMemoryDb();
+    const out = await db.withTransaction(async () => "ok");
+    expect(out).toBe("ok");
+  });
+});
