@@ -37,35 +37,29 @@ describe("phase12 pg foundation", () => {
     });
   });
 
-  it("serializes concurrent lock bodies and rolls back on failure", async () => {
+  it("serializes concurrent lock bodies (mutual exclusion, any acquisition order)", async () => {
     await withPg(async (db, ctx) => {
       const order: string[] = [];
-      let releases: Array<() => void> = [];
-      const gate = new Promise<void>((resolve) => { releases.push(resolve); });
-      // Two lock bodies on the same key: the second must not start until the
-      // first releases. The key is test-unique so a stale advisory lock from
-      // an earlier run can never block it.
+      let inside = 0;
+      let maxInside = 0;
+      // Both bodies hold the lock for a moment. The key is test-unique so a
+      // stale advisory lock from an earlier run can never block it.
       const key = `foundation-serialize-${Date.now()}`;
-      const first = ctx.withLock(key, async () => {
-        order.push("first:start");
-        await gate;
-        order.push("first:end");
-      });
-      const second = ctx.withLock(key, async () => {
-        order.push("second:start");
-      });
-      // Wait for evidence the first body started instead of a fixed timer:
-      // a slow pool connect must not fail the assertion.
-      for (let i = 0; i < 100 && order.length === 0; i++) {
-        await new Promise((r) => setTimeout(r, 50));
-      }
-      try {
-        expect(order).toEqual(["first:start"]);
-      } finally {
-        releases[0]!();
-        await Promise.allSettled([first, second]);
-      }
-      expect(order).toEqual(["first:start", "first:end", "second:start"]);
+      const body = (name: string) => async () => {
+        inside += 1;
+        maxInside = Math.max(maxInside, inside);
+        order.push(`${name}:start`);
+        await new Promise((r) => setTimeout(r, 150));
+        order.push(`${name}:end`);
+        inside -= 1;
+      };
+      // withLock guarantees mutual exclusion, not acquisition order: either
+      // body may win the race, but they must never overlap.
+      await Promise.all([ctx.withLock(key, body("first")), ctx.withLock(key, body("second"))]);
+      expect(maxInside).toBe(1);
+      expect(order).toHaveLength(4);
+      expect(order[1]).toBe(order[0]!.replace(":start", ":end"));
+      expect(order[3]).toBe(order[2]!.replace(":start", ":end"));
       void db;
     });
   });
