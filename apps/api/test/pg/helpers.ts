@@ -10,8 +10,12 @@ import { PgContext } from "../../src/common/pg/context";
 import { PgDbPort } from "../../src/common/pg/pg.db";
 import { PLAN_SEEDS } from "../../src/common/pg/pg-plans-seed";
 
-const ADMIN_URL = "postgres://pos:pos@localhost:5433/postgres";
+// Local default: the docker-compose database (port 5433). CI overrides the
+// base with PGTEST_BASE pointing at its service container (5432).
+const BASE_URL = process.env["PGTEST_BASE"] ?? "postgres://pos:pos@localhost:5433";
+const ADMIN_URL = `${BASE_URL}/postgres`;
 const TEST_DB = "pos_test_pg";
+const TEST_URL = `${BASE_URL}/${TEST_DB}`;
 const MIGRATIONS_DIR = join(__dirname, "../../../../packages/database/prisma/migrations");
 
 let bootstrapped: Promise<Client> | null = null;
@@ -25,7 +29,7 @@ async function bootstrapDatabase(): Promise<Client> {
   }
   await admin.end();
 
-  const client = new Client({ connectionString: `postgres://pos:pos@localhost:5433/${TEST_DB}` });
+  const client = new Client({ connectionString: TEST_URL });
   await client.connect();
   await client.query('CREATE TABLE IF NOT EXISTS "_migrations" ("name" TEXT PRIMARY KEY)');
   const applied = new Set(
@@ -62,7 +66,7 @@ export async function withPg(fn: (db: DbPort, ctx: PgContext) => Promise<void>):
     );
   }
 
-  const ctx = new PgContext(`postgres://pos:pos@localhost:5433/${TEST_DB}`);
+  const ctx = new PgContext(TEST_URL);
   // Task 13 turns this into `implements DbPort`; until the last family lands,
   // the cast only covers the families the test actually touches.
   const db = new PgDbPort(ctx) as unknown as DbPort;

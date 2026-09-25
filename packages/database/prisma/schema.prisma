@@ -253,8 +253,11 @@ model InventoryBalance {
   business   Business @relation(fields: [businessId], references: [id])
   product    Product  @relation(fields: [productId], references: [id])
   // Phase 9a: nullable branch scope; null = legacy head-office scope.
+  // Phase 12: the balance key includes branchId (one row per branch scope);
+  // migration 0014 makes the unique index NULLS NOT DISTINCT (PG 15+) so the
+  // null scope stays unique too — not expressible in the Prisma DSL.
   branchId   String?
-  @@unique([businessId, productId])
+  @@unique([businessId, productId, branchId])
 }
 
 model Sale {

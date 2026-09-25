@@ -1,8 +1,10 @@
-import type { AuditEntry, DbBusiness, DbPlan, DbMembership, DbPort, DbResetToken, DbSession, DbUser } from "../db.port";
+import type { AuditEntry, DbBalance, DbBusiness, DbCategory, DbMovement, DbPlan, DbMembership, DbPort, DbProduct, DbResetToken, DbSession, DbUser } from "../db.port";
 import { PgContext } from "./context";
 import { settingsFamily } from "./pg-settings";
 import { auditFamily } from "./pg-audit";
 import { tenantsFamily } from "./pg-tenants";
+import { catalogFamily } from "./pg-catalog";
+import { inventoryFamily } from "./pg-inventory";
 
 // Phase 12: the PostgreSQL-backed DbPort. Composed from per-family modules
 // over one PgContext. Becomes `implements DbPort` complete in the Task 13
@@ -11,11 +13,15 @@ export class PgDbPort {
   private readonly settings: ReturnType<typeof settingsFamily>;
   private readonly audit: ReturnType<typeof auditFamily>;
   private readonly tenants: ReturnType<typeof tenantsFamily>;
+  private readonly catalog: ReturnType<typeof catalogFamily>;
+  private readonly inventory: ReturnType<typeof inventoryFamily>;
 
   constructor(private readonly ctx: PgContext) {
     this.settings = settingsFamily(ctx);
     this.audit = auditFamily(ctx);
     this.tenants = tenantsFamily(ctx);
+    this.catalog = catalogFamily(ctx);
+    this.inventory = inventoryFamily(ctx);
   }
 
   // withLock/withTransaction come straight from the context so every family
@@ -136,5 +142,54 @@ export class PgDbPort {
     } finally {
       if (this.ctx.owns()) c.release();
     }
+  }
+
+  // Catalog family: categories and products.
+  createCategory(c: Omit<DbCategory, "id">): Promise<DbCategory> {
+    return this.catalog.createCategory(c);
+  }
+  listCategories(businessId: string): Promise<DbCategory[]> {
+    return this.catalog.listCategories(businessId);
+  }
+  findCategoryById(id: string, businessId: string): Promise<DbCategory | null> {
+    return this.catalog.findCategoryById(id, businessId);
+  }
+  updateCategory(id: string, businessId: string, patch: Partial<Omit<DbCategory, "id" | "businessId">>): Promise<DbCategory | null> {
+    return this.catalog.updateCategory(id, businessId, patch);
+  }
+  createProduct(p: Omit<DbProduct, "id">): Promise<DbProduct> {
+    return this.catalog.createProduct(p);
+  }
+  listProducts(businessId: string): Promise<DbProduct[]> {
+    return this.catalog.listProducts(businessId);
+  }
+  findProductById(id: string, businessId: string): Promise<DbProduct | null> {
+    return this.catalog.findProductById(id, businessId);
+  }
+  updateProduct(id: string, businessId: string, patch: Partial<Omit<DbProduct, "id" | "businessId">>): Promise<DbProduct | null> {
+    return this.catalog.updateProduct(id, businessId, patch);
+  }
+
+  // Inventory family: the append-only movement ledger and balance projection.
+  createMovement(m: Omit<DbMovement, "id">): Promise<DbMovement> {
+    return this.inventory.createMovement(m);
+  }
+  listMovements(productId: string, businessId: string, branchId?: string | null): Promise<DbMovement[]> {
+    return this.inventory.listMovements(productId, businessId, branchId);
+  }
+  listMovementsByBusiness(businessId: string): Promise<DbMovement[]> {
+    return this.inventory.listMovementsByBusiness(businessId);
+  }
+  listMovementsPage(businessId: string, afterId: string | null, limit: number): Promise<DbMovement[]> {
+    return this.inventory.listMovementsPage(businessId, afterId, limit);
+  }
+  upsertBalance(b: Omit<DbBalance, "id">): Promise<DbBalance> {
+    return this.inventory.upsertBalance(b);
+  }
+  findBalance(productId: string, businessId: string, branchId?: string | null): Promise<DbBalance | null> {
+    return this.inventory.findBalance(productId, businessId, branchId);
+  }
+  listBalances(businessId: string): Promise<DbBalance[]> {
+    return this.inventory.listBalances(businessId);
   }
 }
