@@ -57,24 +57,6 @@ export interface DriftRow {
 export class InventoryService {
   constructor(@Inject("DbPort") private readonly db: DbPort) {}
 
-  private readonly locks = new Map<string, Promise<void>>();
-
-  private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    const prev = this.locks.get(key) ?? Promise.resolve();
-    let release!: () => void;
-    const next = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    this.locks.set(key, prev.then(() => next));
-    await prev;
-    try {
-      return await fn();
-    } finally {
-      release();
-      if (this.locks.get(key) === next) this.locks.delete(key);
-    }
-  }
-
   private async requireProduct(businessId: string, productId: string): Promise<DbProduct> {
     const product = await this.db.findProductById(productId, businessId);
     if (!product) throw new Error("NOT_FOUND");
@@ -88,7 +70,7 @@ export class InventoryService {
     input: MovementInput,
   ): Promise<DbMovement> {
     const branchId = input.branchId ?? null;
-    return this.withLock(`${businessId}:${branchId ?? ""}:${input.productId}`, async () => {
+    return this.db.withLock(`${businessId}:${branchId ?? ""}:${input.productId}`, async () => {
     withScope(businessId, {});
     const product = await this.requireProduct(businessId, input.productId);
     if (!product.trackInventory && input.type !== "adjustment" && input.type !== "stock_count") {

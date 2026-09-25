@@ -32,24 +32,6 @@ const INVENTORY_GRANT = "inventory.adjust";
 export class TransferService {
   constructor(@Inject("DbPort") private readonly db: DbPort) {}
 
-  private readonly locks = new Map<string, Promise<void>>();
-
-  private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    const prev = this.locks.get(key) ?? Promise.resolve();
-    let release!: () => void;
-    const next = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    this.locks.set(key, prev.then(() => next));
-    await prev;
-    try {
-      return await fn();
-    } finally {
-      release();
-      if (this.locks.get(key) === next) this.locks.delete(key);
-    }
-  }
-
   private requireGrant(granted: string[]): void {
     if (!granted.includes(INVENTORY_GRANT)) throw new Error("FORBIDDEN");
   }
@@ -151,7 +133,7 @@ export class TransferService {
   ): Promise<{ transfer: TransferWithLines; replayed: boolean }> {
     withScope(businessId, {});
     if (granted !== undefined) this.requireGrant(granted);
-    return this.withLock(`transfer:${businessId}:${transferId}`, async () => {
+    return this.db.withLock(`transfer:${businessId}:${transferId}`, async () => {
       const t = await this.requireTransfer(businessId, transferId);
       const fingerprint = fingerprintPayload({ transferId });
       const existing = await this.db.findIdempotency(businessId, key, "transfer.dispatch");
@@ -227,7 +209,7 @@ export class TransferService {
   ): Promise<{ transfer: TransferWithLines; replayed: boolean }> {
     withScope(businessId, {});
     if (granted !== undefined) this.requireGrant(granted);
-    return this.withLock(`transfer:${businessId}:${transferId}`, async () => {
+    return this.db.withLock(`transfer:${businessId}:${transferId}`, async () => {
       const t = await this.requireTransfer(businessId, transferId);
       const fingerprint = fingerprintPayload({ transferId });
       const existing = await this.db.findIdempotency(businessId, key, "transfer.receive");
@@ -293,7 +275,7 @@ export class TransferService {
   ): Promise<{ transfer: TransferWithLines; replayed: boolean }> {
     withScope(businessId, {});
     if (granted !== undefined) this.requireGrant(granted);
-    return this.withLock(`transfer:${businessId}:${transferId}`, async () => {
+    return this.db.withLock(`transfer:${businessId}:${transferId}`, async () => {
       const t = await this.requireTransfer(businessId, transferId);
       const fingerprint = fingerprintPayload({ transferId });
       const existing = await this.db.findIdempotency(businessId, key, "transfer.cancel");

@@ -439,6 +439,12 @@ export interface DbDevice {
 }
 
 export interface DbPort {
+  // Phase 12: the critical-section primitives. Memory serializes per key with
+  // a promise chain (atomic by construction); PostgreSQL takes a
+  // transaction-scoped advisory lock so the locked body commits as one unit
+  // and is mutually exclusive across processes.
+  withLock<T>(key: string, fn: () => Promise<T>): Promise<T>;
+  withTransaction<T>(fn: (db: DbPort) => Promise<T>): Promise<T>;
   findUserByEmail(email: string): Promise<DbUser | null>;
   findUserById(id: string): Promise<DbUser | null>;
   createUser(u: Omit<DbUser, "id">): Promise<DbUser>;

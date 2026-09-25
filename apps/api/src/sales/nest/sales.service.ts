@@ -65,24 +65,6 @@ export class SalesService {
     this.shifts = new ShiftService(db);
   }
 
-  private readonly locks = new Map<string, Promise<void>>();
-
-  private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    const prev = this.locks.get(key) ?? Promise.resolve();
-    let release!: () => void;
-    const next = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    this.locks.set(key, prev.then(() => next));
-    await prev;
-    try {
-      return await fn();
-    } finally {
-      release();
-      if (this.locks.get(key) === next) this.locks.delete(key);
-    }
-  }
-
   private async requireProduct(businessId: string, productId: string): Promise<DbProduct> {
     const product = await this.db.findProductById(productId, businessId);
     if (!product || !product.isActive) throw new Error("NOT_FOUND");
@@ -235,7 +217,7 @@ export class SalesService {
     input: { payments: PaymentInput[]; key: string; granted: string[]; registerId?: string; branchId?: string | null },
   ): Promise<{ sale: SaleWithLines; replayed: boolean }> {
     withScope(businessId, {});
-    return this.withLock(`sales:${businessId}`, async () => {
+    return this.db.withLock(`sales:${businessId}`, async () => {
       const sale = await this.requireSale(businessId, saleId);
       const registerId = input.registerId ?? sale.registerId ?? null;
       let registerBranchId: string | null = null;
@@ -467,7 +449,7 @@ export class SalesService {
     key: string,
   ): Promise<{ sale: SaleWithLines; payment: DbPayment }> {
     withScope(businessId, {});
-    return this.withLock(`sales:${businessId}`, async () => {
+    return this.db.withLock(`sales:${businessId}`, async () => {
       const fingerprint = fingerprintPayload({ paymentId, outcome });
       const existing = await this.db.findIdempotency(businessId, key, "payment.reconcile");
       if (existing) {

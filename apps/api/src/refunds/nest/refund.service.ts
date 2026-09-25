@@ -22,24 +22,6 @@ export class RefundService {
     this.shifts = new ShiftService(db);
   }
 
-  private readonly locks = new Map<string, Promise<void>>();
-
-  private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    const prev = this.locks.get(key) ?? Promise.resolve();
-    let release!: () => void;
-    const next = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    this.locks.set(key, prev.then(() => next));
-    await prev;
-    try {
-      return await fn();
-    } finally {
-      release();
-      if (this.locks.get(key) === next) this.locks.delete(key);
-    }
-  }
-
   private async requireSale(businessId: string, saleId: string): Promise<DbSale> {
     const sale = await this.db.findSaleById(saleId, businessId);
     if (!sale) throw new Error("NOT_FOUND");
@@ -65,7 +47,7 @@ export class RefundService {
   ): Promise<{ refund: DbRefund; sale: DbSale; replayed: boolean }> {
     withScope(businessId, {});
     if (!granted.includes("sale.refund")) throw new Error("FORBIDDEN");
-    return this.withLock(`refunds:${businessId}:${saleId}`, async () => {
+    return this.db.withLock(`refunds:${businessId}:${saleId}`, async () => {
       const fingerprint = fingerprintPayload({ saleId, items: input.items, reason: input.reason ?? null });
       const existing = await this.db.findIdempotency(businessId, input.key, "refund.approve");
       if (existing) {

@@ -54,8 +54,37 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
 
   const balanceKey = (businessId: string, branchId: string | null | undefined, productId: string): string =>
     `${businessId}:${branchId ?? ""}:${productId}`;
-  return {
+
+  // Phase 12: the promise-chain locks move out of the individual services
+  // into the port, so the PostgreSQL implementation can swap them for
+  // transaction-scoped advisory locks without touching service code.
+  const locks = new Map<string, Promise<void>>();
+  async function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const prev = locks.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const next = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    locks.set(key, prev.then(() => next));
+    await prev;
+    try {
+      return await fn();
+    } finally {
+      release();
+      if (locks.get(key) === next) locks.delete(key);
+    }
+  }
+
+  const memoryDb: DbPort & { audit: AuditEntry[] } = {
     audit,
+    async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+      return withLock(key, fn);
+    },
+    async withTransaction<T>(fn: (db: DbPort) => Promise<T>): Promise<T> {
+      // Single-threaded in-memory writes are already atomic; the body just
+      // runs against the same store.
+      return fn(memoryDb);
+    },
     async findUserByEmail(email) {
       for (const u of users.values()) if (u.email === email) return u;
       return null;
@@ -769,4 +798,5 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       return null;
     },
   };
+  return memoryDb;
 }

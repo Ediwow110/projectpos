@@ -50,32 +50,6 @@ function webhookSecret(provider: string): string {
   return process.env[envKey] ?? "";
 }
 
-// Process-wide per-business serialization. Cap checks and invoice rollover are
-// read-then-write sequences, so without this two concurrent requests could both
-// pass the same check (overselling a plan cap) or both invoice the same period.
-// Lives at module scope because every domain service builds its own
-// BillingService around the shared DbPort. A multi-process deployment needs the
-// same guarantee from the database (SELECT ... FOR UPDATE / unique period),
-// which arrives with the Prisma-backed port.
-const businessLocks = new Map<string, Promise<void>>();
-
-async function withBusinessLock<T>(businessId: string, fn: () => Promise<T>): Promise<T> {
-  const previous = businessLocks.get(businessId) ?? Promise.resolve();
-  let release: () => void = () => {};
-  const held = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const chain = previous.then(() => held);
-  businessLocks.set(businessId, chain);
-  await previous;
-  try {
-    return await fn();
-  } finally {
-    release();
-    if (businessLocks.get(businessId) === chain) businessLocks.delete(businessId);
-  }
-}
-
 @Injectable()
 export class BillingService {
   constructor(@Inject("DbPort") private readonly db: DbPort) {}
@@ -182,7 +156,7 @@ export class BillingService {
     kind: CapKind,
     write: () => Promise<T>,
   ): Promise<T> {
-    return withBusinessLock(businessId, async () => {
+    return this.db.withLock(`billing:${businessId}`, async () => {
       await this.requireCreate(businessId, actorId, requestId, kind);
       const out = await write();
       await this.db.setCounter(businessId, `cap.${kind}`, "all-time", await this.liveCount(businessId, kind));
@@ -210,7 +184,7 @@ export class BillingService {
     count: number,
     write: () => Promise<T>,
   ): Promise<T> {
-    return withBusinessLock(businessId, async () => {
+    return this.db.withLock(`billing:${businessId}`, async () => {
       const plan = await this.resolvePlan(businessId);
       const limit = plan.allowances[kind];
       const used = await this.liveCount(businessId, kind);
@@ -277,7 +251,7 @@ export class BillingService {
     if (!SUBSCRIPTION_STATUSES.has(status)) throw new Error("VALIDATION");
     const plan = await this.db.findPlanByKey(planKey);
     if (!plan || !plan.isActive) throw new Error("VALIDATION");
-    return withBusinessLock(businessId, async () => {
+    return this.db.withLock(`billing:${businessId}`, async () => {
       const existing = await this.db.getSubscription(businessId);
       const periodEnd = new Date(Date.now() + 30 * 86400000);
       const trialEndsAt = status === "trialing" ? new Date(Date.now() + 14 * 86400000) : null;
@@ -385,7 +359,7 @@ export class BillingService {
   // several periods behind instead of advancing a single month per request.
   async rolloverIfDue(businessId: string, now: Date = new Date()): Promise<void> {
     withScope(businessId, {});
-    await withBusinessLock(businessId, async () => {
+    await this.db.withLock(`billing:${businessId}`, async () => {
       const sub = await this.db.getSubscription(businessId);
       if (!sub || sub.status !== "active") return;
       const plan = await this.allowancesOf(sub.planId);
@@ -428,7 +402,7 @@ export class BillingService {
   ): Promise<{ id: string; amountMinor: number; status: string }> {
     withScope(businessId, {});
     if (input.periodStart.getTime() >= input.periodEnd.getTime()) throw new Error("VALIDATION");
-    return withBusinessLock(businessId, async () => {
+    return this.db.withLock(`billing:${businessId}`, async () => {
       const sub = await this.db.getSubscription(businessId);
       if (!sub) throw new Error("NOT_FOUND");
       const samePeriod = (await this.db.listInvoices(businessId)).find(

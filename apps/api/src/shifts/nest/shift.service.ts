@@ -47,24 +47,6 @@ function kindToType(kind: CashKind): CashMovementType {
 export class ShiftService {
   constructor(@Inject("DbPort") private readonly db: DbPort) {}
 
-  private readonly locks = new Map<string, Promise<void>>();
-
-  private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    const prev = this.locks.get(key) ?? Promise.resolve();
-    let release!: () => void;
-    const next = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    this.locks.set(key, prev.then(() => next));
-    await prev;
-    try {
-      return await fn();
-    } finally {
-      release();
-      if (this.locks.get(key) === next) this.locks.delete(key);
-    }
-  }
-
   private async requireRegister(businessId: string, registerId: string): Promise<DbRegister> {
     const reg = await this.db.findRegisterById(registerId, businessId);
     if (!reg) throw new Error("NOT_FOUND");
@@ -187,7 +169,7 @@ export class ShiftService {
   ): Promise<DbShift> {
     withScope(businessId, {});
     if (!SHIFT_ROLES.has(role)) throw new Error("FORBIDDEN");
-    return this.withLock(`register:${businessId}:${registerId}`, async () => {
+    return this.db.withLock(`register:${businessId}:${registerId}`, async () => {
       const reg = await this.requireRegister(businessId, registerId);
       if (!reg.isActive) throw new Error("VALIDATION");
       const existing = await this.db.findOpenShiftByRegister(businessId, registerId);
@@ -296,7 +278,7 @@ export class ShiftService {
     granted: string[],
   ): Promise<{ shift: DbShift; report: ShiftReport }> {
     withScope(businessId, {});
-    return this.withLock(`shift:${businessId}:${shiftId}`, async () => {
+    return this.db.withLock(`shift:${businessId}:${shiftId}`, async () => {
       const shift = await this.requireShift(businessId, shiftId);
       if (shift.status !== "OPEN") throw new Error("SHIFT_ALREADY_CLOSED");
       if (shift.openedBy !== actorId && !granted.includes("shift.close.override")) {
