@@ -4,12 +4,12 @@ import { toSafeLogContext } from "../apps/api/src/common/log-context";
 import { cookieOpts } from "../apps/api/src/auth/nest/auth.controller";
 
 describe("phase8 exit", () => {
-  it("abuse brake trips and resets on window rollover", () => {
+  it("abuse brake trips and resets on window rollover", async () => {
     const limiter = createRateLimiter(2, 60_000);
-    expect(limiter.hit("b1", 1000)).toBe(false);
-    expect(limiter.hit("b1", 1001)).toBe(false);
-    expect(limiter.hit("b1", 1002)).toBe(true);
-    expect(limiter.hit("b1", 61_003)).toBe(false);
+    expect(await limiter.hit("b1", 1000)).toBe(false);
+    expect(await limiter.hit("b1", 1001)).toBe(false);
+    expect(await limiter.hit("b1", 1002)).toBe(true);
+    expect(await limiter.hit("b1", 61_003)).toBe(false);
   });
   it("log contexts never carry secrets", () => {
     const out = toSafeLogContext({ businessId: "b1", passwordHash: "h", token: "t", ok: 1 });
