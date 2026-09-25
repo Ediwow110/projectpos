@@ -1,10 +1,12 @@
-import type { AuditEntry, DbBalance, DbBusiness, DbCategory, DbMovement, DbPlan, DbMembership, DbPort, DbProduct, DbResetToken, DbSession, DbUser } from "../db.port";
+import type { AuditEntry, DbBalance, DbBusiness, DbCashMovement, DbCategory, DbHeldSale, DbIdempotency, DbMovement, DbPayment, DbPlan, DbMembership, DbPort, DbProduct, DbRegister, DbResetToken, DbSale, DbSaleItem, DbSession, DbShift, DbUser } from "../db.port";
 import { PgContext } from "./context";
 import { settingsFamily } from "./pg-settings";
 import { auditFamily } from "./pg-audit";
 import { tenantsFamily } from "./pg-tenants";
 import { catalogFamily } from "./pg-catalog";
 import { inventoryFamily } from "./pg-inventory";
+import { salesFamily } from "./pg-sales";
+import { shiftsFamily } from "./pg-shifts";
 
 // Phase 12: the PostgreSQL-backed DbPort. Composed from per-family modules
 // over one PgContext. Becomes `implements DbPort` complete in the Task 13
@@ -15,6 +17,8 @@ export class PgDbPort {
   private readonly tenants: ReturnType<typeof tenantsFamily>;
   private readonly catalog: ReturnType<typeof catalogFamily>;
   private readonly inventory: ReturnType<typeof inventoryFamily>;
+  private readonly sales: ReturnType<typeof salesFamily>;
+  private readonly shifts: ReturnType<typeof shiftsFamily>;
 
   constructor(private readonly ctx: PgContext) {
     this.settings = settingsFamily(ctx);
@@ -22,6 +26,8 @@ export class PgDbPort {
     this.tenants = tenantsFamily(ctx);
     this.catalog = catalogFamily(ctx);
     this.inventory = inventoryFamily(ctx);
+    this.sales = salesFamily(ctx);
+    this.shifts = shiftsFamily(ctx);
   }
 
   // withLock/withTransaction come straight from the context so every family
@@ -191,5 +197,98 @@ export class PgDbPort {
   }
   listBalances(businessId: string): Promise<DbBalance[]> {
     return this.inventory.listBalances(businessId);
+  }
+
+  // Sales family.
+  createSale(s: Omit<DbSale, "id">): Promise<DbSale> {
+    return this.sales.createSale(s);
+  }
+  findSaleById(id: string, businessId: string): Promise<DbSale | null> {
+    return this.sales.findSaleById(id, businessId);
+  }
+  listSalesByBusiness(businessId: string): Promise<DbSale[]> {
+    return this.sales.listSalesByBusiness(businessId);
+  }
+  listSalesPage(businessId: string, afterId: string | null, limit: number): Promise<DbSale[]> {
+    return this.sales.listSalesPage(businessId, afterId, limit);
+  }
+  updateSale(id: string, businessId: string, patch: Partial<Omit<DbSale, "id" | "businessId">>): Promise<DbSale | null> {
+    return this.sales.updateSale(id, businessId, patch);
+  }
+  createSaleItem(i: Omit<DbSaleItem, "id">): Promise<DbSaleItem> {
+    return this.sales.createSaleItem(i);
+  }
+  listSaleItems(saleId: string, businessId: string): Promise<DbSaleItem[]> {
+    return this.sales.listSaleItems(saleId, businessId);
+  }
+  createPayment(p: Omit<DbPayment, "id">): Promise<DbPayment> {
+    return this.sales.createPayment(p);
+  }
+  findPaymentById(id: string, businessId: string): Promise<DbPayment | null> {
+    return this.sales.findPaymentById(id, businessId);
+  }
+  listPaymentsBySale(saleId: string, businessId: string): Promise<DbPayment[]> {
+    return this.sales.listPaymentsBySale(saleId, businessId);
+  }
+  updatePayment(id: string, businessId: string, patch: Partial<Omit<DbPayment, "id" | "businessId">>): Promise<DbPayment | null> {
+    return this.sales.updatePayment(id, businessId, patch);
+  }
+  createHeldSale(h: Omit<DbHeldSale, "id">): Promise<DbHeldSale> {
+    return this.sales.createHeldSale(h);
+  }
+  findHeldSaleById(id: string, businessId: string): Promise<DbHeldSale | null> {
+    return this.sales.findHeldSaleById(id, businessId);
+  }
+  listHeldSales(businessId: string, actorId: string): Promise<DbHeldSale[]> {
+    return this.sales.listHeldSales(businessId, actorId);
+  }
+  markHeldResumed(id: string, businessId: string): Promise<void> {
+    return this.sales.markHeldResumed(id, businessId);
+  }
+  claimIdempotency(r: DbIdempotency): Promise<void> {
+    return this.sales.claimIdempotency(r);
+  }
+  findIdempotency(businessId: string, key: string, commandType: string): Promise<DbIdempotency | null> {
+    return this.sales.findIdempotency(businessId, key, commandType);
+  }
+  findLatestSaleForRegister(businessId: string, registerId: string): Promise<DbSale | null> {
+    return this.sales.findLatestSaleForRegister(businessId, registerId);
+  }
+  // Shifts family.
+  createRegister(r: Omit<DbRegister, "id">): Promise<DbRegister> {
+    return this.shifts.createRegister(r);
+  }
+  listRegisters(businessId: string): Promise<DbRegister[]> {
+    return this.shifts.listRegisters(businessId);
+  }
+  findRegisterById(id: string, businessId: string): Promise<DbRegister | null> {
+    return this.shifts.findRegisterById(id, businessId);
+  }
+  updateRegister(id: string, businessId: string, patch: Partial<Omit<DbRegister, "id" | "businessId">>): Promise<DbRegister | null> {
+    return this.shifts.updateRegister(id, businessId, patch);
+  }
+  createShift(s: Omit<DbShift, "id">): Promise<DbShift> {
+    return this.shifts.createShift(s);
+  }
+  findShiftById(id: string, businessId: string): Promise<DbShift | null> {
+    return this.shifts.findShiftById(id, businessId);
+  }
+  findOpenShiftByRegister(businessId: string, registerId: string): Promise<DbShift | null> {
+    return this.shifts.findOpenShiftByRegister(businessId, registerId);
+  }
+  listShiftsByBusiness(businessId: string): Promise<DbShift[]> {
+    return this.shifts.listShiftsByBusiness(businessId);
+  }
+  updateShift(id: string, businessId: string, patch: Partial<Omit<DbShift, "id" | "businessId">>): Promise<DbShift | null> {
+    return this.shifts.updateShift(id, businessId, patch);
+  }
+  createCashMovement(m: Omit<DbCashMovement, "id">): Promise<DbCashMovement> {
+    return this.shifts.createCashMovement(m);
+  }
+  listCashMovementsByShift(shiftId: string, businessId: string): Promise<DbCashMovement[]> {
+    return this.shifts.listCashMovementsByShift(shiftId, businessId);
+  }
+  hasShiftForRegister(businessId: string, registerId: string): Promise<boolean> {
+    return this.shifts.hasShiftForRegister(businessId, registerId);
   }
 }
