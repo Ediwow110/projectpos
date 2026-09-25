@@ -19,7 +19,11 @@ export class PgContext {
   private als = new AsyncLocalStorage<PoolClient>();
 
   constructor(connectionString: string) {
-    this.pool = new Pool({ connectionString, max: 10 });
+    // Pool sizing was measured, not guessed: at the growth cohort's 50
+    // concurrent workers, max 10 starved every read behind the completes'
+    // held transaction connections (overview p50 6s at ~22% CPU and an idle
+    // database); 30 clears it. Staging re-verifies per PLAN §14.4.
+    this.pool = new Pool({ connectionString, max: Number(process.env["PG_POOL_MAX"] ?? 30) });
   }
 
   async client(): Promise<PoolClient> {

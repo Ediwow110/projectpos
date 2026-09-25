@@ -359,6 +359,9 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
         (i) => i.saleId === saleId && i.businessId === businessId,
       );
     },
+    async listSaleItemsByBusiness(businessId) {
+      return [...saleItems.values()].filter((i) => i.businessId === businessId);
+    },
     async createPayment(p) {
       const row = { ...p, id: nid("pay") };
       payments.set(row.id, row);
@@ -495,6 +498,9 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       refunds.set(row.id, row);
       return row;
     },
+    async listRefundsByBusiness(businessId) {
+      return [...refunds.values()].filter((r) => r.businessId === businessId);
+    },
     async listRefundsBySale(saleId, businessId) {
       return [...refunds.values()].filter(
         (r) => r.saleId === saleId && r.businessId === businessId,
@@ -524,6 +530,9 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       return [...refundItems.values()].filter(
         (i) => ids.has(i.refundId) && i.businessId === businessId,
       );
+    },
+    async listRefundItemsByBusiness(businessId) {
+      return [...refundItems.values()].filter((i) => i.businessId === businessId);
     },
     async createExpense(e) {
       const row = { ...e, id: nid("exp") };

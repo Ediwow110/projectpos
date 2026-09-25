@@ -163,6 +163,18 @@ export function salesFamily(ctx: PgContext) {
         if (ctx.owns()) c.release();
       }
     },
+    async listSaleItemsByBusiness(businessId: string): Promise<DbSaleItem[]> {
+      const c = await ctx.client();
+      try {
+        const r = await c.query(
+          `SELECT ${ITEM_SELECT} FROM "SaleItem" WHERE "businessId" = $1 ORDER BY "id" ASC`,
+          [businessId],
+        );
+        return r.rows as DbSaleItem[];
+      } finally {
+        if (ctx.owns()) c.release();
+      }
+    },
 
     async createPayment(p: Omit<DbPayment, "id">): Promise<DbPayment> {
       const c = await ctx.client();

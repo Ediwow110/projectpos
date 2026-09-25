@@ -119,6 +119,18 @@ export function peopleFamily(ctx: PgContext) {
       }
     },
 
+    async listRefundsByBusiness(businessId: string): Promise<DbRefund[]> {
+      const cl = await ctx.client();
+      try {
+        const r = await cl.query(
+          `SELECT ${REFUND_COLUMNS} FROM "Refund" WHERE "businessId" = $1 ORDER BY "id" ASC`,
+          [businessId],
+        );
+        return r.rows as DbRefund[];
+      } finally {
+        if (ctx.owns()) cl.release();
+      }
+    },
     async listRefundsBySale(saleId: string, businessId: string): Promise<DbRefund[]> {
       const cl = await ctx.client();
       try {
@@ -184,6 +196,18 @@ export function peopleFamily(ctx: PgContext) {
             ' "refundId" IN (SELECT "id" FROM "Refund" WHERE "saleId" = $1 AND "businessId" = $2)' +
             ' ORDER BY "id" ASC',
           [saleId, businessId],
+        );
+        return r.rows as DbRefundItem[];
+      } finally {
+        if (ctx.owns()) cl.release();
+      }
+    },
+    async listRefundItemsByBusiness(businessId: string): Promise<DbRefundItem[]> {
+      const cl = await ctx.client();
+      try {
+        const r = await cl.query(
+          `SELECT ${REFUND_ITEM_COLUMNS} FROM "RefundItem" WHERE "businessId" = $1 ORDER BY "id" ASC`,
+          [businessId],
         );
         return r.rows as DbRefundItem[];
       } finally {

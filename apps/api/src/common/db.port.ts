@@ -501,6 +501,9 @@ export interface DbPort {
   updateSale(id: string, businessId: string, patch: Partial<Omit<DbSale, "id" | "businessId">>): Promise<DbSale | null>;
   createSaleItem(i: Omit<DbSaleItem, "id">): Promise<DbSaleItem>;
   listSaleItems(saleId: string, businessId: string): Promise<DbSaleItem[]>;
+  // Phase 12 bulk read: reporting groups these by saleId in one round-trip
+  // instead of two queries per sale (PLAN §12 forbids N+1 patterns).
+  listSaleItemsByBusiness(businessId: string): Promise<DbSaleItem[]>;
   createPayment(p: Omit<DbPayment, "id">): Promise<DbPayment>;
   findPaymentById(id: string, businessId: string): Promise<DbPayment | null>;
   listPaymentsBySale(saleId: string, businessId: string): Promise<DbPayment[]>;
@@ -529,10 +532,14 @@ export interface DbPort {
   updateCustomer(id: string, businessId: string, patch: Partial<Omit<DbCustomer, "id" | "businessId">>): Promise<DbCustomer | null>;
   createRefund(r: Omit<DbRefund, "id">): Promise<DbRefund>;
   listRefundsBySale(saleId: string, businessId: string): Promise<DbRefund[]>;
+  // Phase 12 bulk read: reporting maps refund items to sales in one round-trip.
+  listRefundsByBusiness(businessId: string): Promise<DbRefund[]>;
   findRefundById(id: string, businessId: string): Promise<DbRefund | null>;
   createRefundItem(i: Omit<DbRefundItem, "id">): Promise<DbRefundItem>;
   listRefundItems(refundId: string, businessId: string): Promise<DbRefundItem[]>;
   listRefundItemsBySale(saleId: string, businessId: string): Promise<DbRefundItem[]>;
+  // Phase 12 bulk read: reporting groups these by saleId in one round-trip.
+  listRefundItemsByBusiness(businessId: string): Promise<DbRefundItem[]>;
   createExpense(e: Omit<DbExpense, "id">): Promise<DbExpense>;
   listExpensesByBusiness(businessId: string): Promise<DbExpense[]>;
   listExpensesPage(businessId: string, afterId: string | null, limit: number): Promise<DbExpense[]>;

@@ -1,3 +1,50 @@
+  // Catalog family.
+  createCategory(c: Omit<DbCategory, "id">): Promise<DbCategory> {
+    return this.catalog.createCategory(c);
+  }
+  listCategories(businessId: string): Promise<DbCategory[]> {
+    return this.catalog.listCategories(businessId);
+  }
+  findCategoryById(id: string, businessId: string): Promise<DbCategory | null> {
+    return this.catalog.findCategoryById(id, businessId);
+  }
+  updateCategory(id: string, businessId: string, patch: Partial<Omit<DbCategory, "id" | "businessId">>): Promise<DbCategory | null> {
+    return this.catalog.updateCategory(id, businessId, patch);
+  }
+  createProduct(p: Omit<DbProduct, "id">): Promise<DbProduct> {
+    return this.catalog.createProduct(p);
+  }
+  listProducts(businessId: string): Promise<DbProduct[]> {
+    return this.catalog.listProducts(businessId);
+  }
+  findProductById(id: string, businessId: string): Promise<DbProduct | null> {
+    return this.catalog.findProductById(id, businessId);
+  }
+  updateProduct(id: string, businessId: string, patch: Partial<Omit<DbProduct, "id" | "businessId">>): Promise<DbProduct | null> {
+    return this.catalog.updateProduct(id, businessId, patch);
+  }
+  // Inventory family.
+  createMovement(m: Omit<DbMovement, "id">): Promise<DbMovement> {
+    return this.inventory.createMovement(m);
+  }
+  listMovements(productId: string, businessId: string, branchId?: string | null): Promise<DbMovement[]> {
+    return this.inventory.listMovements(productId, businessId, branchId);
+  }
+  listMovementsByBusiness(businessId: string): Promise<DbMovement[]> {
+    return this.inventory.listMovementsByBusiness(businessId);
+  }
+  listMovementsPage(businessId: string, afterId: string | null, limit: number): Promise<DbMovement[]> {
+    return this.inventory.listMovementsPage(businessId, afterId, limit);
+  }
+  upsertBalance(b: Omit<DbBalance, "id">): Promise<DbBalance> {
+    return this.inventory.upsertBalance(b);
+  }
+  findBalance(productId: string, businessId: string, branchId?: string | null): Promise<DbBalance | null> {
+    return this.inventory.findBalance(productId, businessId, branchId);
+  }
+  listBalances(businessId: string): Promise<DbBalance[]> {
+    return this.inventory.listBalances(businessId);
+  }
   // Devices family.
   createDevice(d: Omit<DbDevice, "id">): Promise<DbDevice> {
     return this.devices.createDevice(d);
@@ -152,6 +199,9 @@
   listRefundsBySale(saleId: string, businessId: string): Promise<DbRefund[]> {
     return this.people.listRefundsBySale(saleId, businessId);
   }
+  listRefundsByBusiness(businessId: string): Promise<DbRefund[]> {
+    return this.people.listRefundsByBusiness(businessId);
+  }
   findRefundById(id: string, businessId: string): Promise<DbRefund | null> {
     return this.people.findRefundById(id, businessId);
   }
@@ -163,6 +213,9 @@
   }
   listRefundItemsBySale(saleId: string, businessId: string): Promise<DbRefundItem[]> {
     return this.people.listRefundItemsBySale(saleId, businessId);
+  }
+  listRefundItemsByBusiness(businessId: string): Promise<DbRefundItem[]> {
+    return this.people.listRefundItemsByBusiness(businessId);
   }
   createExpense(e: Omit<DbExpense, "id">): Promise<DbExpense> {
     return this.people.createExpense(e);
@@ -231,6 +284,9 @@
   }
   listSaleItems(saleId: string, businessId: string): Promise<DbSaleItem[]> {
     return this.sales.listSaleItems(saleId, businessId);
+  }
+  listSaleItemsByBusiness(businessId: string): Promise<DbSaleItem[]> {
+    return this.sales.listSaleItemsByBusiness(businessId);
   }
   createPayment(p: Omit<DbPayment, "id">): Promise<DbPayment> {
     return this.sales.createPayment(p);

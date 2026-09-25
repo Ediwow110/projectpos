@@ -146,7 +146,7 @@ export class PgDbPort implements DbPort {
     return this.tenants.markEmailVerificationTokenUsed(id);
   }
 
-  // Catalog family: categories and products.
+  // Catalog family.
   createCategory(c: Omit<DbCategory, "id">): Promise<DbCategory> {
     return this.catalog.createCategory(c);
   }
@@ -171,8 +171,7 @@ export class PgDbPort implements DbPort {
   updateProduct(id: string, businessId: string, patch: Partial<Omit<DbProduct, "id" | "businessId">>): Promise<DbProduct | null> {
     return this.catalog.updateProduct(id, businessId, patch);
   }
-
-  // Inventory family: the append-only movement ledger and balance projection.
+  // Inventory family.
   createMovement(m: Omit<DbMovement, "id">): Promise<DbMovement> {
     return this.inventory.createMovement(m);
   }
@@ -194,7 +193,6 @@ export class PgDbPort implements DbPort {
   listBalances(businessId: string): Promise<DbBalance[]> {
     return this.inventory.listBalances(businessId);
   }
-
   // Devices family.
   createDevice(d: Omit<DbDevice, "id">): Promise<DbDevice> {
     return this.devices.createDevice(d);
@@ -349,6 +347,9 @@ export class PgDbPort implements DbPort {
   listRefundsBySale(saleId: string, businessId: string): Promise<DbRefund[]> {
     return this.people.listRefundsBySale(saleId, businessId);
   }
+  listRefundsByBusiness(businessId: string): Promise<DbRefund[]> {
+    return this.people.listRefundsByBusiness(businessId);
+  }
   findRefundById(id: string, businessId: string): Promise<DbRefund | null> {
     return this.people.findRefundById(id, businessId);
   }
@@ -360,6 +361,9 @@ export class PgDbPort implements DbPort {
   }
   listRefundItemsBySale(saleId: string, businessId: string): Promise<DbRefundItem[]> {
     return this.people.listRefundItemsBySale(saleId, businessId);
+  }
+  listRefundItemsByBusiness(businessId: string): Promise<DbRefundItem[]> {
+    return this.people.listRefundItemsByBusiness(businessId);
   }
   createExpense(e: Omit<DbExpense, "id">): Promise<DbExpense> {
     return this.people.createExpense(e);
@@ -428,6 +432,9 @@ export class PgDbPort implements DbPort {
   }
   listSaleItems(saleId: string, businessId: string): Promise<DbSaleItem[]> {
     return this.sales.listSaleItems(saleId, businessId);
+  }
+  listSaleItemsByBusiness(businessId: string): Promise<DbSaleItem[]> {
+    return this.sales.listSaleItemsByBusiness(businessId);
   }
   createPayment(p: Omit<DbPayment, "id">): Promise<DbPayment> {
     return this.sales.createPayment(p);

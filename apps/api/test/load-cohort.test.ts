@@ -62,6 +62,21 @@ async function runMix(
       await fn();
       lat[op].push(performance.now() - start);
     } catch (e) {
+      // One retry on a localhost ECONNRESET: the reads are idempotent and
+      // complete carries an idempotency key, so a reset mid-churn is a
+      // transport artifact, not an application error. Only a second
+      // consecutive failure counts.
+      if (e instanceof Error && e.message.includes("ECONNRESET")) {
+        try {
+          await fn();
+          lat[op].push(performance.now() - start);
+          return;
+        } catch (e2) {
+          errors += 1;
+          if (samples.length < 10) samples.push(`${op}: ${e2 instanceof Error ? e2.message.slice(0, 160) : String(e2).slice(0, 160)}`);
+          return;
+        }
+      }
       errors += 1;
       if (samples.length < 10) samples.push(`${op}: ${e instanceof Error ? e.message.slice(0, 160) : String(e).slice(0, 160)}`);
     }

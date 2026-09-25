@@ -118,7 +118,11 @@ export class AppModule implements NestModule {
 }
 
 export async function createTestApp(): Promise<INestApplication> {
-  const db: DbPort = createMemoryDb();
+  // Same store contract as boot: memory unless DATABASE_URL opts into
+  // PostgreSQL (used by the load cohorts and any pg-backed contract run).
+  const db: DbPort = process.env["DATABASE_URL"]
+    ? new PgDbPort(new PgContext(process.env["DATABASE_URL"]))
+    : createMemoryDb();
   const moduleRef = await Test.createTestingModule({
   controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, MetricsController],
     providers: [

@@ -3,12 +3,14 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
 const FAMILIES = {
+  catalog: ['createCategory','listCategories','findCategoryById','updateCategory','createProduct','listProducts','findProductById','updateProduct'],
+  inventory: ['createMovement','listMovements','listMovementsByBusiness','listMovementsPage','upsertBalance','findBalance','listBalances'],
   devices: ['createDevice','listDevicesByBusiness','findDeviceById','revokeDevice','revokeSessionsByDevice'],
   billing: ['listPlans','findPlanByKey','getSubscription','upsertSubscription','updateSubscription','listInvoices','createInvoice','updateInvoice','listCounters','setCounter','getFlag','setFlag','findWebhookEvent','createWebhookEvent','claimWebhookEvent','updateWebhookEventStatus','updateWebhookEventReceivedAt','deleteWebhookEvent'],
   integrations: ['createApiToken','listApiTokens','findApiTokenByPrefix','listApiTokensByPrefix','revokeApiToken','createPrinter','listPrinters','findPrinterById','findPrinterByAgentTokenHash','createPrintJob','listPrintJobs','updatePrintJob','createDisplayToken','findDisplayToken','createSupportGrant','findValidSupportGrant','markSupportGrantUsed','createShiftCorrection','listShiftCorrections','createReceiptShare','findValidReceiptShare'],
-  people: ['createCustomer','listCustomersByBusiness','findCustomerById','updateCustomer','createRefund','listRefundsBySale','findRefundById','createRefundItem','listRefundItems','listRefundItemsBySale','createExpense','listExpensesByBusiness','listExpensesPage','findExpenseById','updateExpense'],
+  people: ['createCustomer','listCustomersByBusiness','findCustomerById','updateCustomer','createRefund','listRefundsBySale','listRefundsByBusiness','findRefundById','createRefundItem','listRefundItems','listRefundItemsBySale','listRefundItemsByBusiness','createExpense','listExpensesByBusiness','listExpensesPage','findExpenseById','updateExpense'],
   branches: ['createBranch','listBranchesByBusiness','findBranchById','updateBranch','createTransfer','findTransferById','listTransfersByBusiness','updateTransfer','createTransferLine','listTransferLines'],
-  sales: ["createSale", "findSaleById", "listSalesByBusiness", "listSalesPage", "updateSale", "createSaleItem", "listSaleItems", "createPayment", "findPaymentById", "listPaymentsBySale", "updatePayment", "createHeldSale", "findHeldSaleById", "listHeldSales", "markHeldResumed", "claimIdempotency", "findIdempotency", "findLatestSaleForRegister", "nextReceiptNo"],
+  sales: ["createSale", "findSaleById", "listSalesByBusiness", "listSalesPage", "updateSale", "createSaleItem", "listSaleItems", "listSaleItemsByBusiness", "createPayment", "findPaymentById", "listPaymentsBySale", "updatePayment", "createHeldSale", "findHeldSaleById", "listHeldSales", "markHeldResumed", "claimIdempotency", "findIdempotency", "findLatestSaleForRegister", "nextReceiptNo"],
   shifts: ["createRegister", "listRegisters", "findRegisterById", "updateRegister", "createShift", "findShiftById", "findOpenShiftByRegister", "listShiftsByBusiness", "updateShift", "createCashMovement", "listCashMovementsByShift", "hasShiftForRegister"],
 };
 

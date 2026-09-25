@@ -92,3 +92,31 @@ describe("phase12 port locks", () => {
     expect(out).toBe("ok");
   });
 });
+
+describe("phase12 bulk line reads (N+1 fix)", () => {
+  it("lists sale items and refund items for a whole business", async () => {
+    const db = createMemoryDb();
+    const biz = await db.createBusiness({ name: "B", currency: "PHP" });
+    const other = await db.createBusiness({ name: "O", currency: "PHP" });
+    const sale = await db.createSale({
+      businessId: biz.id, receiptNo: "2026-000001", status: "DRAFT", subtotalMinor: 100,
+      discountMinor: 0, taxMinor: 0, totalMinor: 100, paidMinor: 0, changeMinor: 0,
+      currency: "PHP", customerId: null, customerName: null, notes: null, actorId: "u",
+      requestId: "r", idempotencyKey: null, registerId: null, completedAt: null,
+      createdAt: new Date(),
+    });
+    await db.createSaleItem({ businessId: biz.id, saleId: sale.id, productId: "p", name: "X", unit: "pc", qty: 1, priceMinor: 100, costMinor: 50, taxRateBps: null, lineDiscountMinor: 0, lineTotalMinor: 100 });
+    await db.createSaleItem({ businessId: other.id, saleId: sale.id, productId: "p", name: "Y", unit: "pc", qty: 1, priceMinor: 100, costMinor: 50, taxRateBps: null, lineDiscountMinor: 0, lineTotalMinor: 100 });
+    const refund = await db.createRefund({
+      businessId: biz.id, saleId: sale.id, status: "APPROVED", totalMinor: 100,
+      requestedBy: "u", approvedBy: "u", approvedRequestId: "r", singleStep: true,
+      reason: null, requestId: "r",
+    });
+    await db.createRefundItem({ businessId: biz.id, refundId: refund.id, saleItemId: "si", productId: "p", qty: 1, amountMinor: 100, restocked: true });
+    const items = await db.listSaleItemsByBusiness(biz.id);
+    expect(items).toHaveLength(1);
+    expect(items[0]!.name).toBe("X");
+    const refunds = await db.listRefundItemsByBusiness(biz.id);
+    expect(refunds).toHaveLength(1);
+  });
+});

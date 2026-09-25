@@ -78,15 +78,34 @@ export class ReportingService {
     );
   }
 
+  // Three bulk reads grouped in memory — never two queries per sale (PLAN §12:
+  // N+1 patterns are detected and removed; on PostgreSQL they made the
+  // dashboard p95 grow with sales count).
   private async linesFor(businessId: string, sales: DbSale[]): Promise<SaleWithLines[]> {
-    const out: SaleWithLines[] = [];
-    for (const sale of sales) {
-      const items = await this.db.listSaleItems(sale.id, businessId);
-      const refundItems = await this.db.listRefundItemsBySale(sale.id, businessId);
-      const refunded = refundItems.reduce((sum, r) => sum + r.amountMinor, 0);
-      out.push({ sale, items, refunded });
+    const [allItems, allRefundItems, allRefunds] = await Promise.all([
+      this.db.listSaleItemsByBusiness(businessId),
+      this.db.listRefundItemsByBusiness(businessId),
+      this.db.listRefundsByBusiness(businessId),
+    ]);
+    const itemsBySale = new Map<string, DbSaleItem[]>();
+    for (const item of allItems) {
+      const list = itemsBySale.get(item.saleId) ?? [];
+      list.push(item);
+      itemsBySale.set(item.saleId, list);
     }
-    return out;
+    // Refund items reference the sale through their refund.
+    const saleOfRefund = new Map(allRefunds.map((r) => [r.id, r.saleId]));
+    const refundedBySale = new Map<string, number>();
+    for (const ri of allRefundItems) {
+      const saleId = saleOfRefund.get(ri.refundId);
+      if (!saleId) continue;
+      refundedBySale.set(saleId, (refundedBySale.get(saleId) ?? 0) + ri.amountMinor);
+    }
+    return sales.map((sale) => ({
+      sale,
+      items: itemsBySale.get(sale.id) ?? [],
+      refunded: refundedBySale.get(sale.id) ?? 0,
+    }));
   }
 
   private kpi(value: number, previous: number | null): Kpi {
