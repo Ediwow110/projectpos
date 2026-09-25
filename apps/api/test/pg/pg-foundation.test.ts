@@ -43,20 +43,28 @@ describe("phase12 pg foundation", () => {
       let releases: Array<() => void> = [];
       const gate = new Promise<void>((resolve) => { releases.push(resolve); });
       // Two lock bodies on the same key: the second must not start until the
-      // first releases.
-      const first = ctx.withLock("sales:b1", async () => {
+      // first releases. The key is test-unique so a stale advisory lock from
+      // an earlier run can never block it.
+      const key = `foundation-serialize-${Date.now()}`;
+      const first = ctx.withLock(key, async () => {
         order.push("first:start");
         await gate;
         order.push("first:end");
       });
-      const second = ctx.withLock("sales:b1", async () => {
+      const second = ctx.withLock(key, async () => {
         order.push("second:start");
       });
-      await new Promise((r) => setTimeout(r, 100));
-      expect(order).toEqual(["first:start"]);
-      releases[0]!();
-      await first;
-      await second;
+      // Wait for evidence the first body started instead of a fixed timer:
+      // a slow pool connect must not fail the assertion.
+      for (let i = 0; i < 100 && order.length === 0; i++) {
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      try {
+        expect(order).toEqual(["first:start"]);
+      } finally {
+        releases[0]!();
+        await Promise.allSettled([first, second]);
+      }
       expect(order).toEqual(["first:start", "first:end", "second:start"]);
       void db;
     });
@@ -66,7 +74,7 @@ describe("phase12 pg foundation", () => {
     await withPg(async (db, ctx) => {
       const biz = await db.createBusiness({ name: "Rollback", currency: "PHP" });
       await expect(
-        ctx.withLock("sales:b1", async () => {
+        ctx.withLock(`foundation-rollback-${Date.now()}`, async () => {
           await db.saveSettings(biz.id, { currency: "PHP" });
           throw new Error("boom");
         }),
