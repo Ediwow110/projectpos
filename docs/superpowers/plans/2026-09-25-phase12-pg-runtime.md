@@ -162,3 +162,22 @@ Final gate: pg suite 128/128 (12 files, including the two-instance proof), memor
 1. **E2E runs on the real stack.** The Playwright suite executes with the API booted on `DATABASE_URL` (locally against a disposable `pos_e2e` database prepared by the new idempotent `scripts/apply-migrations.mjs`; CI's e2e job now applies migrations and runs its Postgres service for real instead of declaring it unused). Result: **24/24 green**, with two test-resilience fixes and zero backend changes — worker-unique registration emails (both Playwright projects can start a spec in the same millisecond, colliding on the unique email) and cold-start timeouts for Next dev's on-demand route compilation plus first-query latency. Verified in a throwaway git worktree because the frontend workstream's in-flight UI redesign in the main tree predates the current e2e selectors.
 2. **Rate limits are cross-process.** The limiter backend is pluggable (`setRateLimitBackend`): memory (default, per-process) or `PgRateLimitBackend` — one table (`RateLimitHit`, migration 0016), a per-key advisory lock so concurrent hits serialize and the count is exact (a first single-CTE version silently undercounted: data-modifying CTEs cannot see each other's effects in one statement), prune-on-hit keeps it bounded. All seven limiters (login, reset, import, money ×2, refund-approve, API-token 60/min) share it; boot installs the pg backend exactly when `DATABASE_URL` is set. Proven live: six bad logins against the pg-backed API answer 401, 401, 401, 401, 401, 429.
 3. **Operational note:** the store requires current migrations — booting against a database missing a migration fails at first limiter use (500s), so always run `scripts/apply-migrations.mjs` (CI and the e2e flow do).
+
+### Load testing against real PostgreSQL (first §14.4 iteration)
+
+`createTestApp` now honors `DATABASE_URL` (same store contract as boot), so the opt-in cohorts run against a real database: `DATABASE_URL=... LOAD=1 [LOAD_GROWTH=1] pnpm --filter @pos/api exec vitest run test/load-cohort.test.ts`. The cohort also retries a localhost ECONNRESET once (reads are idempotent, completes carry idempotency keys) — transport churn no longer masks application latency.
+
+**Baseline cohort (5 workers, 50 products, 15s) — ALL BUDGETS PASS on PostgreSQL with headroom:**
+
+| op | p50 | p95 | p99 | budget |
+|---|---|---|---|---|
+| search | 5.1ms | 17.3ms | 109.7ms | 200ms |
+| complete | 38.0ms | 233.0ms | 274.8ms | 500ms |
+| overview | 111.2ms | 206.2ms | 264.9ms | 1000ms |
+| list | 4.9ms | 10.4ms | 17.4ms | 500ms |
+
+(For comparison, the same cohort on the memory store: 2.1/5.7/2.7/1.9ms p50 — PostgreSQL's per-statement round-trips cost ~5-25× on latency, comfortably inside PLAN's budgets at realistic single-register load.)
+
+**Fixed on the way:** the dashboard had a genuine N+1 — `linesFor` issued two queries per sale (plan §12 forbids N+1 explicitly). Three bulk port reads (`listSaleItemsByBusiness`, `listRefundItemsByBusiness`, `listRefundsByBusiness`) plus in-memory grouping took the overview from `p95 318ms→17ms` (search) and `752ms→233ms` (complete) at baseline. Pool sizing is now measured, not guessed: `max 30` (`PG_POOL_MAX` overridable) after the growth cohort showed max 10 starving reads behind held transaction connections.
+
+**Growth cohort (50 workers, one business) — real finding, open:** overview p50 ~6s, complete p95 ~500-800ms with the database ~idle and the API at ~22% CPU. Root cause isolated by `pg_stat_activity`: `pg_advisory_xact_lock` acquisitions observed waiting 1.2s+ — at 50 concurrent workers on ONE business, completes/drafts serialize on the per-business `sales:` lock while holding their transaction's pool connection, and the mix's closed-loop workers queue behind them. This is the plan's §14.4 iterative work, not a Phase 12 defect: the fixes it points at are (a) narrowing the sales lock scope (per-register or row-level) so one business's registers don't fully serialize, (b) folding the money-limiter transaction into the sale transaction (one lock acquisition and ~6 fewer round-trips per complete), and (c) the plan's own "cached/prepared aggregates" allowance for the dashboard (§12) if overview cost at scale still dominates. The growth cohort's 50-workers-on-one-business shape is the stress case for a single node; PLAN's cohort 2 anticipates deployment-scale distribution.
