@@ -3,6 +3,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
 const FAMILIES = {
+  people: ['createCustomer','listCustomersByBusiness','findCustomerById','updateCustomer','createRefund','listRefundsBySale','findRefundById','createRefundItem','listRefundItems','listRefundItemsBySale','createExpense','listExpensesByBusiness','listExpensesPage','findExpenseById','updateExpense'],
+  branches: ['createBranch','listBranchesByBusiness','findBranchById','updateBranch','createTransfer','findTransferById','listTransfersByBusiness','updateTransfer','createTransferLine','listTransferLines'],
   sales: ["createSale", "findSaleById", "listSalesByBusiness", "listSalesPage", "updateSale", "createSaleItem", "listSaleItems", "createPayment", "findPaymentById", "listPaymentsBySale", "updatePayment", "createHeldSale", "findHeldSaleById", "listHeldSales", "markHeldResumed", "claimIdempotency", "findIdempotency", "findLatestSaleForRegister"],
   shifts: ["createRegister", "listRegisters", "findRegisterById", "updateRegister", "createShift", "findShiftById", "findOpenShiftByRegister", "listShiftsByBusiness", "updateShift", "createCashMovement", "listCashMovementsByShift", "hasShiftForRegister"],
 };

@@ -1,4 +1,4 @@
-import type { AuditEntry, DbBalance, DbBusiness, DbCashMovement, DbCategory, DbHeldSale, DbIdempotency, DbMovement, DbPayment, DbPlan, DbMembership, DbPort, DbProduct, DbRegister, DbResetToken, DbSale, DbSaleItem, DbSession, DbShift, DbUser } from "../db.port";
+import type { AuditEntry, DbBalance, DbBranch, DbBusiness, DbCashMovement, DbCategory, DbCustomer, DbExpense, DbHeldSale, DbIdempotency, DbMovement, DbPayment, DbPlan, DbMembership, DbPort, DbProduct, DbRefund, DbRefundItem, DbRegister, DbResetToken, DbSale, DbSaleItem, DbSession, DbShift, DbStockTransfer, DbStockTransferLine, DbUser } from "../db.port";
 import { PgContext } from "./context";
 import { settingsFamily } from "./pg-settings";
 import { auditFamily } from "./pg-audit";
@@ -7,6 +7,8 @@ import { catalogFamily } from "./pg-catalog";
 import { inventoryFamily } from "./pg-inventory";
 import { salesFamily } from "./pg-sales";
 import { shiftsFamily } from "./pg-shifts";
+import { peopleFamily } from "./pg-people";
+import { branchesFamily } from "./pg-branches";
 
 // Phase 12: the PostgreSQL-backed DbPort. Composed from per-family modules
 // over one PgContext. Becomes `implements DbPort` complete in the Task 13
@@ -19,6 +21,8 @@ export class PgDbPort {
   private readonly inventory: ReturnType<typeof inventoryFamily>;
   private readonly sales: ReturnType<typeof salesFamily>;
   private readonly shifts: ReturnType<typeof shiftsFamily>;
+  private readonly people: ReturnType<typeof peopleFamily>;
+  private readonly branches: ReturnType<typeof branchesFamily>;
 
   constructor(private readonly ctx: PgContext) {
     this.settings = settingsFamily(ctx);
@@ -28,6 +32,8 @@ export class PgDbPort {
     this.inventory = inventoryFamily(ctx);
     this.sales = salesFamily(ctx);
     this.shifts = shiftsFamily(ctx);
+    this.people = peopleFamily(ctx);
+    this.branches = branchesFamily(ctx);
   }
 
   // withLock/withTransaction come straight from the context so every family
@@ -199,6 +205,83 @@ export class PgDbPort {
     return this.inventory.listBalances(businessId);
   }
 
+  // People family.
+  createCustomer(c: Omit<DbCustomer, "id">): Promise<DbCustomer> {
+    return this.people.createCustomer(c);
+  }
+  listCustomersByBusiness(businessId: string): Promise<DbCustomer[]> {
+    return this.people.listCustomersByBusiness(businessId);
+  }
+  findCustomerById(id: string, businessId: string): Promise<DbCustomer | null> {
+    return this.people.findCustomerById(id, businessId);
+  }
+  updateCustomer(id: string, businessId: string, patch: Partial<Omit<DbCustomer, "id" | "businessId">>): Promise<DbCustomer | null> {
+    return this.people.updateCustomer(id, businessId, patch);
+  }
+  createRefund(r: Omit<DbRefund, "id">): Promise<DbRefund> {
+    return this.people.createRefund(r);
+  }
+  listRefundsBySale(saleId: string, businessId: string): Promise<DbRefund[]> {
+    return this.people.listRefundsBySale(saleId, businessId);
+  }
+  findRefundById(id: string, businessId: string): Promise<DbRefund | null> {
+    return this.people.findRefundById(id, businessId);
+  }
+  createRefundItem(i: Omit<DbRefundItem, "id">): Promise<DbRefundItem> {
+    return this.people.createRefundItem(i);
+  }
+  listRefundItems(refundId: string, businessId: string): Promise<DbRefundItem[]> {
+    return this.people.listRefundItems(refundId, businessId);
+  }
+  listRefundItemsBySale(saleId: string, businessId: string): Promise<DbRefundItem[]> {
+    return this.people.listRefundItemsBySale(saleId, businessId);
+  }
+  createExpense(e: Omit<DbExpense, "id">): Promise<DbExpense> {
+    return this.people.createExpense(e);
+  }
+  listExpensesByBusiness(businessId: string): Promise<DbExpense[]> {
+    return this.people.listExpensesByBusiness(businessId);
+  }
+  listExpensesPage(businessId: string, afterId: string | null, limit: number): Promise<DbExpense[]> {
+    return this.people.listExpensesPage(businessId, afterId, limit);
+  }
+  findExpenseById(id: string, businessId: string): Promise<DbExpense | null> {
+    return this.people.findExpenseById(id, businessId);
+  }
+  updateExpense(id: string, businessId: string, patch: Partial<Omit<DbExpense, "id" | "businessId">>): Promise<DbExpense | null> {
+    return this.people.updateExpense(id, businessId, patch);
+  }
+  // Branches family.
+  createBranch(b: Omit<DbBranch, "id">): Promise<DbBranch> {
+    return this.branches.createBranch(b);
+  }
+  listBranchesByBusiness(businessId: string): Promise<DbBranch[]> {
+    return this.branches.listBranchesByBusiness(businessId);
+  }
+  findBranchById(id: string, businessId: string): Promise<DbBranch | null> {
+    return this.branches.findBranchById(id, businessId);
+  }
+  updateBranch(id: string, businessId: string, patch: Partial<Omit<DbBranch, "id" | "businessId">>): Promise<DbBranch | null> {
+    return this.branches.updateBranch(id, businessId, patch);
+  }
+  createTransfer(t: Omit<DbStockTransfer, "id">): Promise<DbStockTransfer> {
+    return this.branches.createTransfer(t);
+  }
+  findTransferById(id: string, businessId: string): Promise<DbStockTransfer | null> {
+    return this.branches.findTransferById(id, businessId);
+  }
+  listTransfersByBusiness(businessId: string): Promise<DbStockTransfer[]> {
+    return this.branches.listTransfersByBusiness(businessId);
+  }
+  updateTransfer(id: string, businessId: string, patch: Partial<Omit<DbStockTransfer, "id" | "businessId">>): Promise<DbStockTransfer | null> {
+    return this.branches.updateTransfer(id, businessId, patch);
+  }
+  createTransferLine(l: Omit<DbStockTransferLine, "id">): Promise<DbStockTransferLine> {
+    return this.branches.createTransferLine(l);
+  }
+  listTransferLines(transferId: string, businessId: string): Promise<DbStockTransferLine[]> {
+    return this.branches.listTransferLines(transferId, businessId);
+  }
   // Sales family.
   createSale(s: Omit<DbSale, "id">): Promise<DbSale> {
     return this.sales.createSale(s);
