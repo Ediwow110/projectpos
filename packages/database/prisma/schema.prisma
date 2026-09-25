@@ -11,6 +11,7 @@ model User {
   id                String               @id @default(cuid())
   email             String               @unique
   passwordHash      String
+  name              String               @default("")
   // Phase 11: false only when the business opts into email verification;
   // legacy rows and invited members default to verified.
   emailVerified     Boolean              @default(true)
@@ -93,6 +94,8 @@ model BusinessMembership {
   businessId String
   userId     String
   roleId     String
+  // Phase 12: deactivated members keep the row but lose access.
+  deactivatedAt DateTime?
   createdAt  DateTime @default(now())
   business   Business @relation(fields: [businessId], references: [id])
   user       User     @relation(fields: [userId], references: [id])
@@ -133,6 +136,7 @@ model Session {
   // Phase 11: explicit active business chosen via POST /auth/active-business;
   // null = home business from login.
   activeBusinessId String?
+  authenticatedAt DateTime @default(now())
   tokenHash  String    @unique
   expiresAt  DateTime
   revokedAt  DateTime?
@@ -274,6 +278,8 @@ model Sale {
   registerId     String?
   // Phase 9a: nullable branch scope (register's branch, else explicit, else null).
   branchId       String?
+  // Phase 12: set when the sale reaches COMPLETED; usage metering buckets by this.
+  completedAt    DateTime?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
   business       Business   @relation(fields: [businessId], references: [id])
@@ -366,7 +372,8 @@ model Shift {
   // Phase 9a: copied from register at open.
   branchId             String?
   status               String    @default("OPEN")
-  openedBy             String  closedBy             String?
+  openedBy             String
+  closedBy             String?
   openingFloatMinor    Int       @default(0)
   countedCashMinor     Int?
   varianceMinor        Int?
