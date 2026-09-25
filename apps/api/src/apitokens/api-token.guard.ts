@@ -2,15 +2,12 @@ import { CanActivate, ExecutionContext, Inject, Injectable } from "@nestjs/commo
 import { createHash, timingSafeEqual } from "node:crypto";
 import "reflect-metadata";
 import type { DbPort } from "../common/db.port";
+import { createRateLimiter } from "../common/rate-limit";
 import { BillingService } from "../billing/nest/billing.service";
 import { SCOPES_KEY, scopesSatisfied } from "./scopes.decorator";
 
 export const TOKEN_RATE_LIMIT = 60;
 export const TOKEN_RATE_WINDOW_MS = 60_000;
-
-export function bucketAllowed(hits: number[], nowMs: number, limit = TOKEN_RATE_LIMIT, windowMs = TOKEN_RATE_WINDOW_MS): boolean {
-  return hits.filter((t) => t > nowMs - windowMs).length < limit;
-}
 
 interface TokenAuth {
   userId: string;
@@ -27,7 +24,10 @@ function sha256Hex(s: string): string {
 
 @Injectable()
 export class ApiTokenGuard implements CanActivate {
-  private readonly buckets = new Map<string, number[]>();
+  // Phase 12: the token bucket moved onto the shared pluggable limiter so the
+  // 60/min/token cap holds across app instances when the pg backend is
+  // installed (identical record-then-count semantics to the old Map).
+  private readonly tokenLimiter = createRateLimiter(TOKEN_RATE_LIMIT, TOKEN_RATE_WINDOW_MS);
 
   constructor(@Inject("DbPort") private readonly db: DbPort) {}
 
@@ -76,14 +76,10 @@ export class ApiTokenGuard implements CanActivate {
       }
       return false;
     }
-    const now = Date.now();
-    const hits = (this.buckets.get(row.id) ?? []).filter((t) => t > now - TOKEN_RATE_WINDOW_MS);
-    if (!bucketAllowed(hits, now)) {
+    if (await this.tokenLimiter.hit(`token:${row.id}`)) {
       req.authError = "RATE_LIMITED";
       return false;
     }
-    hits.push(now);
-    this.buckets.set(row.id, hits);
     const auth: TokenAuth = {
       userId: `apitoken:${row.id}`,
       businessId: row.businessId,

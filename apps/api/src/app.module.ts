@@ -60,6 +60,8 @@ import type { DbPort } from "./common/db.port";
 import { createMemoryDb } from "./common/memory.db";
 import { PgContext } from "./common/pg/context";
 import { PgDbPort } from "./common/pg/pg.db";
+import { PgRateLimitBackend } from "./common/pg/pg-rate-limit";
+import { setRateLimitBackend } from "./common/rate-limit";
 
 @Module({
     controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, MetricsController],
@@ -96,7 +98,13 @@ import { PgDbPort } from "./common/pg/pg.db";
       provide: "DbPort",
       useFactory: () => {
         const url = process.env["DATABASE_URL"];
-        if (url) return new PgDbPort(new PgContext(url));
+        if (url) {
+          const ctx = new PgContext(url);
+          // Rate limits become cross-process with the store (PLAN §7).
+          setRateLimitBackend(new PgRateLimitBackend(ctx));
+          return new PgDbPort(ctx);
+        }
+        setRateLimitBackend(null);
         return createMemoryDb();
       },
     },

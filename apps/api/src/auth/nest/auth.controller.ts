@@ -78,7 +78,7 @@ export class AuthController {
 
   @Post("login")
   async login(@Req() req: Request, @Res() res: Response, @Body() body: unknown): Promise<void> {
-    if (loginLimiter.hit(`${req.ip ?? "unknown"}:login`)) {
+    if (await loginLimiter.hit(`${req.ip ?? "unknown"}:login`)) {
       fail(res, 429, "RATE_LIMITED", "Too many attempts", req);
       return;
     }
@@ -145,7 +145,7 @@ export class AuthController {
     @Res() res: Response,
     @Body() body: unknown,
   ): Promise<void> {
-    if (resetLimiter.hit(`${req.ip ?? "unknown"}:reset`)) {
+    if (await resetLimiter.hit(`${req.ip ?? "unknown"}:reset`)) {
       fail(res, 429, "RATE_LIMITED", "Too many attempts", req);
       return;
     }

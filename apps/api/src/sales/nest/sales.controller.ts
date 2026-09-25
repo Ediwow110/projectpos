@@ -115,7 +115,7 @@ export class SalesController {
     }
     try {
       const auth = req.auth!;
-      if (moneyLimiter.hit(`${auth.businessId}:complete`)) {
+      if (await moneyLimiter.hit(`${auth.businessId}:complete`)) {
         fail(res, 429, "RATE_LIMITED", "Too many attempts", req);
         return;
       }
@@ -344,7 +344,7 @@ export class SalesController {
     }
     try {
       const auth = req.auth!;
-      if (moneyLimiter.hit(`${auth.businessId}:reconcile`)) {
+      if (await moneyLimiter.hit(`${auth.businessId}:reconcile`)) {
         fail(res, 429, "RATE_LIMITED", "Too many attempts", req);
         return;
       }

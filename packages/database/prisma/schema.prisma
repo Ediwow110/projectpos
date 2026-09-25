@@ -714,3 +714,11 @@ model ReceiptCounter {
   seq        Int
   business   Business @relation(fields: [businessId], references: [id])
 }
+
+model RateLimitHit {
+  id  String   @id @default(cuid())
+  key String
+  at  DateTime
+
+  @@index([key, at])
+}

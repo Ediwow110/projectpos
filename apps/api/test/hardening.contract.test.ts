@@ -59,15 +59,15 @@ describe("phase8 hardening", () => {
     }
   });
 
-  it("rate-limits money commands at 60/min/business (unit: limiter semantics)", () => {
+  it("rate-limits money commands at 60/min/business (unit: limiter semantics)", async () => {
     const limiter = createRateLimiter(60, 60_000);
     const t0 = 1_000_000;
     for (let i = 0; i < 60; i += 1) {
-      expect(limiter.hit("b1", t0 + i)).toBe(false);
+      expect(await limiter.hit("b1", t0 + i)).toBe(false);
     }
-    expect(limiter.hit("b1", t0 + 60)).toBe(true);
-    expect(limiter.hit("b2", t0 + 61)).toBe(false);
-    expect(limiter.hit("b1", t0 + 61_000)).toBe(false);
+    expect(await limiter.hit("b1", t0 + 60)).toBe(true);
+    expect(await limiter.hit("b2", t0 + 61)).toBe(false);
+    expect(await limiter.hit("b1", t0 + 61_000)).toBe(false);
   });
 
   it("rejects CSRF-less refund approval", async () => {

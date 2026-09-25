@@ -59,7 +59,7 @@ export class RefundController {
     }
     try {
       const auth = req.auth!;
-      if (this.approveLimiter.hit(`${auth.businessId}:refund-approve`)) {
+      if (await this.approveLimiter.hit(`${auth.businessId}:refund-approve`)) {
         fail(res, 429, "RATE_LIMITED", "Too many attempts", req);
         return;
       }

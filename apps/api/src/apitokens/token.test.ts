@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { bucketAllowed } from "./api-token.guard";
 import { scopesSatisfied } from "./scopes.decorator";
 import { hashTokenSecret, mintTokenSecret } from "./nest/apitoken.service";
+import { createRateLimiter } from "../common/rate-limit";
+import { TOKEN_RATE_LIMIT, TOKEN_RATE_WINDOW_MS } from "./api-token.guard";
 
 describe("phase10 token primitives", () => {
   it("mints prefixed secrets hashed deterministically", async () => {
@@ -17,11 +18,14 @@ describe("phase10 token primitives", () => {
     expect(scopesSatisfied(["sales:read"], ["sales:read", "reports:read"])).toBe(true);
     expect(scopesSatisfied(["reports:read"], ["sales:read"])).toBe(false);
   });
-  it("caps buckets at 60 per minute sliding", () => {
+  it("caps tokens at 60 per minute sliding through the shared limiter", async () => {
+    const limiter = createRateLimiter(TOKEN_RATE_LIMIT, TOKEN_RATE_WINDOW_MS);
     const now = 1_000_000;
-    expect(bucketAllowed([], now)).toBe(true);
-    expect(bucketAllowed(Array(60).fill(now), now)).toBe(false);
-    expect(bucketAllowed(Array(59).fill(now), now)).toBe(true);
-    expect(bucketAllowed(Array(60).fill(now - 60_001), now)).toBe(true);
+    for (let i = 0; i < 60; i++) {
+      expect(await limiter.hit(`tok`, now + i)).toBe(false);
+    }
+    expect(await limiter.hit("tok", now + 60)).toBe(true);
+    // Sliding window: hits older than the window stop counting.
+    expect(await limiter.hit("tok", now + TOKEN_RATE_WINDOW_MS + 1)).toBe(false);
   });
 });

@@ -248,7 +248,7 @@ export class CatalogController {
   ): Promise<void> {
     if (!this.writeGuard(req, res)) return;
     const auth = req.auth!;
-    if (importLimiter.hit(`${auth.businessId}:import`)) {
+    if (await importLimiter.hit(`${auth.businessId}:import`)) {
       fail(res, 429, "RATE_LIMITED", "Too many imports", req);
       return;
     }
