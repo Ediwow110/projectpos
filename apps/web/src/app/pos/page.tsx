@@ -64,6 +64,13 @@ interface PaymentRow {
   amountMinor: number;
 }
 
+interface PaymentMethodConfig {
+  key: string;
+  label: string;
+  available: boolean;
+  provider: string;
+}
+
 const METHODS: Array<{ key: string; label: string; tile: string }> = [
   { key: "cash", label: "Cash", tile: "bg-[#f35d3f]" },
   { key: "card", label: "Card", tile: "bg-[#776b62]" },
@@ -121,6 +128,11 @@ export default function PosPage(): JSX.Element {
     queryFn: () => apiFetch<{ items: Array<{ id: string; name: string; isActive: boolean }> }>("/api/v1/registers"),
     retry: false,
   });
+  const paymentMethodsQuery = useQuery({
+    queryKey: ["payment-methods"],
+    queryFn: () => apiFetch<{ methods: PaymentMethodConfig[] }>("/api/v1/payments/methods"),
+    retry: false,
+  });
   const categoriesQuery = useQuery({
     queryKey: ["pos-categories"],
     queryFn: () => apiFetch<{ items: CategoryRow[] }>("/api/v1/categories"),
@@ -147,6 +159,15 @@ export default function PosPage(): JSX.Element {
   const effectiveMethod = offline ? "cash" : method;
   const tenderedMinor = received.trim() === "" ? due : Math.round(Number(received) * 100);
   const changeMinor = Math.max(0, tenderedMinor - due);
+  const paymentConfig = paymentMethodsQuery.data?.methods ?? METHODS.map((entry) => ({
+    key: entry.key,
+    label: entry.label,
+    provider: ["card", "gcash", "maya"].includes(entry.key) ? "paymongo" : "manual",
+    available: !["card", "gcash", "maya"].includes(entry.key),
+  }));
+  const configuredMethodKeys = new Set(paymentConfig.map((entry) => entry.key));
+  const methodAvailable = (key: string): boolean => paymentConfig.find((entry) => entry.key === key)?.available ?? false;
+  const paymentTiles = METHODS.filter((entry) => configuredMethodKeys.has(entry.key));
 
   useEffect(() => {
     setNow(new Date().toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" }));
@@ -281,6 +302,10 @@ export default function PosPage(): JSX.Element {
       await payOffline();
       return;
     }
+    if (["card", "gcash", "maya"].includes(method) && !methodAvailable(method)) {
+      setStatus("PayMongo is not configured for this payment method yet.");
+      return;
+    }
     setPaying(true);
     try {
       const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
@@ -298,11 +323,24 @@ export default function PosPage(): JSX.Element {
       });
       const total = draft.totalMinor;
       const tendered = received.trim() === "" ? total : Math.round(Number(received) * 100);
+      const key = crypto.randomUUID();
+      if (["card", "gcash", "maya"].includes(method)) {
+        const checkout = await apiFetch<{ checkoutUrl: string }>(`/api/v1/sales/${draft.id}/paymongo/checkout`, {
+          csrfToken: csrf.csrfToken,
+          init: {
+            method: "POST",
+            body: JSON.stringify({ method }),
+            headers: { "Idempotency-Key": key },
+          },
+        });
+        setStatus("Redirecting to PayMongo secure checkout…");
+        window.location.assign(checkout.checkoutUrl);
+        return;
+      }
       const payments: PaymentRow[] =
         method === "cash" && tendered >= total
           ? [{ method, amountMinor: tendered }]
           : [{ method, amountMinor: total }];
-      const key = crypto.randomUUID();
       const payload = buildCompletePayload(draft.id, payments, key);
       const response = await apiFetch<CompleteSaleResponse>(
         "/api/v1/sales/complete",
@@ -607,7 +645,11 @@ export default function PosPage(): JSX.Element {
                     setStatus("");
                     setShowPay(true);
                   }}
-                  disabled={!canPay || (offline && shortcut.key !== "cash")}
+                  disabled={
+                    !canPay ||
+                    (offline && shortcut.key !== "cash") ||
+                    (shortcut.key !== "more" && !methodAvailable(shortcut.key))
+                  }
                   className={
                     "h-[42px] rounded-[10px] border text-[8px] font-semibold transition disabled:opacity-35 " +
                     (shortcut.key === effectiveMethod
@@ -926,11 +968,14 @@ export default function PosPage(): JSX.Element {
                 <p className="money mt-2 text-center text-[30px] font-extrabold">₱{money(due)}</p>
                 <p className="text-center text-[11.5px] text-white/40">Total Amount</p>
                 <div className="grid grid-cols-3 gap-2 px-5 pt-3">
-                  {METHODS.filter((m) => !offline || m.key === "cash").map((m) => (
+                  {paymentTiles.filter((m) => !offline || m.key === "cash").map((m) => (
                     <button
                       key={m.key}
+                      type="button"
                       onClick={() => setMethod(m.key)}
-                      className={`rounded-xl px-1 py-2.5 text-[12px] font-semibold transition ${effectiveMethod === m.key ? m.tile + " text-white ring-2 ring-white/60" : "bg-white/[0.06] text-white/60 hover:bg-white/10"}`}
+                      disabled={!methodAvailable(m.key)}
+                      title={!methodAvailable(m.key) && ["card", "gcash", "maya"].includes(m.key) ? "Configure PayMongo to enable this method" : undefined}
+                      className={`rounded-xl px-1 py-2.5 text-[12px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-30 ${effectiveMethod === m.key ? m.tile + " text-white ring-2 ring-white/60" : "bg-white/[0.06] text-white/60 hover:bg-white/10"}`}
                     >
                       {m.label}
                     </button>
@@ -977,13 +1022,15 @@ export default function PosPage(): JSX.Element {
                 <p className="money mt-1 text-[50px] font-bold leading-none">₱{money(due)}</p>
 
                 <div className="mt-[42px] grid w-[556px] grid-cols-3 gap-3.5">
-                  {METHODS.filter((m) => !offline || m.key === "cash").map((m) => (
+                  {paymentTiles.filter((m) => !offline || m.key === "cash").map((m) => (
                     <button
                       key={m.key}
                       type="button"
                       onClick={() => setMethod(m.key)}
+                      disabled={!methodAvailable(m.key)}
+                      title={!methodAvailable(m.key) && ["card", "gcash", "maya"].includes(m.key) ? "Configure PayMongo to enable this method" : undefined}
                       className={
-                        "h-[52px] rounded-[10px] border text-[10px] font-semibold transition " +
+                        "h-[52px] rounded-[10px] border text-[10px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-30 " +
                         (effectiveMethod === m.key
                           ? "border-[#f35d3f] bg-[#f35d3f] text-white"
                           : "border-[#3b3732] bg-[#252422] text-[#d5cdc6] hover:border-[#5a524b]")

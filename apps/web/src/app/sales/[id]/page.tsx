@@ -92,13 +92,45 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
   const [refundMode, setRefundMode] = useState<RefundMode | null>(null);
 
   const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<Me>("/api/v1/me"), retry: false });
-  const detailQuery = useQuery({ queryKey: ["sale", id], queryFn: () => apiFetch<SaleDetail>(`/api/v1/sales/${id}`), retry: false });
+  const detailQuery = useQuery({
+    queryKey: ["sale", id],
+    queryFn: () => apiFetch<SaleDetail>(`/api/v1/sales/${id}`),
+    retry: false,
+    refetchInterval: (query) => {
+      const current = query.state.data as SaleDetail | undefined;
+      return current?.status === "PENDING_PAYMENT" ? 2_000 : false;
+    },
+  });
 
   const role = meQuery.data?.role ?? "cashier";
   const canRefund = role === "owner" || role === "manager" || role === "inventory";
   const canReconcile = role === "owner" || role === "manager";
   const sale = detailQuery.data;
   const unknownPayment = sale?.payments.find((payment) => payment.status === "UNKNOWN") ?? null;
+  const paymongoPayment = sale?.payments.find(
+    (payment) => ["card", "gcash", "maya"].includes(payment.method) && ["PENDING", "SUCCEEDED", "FAILED"].includes(payment.status),
+  ) ?? null;
+
+  async function continuePayMongo(): Promise<void> {
+    if (!sale || !paymongoPayment || !["card", "gcash", "maya"].includes(paymongoPayment.method)) return;
+    setStatusMessage("");
+    setBusy(true);
+    try {
+      const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
+      const checkout = await apiFetch<{ checkoutUrl: string }>(`/api/v1/sales/${sale.id}/paymongo/checkout`, {
+        csrfToken: csrf.csrfToken,
+        init: {
+          method: "POST",
+          body: JSON.stringify({ method: paymongoPayment.method }),
+          headers: { "Idempotency-Key": crypto.randomUUID() },
+        },
+      });
+      window.location.assign(checkout.checkoutUrl);
+    } catch (err) {
+      setStatusMessage(err instanceof ApiError ? `${err.code}: ${err.message}` : "Could not resume PayMongo checkout");
+      setBusy(false);
+    }
+  }
 
   async function reconcilePayment(outcome: ReconcileOutcome): Promise<void> {
     if (!unknownPayment) return;
@@ -185,6 +217,29 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
         ) : null}
 
         {statusMessage ? <div role="status" className="rounded-xl border border-[#eadfd6] bg-white px-4 py-3 text-sm font-medium text-[#655b53]">{statusMessage}</div> : null}
+
+        {sale?.status === "PENDING_PAYMENT" && paymongoPayment ? (
+          <Panel className={paymongoPayment.status === "SUCCEEDED" ? "border-[#f1d6a7] bg-[#fff8eb] p-5" : "border-[#cfdcf4] bg-[#f4f7ff] p-5"}>
+            <SectionHeader
+              title={paymongoPayment.status === "SUCCEEDED" ? "PayMongo payment confirmed — finalization pending" : "Waiting for PayMongo payment"}
+              description={paymongoPayment.status === "SUCCEEDED"
+                ? "Do not charge the customer again. PayMongo has succeeded, but NexPOS still needs to finish the local sale. The webhook will retry if a temporary inventory or database condition blocked finalization."
+                : "The sale is not complete until NexPOS receives PayMongo's signed payment webhook. Returning from checkout alone never marks a payment as paid."}
+            />
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <StatusPill tone={paymongoPayment.status === "SUCCEEDED" ? "warn" : "info"}>{paymongoPayment.status}</StatusPill>
+              <span className="font-data text-[11px] text-[#73685f]">{methodLabel(paymongoPayment.method)} · ₱{money(paymongoPayment.amountMinor)}</span>
+              {paymongoPayment.status === "PENDING" ? <PrimaryButton type="button" onClick={() => void continuePayMongo()} disabled={busy}>{busy ? "Opening…" : "Continue secure checkout"}</PrimaryButton> : null}
+            </div>
+          </Panel>
+        ) : null}
+
+        {sale?.status === "PAYMENT_FAILED" && paymongoPayment?.status === "FAILED" ? (
+          <Panel className="border-[#f1d6a7] bg-[#fff8eb] p-5">
+            <SectionHeader title="PayMongo checkout expired or failed" description="No successful settlement was recorded. You can safely start a new hosted checkout for this sale." />
+            <div className="mt-4"><PrimaryButton type="button" onClick={() => void continuePayMongo()} disabled={busy}>{busy ? "Opening…" : "Try PayMongo again"}</PrimaryButton></div>
+          </Panel>
+        ) : null}
 
         {sale?.status === "PAYMENT_UNKNOWN" && unknownPayment ? (
           <Panel className="border-[#f1d6a7] bg-[#fff8eb] p-5">
