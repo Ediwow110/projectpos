@@ -5,9 +5,14 @@
 #   dashboard when prompted. They are secrets and are never stored in git.
 #
 # Design constraints this file encodes:
-# - PostgreSQL lives in Neon's free tier (Render's own free Postgres expires
-#   after 30 days). The API applies pending migrations at boot via the
-#   idempotent _migrations ledger, so first boot and every redeploy are safe.
+# - PostgreSQL lives in Supabase's free tier (Render's own free Postgres
+#   expires after 30 days). Use the Session pooler connection string —
+#   Supabase direct connections are IPv6-only, which Render cannot reach.
+#   Free-tier caveat: Supabase pauses a project after 7 days of inactivity;
+#   a POS in daily use never triggers this (restoring is one dashboard
+#   click and no data is lost). The API applies pending migrations at boot
+#   via the idempotent _migrations ledger, so first boot and every redeploy
+#   are safe.
 # - Free plans block outbound SMTP (25/465/587), so email uses the Brevo
 #   HTTPS transport: set BREVO_API_KEY and do NOT set SMTP_* variables
 #   (the API refuses a configuration with both transports).
@@ -36,7 +41,7 @@ services:
         value: https://nexpos-web.onrender.com
       - key: AUTH_REQUIRE_EMAIL_VERIFICATION
         value: "1"
-      # Neon free compute is small; keep the pool modest.
+      # Supabase free tier is small; keep the pool modest.
       - key: PG_POOL_MAX
         value: "10"
       - key: DATABASE_URL
