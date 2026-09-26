@@ -1,0 +1,80 @@
+# Production-style compose reference for a Docker host or VPS. Copy this
+# file (e.g. production-compose.yml), fill in the environment values from
+# docs/superpowers/runbooks/production-deployment.md §2, and never commit
+# the filled copy. Secrets live only in this file's environment block or in
+# your platform's secret store.
+#
+#   docker compose -f production-compose.yml up -d --wait
+#
+name: nexpos-production
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pos
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      POSTGRES_DB: pos
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pos -d pos"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # One-shot job: applies all pending migrations, then exits 0. Idempotent
+  # (the _migrations ledger makes re-runs a no-op), so it is safe on every
+  # deploy. Requires the database to start empty on first deploy.
+  migrate:
+    build:
+      context: ..
+      dockerfile: docker/api.Dockerfile
+    working_dir: /app
+    command: ["node", "scripts/apply-migrations.mjs"]
+    environment:
+      DATABASE_URL: postgres://pos:${DB_PASSWORD}@db:5432/pos
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/api.Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://pos:${DB_PASSWORD}@db:5432/pos
+      API_PORT: 3001
+      WEB_URL: ${WEB_URL:?set WEB_URL}
+      SMTP_HOST: smtp-relay.brevo.com
+      SMTP_PORT: "587"
+      SMTP_SECURE: "false"
+      SMTP_USER: ${SMTP_USER:?set SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS:?set SMTP_PASS}
+      EMAIL_FROM: ${EMAIL_FROM:?set EMAIL_FROM}
+      AUTH_REQUIRE_EMAIL_VERIFICATION: "1"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "3001:3001"
+
+  web:
+    build:
+      context: ..
+      dockerfile: docker/web.Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE: ${PUBLIC_API_BASE:?set PUBLIC_API_BASE}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "3000:3000"
+
+volumes:
+  db-data:

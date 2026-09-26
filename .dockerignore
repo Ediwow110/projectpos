@@ -1,0 +1,20 @@
+# Build context hygiene: never ship local installs, artifacts, or state into
+# an image build. Secrets arrive as runtime environment variables only.
+node_modules
+**/node_modules
+.next
+**/.next
+.git
+.github
+.worktrees
+.turbo
+**/.turbo
+test-results
+playwright-report
+.env
+**/.env
+.env.*
+**/tsconfig.tsbuildinfo
+docs
+skills
+scripts/load
