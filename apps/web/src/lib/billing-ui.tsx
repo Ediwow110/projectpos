@@ -2,11 +2,10 @@
 
 import type { JSX } from "react";
 
-import Link from "next/link";
-import { errorText, planLimitNotice } from "./billing";
+import { errorText } from "./billing";
 
-// One place that renders any failed request: plan-limit breaches get upgrade
-// copy plus a route to billing, everything else keeps the API's code:message.
+// One place that renders failed requests. Billing is currently disabled in the
+// product UI, so errors stay factual and never present upgrade/sales prompts.
 export function RequestError({
   error,
   fallback,
@@ -17,11 +16,9 @@ export function RequestError({
   role?: "alert" | "status";
 }): JSX.Element | null {
   if (error === null || error === undefined) return null;
-  const limited = planLimitNotice(error) !== null;
   return (
     <p role={role}>
-      {errorText(error, fallback)}{" "}
-      {limited && <Link href="/billing">Manage plan</Link>}
+      {errorText(error, fallback)}
     </p>
   );
 }

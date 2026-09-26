@@ -9,7 +9,7 @@ import { AppShell } from "../components/AppShell";
 import { MetricCard, PageHeader, Panel, SectionHeader } from "../components/premium";
 import { Card, Delta, Peso, StatusPill } from "../components/ui";
 import { apiFetch } from "../lib/api";
-import { errorText, planLimitNotice, trialDaysLeft } from "../lib/billing";
+import { errorText } from "../lib/billing";
 import { attentionRows, dashboardKpi, dashboardSeries } from "../lib/dashboard-view";
 import { VerticalBarChart } from "../lib/charts";
 import { availableMetrics, buildOverviewQuery, money } from "../lib/reports";
@@ -110,12 +110,6 @@ export default function DashboardPage(): JSX.Element {
     retry: false,
     enabled: !meQuery.isError,
   });
-  const billingQuery = useQuery({
-    queryKey: ["billing-subscription"],
-    queryFn: () => apiFetch<{ planKey: string; status: string; trialEndsAt: string | null }>("/api/v1/billing/subscription"),
-    retry: false,
-    enabled: !meQuery.isError,
-  });
 
   if (meQuery.isLoading) {
     return (
@@ -152,8 +146,6 @@ export default function DashboardPage(): JSX.Element {
   const available = data ? availableMetrics(data.kpis as Record<string, unknown>) : [];
   const activeMetric = available.includes(metric) ? metric : "revenue";
   const hasData = (data?.kpis.orders.value ?? 0) > 0;
-  const trialDays = billingQuery.data ? trialDaysLeft(billingQuery.data.trialEndsAt) : null;
-  const showTrialNotice = billingQuery.data?.status === "trialing" && trialDays !== null;
   const attention = attentionRows(data?.attention ?? []);
 
   return (
@@ -165,11 +157,6 @@ export default function DashboardPage(): JSX.Element {
           description="Here’s what’s happening with your store today. Monitor sales, inventory, and operations at a glance."
           actions={
             <>
-              {showTrialNotice ? (
-                <Link href="/billing" className="rounded-full bg-[#fff4df] px-3 py-2 text-xs font-semibold text-[#b56d0c]">
-                  Pro trial · {trialDays} day(s) left
-                </Link>
-              ) : null}
               <select value={preset} onChange={(event) => setPreset(Number(event.target.value))} className="field !w-auto !py-2 text-xs font-semibold" aria-label="Range">
                 {PRESETS.map((item) => <option key={item.label} value={item.days}>{item.label}</option>)}
               </select>
@@ -192,8 +179,7 @@ export default function DashboardPage(): JSX.Element {
         {overviewQuery.isError ? (
           <Panel className="border-[#efb9b9] bg-[#fff0f0] p-5">
             <p role="alert" className="text-sm font-medium text-[#9d3030]">
-              {errorText(overviewQuery.error, "Could not load dashboard.")}{" "}
-              {planLimitNotice(overviewQuery.error) !== null ? <Link href="/billing" className="font-semibold underline">Manage plan</Link> : null}
+              {errorText(overviewQuery.error, "Could not load dashboard.")}
             </p>
           </Panel>
         ) : null}

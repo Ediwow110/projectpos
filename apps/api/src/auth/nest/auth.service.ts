@@ -5,6 +5,7 @@ import { buildSessionRecord, hashToken, isReAuthFresh } from "../sessions";
 import { consumeResetToken, createResetToken } from "../reset-tokens";
 import { issueCsrfToken } from "../csrf";
 import { incrementMetric } from "../../common/metrics";
+import { billingEnabled } from "../../billing/entitlements";
 import { buildRegistrationSeed, resolveActiveBusiness, ROLE_SEED } from "../../tenant/seed";
 import type { DbPort } from "../../common/db.port";
 import {
@@ -50,18 +51,21 @@ export class AuthService {
     const settings: Record<string, unknown> = { currency: seed.business.currency, onboarding: seed.onboarding };
     for (const entry of seed.defaultSettings) settings[entry.key] = entry.value;
     await this.db.saveSettings(business.id, settings);
-    // Phase 10: every new business starts on a 14-day Pro trial. The memory
-    // factory always seeds plans (as does migration 0011), so the row exists.
-    const pro = await this.db.findPlanByKey("pro");
-    const trialEndsAt = new Date(Date.now() + 14 * 86400000);
-    const sub = await this.db.upsertSubscription({
-      businessId: business.id,
-      planId: pro!.id,
-      status: "trialing",
-      trialEndsAt,
-      currentPeriodEnd: trialEndsAt,
-    });
-    await this.db.appendAudit({ businessId: business.id, actorId: user.id, action: "subscription.created", entityType: "Subscription", entityId: sub.id, requestId: meta.requestId });
+    if (billingEnabled()) {
+      // Billing is opt-in. Tests keep the subscription lifecycle covered, but
+      // normal development/production instances run with unrestricted
+      // Enterprise-equivalent entitlements until BILLING_ENABLED=1.
+      const pro = await this.db.findPlanByKey("pro");
+      const trialEndsAt = new Date(Date.now() + 14 * 86400000);
+      const sub = await this.db.upsertSubscription({
+        businessId: business.id,
+        planId: pro!.id,
+        status: "trialing",
+        trialEndsAt,
+        currentPeriodEnd: trialEndsAt,
+      });
+      await this.db.appendAudit({ businessId: business.id, actorId: user.id, action: "subscription.created", entityType: "Subscription", entityId: sub.id, requestId: meta.requestId });
+    }
     const rec = buildSessionRecord({ userId: user.id, businessId: business.id, ip: meta.ip, userAgent: meta.userAgent });
     const created = await this.db.createSession({
       userId: rec.userId,

@@ -2,8 +2,16 @@ import { describe, expect, it } from "vitest";
 import { createMemoryDb } from "../../common/memory.db";
 import { BillingService } from "./billing.service";
 import { AuthService } from "../../auth/nest/auth.service";
+import { billingEnabled } from "../entitlements";
 
 describe("phase10 entitlement port", () => {
+  it("keeps billing opt-in outside the test harness", () => {
+    expect(billingEnabled({ NODE_ENV: "development" })).toBe(false);
+    expect(billingEnabled({ NODE_ENV: "production" })).toBe(false);
+    expect(billingEnabled({ NODE_ENV: "production", BILLING_ENABLED: "1" })).toBe(true);
+    expect(billingEnabled({ NODE_ENV: "test" })).toBe(true);
+  });
+
   it("seeds the four plans in a fresh store", async () => {
     const db = createMemoryDb();
     expect((await db.listPlans()).map((p) => p.key).sort()).toEqual(["basic", "enterprise", "free", "pro"]);

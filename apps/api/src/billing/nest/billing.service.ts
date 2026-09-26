@@ -4,7 +4,7 @@ import { withScope } from "@pos/database";
 import type { DbInvoice, DbPort, DbWebhookEvent } from "../../common/db.port";
 import { PlanLimitError } from "../../common/plan-limit-error";
 import { isSettled } from "../../reports/aggregate";
-import { ENTERPRISE, isTrialExpired, monthPeriod, normalizeSubscriptionStatus, PLAN_ALLOWANCES, type PlanAllowances } from "../entitlements";
+import { billingEnabled, ENTERPRISE, isTrialExpired, monthPeriod, normalizeSubscriptionStatus, PLAN_ALLOWANCES, type PlanAllowances } from "../entitlements";
 
 export type CapKind = "users" | "products" | "registers" | "branches";
 
@@ -61,6 +61,9 @@ export class BillingService {
   // a grace period, not a silent downgrade.
   async resolvePlan(businessId: string, now: Date = new Date()): Promise<ResolvedPlan> {
     withScope(businessId, {});
+    if (!billingEnabled()) {
+      return { key: "enterprise", allowances: ENTERPRISE, monthlyMinor: 0 };
+    }
     const sub = await this.db.getSubscription(businessId);
     if (!sub) return { key: "enterprise", allowances: ENTERPRISE, monthlyMinor: 0 };
     if (isTrialExpired(sub.status, sub.trialEndsAt, now)) {
@@ -359,6 +362,7 @@ export class BillingService {
   // several periods behind instead of advancing a single month per request.
   async rolloverIfDue(businessId: string, now: Date = new Date()): Promise<void> {
     withScope(businessId, {});
+    if (!billingEnabled()) return;
     await this.db.withLock(`billing:${businessId}`, async () => {
       const sub = await this.db.getSubscription(businessId);
       if (!sub || sub.status !== "active") return;

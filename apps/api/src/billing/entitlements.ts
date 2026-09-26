@@ -15,6 +15,11 @@ export const PLAN_ALLOWANCES: Record<string, PlanAllowances> = {
 
 export const ENTERPRISE: PlanAllowances = PLAN_ALLOWANCES["enterprise"]!;
 
+export function billingEnabled(source: NodeJS.ProcessEnv = process.env): boolean {
+  if ((source["NODE_ENV"] ?? "development") === "test") return true;
+  return source["BILLING_ENABLED"] === "1";
+}
+
 export function isTrialExpired(status: string, trialEndsAt: Date | null, now: Date): boolean {
   return status === "trialing" && trialEndsAt !== null && trialEndsAt.getTime() <= now.getTime();
 }

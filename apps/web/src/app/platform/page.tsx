@@ -10,14 +10,9 @@ interface Csrf {
   csrfToken: string;
 }
 
-const PLAN_KEYS = ["free", "basic", "pro", "enterprise"];
-
 export default function PlatformPage(): JSX.Element {
   const [platformKey, setPlatformKey] = useState("");
   const [businessId, setBusinessId] = useState("");
-  const [planKey, setPlanKey] = useState("pro");
-  const [periodStart, setPeriodStart] = useState("");
-  const [periodEnd, setPeriodEnd] = useState("");
   const [flagKey, setFlagKey] = useState("");
   const [flagEnabled, setFlagEnabled] = useState(true);
   const [status, setStatus] = useState("");
@@ -33,34 +28,6 @@ export default function PlatformPage(): JSX.Element {
       csrfToken: csrf.csrfToken,
       init: { method, body: JSON.stringify(body), headers: headers() },
     });
-  }
-
-  async function changePlan(e: React.FormEvent): Promise<void> {
-    e.preventDefault();
-    setError("");
-    setStatus("");
-    try {
-      const out = await call<{ key: string }>(`/api/v1/platform/businesses/${businessId}/plan`, "PATCH", { planKey });
-      setStatus(`Plan changed to ${out.key}.`);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.code + ": " + err.message : "Plan change failed");
-    }
-  }
-
-  async function issueInvoice(e: React.FormEvent): Promise<void> {
-    e.preventDefault();
-    setError("");
-    setStatus("");
-    try {
-      const out = await call<{ id: string; amountMinor: number }>(`/api/v1/platform/invoices/issue`, "POST", {
-        businessId,
-        periodStart,
-        periodEnd,
-      });
-      setStatus(`Invoice issued: ${out.id}.`);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.code + ": " + err.message : "Invoice issue failed");
-    }
   }
 
   async function setFlag(e: React.FormEvent): Promise<void> {
@@ -96,34 +63,6 @@ export default function PlatformPage(): JSX.Element {
         Business ID
         <input value={businessId} onChange={(e) => setBusinessId(e.target.value)} placeholder="Target business" />
       </label>
-      <section aria-label="Change plan">
-        <h2>Change plan</h2>
-        <form onSubmit={(e) => void changePlan(e)}>
-          <label>
-            Plan
-            <select value={planKey} onChange={(e) => setPlanKey(e.target.value)}>
-              {PLAN_KEYS.map((k) => (
-                <option key={k} value={k}>{k}</option>
-              ))}
-            </select>
-          </label>
-          <button type="submit">Change plan</button>
-        </form>
-      </section>
-      <section aria-label="Issue invoice">
-        <h2>Issue invoice</h2>
-        <form onSubmit={(e) => void issueInvoice(e)}>
-          <label>
-            Period start (ISO)
-            <input value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} placeholder="2026-09-01T00:00:00.000Z" />
-          </label>
-          <label>
-            Period end (ISO)
-            <input value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} placeholder="2026-10-01T00:00:00.000Z" />
-          </label>
-          <button type="submit">Issue invoice</button>
-        </form>
-      </section>
       <section aria-label="Feature flag">
         <h2>Feature flag override</h2>
         <form onSubmit={(e) => void setFlag(e)}>

@@ -9,7 +9,7 @@ import { AppShell } from "../../components/AppShell";
 import { MetricCard, PageHeader, Panel, SectionHeader } from "../../components/premium";
 import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { apiFetch } from "../../lib/api";
-import { errorText, planLimitNotice } from "../../lib/billing";
+import { errorText } from "../../lib/billing";
 import { canManageBranches, transferStatusLabel } from "../../lib/branches";
 
 interface Me {
@@ -40,7 +40,6 @@ export default function BranchesPage(): JSX.Element {
   const [name, setName] = useState("");
   const [type, setType] = useState("store");
   const [error, setError] = useState("");
-  const [limited, setLimited] = useState(false);
   const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<Me>("/api/v1/me"), retry: false });
   const listQuery = useQuery({
     queryKey: ["branches"],
@@ -57,13 +56,11 @@ export default function BranchesPage(): JSX.Element {
 
   async function mutate(path: string, init: RequestInit): Promise<void> {
     setError("");
-    setLimited(false);
     try {
       const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
       await apiFetch(path, { csrfToken: csrf.csrfToken, init });
       await listQuery.refetch();
     } catch (err) {
-      setLimited(planLimitNotice(err) !== null);
       setError(errorText(err, "Update failed"));
     }
   }
@@ -172,7 +169,7 @@ export default function BranchesPage(): JSX.Element {
         <Panel className="p-5">
           <SectionHeader
             title="Add branch"
-            description={manageable ? "Create a store or warehouse location within the current plan limits." : "Your role can view branches but cannot create or archive them."}
+            description={manageable ? "Create a store or warehouse location for this business." : "Your role can view branches but cannot create or archive them."}
           />
           {manageable ? (
             <form
@@ -205,7 +202,6 @@ export default function BranchesPage(): JSX.Element {
           {error !== "" ? (
             <p role="alert" className="mt-4 rounded-xl bg-[#fff0f0] px-3 py-2 text-sm font-medium text-[#c43e3e]">
               {error}
-              {limited ? <> <Link href="/billing" className="font-semibold underline">Manage plan</Link></> : null}
             </p>
           ) : null}
         </Panel>

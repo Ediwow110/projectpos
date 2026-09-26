@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("premium POS shell", () => {
-  it("matches the canonical desktop shell geometry and POS-specific tablet chrome", () => {
+  it("uses a full app shell with header, sidebar navigation, main, footer, and POS tablet chrome", () => {
     const posSource = readFileSync(resolve(process.cwd(), "src/app/pos/page.tsx"), "utf8");
     const shellSource = readFileSync(resolve(process.cwd(), "src/components/AppShell.tsx"), "utf8");
 
@@ -12,10 +12,15 @@ describe("premium POS shell", () => {
     expect(posSource).not.toContain("Dark topbar");
     expect(posSource).toContain("lg:max-xl:hidden");
     expect(posSource).toContain("showTabletCart");
-    expect(shellSource).toContain("xl:grid-cols-[202px_minmax(0,1fr)]");
-    expect(shellSource).toContain("xl:pt-10");
+    expect(shellSource).toContain('data-ui="shell-header"');
+    expect(shellSource).toContain('data-ui="shell-mobile-nav"');
+    expect(shellSource).toContain('data-ui="shell-sidebar"');
+    expect(shellSource).toContain('data-ui="shell-main"');
+    expect(shellSource).toContain('data-ui="shell-footer"');
+    expect(shellSource).toContain("xl:grid-cols-[220px_minmax(0,1fr)]");
+    expect(shellSource).toContain('aria-label="Primary navigation"');
+    expect(shellSource).not.toContain('href: "/billing"');
     expect(shellSource).toContain('data-ui="pos-tablet-header"');
-    expect(shellSource).toContain("xl:flex");
   });
 
   it("uses the Figma-style dedicated payment workspace on desktop", () => {

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "../../lib/api";
-import { errorText, planLimitNotice } from "../../lib/billing";
+import { errorText } from "../../lib/billing";
 import { canManageRegisters } from "../../lib/shifts";
 
 interface Me {
@@ -34,7 +34,6 @@ export default function RegistersPage(): JSX.Element {
   const [name, setName] = useState("");
   const [branchId, setBranchId] = useState("");
   const [error, setError] = useState("");
-  const [limited, setLimited] = useState(false);
   const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<Me>("/api/v1/me"), retry: false });
   const branchesQuery = useQuery({
     queryKey: ["branches"],
@@ -51,13 +50,11 @@ export default function RegistersPage(): JSX.Element {
 
   async function mutate(path: string, init: RequestInit): Promise<void> {
     setError("");
-    setLimited(false);
     try {
       const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
       await apiFetch(path, { csrfToken: csrf.csrfToken, init });
       await listQuery.refetch();
     } catch (err) {
-      setLimited(planLimitNotice(err) !== null);
       setError(errorText(err, "Update failed"));
     }
   }
@@ -125,7 +122,6 @@ export default function RegistersPage(): JSX.Element {
       {error !== "" && (
         <p role="alert">
           {error}
-          {limited && <> <Link href="/billing">Manage plan</Link></>}
         </p>
       )}
     </main>
