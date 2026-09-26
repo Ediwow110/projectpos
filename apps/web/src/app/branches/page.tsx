@@ -6,6 +6,8 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { AppShell } from "../../components/AppShell";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { Modal } from "../../components/Modal";
 import { MetricCard, PageHeader, Panel, SectionHeader } from "../../components/premium";
 import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { apiFetch } from "../../lib/api";
@@ -40,6 +42,10 @@ export default function BranchesPage(): JSX.Element {
   const [name, setName] = useState("");
   const [type, setType] = useState("store");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [archiveTarget, setArchiveTarget] = useState<BranchRow | null>(null);
+  const [busy, setBusy] = useState(false);
   const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<Me>("/api/v1/me"), retry: false });
   const listQuery = useQuery({
     queryKey: ["branches"],
@@ -56,12 +62,42 @@ export default function BranchesPage(): JSX.Element {
 
   async function mutate(path: string, init: RequestInit): Promise<void> {
     setError("");
+    setBusy(true);
     try {
       const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
       await apiFetch(path, { csrfToken: csrf.csrfToken, init });
       await listQuery.refetch();
     } catch (err) {
       setError(errorText(err, "Update failed"));
+      throw err;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createBranch(event: React.FormEvent): Promise<void> {
+    event.preventDefault();
+    setSuccess("");
+    try {
+      await mutate("/api/v1/branches", { method: "POST", body: JSON.stringify({ name: name.trim(), type }) });
+      setName("");
+      setType("store");
+      setCreateOpen(false);
+      setSuccess("Branch created.");
+    } catch {
+      // Error already surfaced by mutate.
+    }
+  }
+
+  async function archiveBranch(): Promise<void> {
+    if (!archiveTarget) return;
+    setSuccess("");
+    try {
+      await mutate(`/api/v1/branches/${archiveTarget.id}`, { method: "PATCH", body: JSON.stringify({ isActive: false }) });
+      setSuccess(`${archiveTarget.name} was archived.`);
+      setArchiveTarget(null);
+    } catch {
+      // Error already surfaced by mutate.
     }
   }
 
@@ -82,8 +118,10 @@ export default function BranchesPage(): JSX.Element {
           eyebrow="Business / Locations"
           title="Branches"
           description="Keep every location visible and operationally consistent without inventing health metrics that are not returned by the branch API."
-          actions={<Link href="/transfers" className="inline-flex min-h-10 items-center rounded-[10px] border border-[#e4d9d0] bg-white px-4 text-sm font-semibold text-[#2a241f] hover:border-[#f35d3f]">Inventory transfers</Link>}
+          actions={<><Link href="/transfers" className="inline-flex min-h-10 items-center rounded-[10px] border border-[#e4d9d0] bg-white px-4 text-sm font-semibold text-[#2a241f] hover:border-[#f35d3f]">Inventory transfers</Link>{manageable ? <PrimaryButton type="button" onClick={() => { setError(""); setSuccess(""); setCreateOpen(true); }}>+ Add branch</PrimaryButton> : null}</>}
         />
+
+        {success ? <div role="status" className="rounded-xl border border-[#cfe9dc] bg-[#eaf7f0] px-4 py-3 text-sm font-medium text-[#1f8a5b]">{success}</div> : null}
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Branch summary">
           <MetricCard label="Branches" value={branches.length} icon="⌘" meta="All returned locations" />
@@ -113,12 +151,7 @@ export default function BranchesPage(): JSX.Element {
                     <GhostButton
                       type="button"
                       className="ml-auto !min-h-8 !px-3 !py-1.5 text-xs"
-                      onClick={() =>
-                        void mutate("/api/v1/branches/" + branch.id, {
-                          method: "PATCH",
-                          body: JSON.stringify({ isActive: false }),
-                        })
-                      }
+                      onClick={() => setArchiveTarget(branch)}
                     >
                       Archive
                     </GhostButton>
@@ -166,46 +199,34 @@ export default function BranchesPage(): JSX.Element {
           ) : null}
         </Panel>
 
-        <Panel className="p-5">
-          <SectionHeader
-            title="Add branch"
-            description={manageable ? "Create a store or warehouse location for this business." : "Your role can view branches but cannot create or archive them."}
-          />
-          {manageable ? (
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                void mutate("/api/v1/branches", {
-                  method: "POST",
-                  body: JSON.stringify({ name, type }),
-                }).then(() => {
-                  setName("");
-                  setType("store");
-                });
-              }}
-              className="mt-4 grid gap-3 md:grid-cols-[1fr_220px_auto]"
-            >
-              <label className="text-[11px] font-semibold text-[#655b53]">
-                Branch name
-                <input value={name} onChange={(event) => setName(event.target.value)} placeholder="North store" className="field mt-1.5" />
-              </label>
-              <label className="text-[11px] font-semibold text-[#655b53]">
-                Type
-                <select value={type} onChange={(event) => setType(event.target.value)} className="field mt-1.5">
-                  <option value="store">Store</option>
-                  <option value="warehouse">Warehouse</option>
-                </select>
-              </label>
-              <PrimaryButton type="submit" disabled={name.trim() === ""} className="self-end">Create branch</PrimaryButton>
-            </form>
-          ) : null}
-          {error !== "" ? (
-            <p role="alert" className="mt-4 rounded-xl bg-[#fff0f0] px-3 py-2 text-sm font-medium text-[#c43e3e]">
-              {error}
-            </p>
-          ) : null}
-        </Panel>
+        {!manageable ? <Panel className="bg-[#fff4df] p-4 text-[11px] font-medium text-[#8a5606]">Your role can view branches but cannot create or archive them.</Panel> : null}
+        {error !== "" ? <p role="alert" className="rounded-xl bg-[#fff0f0] px-3 py-2 text-sm font-medium text-[#c43e3e]">{error}</p> : null}
       </main>
+
+      <Modal
+        open={createOpen && manageable}
+        onClose={() => !busy && setCreateOpen(false)}
+        title="Add branch"
+        description="Create a store or warehouse location. Inventory remains branch-scoped only when movements and registers explicitly reference it."
+        footer={<div className="flex justify-end gap-2"><GhostButton type="button" onClick={() => setCreateOpen(false)} disabled={busy}>Cancel</GhostButton><PrimaryButton type="submit" form="branch-create-form" disabled={busy || !name.trim()}>{busy ? "Creating…" : "Create branch"}</PrimaryButton></div>}
+      >
+        <form id="branch-create-form" onSubmit={(event) => void createBranch(event)} className="space-y-4">
+          <label className="block text-[11px] font-semibold text-[#655b53]">Branch name<input autoFocus value={name} onChange={(event) => setName(event.target.value)} required placeholder="North store" className="field mt-1.5" /></label>
+          <label className="block text-[11px] font-semibold text-[#655b53]">Type<select value={type} onChange={(event) => setType(event.target.value)} className="field mt-1.5"><option value="store">Store</option><option value="warehouse">Warehouse</option></select></label>
+          {error ? <p role="alert" className="rounded-xl bg-[#fff0f0] px-3 py-2.5 text-[12px] font-medium text-[#c43e3e]">{error}</p> : null}
+        </form>
+      </Modal>
+
+      <ConfirmDialog
+        open={archiveTarget !== null}
+        onCancel={() => !busy && setArchiveTarget(null)}
+        onConfirm={() => void archiveBranch()}
+        busy={busy}
+        title="Archive branch?"
+        description="The location will no longer be available for new operational assignments. Existing sales, inventory and transfer history remain intact."
+        confirmLabel="Archive branch"
+        details={archiveTarget ? <strong className="text-[#2a241f]">{archiveTarget.name}</strong> : null}
+      />
     </AppShell>
   );
 }

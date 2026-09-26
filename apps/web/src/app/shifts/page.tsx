@@ -6,26 +6,17 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { AppShell } from "../../components/AppShell";
+import { Modal } from "../../components/Modal";
 import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "../../components/premium";
 import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { ApiError, apiFetch } from "../../lib/api";
 import { shiftState, variancePresentation } from "../../lib/shift-view";
 import { money, varianceLabel } from "../../lib/shifts";
 
-interface Csrf {
-  csrfToken: string;
-}
-
-interface Me {
-  role: string;
-  businessName?: string;
-}
-
-interface RegisterRow {
-  id: string;
-  name: string;
-  isActive: boolean;
-}
+interface Csrf { csrfToken: string; }
+interface Me { role: string; businessName?: string; }
+interface RegisterRow { id: string; name: string; isActive: boolean; }
+interface BranchRow { id: string; name: string; }
 
 interface ShiftRow {
   id: string;
@@ -39,107 +30,124 @@ interface ShiftRow {
   expectedCashMinor: number;
 }
 
-interface BranchRow {
-  id: string;
-  name: string;
+const KINDS = ["paid_out", "cash_deposit", "cash_withdrawal", "adjustment"] as const;
+type CashKind = (typeof KINDS)[number];
+
+function cashKindLabel(kind: CashKind): string {
+  return kind.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-const KINDS = ["paid_out", "cash_deposit", "cash_withdrawal", "adjustment"];
+function amountToMinor(value: string): number | null {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  const minor = Math.round(parsed * 100);
+  return Number.isSafeInteger(minor) ? minor : null;
+}
 
 export default function ShiftsPage(): JSX.Element {
+  const [openModal, setOpenModal] = useState(false);
+  const [cashTarget, setCashTarget] = useState<ShiftRow | null>(null);
+  const [closeTarget, setCloseTarget] = useState<ShiftRow | null>(null);
   const [registerId, setRegisterId] = useState("");
   const [openingFloat, setOpeningFloat] = useState("");
-  const [kind, setKind] = useState("paid_out");
+  const [kind, setKind] = useState<CashKind>("paid_out");
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
   const [counted, setCounted] = useState("");
   const [status, setStatus] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  const meQuery = useQuery({
-    queryKey: ["me"],
-    queryFn: () => apiFetch<Me>("/api/v1/me"),
-    retry: false,
-  });
-  const registersQuery = useQuery({
-    queryKey: ["registers"],
-    queryFn: () => apiFetch<{ items: RegisterRow[] }>("/api/v1/registers"),
-    retry: false,
-  });
-  const branchesQuery = useQuery({
-    queryKey: ["branches"],
-    queryFn: () => apiFetch<{ items: BranchRow[] }>("/api/v1/branches"),
-    retry: false,
-  });
-  const openQuery = useQuery({
-    queryKey: ["shifts-open"],
-    queryFn: () => apiFetch<{ items: ShiftRow[] }>("/api/v1/shifts?status=OPEN&limit=50"),
-    retry: false,
-  });
-  const historyQuery = useQuery({
-    queryKey: ["shifts-history"],
-    queryFn: () => apiFetch<{ items: ShiftRow[] }>("/api/v1/shifts?limit=20"),
-    retry: false,
-  });
+  const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<Me>("/api/v1/me"), retry: false });
+  const registersQuery = useQuery({ queryKey: ["registers"], queryFn: () => apiFetch<{ items: RegisterRow[] }>("/api/v1/registers"), retry: false });
+  const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiFetch<{ items: BranchRow[] }>("/api/v1/branches"), retry: false });
+  const openQuery = useQuery({ queryKey: ["shifts-open"], queryFn: () => apiFetch<{ items: ShiftRow[] }>("/api/v1/shifts?status=OPEN&limit=50"), retry: false });
+  const historyQuery = useQuery({ queryKey: ["shifts-history"], queryFn: () => apiFetch<{ items: ShiftRow[] }>("/api/v1/shifts?limit=20"), retry: false });
 
   async function mutate(path: string, init: RequestInit): Promise<{ id: string } & Record<string, unknown>> {
     const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
     const out = await apiFetch<{ id: string } & Record<string, unknown>>(path, { csrfToken: csrf.csrfToken, init });
-    await openQuery.refetch();
-    await historyQuery.refetch();
+    await Promise.all([openQuery.refetch(), historyQuery.refetch()]);
     return out;
   }
 
-  async function openShift(): Promise<void> {
+  async function openShift(event: React.FormEvent): Promise<void> {
+    event.preventDefault();
     setStatus("");
+    const floatMinor = openingFloat.trim() === "" ? 0 : amountToMinor(openingFloat);
+    if (floatMinor === null) {
+      setStatus("VALIDATION: Opening float must be a non-negative amount.");
+      return;
+    }
+    setBusy(true);
     try {
-      const floatMinor = openingFloat.trim() === "" ? 0 : Math.round(Number(openingFloat) * 100);
-      await mutate("/api/v1/registers/" + registerId + "/open", {
-        method: "POST",
-        body: JSON.stringify({ registerId, openingFloatMinor: floatMinor }),
-      });
+      await mutate(`/api/v1/registers/${registerId}/open`, { method: "POST", body: JSON.stringify({ registerId, openingFloatMinor: floatMinor }) });
+      setOpenModal(false);
+      setRegisterId("");
+      setOpeningFloat("");
       setStatus("Shift opened.");
     } catch (err) {
-      setStatus(err instanceof ApiError ? err.code + ": " + err.message : "Open failed");
+      setStatus(err instanceof ApiError ? `${err.code}: ${err.message}` : "Open failed");
+    } finally {
+      setBusy(false);
     }
   }
 
-  async function recordCash(shiftId: string): Promise<void> {
+  async function recordCash(event: React.FormEvent): Promise<void> {
+    event.preventDefault();
+    if (!cashTarget) return;
     setStatus("");
+    const amountMinor = amountToMinor(amount);
+    if (amountMinor === null || amountMinor <= 0) {
+      setStatus("VALIDATION: Cash movement amount must be greater than zero.");
+      return;
+    }
+    if (!reason.trim()) {
+      setStatus("VALIDATION: A reason is required for cash movement.");
+      return;
+    }
+    setBusy(true);
     try {
-      await mutate("/api/v1/shifts/" + shiftId + "/cash", {
-        method: "POST",
-        body: JSON.stringify({ kind, amountMinor: Math.round(Number(amount) * 100), reason }),
-      });
+      await mutate(`/api/v1/shifts/${cashTarget.id}/cash`, { method: "POST", body: JSON.stringify({ kind, amountMinor, reason: reason.trim() }) });
+      setCashTarget(null);
       setAmount("");
       setReason("");
+      setKind("paid_out");
       setStatus("Cash movement recorded.");
     } catch (err) {
-      setStatus(err instanceof ApiError ? err.code + ": " + err.message : "Cash record failed");
+      setStatus(err instanceof ApiError ? `${err.code}: ${err.message}` : "Cash record failed");
+    } finally {
+      setBusy(false);
     }
   }
 
-  async function closeShift(shiftId: string): Promise<void> {
+  async function closeShift(event: React.FormEvent): Promise<void> {
+    event.preventDefault();
+    if (!closeTarget) return;
     setStatus("");
+    const countedCashMinor = amountToMinor(counted);
+    if (countedCashMinor === null) {
+      setStatus("VALIDATION: Counted cash must be a non-negative amount.");
+      return;
+    }
+    setBusy(true);
     try {
-      const out = await mutate("/api/v1/shifts/" + shiftId + "/close", {
-        method: "POST",
-        body: JSON.stringify({ countedCashMinor: Math.round(Number(counted) * 100) }),
-      });
+      const out = await mutate(`/api/v1/shifts/${closeTarget.id}/close`, { method: "POST", body: JSON.stringify({ countedCashMinor }) });
       const report = (out as { report?: { variance?: number } }).report;
-      setStatus("Shift closed. Variance: " + (typeof report?.variance === "number" ? varianceLabel(report.variance) : "unknown"));
+      setStatus(`Shift closed. Variance: ${typeof report?.variance === "number" ? varianceLabel(report.variance) : "unknown"}`);
+      setCloseTarget(null);
       setCounted("");
     } catch (err) {
-      setStatus(err instanceof ApiError ? err.code + ": " + err.message : "Close failed");
+      setStatus(err instanceof ApiError ? `${err.code}: ${err.message}` : "Close failed");
+    } finally {
+      setBusy(false);
     }
   }
 
   const registers = (registersQuery.data?.items ?? []).filter((register) => register.isActive);
   const openShifts = openQuery.data?.items ?? [];
   const history = historyQuery.data?.items ?? [];
-  const branchName = (branchId: string | null | undefined): string =>
-    branchId == null
-      ? "No branch"
-      : (branchesQuery.data?.items ?? []).find((branch) => branch.id === branchId)?.name ?? "Unknown branch";
+  const branchName = (branchId: string | null | undefined): string => branchId == null ? "No branch" : (branchesQuery.data?.items ?? []).find((branch) => branch.id === branchId)?.name ?? "Unknown branch";
+  const registerName = (id: string): string => (registersQuery.data?.items ?? []).find((register) => register.id === id)?.name ?? id.slice(0, 8);
   const expectedOpenCash = openShifts.reduce((sum, shift) => sum + shift.expectedCashMinor, 0);
   const closedVisible = history.filter((shift) => shift.status === "CLOSED").length;
   const reviewVisible = history.filter((shift) => shift.varianceMinor !== null && shift.varianceMinor !== 0).length;
@@ -151,6 +159,7 @@ export default function ShiftsPage(): JSX.Element {
           eyebrow="Operations / Shift control"
           title="Shifts"
           description="See which registers are open, what cash is expected, and which closes require human review."
+          actions={<><Link href="/registers" className="inline-flex min-h-10 items-center rounded-[10px] border border-[#e4d9d0] bg-white px-4 text-sm font-semibold text-[#2a241f] hover:border-[#f35d3f]">Registers</Link><PrimaryButton type="button" onClick={() => { setStatus(""); setOpenModal(true); }}>+ Open shift</PrimaryButton></>}
         />
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Shift summary">
@@ -160,113 +169,36 @@ export default function ShiftsPage(): JSX.Element {
           <MetricCard label="Visible closed" value={closedVisible} icon="✓" tone="success" meta="Recent shift history" />
         </section>
 
-        <Panel className="p-5">
-          <SectionHeader title="Open a shift" description="Choose an active register and record the opening float before sales begin." />
-          <div className="mt-4 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
-            <label className="text-[11px] font-semibold text-[#655b53]">
-              Register
-              <select value={registerId} onChange={(event) => setRegisterId(event.target.value)} className="field mt-1.5">
-                <option value="">Select register</option>
-                {registers.map((register) => <option key={register.id} value={register.id}>{register.name}</option>)}
-              </select>
-            </label>
-            <label className="text-[11px] font-semibold text-[#655b53]">
-              Opening float
-              <input value={openingFloat} onChange={(event) => setOpeningFloat(event.target.value)} placeholder="0.00" inputMode="decimal" className="field font-data mt-1.5" />
-            </label>
-            <PrimaryButton type="button" onClick={() => void openShift()} disabled={registerId === ""} className="self-end">Open shift</PrimaryButton>
-          </div>
-        </Panel>
+        {status ? <div role={status.includes(":") ? "alert" : "status"} className={`rounded-xl border px-4 py-3 text-sm font-medium ${status.includes(":") ? "border-[#efb9b9] bg-[#fff0f0] text-[#c43e3e]" : "border-[#cfe9dc] bg-[#eaf7f0] text-[#1f8a5b]"}`}>{status}</div> : null}
 
         <section aria-label="Active shifts" className="grid gap-4 xl:grid-cols-2">
-          {openShifts.length === 0 ? (
-            <Panel className="p-6">
-              <SectionHeader title="No open shifts" description="Open a register shift above when a cashier is ready to begin." />
-            </Panel>
-          ) : null}
+          {openShifts.length === 0 ? <Panel className="p-6"><SectionHeader title="No open shifts" description="Open a register shift when a cashier is ready to begin." /></Panel> : null}
           {openShifts.map((shift) => (
             <Panel key={shift.id} className="p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-data text-[9px] uppercase tracking-[0.12em] text-[#9a8d83]">Shift {shift.id.slice(0, 8)}</p>
-                  <h2 className="font-display mt-1 text-lg font-semibold"><Link href={"/shifts/" + shift.id} className="hover:text-[#d94a30]">{branchName(shift.branchId)}</Link></h2>
-                </div>
-                <StatusPill tone="info">Open</StatusPill>
-              </div>
-              <dl className="mt-4 grid grid-cols-2 gap-3">
-                <div className="rounded-xl bg-[#fcf8f3] p-3">
-                  <dt className="text-[10px] text-[#73685f]">Opening float</dt>
-                  <dd className="font-data mt-1 text-sm font-semibold">{money(shift.openingFloatMinor)}</dd>
-                </div>
-                <div className="rounded-xl bg-[#fcf8f3] p-3">
-                  <dt className="text-[10px] text-[#73685f]">Expected cash</dt>
-                  <dd className="font-data mt-1 text-sm font-semibold">{money(shift.expectedCashMinor)}</dd>
-                </div>
-              </dl>
-
-              <div className="mt-4 border-t border-[#eee6de] pt-4">
-                <p className="font-display text-sm font-semibold">Record cash movement</p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                  <select value={kind} onChange={(event) => setKind(event.target.value)} className="field text-xs">
-                    {KINDS.map((entry) => <option key={entry} value={entry}>{entry.replaceAll("_", " ")}</option>)}
-                  </select>
-                  <input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" placeholder="Amount" className="field font-data text-xs" />
-                  <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Reason" className="field text-xs" />
-                </div>
-                <GhostButton type="button" onClick={() => void recordCash(shift.id)} className="mt-2 w-full">Record cash movement</GhostButton>
-              </div>
-
-              <div className="mt-4 border-t border-[#eee6de] pt-4">
-                <p className="font-display text-sm font-semibold">Close & reconcile</p>
-                <p className="mt-1 text-[10px] text-[#7a6f66]">Counted cash is compared with system-expected cash; the variance remains auditable.</p>
-                <div className="mt-3 flex gap-2">
-                  <input value={counted} onChange={(event) => setCounted(event.target.value)} inputMode="decimal" placeholder="Counted cash" className="field font-data" />
-                  <PrimaryButton type="button" onClick={() => void closeShift(shift.id)}>Close shift</PrimaryButton>
-                </div>
-              </div>
+              <div className="flex items-start justify-between gap-3"><div><p className="font-data text-[9px] uppercase tracking-[0.12em] text-[#9a8d83]">Shift {shift.id.slice(0, 8)}</p><h2 className="font-display mt-1 text-lg font-semibold"><Link href={`/shifts/${shift.id}`} className="hover:text-[#d94a30]">{registerName(shift.registerId)}</Link></h2><p className="mt-1 text-[11px] text-[#73685f]">{branchName(shift.branchId)}</p></div><StatusPill tone="info">Open</StatusPill></div>
+              <dl className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-[#fcf8f3] p-3"><dt className="text-[10px] text-[#73685f]">Opening float</dt><dd className="font-data mt-1 text-sm font-semibold">{money(shift.openingFloatMinor)}</dd></div><div className="rounded-xl bg-[#fcf8f3] p-3"><dt className="text-[10px] text-[#73685f]">Expected cash</dt><dd className="font-data mt-1 text-sm font-semibold">{money(shift.expectedCashMinor)}</dd></div></dl>
+              <div className="mt-4 flex flex-wrap gap-2 border-t border-[#eee6de] pt-4"><GhostButton type="button" onClick={() => { setStatus(""); setCashTarget(shift); setAmount(""); setReason(""); }}>Cash movement</GhostButton><PrimaryButton type="button" onClick={() => { setStatus(""); setCloseTarget(shift); setCounted(""); }}>Close shift</PrimaryButton><Link href={`/shifts/${shift.id}`} className="ml-auto inline-flex min-h-10 items-center text-[11px] font-semibold text-[#e44e34]">View report →</Link></div>
             </Panel>
           ))}
         </section>
 
         <DataTableFrame>
-          <div className="px-5 py-4">
-            <h2 className="font-display text-base font-semibold">Recent shifts</h2>
-            <p className="mt-1 text-[11px] text-[#7a6f66]">Immutable close outcomes remain visible with their variance state.</p>
-          </div>
-          <table className="premium-table min-w-[880px] text-left text-[12px]">
-            <thead>
-              <tr>
-                <th className="px-5 pb-3">Shift</th>
-                <th className="px-5 pb-3">Branch</th>
-                <th className="px-5 pb-3 text-right">Expected</th>
-                <th className="px-5 pb-3 text-right">Counted</th>
-                <th className="px-5 pb-3 text-right">Variance</th>
-                <th className="px-5 pb-3 text-right">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {history.map((shift) => {
-                const state = shiftState(shift.status);
-                const variance = shift.varianceMinor === null ? null : variancePresentation(shift.varianceMinor);
-                return (
-                  <tr key={shift.id}>
-                    <td className="px-5 py-3"><Link href={"/shifts/" + shift.id} className="font-data font-medium hover:text-[#d94a30]">{shift.id.slice(0, 8)}</Link></td>
-                    <td className="px-5 py-3 text-[#73685f]">{branchName(shift.branchId)}</td>
-                    <td className="font-data px-5 py-3 text-right">{money(shift.expectedCashMinor)}</td>
-                    <td className="font-data px-5 py-3 text-right">{shift.countedCashMinor === null ? "—" : money(shift.countedCashMinor)}</td>
-                    <td className="px-5 py-3 text-right">
-                      {variance ? <StatusPill tone={variance.tone}>{varianceLabel(variance.amount)}</StatusPill> : <span className="text-[#9a8d83]">—</span>}
-                    </td>
-                    <td className="px-5 py-3 text-right"><StatusPill tone={state.tone}>{state.label}</StatusPill></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="px-5 py-4"><h2 className="font-display text-base font-semibold">Recent shifts</h2><p className="mt-1 text-[11px] text-[#7a6f66]">Close outcomes remain visible with their variance state.</p></div>
+          {history.length === 0 ? <p className="px-5 pb-8 text-sm text-[#8b8077]">No shift history yet.</p> : <table className="premium-table min-w-[880px] text-left text-[12px]"><thead><tr><th className="px-5 pb-3">Shift</th><th className="px-5 pb-3">Branch</th><th className="px-5 pb-3 text-right">Expected</th><th className="px-5 pb-3 text-right">Counted</th><th className="px-5 pb-3 text-right">Variance</th><th className="px-5 pb-3 text-right">Status</th></tr></thead><tbody>{history.map((shift) => { const state = shiftState(shift.status); const variance = shift.varianceMinor === null ? null : variancePresentation(shift.varianceMinor); return <tr key={shift.id}><td className="px-5 py-3"><Link href={`/shifts/${shift.id}`} className="font-data font-medium hover:text-[#d94a30]">{shift.id.slice(0, 8)}</Link></td><td className="px-5 py-3 text-[#73685f]">{branchName(shift.branchId)}</td><td className="font-data px-5 py-3 text-right">{money(shift.expectedCashMinor)}</td><td className="font-data px-5 py-3 text-right">{shift.countedCashMinor === null ? "—" : money(shift.countedCashMinor)}</td><td className="px-5 py-3 text-right">{variance ? <StatusPill tone={variance.tone}>{varianceLabel(variance.amount)}</StatusPill> : <span className="text-[#9a8d83]">—</span>}</td><td className="px-5 py-3 text-right"><StatusPill tone={state.tone}>{state.label}</StatusPill></td></tr>; })}</tbody></table>}
         </DataTableFrame>
-
-        {status !== "" ? <p role="status" className="rounded-xl border border-[#eee4db] bg-white px-4 py-3 text-sm font-medium text-[#2a241f] shadow-[0_4px_14px_-6px_rgb(28_20_15/0.08)]">{status}</p> : null}
       </main>
+
+      <Modal open={openModal} onClose={() => !busy && setOpenModal(false)} title="Open shift" description="Choose an active register and record the opening float before sales begin." footer={<div className="flex justify-end gap-2"><GhostButton type="button" onClick={() => setOpenModal(false)} disabled={busy}>Cancel</GhostButton><PrimaryButton type="submit" form="open-shift-form" disabled={busy || !registerId}>{busy ? "Opening…" : "Open shift"}</PrimaryButton></div>}>
+        <form id="open-shift-form" onSubmit={(event) => void openShift(event)} className="space-y-4"><label className="block text-[11px] font-semibold text-[#655b53]">Register<select autoFocus value={registerId} onChange={(event) => setRegisterId(event.target.value)} className="field mt-1.5" required><option value="">Select register</option>{registers.map((register) => <option key={register.id} value={register.id}>{register.name}</option>)}</select></label><label className="block text-[11px] font-semibold text-[#655b53]">Opening float (PHP)<input value={openingFloat} onChange={(event) => setOpeningFloat(event.target.value)} inputMode="decimal" placeholder="0.00" className="field font-data mt-1.5" /></label>{status.includes(":") ? <p role="alert" className="rounded-xl bg-[#fff0f0] px-3 py-2.5 text-[12px] font-medium text-[#c43e3e]">{status}</p> : null}</form>
+      </Modal>
+
+      <Modal open={cashTarget !== null} onClose={() => !busy && setCashTarget(null)} title="Record cash movement" description="Cash movements change expected shift cash and remain auditable. Record the real operational reason." footer={<div className="flex justify-end gap-2"><GhostButton type="button" onClick={() => setCashTarget(null)} disabled={busy}>Cancel</GhostButton><PrimaryButton type="submit" form="cash-movement-form" disabled={busy || !amount.trim() || !reason.trim()}>{busy ? "Recording…" : "Record movement"}</PrimaryButton></div>}>
+        <form id="cash-movement-form" onSubmit={(event) => void recordCash(event)} className="space-y-4">{cashTarget ? <div className="rounded-xl bg-[#f7f1ea] p-4 text-sm"><p className="font-semibold text-[#2a241f]">{registerName(cashTarget.registerId)}</p><p className="font-data mt-1 text-[11px] text-[#73685f]">Expected cash {money(cashTarget.expectedCashMinor)}</p></div> : null}<label className="block text-[11px] font-semibold text-[#655b53]">Movement type<select value={kind} onChange={(event) => setKind(event.target.value as CashKind)} className="field mt-1.5">{KINDS.map((entry) => <option key={entry} value={entry}>{cashKindLabel(entry)}</option>)}</select></label><label className="block text-[11px] font-semibold text-[#655b53]">Amount (PHP)<input autoFocus value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" className="field font-data mt-1.5" placeholder="0.00" /></label><label className="block text-[11px] font-semibold text-[#655b53]">Reason<input value={reason} onChange={(event) => setReason(event.target.value)} className="field mt-1.5" placeholder="Operational reason" /></label>{status.includes(":") ? <p role="alert" className="rounded-xl bg-[#fff0f0] px-3 py-2.5 text-[12px] font-medium text-[#c43e3e]">{status}</p> : null}</form>
+      </Modal>
+
+      <Modal open={closeTarget !== null} onClose={() => !busy && setCloseTarget(null)} title="Close & reconcile shift" description="Count physical cash before confirming. The system compares counted cash with expected cash and records the variance." footer={<div className="flex justify-end gap-2"><GhostButton type="button" onClick={() => setCloseTarget(null)} disabled={busy}>Cancel</GhostButton><PrimaryButton type="submit" form="close-shift-form" disabled={busy || !counted.trim()}>{busy ? "Closing…" : "Close shift"}</PrimaryButton></div>}>
+        <form id="close-shift-form" onSubmit={(event) => void closeShift(event)} className="space-y-4">{closeTarget ? <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-xl bg-[#f7f1ea] p-4"><p className="text-[10px] text-[#73685f]">Register</p><p className="mt-1 text-sm font-semibold text-[#2a241f]">{registerName(closeTarget.registerId)}</p></div><div className="rounded-xl bg-[#f7f1ea] p-4"><p className="text-[10px] text-[#73685f]">Expected cash</p><p className="font-data mt-1 text-sm font-semibold text-[#2a241f]">{money(closeTarget.expectedCashMinor)}</p></div></div> : null}<label className="block text-[11px] font-semibold text-[#655b53]">Counted cash (PHP)<input autoFocus value={counted} onChange={(event) => setCounted(event.target.value)} inputMode="decimal" className="field font-data mt-1.5" placeholder="0.00" /></label><div className="rounded-xl bg-[#fff4df] p-3 text-[11px] leading-5 text-[#8a5606]">Closing a shift is consequential. The counted amount and resulting variance remain part of the audit trail.</div>{status.includes(":") ? <p role="alert" className="rounded-xl bg-[#fff0f0] px-3 py-2.5 text-[12px] font-medium text-[#c43e3e]">{status}</p> : null}</form>
+      </Modal>
     </AppShell>
   );
 }

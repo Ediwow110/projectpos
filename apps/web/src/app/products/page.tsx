@@ -11,6 +11,7 @@ import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "..
 import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { ApiError, apiFetch } from "../../lib/api";
 import { buildProductSearch, canEditCatalog, canSeeCost } from "../../lib/catalog";
+import { parseProductCsv, productRowsToCsv } from "../../lib/catalog-io";
 
 interface ProductRow {
   id: string;
@@ -72,6 +73,10 @@ export default function ProductsPage(): JSX.Element {
   const [unit, setUnit] = useState("pc");
   const [reorderLevel, setReorderLevel] = useState("0");
   const [trackInventory, setTrackInventory] = useState(true);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importError, setImportError] = useState("");
+  const [importing, setImporting] = useState(false);
   const meQuery = useQuery({
     queryKey: ["me"],
     queryFn: () => apiFetch<Me>("/api/v1/me"),
@@ -159,6 +164,46 @@ export default function ProductsPage(): JSX.Element {
       setSaving(false);
     }
   }
+
+  async function importProducts(event: React.FormEvent): Promise<void> {
+    event.preventDefault();
+    setImportError("");
+    setCreateSuccess("");
+    let items;
+    try {
+      items = parseProductCsv(importText);
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : "Invalid CSV");
+      return;
+    }
+    setImporting(true);
+    try {
+      const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
+      await apiFetch("/api/v1/products/import", {
+        csrfToken: csrf.csrfToken,
+        init: { method: "POST", body: JSON.stringify({ items }) },
+      });
+      setImportOpen(false);
+      setImportText("");
+      setCreateSuccess(`${items.length} product${items.length === 1 ? "" : "s"} imported.`);
+      await queryClient.invalidateQueries({ queryKey: ["products"] });
+    } catch (err) {
+      setImportError(err instanceof ApiError ? `${err.code}: ${err.message}` : "Import failed");
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  function exportCurrentPage(rows: ProductRow[]): void {
+    const csv = productRowsToCsv(rows);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `nexpos-products-page-${page}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
   const searchQuery = useQuery({
     queryKey: ["products", q, active, page],
     queryFn: () => apiFetch<SearchResult>(buildProductSearch({ q, active, page, pageSize: 20 })),
@@ -208,7 +253,8 @@ export default function ProductsPage(): JSX.Element {
           description="Build a clean catalog, keep sellable items easy to find, and move from product setup to checkout without losing context."
           actions={
             <>
-              <GhostButton type="button">⇩ Import / Export</GhostButton>
+              <GhostButton type="button" onClick={() => exportCurrentPage(data.items)} disabled={data.items.length === 0}>⇩ Export current page</GhostButton>
+              {editable ? <GhostButton type="button" onClick={() => { setImportError(""); setImportOpen(true); }}>⇧ Import CSV</GhostButton> : null}
               {editable ? (
                 <button
                   type="button"
@@ -395,6 +441,27 @@ export default function ProductsPage(): JSX.Element {
 
           {categoriesQuery.isError ? <p className="text-[11px] text-[#b56d0c]">Categories could not be loaded. You can still create the product uncategorized.</p> : null}
           {createError ? <p role="alert" className="rounded-xl bg-[#fff0f0] px-3 py-2.5 text-[12px] font-medium text-[#c43e3e]">{createError}</p> : null}
+        </form>
+      </Modal>
+
+      <Modal
+        open={importOpen && editable}
+        onClose={() => !importing && setImportOpen(false)}
+        title="Import products from CSV"
+        description="Import up to 200 products in one batch. Required columns are name and price. Optional columns: sku, barcode, unit, cost, reorder_level, track_inventory."
+        footer={<div className="flex justify-end gap-2"><GhostButton type="button" onClick={() => setImportOpen(false)} disabled={importing}>Cancel</GhostButton><PrimaryButton type="submit" form="product-import-form" disabled={importing || !importText.trim()}>{importing ? "Importing…" : "Import products"}</PrimaryButton></div>}
+      >
+        <form id="product-import-form" onSubmit={(event) => void importProducts(event)} className="space-y-4">
+          <div className="rounded-xl bg-[#f7f1ea] p-3 text-[11px] leading-5 text-[#73685f]">
+            <p className="font-semibold text-[#2a241f]">Example</p>
+            <code className="font-data mt-2 block whitespace-pre-wrap text-[10px]">name,sku,price,cost,reorder_level,track_inventory{"\n"}Iced Latte,LAT-1,149.50,70.25,5,true</code>
+          </div>
+          <label className="block text-[11px] font-semibold text-[#655b53]">
+            CSV content
+            <textarea autoFocus value={importText} onChange={(event) => setImportText(event.target.value)} rows={11} className="field font-data mt-1.5 resize-y text-[11px]" placeholder="Paste CSV here…" />
+          </label>
+          <p className="text-[10px] leading-4 text-[#8b8077]">Import creates catalog records only. It does not fabricate opening stock; record actual quantities through Inventory movements afterward.</p>
+          {importError ? <p role="alert" className="rounded-xl bg-[#fff0f0] px-3 py-2.5 text-[12px] font-medium text-[#c43e3e]">{importError}</p> : null}
         </form>
       </Modal>
     </AppShell>
