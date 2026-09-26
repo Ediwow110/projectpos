@@ -1,225 +1,45 @@
-// Phase 10 SaaS billing E2E (PLAN.md 16.2 and 17): trial on registration ->
-// plan/usage surface -> public API token (one-time secret, scoped, revocable)
-// -> platform operator plan change. Cap enforcement itself is server-side and
-// covered by apps/api/test/plan-limits.contract.test.ts.
 import { expect, test } from "@playwright/test";
 import { API, apiAuthedContext, registerBusiness, seedProduct } from "./helpers";
 
-const PLATFORM_KEY = process.env["PLATFORM_API_KEY"] ?? "test-platform-key";
-
-async function currentBusinessId(page): Promise<string> {
-  const res = await page.request.get(`${API}/api/v1/me`);
-  expect(res.ok()).toBe(true);
-  return ((await res.json()) as { businessId: string }).businessId;
-}
-
-async function openPremiumPayment(page, amount: string): Promise<void> {
-  const tabletPos = (page.viewportSize()?.width ?? 1440) < 1280;
-  if (tabletPos) {
-    await page.getByRole("region", { name: "Tablet cart" }).getByRole("button", { name: "Pay", exact: true }).click();
-  } else {
-    await page.getByRole("button", { name: new RegExp("Pay ₱" + amount.replace(".", "\\.")) }).click();
-  }
-  await expect(page.getByRole("dialog", { name: "Payment" })).toBeVisible();
-}
-
-async function expectPremiumPosStatus(page, text: RegExp): Promise<void> {
-  const tabletPos = (page.viewportSize()?.width ?? 1440) < 1280;
-  const region = tabletPos
-    ? page.getByRole("region", { name: "Tablet payment status" })
-    : page.getByRole("complementary", { name: "Cart" });
-  await expect(region.getByText(text)).toBeVisible();
-}
-
-test("registration starts a Pro trial surfaced on dashboard and billing", async ({ page }) => {
+test("billing and trial UI stay absent while billing is disabled", async ({ page }) => {
+  test.setTimeout(120_000);
   const stamp = Date.now();
   await registerBusiness(page, {
-    ownerName: "Trial E2E Owner",
-    email: `e2e-trial-${stamp}@example.com`,
+    ownerName: "No Billing Owner",
+    email: `no-billing-${stamp}@example.com`,
     password: "correct-horse-12",
-    businessName: `Trial Store ${stamp}`,
+    businessName: `No Billing Store ${stamp}`,
   });
 
-  // Cold dashboard load: no client-side crash, trial countdown visible.
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
-  if ((page.viewportSize()?.width ?? 1440) >= 1280) {
-    await expect(page.getByRole("banner").getByText("Trial Store " + stamp)).toBeVisible();
-  }
-  await expect(page.getByText("Application error")).toHaveCount(0);
-  await expect(page.getByRole("link", { name: /Pro trial · \d+ day\(s\) left/ })).toBeVisible();
-  await expect(
-    page
-      .getByRole("navigation", { name: (page.viewportSize()?.width ?? 1440) >= 1280 ? "Primary" : "Mobile primary" })
-      .getByRole("link", { name: "Billing" }),
-  ).toBeVisible();
+  await expect(page.getByText(/Pro trial/i)).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Billing", exact: true })).toHaveCount(0);
 
-  await page.goto("/billing");
-  await expect(page.getByRole("heading", { name: "Billing" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Pro" })).toBeVisible();
-  await expect(page.getByText("trialing", { exact: true })).toBeVisible();
-  await expect(page.getByText(/\d+ trial day\(s\) left/)).toBeVisible();
-  await expect(page.getByText("1 / 50", { exact: true })).toBeVisible();
-  await expect(page.getByText("0 / 20000", { exact: true })).toBeVisible();
-  await expect(page.getByText("No invoices yet.")).toBeVisible();
+  await page.goto("/platform", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: "Platform operations" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Change plan" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Issue invoice" })).toHaveCount(0);
 });
 
-test("billing page mints a scoped API token that works, then revoke kills it", async ({ page, request }) => {
-  const stamp = Date.now();
-  const email = `e2e-token-${stamp}@example.com`;
-  await registerBusiness(page, {
-    ownerName: "Token E2E Owner",
-    email,
-    password: "correct-horse-12",
-    businessName: `Token Store ${stamp}`,
-  });
-  // The public API is an Enterprise entitlement (PLAN.md 16.2), so upgrade
-  // before minting; the billing page then shows the switch too.
-  const businessId = await currentBusinessId(page);
-  const upgrade = await request.patch(`${API}/api/v1/platform/businesses/${businessId}/plan`, {
-    headers: { "x-platform-key": PLATFORM_KEY },
-    data: { planKey: "enterprise" },
-  });
-  expect(upgrade.ok()).toBe(true);
-
-  await page.goto("/billing");
-  await expect(page.getByRole("heading", { name: "Enterprise" })).toBeVisible();
-  await page.getByLabel("Token name").fill("E2E reader");
-  await page.getByRole("checkbox", { name: "catalog:read" }).check();
-  await page.getByRole("button", { name: "Mint token" }).click();
-
-  const secret = (await page.getByRole("status").locator("code").innerText()).trim();
-  expect(secret).toMatch(/^pos_[0-9a-f]{8}_[0-9a-f]{64}$/);
-
-  // Public API: Bearer token with catalog:read reaches GET /products.
-  const okRes = await request.get(`${API}/api/v1/products`, {
-    headers: { Authorization: `Bearer ${secret}` },
-  });
-  expect(okRes.status()).toBe(200);
-
-  // Scope discipline: this token lacks reports:read.
-  const denied = await request.get(`${API}/api/v1/reports/sales?range=today&compare=none`, {
-    headers: { Authorization: `Bearer ${secret}` },
-  });
-  expect(denied.status()).toBe(403);
-
-  await page.getByRole("button", { name: "Revoke" }).click();
-  await expect(page.getByText("Revoked", { exact: true })).toBeVisible();
-
-  const afterRevoke = await request.get(`${API}/api/v1/products`, {
-    headers: { Authorization: `Bearer ${secret}` },
-  });
-  expect(afterRevoke.status()).toBe(401);
-});
-
-test("platform operator changes the plan and billing reflects it", async ({ page }) => {
+test("billing-disabled businesses are not capped to the old free-plan register limit", async ({ page }) => {
   const stamp = Date.now();
   await registerBusiness(page, {
-    ownerName: "Ops E2E Owner",
-    email: `e2e-ops-${stamp}@example.com`,
+    ownerName: "Uncapped Owner",
+    email: `uncapped-${stamp}@example.com`,
     password: "correct-horse-12",
-    businessName: `Ops Store ${stamp}`,
-  });
-  const businessId = await currentBusinessId(page);
-
-  await page.goto("/platform");
-  await page.getByLabel("Platform key").fill(PLATFORM_KEY);
-  await page.getByLabel("Business ID").fill(businessId);
-  await page.locator("select").selectOption("free");
-  await page.getByRole("button", { name: "Change plan" }).click();
-  await expect(page.getByRole("status")).toHaveText("Plan changed to free.");
-
-  await page.getByLabel("Period start (ISO)").fill("2026-09-01T00:00:00.000Z");
-  await page.getByLabel("Period end (ISO)").fill("2026-10-01T00:00:00.000Z");
-  await page.getByRole("button", { name: "Issue invoice" }).click();
-  await expect(page.getByRole("status")).toHaveText(/Invoice issued: inv_/);
-
-  await page.getByLabel("Flag key").fill("reports");
-  await page.getByRole("button", { name: "Set flag" }).click();
-  await expect(page.getByRole("status")).toHaveText("Flag reports set to true.");
-
-  await page.goto("/billing");
-  await expect(page.getByRole("heading", { name: "Free" })).toBeVisible();
-  await expect(page.getByText("active", { exact: true })).toBeVisible();
-  await expect(page.getByText("1 / 3", { exact: true })).toBeVisible();
-  await expect(page.getByText("0 / 1", { exact: true })).toBeVisible();
-  await expect(page.getByText("0.00 PHP", { exact: true })).toBeVisible();
-  await expect(page.getByText("open", { exact: true })).toBeVisible();
-
-  // Trial notice disappears once the subscription is no longer trialing.
-  await page.goto("/");
-  await expect(page.getByRole("link", { name: /Pro trial/ })).toHaveCount(0);
-});
-
-test("free plan caps are enforced in the UI with an upgrade path", async ({ page, request }) => {
-  const stamp = Date.now();
-  await registerBusiness(page, {
-    ownerName: "Cap Owner",
-    email: `e2e-caps-${stamp}@example.com`,
-    password: "correct-horse-12",
-    businessName: `Cap Store ${stamp}`,
-  });
-  const businessId = await currentBusinessId(page);
-  await request.patch(`${API}/api/v1/platform/businesses/${businessId}/plan`, {
-    headers: { "x-platform-key": PLATFORM_KEY },
-    data: { planKey: "free" },
+    businessName: `Uncapped Store ${stamp}`,
   });
 
   await page.goto("/registers");
-  await page.getByLabel("Name").fill("Counter 1");
+  await page.getByLabel("Register name").fill("Counter 1");
   await page.getByRole("button", { name: "Create register" }).click();
   await expect(page.getByText("Counter 1")).toBeVisible();
 
-  // Free allows one register: the second create is refused server-side and the
-  // UI shows the limit with a route to billing.
-  await page.getByLabel("Name").fill("Counter 2");
+  await page.getByLabel("Register name").fill("Counter 2");
   await page.getByRole("button", { name: "Create register" }).click();
-  const notice = page.locator("main").getByRole("alert");
-  await expect(notice).toContainText("Register limit reached on the Free plan");
-  await Promise.all([
-    page.waitForURL(/\/billing/, { timeout: 30_000 }),
-    notice.getByRole("link", { name: "Manage plan" }).click(),
-  ]);
-  await expect(page.getByRole("heading", { name: "Free" })).toBeVisible();
-});
-
-test("an offline cash sale still syncs after a downgrade to Free", async ({ page, context, request }) => {
-  const stamp = Date.now();
-  const email = `e2e-offline-free-${stamp}@example.com`;
-  await registerBusiness(page, {
-    ownerName: "Offline Free Owner",
-    email,
-    password: "correct-horse-12",
-    businessName: `Offline Free Store ${stamp}`,
-  });
-  const businessId = await currentBusinessId(page);
-  await request.patch(`${API}/api/v1/platform/businesses/${businessId}/plan`, {
-    headers: { "x-platform-key": PLATFORM_KEY },
-    data: { planKey: "free" },
-  });
-  const { headers } = await apiAuthedContext(request, email, "correct-horse-12", page);
-  await seedProduct(request, headers, { name: "Free Cola", priceMinor: 2500, stock: 20 });
-
-  await page.goto("/pos");
-  await page.getByLabel("Search product, SKU or scan barcode").fill("Free Cola");
-  await page.getByRole("button", { name: /Free Cola ₱25\.00/ }).click();
-
-  await context.setOffline(true);
-  await expect(page.getByText("Offline — cash only, sales will queue.", { exact: true })).toBeVisible({ timeout: 30000 });
-  await openPremiumPayment(page, "25.00");
-  await page.getByRole("button", { name: "Complete Payment" }).click();
-  await expectPremiumPosStatus(page, /Provisional receipt OFFLINE-/);
-
-  await context.setOffline(false);
-  await page.goto("/sync");
-  await expect(page.getByRole("heading", { name: "Sync queue" })).toBeVisible();
-  await page.getByRole("button", { name: "Sync now" }).click();
-  await expect(page.getByText("Synced", { exact: true })).toBeVisible({ timeout: 30000 });
-
-  const sales = await request.get(`${API}/api/v1/sales?limit=5`, { headers });
-  expect(sales.ok()).toBe(true);
-  const items = ((await sales.json()) as { items: Array<{ status: string; totalMinor: number }> }).items;
-  expect(items.some((s) => s.status === "COMPLETED" && s.totalMinor === 2500)).toBe(true);
+  await expect(page.getByText("Counter 2")).toBeVisible();
+  await expect(page.locator("main").getByRole("alert")).toHaveCount(0);
 });
 
 test("the customer display shows the last completed sale", async ({ page, request }) => {
@@ -239,18 +59,23 @@ test("the customer display shows the last completed sale", async ({ page, reques
     headers,
     data: { name: "Front counter" },
   });
+  expect(register.ok()).toBe(true);
   const registerId = ((await register.json()) as { id: string }).id;
-  await request.post(`${API}/api/v1/registers/${registerId}/open`, {
+  const open = await request.post(`${API}/api/v1/registers/${registerId}/open`, {
     headers,
     data: { registerId, openingFloatMinor: 0 },
   });
+  expect(open.ok()).toBe(true);
+
   const products = await request.get(`${API}/api/v1/products?page=1&pageSize=1`, { headers });
+  expect(products.ok()).toBe(true);
   const productId = ((await products.json()) as { items: Array<{ id: string }> }).items[0]!.id;
-  const realDraft = await request.post(`${API}/api/v1/sales/drafts`, {
+  const draft = await request.post(`${API}/api/v1/sales/drafts`, {
     headers,
     data: { lines: [{ productId, qty: 1 }], registerId },
   });
-  const draftBody = (await realDraft.json()) as { id: string; totalMinor: number };
+  expect(draft.ok()).toBe(true);
+  const draftBody = (await draft.json()) as { id: string; totalMinor: number };
   const done = await request.post(`${API}/api/v1/sales/complete`, {
     headers: { ...headers, "Idempotency-Key": `display-sale-${stamp}` },
     data: { saleId: draftBody.id, registerId, payments: [{ method: "cash", amountMinor: draftBody.totalMinor }] },

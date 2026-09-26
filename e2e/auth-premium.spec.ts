@@ -32,6 +32,6 @@ test("privacy-first login signs into the real business without exposing metrics 
   if ((page.viewportSize()?.width ?? 1440) >= 1280) {
     await expect(page.getByRole("banner").getByText(businessName)).toBeVisible();
   } else {
-    await expect(page.getByRole("navigation", { name: "Mobile primary" }).getByRole("link", { name: "Dashboard" })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Primary navigation" }).getByRole("link", { name: "Dashboard" })).toBeVisible();
   }
 });

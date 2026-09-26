@@ -19,7 +19,7 @@ export async function registerBusiness(
   await page.getByRole("button", { name: "Create business" }).click();
   // Cold-start tolerance: the first registration of a run pays Next dev page
   // compilation plus the API's first queries and argon2 warm-up.
-  await expect(page).toHaveURL(/\/onboarding/, { timeout: 30_000 });
+  await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
 }
 
 export async function apiAuthedContext(

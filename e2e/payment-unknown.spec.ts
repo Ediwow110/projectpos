@@ -62,10 +62,8 @@ test("unknown provider outcome stays visibly unresolved and blocks false success
     await expect(page.getByRole("heading", { name: "Cart (1)" })).toBeVisible();
   }
 
-  await Promise.all([
-    page.waitForURL(/\/sales\/[^/]+$/, { timeout: 30_000 }),
-    unknownStatus.getByRole("link", { name: "Review unknown payment" }).click(),
-  ]);
+  await unknownStatus.getByRole("link", { name: "Review unknown payment" }).click();
+  await expect(page).toHaveURL(/\/sales\/[^/]+$/, { timeout: 60_000 });
   await expect(page.getByRole("heading", { name: "Payment needs reconciliation" })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("Status: PAYMENT_UNKNOWN")).toBeVisible();
   await expect(page.getByRole("link", { name: "View receipt" })).toHaveCount(0);

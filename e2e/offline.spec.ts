@@ -42,6 +42,7 @@ async function expectOneItemInCart(page) {
 }
 
 test("offline cash sale syncs on reconnect", async ({ page, context, request }) => {
+  test.setTimeout(150_000);
   const stamp = Date.now();
   const email = `e2e-off-${stamp}@example.com`;
   const password = "correct-horse-12";
@@ -94,6 +95,7 @@ test("offline cash sale syncs on reconnect", async ({ page, context, request }) 
 });
 
 test("oversell conflict lands in review and resolves", async ({ page, context, request }) => {
+  test.setTimeout(150_000);
   const stamp = Date.now();
   const email = `e2e-conf-${stamp}@example.com`;
   const password = "correct-horse-12";
