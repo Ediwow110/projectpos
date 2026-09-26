@@ -64,12 +64,15 @@ test("unknown provider outcome stays visibly unresolved and blocks false success
 
   await unknownStatus.getByRole("link", { name: "Review unknown payment" }).click();
   await expect(page).toHaveURL(/\/sales\/[^/]+$/, { timeout: 60_000 });
-  await expect(page.getByRole("heading", { name: "Payment needs reconciliation" })).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText("Status: PAYMENT_UNKNOWN")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Payment outcome is unknown" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("region", { name: "Sale summary" }).getByText("PAYMENT_UNKNOWN", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "View receipt" })).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Mark payment succeeded" }).click();
+  await page.getByRole("button", { name: "Mark succeeded", exact: true }).click();
+  const reconcileDialog = page.getByRole("dialog", { name: "Mark payment as succeeded?" });
+  await expect(reconcileDialog).toContainText("Confirm the outcome from the payment provider or settlement records");
+  await reconcileDialog.getByRole("button", { name: "Confirm succeeded", exact: true }).click();
   await expect(page.getByText("Payment reconciled as succeeded.")).toBeVisible();
-  await expect(page.getByText("Status: COMPLETED")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Sale summary" }).getByText("COMPLETED", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "View receipt" })).toBeVisible();
 });

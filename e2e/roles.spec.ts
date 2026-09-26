@@ -18,8 +18,8 @@ test.beforeEach(async ({ page }) => {
 
 test("owner surfaces: registers, cashiers report, export buttons", async ({ page }) => {
   await page.goto("/registers");
-  await expect(page.getByRole("heading", { name: "Registers" })).toBeVisible();
-  await expect(page.getByLabel("Register name")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Registers", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "+ Create register", exact: true })).toBeVisible();
 
   await page.goto("/reports/cashiers");
   await expect(page.getByRole("heading", { name: "Cashiers report" })).toBeVisible();

@@ -31,14 +31,18 @@ test("critical path: register to reconciled close", async ({ page, request }) =>
 
   // Register + open shift via UI.
   await page.goto("/registers");
-  await page.getByLabel("Register name").fill("Counter 1");
-  await page.getByRole("button", { name: "Create register" }).click();
+  await page.getByRole("button", { name: "+ Create register", exact: true }).click();
+  const registerDialog = page.getByRole("dialog", { name: "Create register" });
+  await registerDialog.getByLabel("Register name").fill("Counter 1");
+  await registerDialog.getByRole("button", { name: "Create register", exact: true }).click();
   await expect(page.getByText("Counter 1")).toBeVisible();
 
   await page.goto("/shifts");
-  await page.getByLabel("Register").selectOption({ label: "Counter 1" });
-  await page.getByLabel("Opening float").fill("100.00");
-  await page.getByRole("button", { name: "Open shift", exact: true }).click();
+  await page.getByRole("button", { name: "+ Open shift", exact: true }).click();
+  const openShiftDialog = page.getByRole("dialog", { name: "Open shift" });
+  await openShiftDialog.getByLabel("Register").selectOption({ label: "Counter 1" });
+  await openShiftDialog.getByLabel("Opening float (PHP)").fill("100.00");
+  await openShiftDialog.getByRole("button", { name: "Open shift", exact: true }).click();
   await expect(page.getByText("Shift opened.")).toBeVisible();
 
   // POS cash sale via UI.
@@ -90,7 +94,9 @@ test("critical path: register to reconciled close", async ({ page, request }) =>
 
   // Close shift and verify the report reconciles.
   await page.goto("/shifts");
-  await page.getByRole("textbox", { name: "Counted cash" }).fill("125.00");
-  await page.getByRole("button", { name: "Close shift" }).click();
+  await page.getByRole("button", { name: "Close shift", exact: true }).first().click();
+  const closeDialog = page.getByRole("dialog", { name: "Close & reconcile shift" });
+  await closeDialog.getByLabel("Counted cash (PHP)").fill("125.00");
+  await closeDialog.getByRole("button", { name: "Close shift", exact: true }).click();
   await expect(page.getByText("Shift closed. Variance: BALANCED")).toBeVisible();
 });

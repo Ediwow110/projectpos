@@ -32,12 +32,16 @@ test("billing-disabled businesses are not capped to the old free-plan register l
   });
 
   await page.goto("/registers");
-  await page.getByLabel("Register name").fill("Counter 1");
-  await page.getByRole("button", { name: "Create register" }).click();
+  await page.getByRole("button", { name: "+ Create register", exact: true }).click();
+  let dialog = page.getByRole("dialog", { name: "Create register" });
+  await dialog.getByLabel("Register name").fill("Counter 1");
+  await dialog.getByRole("button", { name: "Create register", exact: true }).click();
   await expect(page.getByText("Counter 1")).toBeVisible();
 
-  await page.getByLabel("Register name").fill("Counter 2");
-  await page.getByRole("button", { name: "Create register" }).click();
+  await page.getByRole("button", { name: "+ Create register", exact: true }).click();
+  dialog = page.getByRole("dialog", { name: "Create register" });
+  await dialog.getByLabel("Register name").fill("Counter 2");
+  await dialog.getByRole("button", { name: "Create register", exact: true }).click();
   await expect(page.getByText("Counter 2")).toBeVisible();
   await expect(page.locator("main").getByRole("alert")).toHaveCount(0);
 });
