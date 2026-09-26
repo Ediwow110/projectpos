@@ -1,12 +1,16 @@
 "use client";
 
 import type { JSX } from "react";
-
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+
+import { AppShell } from "../../components/AppShell";
+import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "../../components/premium";
+import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { ApiError, apiFetch } from "../../lib/api";
 import { buildBalancesSearch, canAdjustInventory, statusLabel } from "../../lib/inventory";
+import { inventoryStatus } from "../../lib/inventory-view";
 
 interface BalanceRow {
   productId: string;
@@ -26,6 +30,7 @@ interface BalancesResult {
 
 interface Me {
   role: string;
+  businessName?: string;
 }
 
 interface Csrf {
@@ -47,8 +52,8 @@ export default function InventoryPage(): JSX.Element {
     retry: false,
   });
 
-  async function recordMovement(e: React.FormEvent): Promise<void> {
-    e.preventDefault();
+  async function recordMovement(event: React.FormEvent): Promise<void> {
+    event.preventDefault();
     setError("");
     const delta = Number(qty);
     if (!productId.trim()) {
@@ -82,117 +87,151 @@ export default function InventoryPage(): JSX.Element {
     }
   }
 
-  if (balancesQuery.isLoading) return <main>Loading inventory…</main>;
-  if (balancesQuery.isError)
+  if (balancesQuery.isLoading) {
     return (
-      <main>
-        <p role="alert">
-          {balancesQuery.error instanceof ApiError
-            ? balancesQuery.error.code + ": " + balancesQuery.error.message
-            : "Could not load inventory."}
-        </p>
-      </main>
+      <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role}>
+        <main className="mx-auto max-w-[1240px] p-6"><Panel className="p-6 text-sm text-[#73685f]">Loading inventory…</Panel></main>
+      </AppShell>
     );
+  }
+
+  if (balancesQuery.isError) {
+    return (
+      <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role}>
+        <main className="mx-auto max-w-[1240px] p-6">
+          <Panel className="border-[#efb9b9] bg-[#fff0f0] p-6">
+            <p role="alert" className="text-sm font-medium text-[#9d3030]">
+              {balancesQuery.error instanceof ApiError ? balancesQuery.error.code + ": " + balancesQuery.error.message : "Could not load inventory."}
+            </p>
+          </Panel>
+        </main>
+      </AppShell>
+    );
+  }
 
   const data = balancesQuery.data!;
   const pages = Math.max(1, Math.ceil(data.total / data.pageSize));
   const role = meQuery.data?.role ?? "cashier";
   const adjustable = canAdjustInventory(role);
+  const visibleLow = data.items.filter((item) => inventoryStatus(item.qtyOnHand, item.reorderLevel) === "low").length;
+  const visibleOut = data.items.filter((item) => inventoryStatus(item.qtyOnHand, item.reorderLevel) === "out").length;
+  const visibleHealthy = data.items.filter((item) => inventoryStatus(item.qtyOnHand, item.reorderLevel) === "healthy").length;
+  const visibleUnits = data.items.reduce((sum, item) => sum + Math.max(0, item.qtyOnHand), 0);
 
   return (
-    <main>
-      <Link href="/">Back to dashboard</Link>
-      <h1>Inventory</h1>
-      <nav aria-label="Stock views">
-        {(["all", "low", "out"] as const).map((v) => (
-          <button
-            key={v}
-            type="button"
-            aria-pressed={view === v}
-            onClick={() => {
-              setView(v);
-              setPage(1);
-            }}
-          >
-            {v === "all" ? "All stock" : v === "low" ? "Low stock" : "Out of stock"}
-          </button>
-        ))}
-      </nav>
-      <p>
-        {data.total} product{data.total === 1 ? "" : "s"} — page {data.page} of {pages}
-      </p>
-      <table>
-        <thead>
-          <tr>
-            <th>Product</th>
-            <th>On hand</th>
-            <th>Reorder at</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.items.map((b) => (
-            <tr key={b.productId}>
-              <td>
-                <Link href={"/inventory/" + b.productId}>{b.productName}</Link>
-              </td>
-              <td style={{ fontVariantNumeric: "tabular-nums" }}>{b.qtyOnHand}</td>
-              <td style={{ fontVariantNumeric: "tabular-nums" }}>{b.reorderLevel}</td>
-              <td>
-                <span aria-label={"stock status " + b.status}>[{statusLabel(b.status)}]</span>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <div>
-        <button disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-          Previous
-        </button>
-        <button disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
-          Next
-        </button>
-      </div>
-      {adjustable && (
-        <section>
-          <h2>Record movement</h2>
-          <form onSubmit={(e) => void recordMovement(e)}>
-            <label>
-              Product ID
-              <input value={productId} onChange={(e) => setProductId(e.target.value)} placeholder="Product ID" />
-            </label>
-            <label>
-              Type
-              <select value={type} onChange={(e) => setType(e.target.value)}>
-                <option value="opening_stock">Opening stock</option>
-                <option value="receive">Receive</option>
-                <option value="sale">Sale</option>
-                <option value="return">Return</option>
-                <option value="damage">Damage</option>
-                <option value="adjustment">Adjustment</option>
-                <option value="transfer_in">Transfer in</option>
-                <option value="transfer_out">Transfer out</option>
-                <option value="stock_count">Stock count</option>
-              </select>
-            </label>
-            <label>
-              Quantity (signed integer)
-              <input
-                value={qty}
-                onChange={(e) => setQty(e.target.value)}
-                placeholder="10 or -2"
-                inputMode="numeric"
-              />
-            </label>
-            <label>
-              Reason (required for damage and adjustment)
-              <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Recount" />
-            </label>
-            <button type="submit">Record movement</button>
-          </form>
+    <AppShell businessName={meQuery.data?.businessName} role={role}>
+      <main className="mx-auto max-w-[1240px] space-y-5 px-4 pb-10 pt-3 sm:px-6">
+        <PageHeader
+          eyebrow="Inventory / Stock control"
+          title="Inventory"
+          description="Track exact on-hand stock, spot risk early, and record audited stock movement without leaving the workspace."
+          actions={<Link href="/transfers" className="inline-flex min-h-10 items-center rounded-[10px] border border-[#e4d9d0] bg-white px-4 text-sm font-semibold text-[#2a241f] hover:border-[#f35d3f]">View transfers</Link>}
+        />
+
+        <section aria-label="Inventory summary" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricCard label="Visible on hand" value={visibleUnits.toLocaleString("en-PH")} icon="□" meta={"Across " + data.items.length + " visible products"} />
+          <MetricCard label="Healthy" value={visibleHealthy} icon="✓" tone="success" meta="Current page" />
+          <MetricCard label="Low stock" value={visibleLow} icon="!" tone="warning" meta="At or below reorder level" />
+          <MetricCard label="Out of stock" value={visibleOut} icon="×" tone={visibleOut > 0 ? "warning" : "success"} meta="Zero on hand" />
         </section>
-      )}
-      {error && <p role="alert">{error}</p>}
-    </main>
+
+        <Panel className="p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <SectionHeader title="Stock views" description="Status is always written out; color is only a supporting signal." />
+            <nav aria-label="Stock views" className="flex flex-wrap gap-2">
+              {(["all", "low", "out"] as const).map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  aria-pressed={view === item}
+                  onClick={() => {
+                    setView(item);
+                    setPage(1);
+                  }}
+                  className={"rounded-full px-3 py-2 text-[11px] font-semibold " + (view === item ? "bg-[#fff0ea] text-[#e44e34]" : "border border-[#e4d9d0] bg-white text-[#73685f]")}
+                >
+                  {item === "all" ? "All stock" : item === "low" ? "Low stock" : "Out of stock"}
+                </button>
+              ))}
+            </nav>
+          </div>
+        </Panel>
+
+        <DataTableFrame>
+          <div className="flex items-center justify-between gap-3 px-5 py-4">
+            <div>
+              <h2 className="font-display text-base font-semibold">Inventory balances</h2>
+              <p className="mt-1 text-[11px] text-[#7a6f66]">{data.total} product{data.total === 1 ? "" : "s"} · page {data.page} of {pages}</p>
+            </div>
+          </div>
+          <table className="premium-table min-w-[720px] text-left text-[12px]">
+            <thead>
+              <tr>
+                <th className="px-5 pb-3">Product</th>
+                <th className="px-5 pb-3 text-right">On hand</th>
+                <th className="px-5 pb-3 text-right">Reorder at</th>
+                <th className="px-5 pb-3 text-right">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.items.map((item) => {
+                const health = inventoryStatus(item.qtyOnHand, item.reorderLevel);
+                return (
+                  <tr key={item.productId}>
+                    <td className="px-5 py-3"><Link href={"/inventory/" + item.productId} className="font-semibold text-[#2a241f] hover:text-[#d94a30]">{item.productName}</Link></td>
+                    <td className="font-data px-5 py-3 text-right font-medium">{item.qtyOnHand}</td>
+                    <td className="font-data px-5 py-3 text-right text-[#73685f]">{item.reorderLevel}</td>
+                    <td className="px-5 py-3 text-right">
+                      <StatusPill tone={health === "healthy" ? "ok" : health === "low" ? "warn" : "bad"}>{statusLabel(item.status)}</StatusPill>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {data.items.length === 0 ? <div className="border-t border-[#eee6de] px-5 py-10 text-center text-sm text-[#8b8077]">No products are in this stock view.</div> : null}
+          <div className="flex justify-end gap-2 border-t border-[#eee6de] px-5 py-4">
+            <GhostButton type="button" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>Previous</GhostButton>
+            <GhostButton type="button" disabled={page >= pages} onClick={() => setPage((current) => current + 1)}>Next</GhostButton>
+          </div>
+        </DataTableFrame>
+
+        {adjustable ? (
+          <Panel className="p-5">
+            <SectionHeader title="Record movement" description="Receipts, damage, adjustments, returns, counts, and transfers remain explicit audited movements." />
+            <form onSubmit={(event) => void recordMovement(event)} className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[1.2fr_1fr_.8fr_1.4fr_auto]">
+              <label className="text-[11px] font-semibold text-[#655b53]">
+                Product ID
+                <input value={productId} onChange={(event) => setProductId(event.target.value)} placeholder="Product ID" className="field mt-1.5" />
+              </label>
+              <label className="text-[11px] font-semibold text-[#655b53]">
+                Movement type
+                <select value={type} onChange={(event) => setType(event.target.value)} className="field mt-1.5">
+                  <option value="opening_stock">Opening stock</option>
+                  <option value="receive">Receive</option>
+                  <option value="sale">Sale</option>
+                  <option value="return">Return</option>
+                  <option value="damage">Damage</option>
+                  <option value="adjustment">Adjustment</option>
+                  <option value="transfer_in">Transfer in</option>
+                  <option value="transfer_out">Transfer out</option>
+                  <option value="stock_count">Stock count</option>
+                </select>
+              </label>
+              <label className="text-[11px] font-semibold text-[#655b53]">
+                Quantity
+                <input value={qty} onChange={(event) => setQty(event.target.value)} placeholder="10 or -2" inputMode="numeric" className="field mt-1.5 font-data" />
+              </label>
+              <label className="text-[11px] font-semibold text-[#655b53]">
+                Reason
+                <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Required for damage and adjustment" className="field mt-1.5" />
+              </label>
+              <PrimaryButton type="submit" className="self-end">Record</PrimaryButton>
+            </form>
+            {error ? <p role="alert" className="mt-3 rounded-xl bg-[#fff0f0] px-3 py-2 text-sm font-medium text-[#c43e3e]">{error}</p> : null}
+          </Panel>
+        ) : null}
+      </main>
+    </AppShell>
   );
 }

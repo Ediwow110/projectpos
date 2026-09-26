@@ -30,14 +30,18 @@ test("owner surfaces: registers, cashiers report, export buttons", async ({ page
 
 test("cashier surfaces: POS sells, inventory reads", async ({ page }) => {
   await page.goto("/pos");
-  await expect(page.getByRole("heading", { name: "Point of sale" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Pay", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Products" })).toBeVisible();
+  if ((page.viewportSize()?.width ?? 1440) < 1280) {
+    await expect(page.getByRole("region", { name: "Tablet cart" })).toBeVisible();
+  } else {
+    await expect(page.getByRole("complementary", { name: "Cart" })).toBeVisible();
+  }
 
   await page.goto("/inventory");
-  await expect(page.getByRole("heading", { name: "Inventory" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Inventory", exact: true })).toBeVisible();
 });
 
 test("logged-out users are gated", async ({ page }) => {
   await page.goto("/login");
-  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
 });

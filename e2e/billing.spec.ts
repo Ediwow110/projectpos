@@ -13,6 +13,24 @@ async function currentBusinessId(page): Promise<string> {
   return ((await res.json()) as { businessId: string }).businessId;
 }
 
+async function openPremiumPayment(page, amount: string): Promise<void> {
+  const tabletPos = (page.viewportSize()?.width ?? 1440) < 1280;
+  if (tabletPos) {
+    await page.getByRole("region", { name: "Tablet cart" }).getByRole("button", { name: "Pay", exact: true }).click();
+  } else {
+    await page.getByRole("button", { name: new RegExp("Pay ₱" + amount.replace(".", "\\.")) }).click();
+  }
+  await expect(page.getByRole("dialog", { name: "Payment" })).toBeVisible();
+}
+
+async function expectPremiumPosStatus(page, text: RegExp): Promise<void> {
+  const tabletPos = (page.viewportSize()?.width ?? 1440) < 1280;
+  const region = tabletPos
+    ? page.getByRole("region", { name: "Tablet payment status" })
+    : page.getByRole("complementary", { name: "Cart" });
+  await expect(region.getByText(text)).toBeVisible();
+}
+
 test("registration starts a Pro trial surfaced on dashboard and billing", async ({ page }) => {
   const stamp = Date.now();
   await registerBusiness(page, {
@@ -24,16 +42,25 @@ test("registration starts a Pro trial surfaced on dashboard and billing", async 
 
   // Cold dashboard load: no client-side crash, trial countdown visible.
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: `Trial Store ${stamp}` })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  if ((page.viewportSize()?.width ?? 1440) >= 1280) {
+    await expect(page.getByRole("banner").getByText("Trial Store " + stamp)).toBeVisible();
+  }
   await expect(page.getByText("Application error")).toHaveCount(0);
-  await expect(page.getByRole("link", { name: /Pro trial: \d+ day\(s\) left/ })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Account" }).getByRole("link", { name: "Billing" })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Pro trial · \d+ day\(s\) left/ })).toBeVisible();
+  await expect(
+    page
+      .getByRole("navigation", { name: (page.viewportSize()?.width ?? 1440) >= 1280 ? "Primary" : "Mobile primary" })
+      .getByRole("link", { name: "Billing" }),
+  ).toBeVisible();
 
   await page.goto("/billing");
-  await expect(page.getByRole("heading", { name: "Plan: pro" })).toBeVisible();
-  await expect(page.getByText(/Status: trialing — \d+ trial day\(s\) left/)).toBeVisible();
-  await expect(page.getByText("Users: 1 / 50 (2%)")).toBeVisible();
-  await expect(page.getByText("Products: 0 / 20000 (0%)")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Billing" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Pro" })).toBeVisible();
+  await expect(page.getByText("trialing", { exact: true })).toBeVisible();
+  await expect(page.getByText(/\d+ trial day\(s\) left/)).toBeVisible();
+  await expect(page.getByText("1 / 50", { exact: true })).toBeVisible();
+  await expect(page.getByText("0 / 20000", { exact: true })).toBeVisible();
   await expect(page.getByText("No invoices yet.")).toBeVisible();
 });
 
@@ -56,13 +83,12 @@ test("billing page mints a scoped API token that works, then revoke kills it", a
   expect(upgrade.ok()).toBe(true);
 
   await page.goto("/billing");
-  await expect(page.getByRole("heading", { name: "Plan: enterprise" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Enterprise" })).toBeVisible();
   await page.getByLabel("Token name").fill("E2E reader");
   await page.getByRole("checkbox", { name: "catalog:read" }).check();
   await page.getByRole("button", { name: "Mint token" }).click();
 
-  const secretText = await page.getByText(/New token secret \(shown once\): pos_/).innerText();
-  const secret = secretText.replace(/.*: /, "").trim();
+  const secret = (await page.getByRole("status").locator("code").innerText()).trim();
   expect(secret).toMatch(/^pos_[0-9a-f]{8}_[0-9a-f]{64}$/);
 
   // Public API: Bearer token with catalog:read reaches GET /products.
@@ -78,7 +104,7 @@ test("billing page mints a scoped API token that works, then revoke kills it", a
   expect(denied.status()).toBe(403);
 
   await page.getByRole("button", { name: "Revoke" }).click();
-  await expect(page.getByText("(revoked)")).toBeVisible();
+  await expect(page.getByText("Revoked", { exact: true })).toBeVisible();
 
   const afterRevoke = await request.get(`${API}/api/v1/products`, {
     headers: { Authorization: `Bearer ${secret}` },
@@ -113,11 +139,12 @@ test("platform operator changes the plan and billing reflects it", async ({ page
   await expect(page.getByRole("status")).toHaveText("Flag reports set to true.");
 
   await page.goto("/billing");
-  await expect(page.getByRole("heading", { name: "Plan: free" })).toBeVisible();
-  await expect(page.getByText("Status: active")).toBeVisible();
-  await expect(page.getByText("Users: 1 / 3 (33%)")).toBeVisible();
-  await expect(page.getByText("Registers: 0 / 1 (0%)")).toBeVisible();
-  await expect(page.getByText(/→ .*: 0\.00 PHP — open/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Free" })).toBeVisible();
+  await expect(page.getByText("active", { exact: true })).toBeVisible();
+  await expect(page.getByText("1 / 3", { exact: true })).toBeVisible();
+  await expect(page.getByText("0 / 1", { exact: true })).toBeVisible();
+  await expect(page.getByText("0.00 PHP", { exact: true })).toBeVisible();
+  await expect(page.getByText("open", { exact: true })).toBeVisible();
 
   // Trial notice disappears once the subscription is no longer trialing.
   await page.goto("/");
@@ -149,9 +176,11 @@ test("free plan caps are enforced in the UI with an upgrade path", async ({ page
   await page.getByRole("button", { name: "Create register" }).click();
   const notice = page.locator("main").getByRole("alert");
   await expect(notice).toContainText("Register limit reached on the Free plan");
-  await notice.getByRole("link", { name: "Manage plan" }).click();
-  await expect(page).toHaveURL(/\/billing/);
-  await expect(page.getByRole("heading", { name: "Plan: free" })).toBeVisible();
+  await Promise.all([
+    page.waitForURL(/\/billing/, { timeout: 30_000 }),
+    notice.getByRole("link", { name: "Manage plan" }).click(),
+  ]);
+  await expect(page.getByRole("heading", { name: "Free" })).toBeVisible();
 });
 
 test("an offline cash sale still syncs after a downgrade to Free", async ({ page, context, request }) => {
@@ -172,21 +201,20 @@ test("an offline cash sale still syncs after a downgrade to Free", async ({ page
   await seedProduct(request, headers, { name: "Free Cola", priceMinor: 2500, stock: 20 });
 
   await page.goto("/pos");
-  await page.getByLabel("Search or scan").fill("Free Cola");
-  await page.getByRole("button", { name: "Search" }).click();
-  await page.getByRole("button", { name: /Free Cola — 25\.00/ }).click();
-  await expect(page.getByText("Total due:")).toBeVisible();
+  await page.getByLabel("Search product, SKU or scan barcode").fill("Free Cola");
+  await page.getByRole("button", { name: /Free Cola ₱25\.00/ }).click();
 
   await context.setOffline(true);
-  await expect(page.getByText("Offline.", { exact: true })).toBeVisible({ timeout: 30000 });
-  await page.getByRole("button", { name: "Pay", exact: true }).click();
-  await expect(page.getByText(/Provisional receipt OFFLINE-/)).toBeVisible();
+  await expect(page.getByText("Offline — cash only, sales will queue.", { exact: true })).toBeVisible({ timeout: 30000 });
+  await openPremiumPayment(page, "25.00");
+  await page.getByRole("button", { name: "Complete Payment" }).click();
+  await expectPremiumPosStatus(page, /Provisional receipt OFFLINE-/);
 
   await context.setOffline(false);
   await page.goto("/sync");
   await expect(page.getByRole("heading", { name: "Sync queue" })).toBeVisible();
   await page.getByRole("button", { name: "Sync now" }).click();
-  await expect(page.getByText(/— SYNCED —/)).toBeVisible({ timeout: 30000 });
+  await expect(page.getByText("Synced", { exact: true })).toBeVisible({ timeout: 30000 });
 
   const sales = await request.get(`${API}/api/v1/sales?limit=5`, { headers });
   expect(sales.ok()).toBe(true);

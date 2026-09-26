@@ -1,19 +1,28 @@
 "use client";
 
 import type { JSX } from "react";
-
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+
+import { AppShell } from "../../components/AppShell";
+import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "../../components/premium";
+import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { ApiError, apiFetch } from "../../lib/api";
 import { backoffDelayMs } from "../../lib/sync-state";
 import { IndexedDbSyncStore, type OutboxCommand } from "../../lib/sync-store";
 import { runReplayOnce } from "../../lib/replay";
 import { sendSaleCommand } from "../../lib/replay-sale";
 import { ConnectivityBanner } from "../../lib/sync-ui";
+import { syncStatusPresentation } from "../../lib/system-view";
 
 interface Csrf {
   csrfToken: string;
+}
+
+interface Me {
+  role: string;
+  businessName?: string;
 }
 
 const STATUSES = ["QUEUED", "SENDING", "SYNCED", "CONFLICT", "FAILED", "RESOLVED"];
@@ -24,6 +33,11 @@ export default function SyncPage(): JSX.Element {
   const [resolveReason, setResolveReason] = useState<Record<string, string>>({});
   const [deviceLabel, setDeviceLabel] = useState("");
 
+  const meQuery = useQuery({
+    queryKey: ["me"],
+    queryFn: () => apiFetch<Me>("/api/v1/me"),
+    retry: false,
+  });
   const listQuery = useQuery({
     queryKey: ["sync-outbox"],
     queryFn: () => store.listAll(),
@@ -37,7 +51,7 @@ export default function SyncPage(): JSX.Element {
     const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
     return sendSaleCommand(cmd, {
       check: async (key) => {
-        const r = await apiFetch<{ applied: Array<{ key: string; resultId: string }>; unknown: Array<{ key: string }> }>(
+        const result = await apiFetch<{ applied: Array<{ key: string; resultId: string }>; unknown: Array<{ key: string }> }>(
           "/api/v1/sync/check",
           {
             csrfToken: csrf.csrfToken,
@@ -48,7 +62,7 @@ export default function SyncPage(): JSX.Element {
             },
           },
         );
-        const hit = r.applied.find((a) => a.key === key);
+        const hit = result.applied.find((entry) => entry.key === key);
         return hit ? { applied: true, resultId: hit.resultId } : { applied: false };
       },
       createDraft: async (body) =>
@@ -84,13 +98,13 @@ export default function SyncPage(): JSX.Element {
         nowMs: () => Date.now(),
         dueCheck: (cmd, now) => {
           if (cmd.lastAttemptAt === null) return true;
-          const d = backoffDelayMs(cmd.attempts);
-          if (d === null) return false;
-          return now - Date.parse(cmd.lastAttemptAt) >= d;
+          const delay = backoffDelayMs(cmd.attempts);
+          if (delay === null) return false;
+          return now - Date.parse(cmd.lastAttemptAt) >= delay;
         },
       });
       await listQuery.refetch();
-      setStatus(`Sync pass: ${summary.synced} synced, ${summary.conflicts} conflicts, ${summary.retried} retryable.`);
+      setStatus("Sync pass: " + summary.synced + " synced, " + summary.conflicts + " conflicts, " + summary.retried + " retryable.");
     } catch {
       setStatus("Sync pass failed to run.");
     }
@@ -127,16 +141,16 @@ export default function SyncPage(): JSX.Element {
     }
   }
 
-  async function enrollDevice(e: React.FormEvent): Promise<void> {
-    e.preventDefault();
+  async function enrollDevice(event: React.FormEvent): Promise<void> {
+    event.preventDefault();
     setStatus("");
     try {
       const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
-      const dev = await apiFetch<{ id: string }>("/api/v1/devices", {
+      const device = await apiFetch<{ id: string }>("/api/v1/devices", {
         csrfToken: csrf.csrfToken,
         init: { method: "POST", body: JSON.stringify({ label: deviceLabel.trim() }) },
       });
-      window.localStorage.setItem("pos-device-id", dev.id);
+      window.localStorage.setItem("pos-device-id", device.id);
       setDeviceLabel("");
       setStatus("This device is registered. Future sign-ins will bind to it.");
     } catch (err) {
@@ -144,57 +158,100 @@ export default function SyncPage(): JSX.Element {
     }
   }
 
-  const items = (listQuery.data ?? []).filter((c) => STATUSES.includes(c.status));
+  const items = (listQuery.data ?? []).filter((command) => STATUSES.includes(command.status));
+  const queued = items.filter((command) => command.status === "QUEUED" || command.status === "SENDING").length;
+  const conflicts = items.filter((command) => command.status === "CONFLICT").length;
+  const failed = items.filter((command) => command.status === "FAILED").length;
+  const synced = items.filter((command) => command.status === "SYNCED" || command.status === "RESOLVED").length;
 
   return (
-    <main>
-      <Link href="/">Back to dashboard</Link>
-      <h1>Sync queue</h1>
-      <ConnectivityBanner store={store} />
-      <button onClick={() => void syncNow()}>Sync now</button>
-      {listQuery.isLoading && <p>Loading queue…</p>}
-      {items.length === 0 && <p>No offline commands queued.</p>}
-      <ul>
-        {items.map((c) => (
-          <li key={c.localId} style={{ fontVariantNumeric: "tabular-nums" }}>
-            {c.provisionalReceipt ?? c.localId.slice(0, 8)} — {c.status} — attempts {c.attempts}
-            {c.lastError ? ` — ${c.lastError}` : ""}
-            {c.serverResultId ? ` — server record ${c.serverResultId.slice(0, 8)}` : ""}{" "}
-            {(c.status === "FAILED" || c.status === "CONFLICT") && (
-              <button onClick={() => void retry(c)}>Retry</button>
-            )}{" "}
-            {c.status === "CONFLICT" && (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void resolve(c);
-                }}
-              >
-                <label>
-                  Resolution reason
-                  <input
-                    value={resolveReason[c.localId] ?? ""}
-                    onChange={(e) => setResolveReason({ ...resolveReason, [c.localId]: e.target.value })}
-                    placeholder="How was this resolved?"
-                  />
-                </label>
-                <button type="submit">Resolve</button>
-              </form>
-            )}
-          </li>
-        ))}
-      </ul>
-      <section aria-label="Device">
-        <h2>This device</h2>
-        <form onSubmit={(e) => void enrollDevice(e)}>
-          <label>
-            Device label
-            <input value={deviceLabel} onChange={(e) => setDeviceLabel(e.target.value)} placeholder="Till 1" />
-          </label>
-          <button type="submit">Register this device</button>
-        </form>
-      </section>
-      {status !== "" && <p role="status">{status}</p>}
-    </main>
+    <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role}>
+      <main className="mx-auto max-w-[1240px] space-y-5 px-4 pb-10 pt-3 sm:px-6">
+        <PageHeader
+          eyebrow="System / Sync & devices"
+          title="Sync & devices"
+          description="Know what is queued, retrying, conflicted, or safely synchronized before it becomes a store problem."
+          actions={<PrimaryButton type="button" onClick={() => void syncNow()}>↻ Sync now</PrimaryButton>}
+        />
+
+        <ConnectivityBanner store={store} />
+
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Sync summary">
+          <MetricCard label="Queued / sending" value={queued} icon="↻" tone={queued > 0 ? "info" : "success"} meta="Not final yet" />
+          <MetricCard label="Conflicts" value={conflicts} icon="!" tone={conflicts > 0 ? "warning" : "success"} meta="Require human review" />
+          <MetricCard label="Retry needed" value={failed} icon="↺" tone={failed > 0 ? "warning" : "success"} meta="Safe replay candidates" />
+          <MetricCard label="Synced / resolved" value={synced} icon="✓" tone="success" meta="Final queue states" />
+        </section>
+
+        <DataTableFrame>
+          <div className="px-5 py-4">
+            <h2 className="font-display text-base font-semibold">Sync queue</h2>
+            <p className="mt-1 text-[11px] text-[#7a6f66]">Provisional receipts remain visibly provisional until the server confirms or a conflict is resolved.</p>
+          </div>
+          {listQuery.isLoading ? <p className="px-5 pb-6 text-sm text-[#73685f]">Loading queue…</p> : null}
+          {items.length === 0 && !listQuery.isLoading ? <p className="px-5 pb-8 text-sm text-[#8b8077]">No offline commands queued.</p> : null}
+          {items.length > 0 ? (
+            <div className="space-y-2 border-t border-[#eee6de] p-4">
+              {items.map((command) => {
+                const presentation = syncStatusPresentation(command.status);
+                return (
+                  <article key={command.localId} className="rounded-xl bg-[#fcf8f3] p-4">
+                    <div className="flex flex-wrap items-start gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-data text-[10px] font-medium text-[#2a241f]">{command.provisionalReceipt ?? command.localId.slice(0, 8)}</p>
+                        <p className="mt-1 text-[10px] text-[#73685f]">{command.commandType} · attempts {command.attempts}</p>
+                        {command.lastError ? <p className="mt-1 text-[10px] text-[#c43e3e]">{command.lastError}</p> : null}
+                        {command.serverResultId ? <p className="font-data mt-1 text-[9px] text-[#1f8a5b]">server record {command.serverResultId.slice(0, 8)}</p> : null}
+                      </div>
+                      <StatusPill tone={presentation.tone}>{presentation.label}{presentation.final ? "" : " · pending"}</StatusPill>
+                      {(command.status === "FAILED" || command.status === "CONFLICT") ? (
+                        <GhostButton type="button" className="!min-h-8 !px-3 !py-1.5 text-xs" onClick={() => void retry(command)}>Retry</GhostButton>
+                      ) : null}
+                    </div>
+                    {command.status === "CONFLICT" ? (
+                      <form
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          void resolve(command);
+                        }}
+                        className="mt-3 grid gap-2 border-t border-[#eee6de] pt-3 sm:grid-cols-[1fr_auto]"
+                      >
+                        <label className="text-[10px] font-semibold text-[#655b53]">
+                          Resolution reason
+                          <input
+                            value={resolveReason[command.localId] ?? ""}
+                            onChange={(event) => setResolveReason({ ...resolveReason, [command.localId]: event.target.value })}
+                            placeholder="How was this resolved?"
+                            className="field mt-1.5"
+                          />
+                        </label>
+                        <PrimaryButton type="submit" className="self-end">Resolve conflict</PrimaryButton>
+                      </form>
+                    ) : null}
+                  </article>
+                );
+              })}
+            </div>
+          ) : null}
+        </DataTableFrame>
+
+        <Panel className="p-5">
+          <SectionHeader
+            title="This device"
+            description="The current API supports enrolling this device. It does not return a device fleet list, so no fake online-device count is shown."
+          />
+          <form onSubmit={(event) => void enrollDevice(event)} className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
+            <label className="text-[11px] font-semibold text-[#655b53]">
+              Device label
+              <input value={deviceLabel} onChange={(event) => setDeviceLabel(event.target.value)} placeholder="Till 1" className="field mt-1.5" />
+            </label>
+            <PrimaryButton type="submit" disabled={deviceLabel.trim() === ""} className="self-end">Register this device</PrimaryButton>
+          </form>
+        </Panel>
+
+        {status !== "" ? <p role="status" className="rounded-xl border border-[#eee4db] bg-white px-4 py-3 text-sm font-medium text-[#2a241f] shadow-[0_4px_14px_-6px_rgb(28_20_15/0.08)]">{status}</p> : null}
+        <Link href="/" className="text-[11px] font-semibold text-[#e44e34]">← Back to dashboard</Link>
+      </main>
+    </AppShell>
   );
 }

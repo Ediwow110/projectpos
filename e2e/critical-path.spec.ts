@@ -14,6 +14,7 @@ import { expect, test } from "@playwright/test";
 import { API, apiAuthedContext, registerBusiness, seedProduct } from "./helpers";
 
 test("critical path: register to reconciled close", async ({ page, request }) => {
+  test.setTimeout(150_000);
   const stamp = Date.now();
   const email = `e2e-${stamp}@example.com`;
   const password = "correct-horse-12";
@@ -26,7 +27,7 @@ test("critical path: register to reconciled close", async ({ page, request }) =>
   });
 
   const { headers } = await apiAuthedContext(request, email, password, page);
-  await seedProduct(request, headers, { name: "E2E Coke", priceMinor: 2500, stock: 50 });
+  const productId = await seedProduct(request, headers, { name: "E2E Coke", priceMinor: 2500, stock: 50 });
 
   // Register + open shift via UI.
   await page.goto("/registers");
@@ -43,13 +44,27 @@ test("critical path: register to reconciled close", async ({ page, request }) =>
   // POS cash sale via UI.
   await page.goto("/pos");
   await page.getByLabel("Register").selectOption({ label: "Counter 1" });
-  await page.getByLabel("Search or scan").fill("E2E Coke");
-  await page.getByRole("button", { name: "Search" }).click();
-  await page.getByRole("button", { name: /E2E Coke — 25\.00/ }).click();
-  await expect(page.getByText("Total due:")).toBeVisible();
-  await page.getByRole("button", { name: "Pay", exact: true }).click();
-  await expect(page.getByText("Sale completed.")).toBeVisible();
-  await page.getByRole("link", { name: "View receipt" }).click();
+  await page.getByLabel("Search product, SKU or scan barcode").fill("E2E Coke");
+  await page.getByRole("button", { name: /E2E Coke ₱25\.00/ }).click();
+  const tabletPos = (page.viewportSize()?.width ?? 1440) < 1280;
+  if (tabletPos) {
+    const tabletCart = page.getByRole("region", { name: "Tablet cart" });
+    await expect(tabletCart.getByText("1 item in cart", { exact: true })).toBeVisible();
+    await tabletCart.getByRole("button", { name: "Pay", exact: true }).click();
+  } else {
+    await expect(page.getByRole("heading", { name: "Cart (1)" })).toBeVisible();
+    await page.getByRole("button", { name: /Pay ₱25\.00/ }).click();
+  }
+  await expect(page.getByRole("dialog", { name: "Payment" })).toBeVisible();
+  await page.getByRole("button", { name: "Complete Payment" }).click();
+  if (tabletPos) {
+    await expect(page.getByRole("region", { name: "Tablet payment status" }).getByText("Sale completed.")).toBeVisible();
+    await page.getByRole("region", { name: "Tablet payment status" }).getByRole("link", { name: "View receipt" }).click();
+  } else {
+    const cart = page.getByRole("complementary", { name: "Cart" });
+    await expect(cart.getByText("Sale completed.")).toBeVisible();
+    await cart.getByRole("link", { name: "View receipt" }).click();
+  }
   // Next dev compiles the receipts route on first visit; under parallel load
   // that plus the API round-trip can exceed the default 5s.
   await expect(page.getByText(/Receipt \d{4}-\d{6}/)).toBeVisible({ timeout: 30_000 });
@@ -62,15 +77,20 @@ test("critical path: register to reconciled close", async ({ page, request }) =>
   await page.goto("/");
   await expect(page.getByText("25.00").first()).toBeVisible();
 
-  // Inventory decreased via API (memory store is shared with the UI session).
+  // Reports show the same authoritative sale.
+  await page.goto("/reports/sales");
+  await expect(page.getByRole("heading", { name: "Reports intelligence" })).toBeVisible();
+  await expect(page.getByText("₱25.00").first()).toBeVisible();
+
+  // Inventory decreased exactly once via the same server-side sale commit.
   const balances = await request.get(`${API}/api/v1/inventory/balances`, { headers });
   expect(balances.ok()).toBe(true);
   const items = ((await balances.json()) as { items: Array<{ productName?: string; qtyOnHand?: number; productId: string }> }).items;
-  expect(items.length).toBeGreaterThan(0);
+  expect(items.find((item) => item.productId === productId)?.qtyOnHand).toBe(49);
 
   // Close shift and verify the report reconciles.
   await page.goto("/shifts");
-  await page.getByLabel("Counted cash").fill("125.00");
+  await page.getByRole("textbox", { name: "Counted cash" }).fill("125.00");
   await page.getByRole("button", { name: "Close shift" }).click();
   await expect(page.getByText("Shift closed. Variance: BALANCED")).toBeVisible();
 });

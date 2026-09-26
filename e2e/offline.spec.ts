@@ -14,6 +14,33 @@ async function refreshOutbox(page) {
   await expect(page.getByRole("heading", { name: "Sync queue" })).toBeVisible();
 }
 
+async function openPayment(page, amount: string) {
+  const tabletPos = (page.viewportSize()?.width ?? 1440) < 1280;
+  if (tabletPos) {
+    await page.getByRole("region", { name: "Tablet cart" }).getByRole("button", { name: "Pay", exact: true }).click();
+  } else {
+    await page.getByRole("button", { name: new RegExp("Pay ₱" + amount.replace(".", "\\.")) }).click();
+  }
+  await expect(page.getByRole("dialog", { name: "Payment" })).toBeVisible();
+}
+
+async function expectPosStatus(page, text: RegExp) {
+  const tabletPos = (page.viewportSize()?.width ?? 1440) < 1280;
+  const region = tabletPos
+    ? page.getByRole("region", { name: "Tablet payment status" })
+    : page.getByRole("complementary", { name: "Cart" });
+  await expect(region.getByText(text)).toBeVisible();
+}
+
+async function expectOneItemInCart(page) {
+  const tabletPos = (page.viewportSize()?.width ?? 1440) < 1280;
+  if (tabletPos) {
+    await expect(page.getByRole("region", { name: "Tablet cart" }).getByText("1 item in cart", { exact: true })).toBeVisible();
+  } else {
+    await expect(page.getByRole("heading", { name: "Cart (1)" })).toBeVisible();
+  }
+}
+
 test("offline cash sale syncs on reconnect", async ({ page, context, request }) => {
   const stamp = Date.now();
   const email = `e2e-off-${stamp}@example.com`;
@@ -31,27 +58,27 @@ test("offline cash sale syncs on reconnect", async ({ page, context, request }) 
 
   // Online: search fills the catalog cache, add to cart.
   await page.goto("/pos");
-  await page.getByLabel("Search or scan").fill("Offline Cola");
-  await page.getByRole("button", { name: "Search" }).click();
-  await page.getByRole("button", { name: /Offline Cola — 25\.00/ }).click();
-  await expect(page.getByText("Total due:")).toBeVisible();
+  await page.getByLabel("Search product, SKU or scan barcode").fill("Offline Cola");
+  await page.getByRole("button", { name: /Offline Cola ₱25\.00/ }).click();
+  await expectOneItemInCart(page);
 
   // Outage: API origin unreachable.
   await context.setOffline(true);
-  await expect(page.getByText("Offline.", { exact: true })).toBeVisible({ timeout: 30000 });
+  await expect(page.getByText("Offline — cash only, sales will queue.", { exact: true })).toBeVisible({ timeout: 30000 });
   await expect(page.getByText(/Offline catalog as of/)).toBeVisible();
-  await expect(page.getByText("Offline sales accept cash only.")).toBeVisible();
 
   // Cash-only offline sale -> provisional receipt, cart cleared.
-  await page.getByRole("button", { name: "Pay", exact: true }).click();
-  await expect(page.getByText(/Provisional receipt OFFLINE-/)).toBeVisible();
+  await openPayment(page, "25.00");
+  await expect(page.getByRole("dialog", { name: "Payment" }).getByText("Offline sales accept cash only.")).toBeVisible();
+  await page.getByRole("button", { name: "Complete Payment" }).click();
+  await expectPosStatus(page, /Provisional receipt OFFLINE-/);
 
   // Reconnect and sync: draft + complete replay to a server sale.
   await context.setOffline(false);
   await refreshOutbox(page);
-  await expect(page.getByText(/— QUEUED —/)).toBeVisible();
+  await expect(page.getByText("Queued · pending", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Sync now" }).click();
-  await expect(page.getByText(/— SYNCED —/)).toBeVisible({ timeout: 30000 });
+  await expect(page.getByText("Synced", { exact: true })).toBeVisible({ timeout: 30000 });
   await expect(page.getByText("Sync pass: 1 synced, 0 conflicts, 0 retryable.")).toBeVisible();
 
   // Server-side effects: one COMPLETED cash sale, stock 50 -> 49.
@@ -82,14 +109,14 @@ test("oversell conflict lands in review and resolves", async ({ page, context, r
   const productId = await seedProduct(request, headers, { name: "Last Unit", priceMinor: 1000, stock: 1 });
 
   await page.goto("/pos");
-  await page.getByLabel("Search or scan").fill("Last Unit");
-  await page.getByRole("button", { name: "Search" }).click();
-  await page.getByRole("button", { name: /Last Unit — 10\.00/ }).click();
+  await page.getByLabel("Search product, SKU or scan barcode").fill("Last Unit");
+  await page.getByRole("button", { name: /Last Unit ₱10\.00/ }).click();
 
   await context.setOffline(true);
-  await expect(page.getByText("Offline.", { exact: true })).toBeVisible({ timeout: 30000 });
-  await page.getByRole("button", { name: "Pay", exact: true }).click();
-  await expect(page.getByText(/Provisional receipt OFFLINE-/)).toBeVisible();
+  await expect(page.getByText("Offline — cash only, sales will queue.", { exact: true })).toBeVisible({ timeout: 30000 });
+  await openPayment(page, "10.00");
+  await page.getByRole("button", { name: "Complete Payment" }).click();
+  await expectPosStatus(page, /Provisional receipt OFFLINE-/);
 
   // Rest of the world drains the last unit while we are offline.
   const draft = await request.post(`${API}/api/v1/sales/drafts`, {
@@ -107,12 +134,12 @@ test("oversell conflict lands in review and resolves", async ({ page, context, r
   await context.setOffline(false);
   await refreshOutbox(page);
   await page.getByRole("button", { name: "Sync now" }).click();
-  await expect(page.getByText(/— CONFLICT —/)).toBeVisible({ timeout: 30000 });
+  await expect(page.getByText("Conflict · pending", { exact: true })).toBeVisible({ timeout: 30000 });
   await expect(page.getByText("INSUFFICIENT_STOCK")).toBeVisible();
 
   // Manager resolves with a reason: audited, terminal, never silently dropped.
   await page.getByLabel("Resolution reason").fill("covered by till count");
-  await page.getByRole("button", { name: "Resolve", exact: true }).click();
+  await page.getByRole("button", { name: "Resolve conflict", exact: true }).click();
   await expect(page.getByText("Conflict resolved and recorded.")).toBeVisible();
-  await expect(page.getByText(/— RESOLVED —/)).toBeVisible();
+  await expect(page.getByText("Resolved", { exact: true })).toBeVisible();
 });

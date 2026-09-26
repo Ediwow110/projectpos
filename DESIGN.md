@@ -1,0 +1,146 @@
+---
+version: alpha
+name: "NexPOS"
+description: "Premium retail-operations workspace with warm paper surfaces, coral operational accents, and a dark appliance-like POS."
+colors:
+  primary: "#F35D3F"
+  canvas: "#FCF8F3"
+  surface: "#FFFFFF"
+  surface-subtle: "#F7F1EA"
+  coral: "#F35D3F"
+  coral-hover: "#D94A30"
+  coral-soft: "#FFF0EA"
+  graphite: "#17130F"
+  graphite-raised: "#252422"
+  text-secondary: "#73685F"
+  border: "#EEE4DB"
+  success: "#1F8A5B"
+  success-soft: "#EAF7F0"
+  warning: "#B56D0C"
+  warning-soft: "#FFF4DF"
+  danger: "#C43E3E"
+  danger-soft: "#FFF0F0"
+  info: "#3468D4"
+  info-soft: "#EDF3FF"
+typography:
+  display:
+    fontFamily: "Sora, ui-sans-serif, system-ui, sans-serif"
+  sans:
+    fontFamily: "IBM Plex Sans, ui-sans-serif, system-ui, sans-serif"
+  mono:
+    fontFamily: "IBM Plex Mono, ui-monospace, monospace"
+rounded:
+  DEFAULT: "0.625rem"
+  sm: "0.5rem"
+  md: "0.625rem"
+  lg: "0.875rem"
+  xl: "1rem"
+  panel: "1.125rem"
+spacing:
+  page-max: "77.5rem"
+  shell-gap: "1.25rem"
+  panel-gap: "1rem"
+  section-gap: "1.25rem"
+components:
+  shell: { }
+  panel: { }
+  metric-card: { }
+  button: { }
+  field: { }
+  table: { }
+  chart: { }
+  pos-workspace: { }
+---
+
+# NexPOS Design System
+
+## Overview
+
+### Creative North Star
+
+NexPOS should feel like a well-run retail counter translated into software: warm receipt paper and ledger surfaces around a precise graphite transaction appliance. The management application is calm, bright, and editorial; the cashier workspace is darker, denser, and more tactile.
+
+### Product context and register
+
+- Audience and primary job: retail owners, managers, cashiers, and inventory staff operating a POS and the surrounding business workflows.
+- Target market(s) and evidence: current repository behavior is Philippine Peso and Philippine retail oriented.
+- Locale(s) and language policy: English UI; Philippine Peso formatting uses en-PH. User-entered names/content remain as entered.
+- Usage scene: repeated daily use on 1280–1440px management desktops and 1024px POS tablets, often under time pressure.
+- Register: hybrid. Authenticated management pages are product/admin; Login carries more brand expression; POS is an appliance-like operational surface.
+- Memorable signature: visible peach/coral circular geometry behind floating white management surfaces, paired with a dark charcoal POS workspace.
+- Restraint: transactional controls, tables, shift close, sync states, billing, and reconciliation prioritize legibility and state certainty over decoration.
+- Anti-references: generic blue/navy SaaS dashboards; gradient-heavy fintech; glassmorphism over dense operations; decorative sparklines that do not encode real data.
+- Token ownership/runtime mapping: this file records approved visual intent. Runtime implementation is apps/web/src/app/globals.css, apps/web/src/components/AppShell.tsx, apps/web/src/components/ui.tsx, and apps/web/src/components/premium.tsx. Figma file xr66O7yTaG0bhMhDI2UI7R remains the canonical visual reference.
+
+## Colors
+
+Canvas, surface, and surface-subtle create the warm paper hierarchy. Coral is the expressive/action color and must not replace semantic status colors. Graphite is primary text; graphite-raised is the dominant POS/product-tile surface.
+
+Status colors are semantic and always paired with text or iconography. Focus uses coral. Charts use coral first, warm neutral comparison tones second, and semantic blue/green only when they encode a distinct series or status. No gradients are part of the core product language.
+
+## Typography
+
+Sora is reserved for page titles, key totals, major card values, and brand marks. IBM Plex Sans is the operational UI face. IBM Plex Mono is used for money, timestamps, SKUs, request IDs, receipts, data labels, and compact technical captions.
+
+Use sentence case for actions and labels. Dense identifiers may use uppercase mono eyebrows. Avoid all-caps body copy.
+
+Fonts are loaded through next/font/google; font files are not checked into or distributed from the repository.
+
+## Layout
+
+Management pages target a 1240px content column inside a floating shell. At xl widths the shell uses a persistent sidebar; below xl the sidebar collapses into the top navigation so the 1024px POS tablet remains full-width.
+
+Cards stack deliberately at smaller widths. Tables may scroll horizontally when column meaning would be lost by aggressive compression. Do not shrink desktop canvases uniformly.
+
+The decorative peach/coral circles are viewport-level background geometry, pointer-inert and aria-hidden.
+
+## Elevation & Depth
+
+Management cards use warm, low-contrast shadows plus thin #EEE4DB borders. The topbar and sidebar float slightly above the canvas. POS is flatter and relies more on charcoal tonal separation and borders.
+
+Avoid stacking multiple heavy shadows. Modals may use stronger elevation because they interrupt the active workflow.
+
+## Shapes
+
+Controls use roughly 8–10px radii, panels 14–18px, and statuses/filters may use pills. Rounded geometry should feel precise rather than bubbly.
+
+Icon chips are compact rounded squares. Dividers remain subtle warm neutrals.
+
+## Components
+
+### Foundational visual states
+
+Hover slightly increases contrast/elevation without moving core layout. Focus-visible uses a coral ring. Disabled controls retain readable labels and do not look successful. Busy states preserve control geometry. Error/warning/success states use semantic text plus tone.
+
+### Buttons and actions
+
+Primary action = coral fill. Secondary action = white surface with warm border. Destructive action = danger-soft with danger text/border. Button copy names the action outcome directly.
+
+### Navigation and data display
+
+The active sidebar item uses coral-soft, a coral rail, and a compact icon chip. Tables use mono uppercase headers and warm row dividers. Charts are sparse, labeled, and always backed by real API values or deterministic transformations.
+
+### Forms and overlays
+
+Fields are white with warm borders and coral focus rings; POS fields use charcoal surfaces. Validation is explicit and close to the affected field or operation. Payment/reconciliation overlays preserve entered state after recoverable failure.
+
+### Iconography
+
+Current implementation uses lightweight typographic glyphs and symbols. Icons never replace critical text labels for irreversible or financial actions.
+
+### Motion
+
+Motion is restrained: short rise/hover transitions and focused state feedback. Routine dashboard decoration does not animate continuously. prefers-reduced-motion disables nonessential transitions.
+
+### Content and data visualization
+
+Voice is operational, concise, and specific. Unknown/pending/offline states are named directly. Money uses tabular mono formatting. No chart or KPI may fabricate a business value to visually fill a Figma placeholder.
+
+## Do's and Don'ts
+
+- Do: keep management pages warm, calm, and clearly layered.
+- Do: make POS faster and darker than management pages while preserving the same coral identity.
+- Do: use real data and explicit unavailable states.
+- Don't: reintroduce generic blue/navy SaaS chrome.
+- Don't: use random decorative trend strokes, fake metrics, gradients, or color-only status.
+- Don't: expose business financial, customer, employee, or inventory figures before authentication.

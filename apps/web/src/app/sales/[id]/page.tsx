@@ -67,6 +67,7 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
   const [qtyByLine, setQtyByLine] = useState<Record<string, string>>({});
   const [reason, setReason] = useState("");
   const [status, setStatus] = useState("");
+  const [reconciling, setReconciling] = useState(false);
 
   const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<Me>("/api/v1/me"), retry: false });
   const detailQuery = useQuery({
@@ -77,6 +78,29 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
 
   const role = meQuery.data?.role ?? "cashier";
   const canRefund = role === "owner" || role === "manager" || role === "inventory";
+  const canReconcile = role === "owner" || role === "manager";
+
+  async function reconcilePayment(paymentId: string, outcome: "SUCCEEDED" | "FAILED"): Promise<void> {
+    setStatus("");
+    setReconciling(true);
+    try {
+      const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
+      await apiFetch("/api/v1/payments/" + paymentId + "/reconcile", {
+        csrfToken: csrf.csrfToken,
+        init: {
+          method: "POST",
+          body: JSON.stringify({ outcome }),
+          headers: { "Idempotency-Key": crypto.randomUUID() },
+        },
+      });
+      await detailQuery.refetch();
+      setStatus(outcome === "SUCCEEDED" ? "Payment reconciled as succeeded." : "Payment reconciled as failed.");
+    } catch (err) {
+      setStatus(err instanceof ApiError ? err.code + ": " + err.message : "Payment reconciliation failed");
+    } finally {
+      setReconciling(false);
+    }
+  }
 
   async function refundAction(path: string, body: unknown, key?: string): Promise<void> {
     setStatus("");
@@ -107,6 +131,7 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
     );
 
   const s = detailQuery.data;
+  const unknownPayment = s.payments.find((payment) => payment.status === "UNKNOWN") ?? null;
   return (
     <main>
       <Link href="/sales">Back to sales</Link>
@@ -137,6 +162,34 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
           ))}
         </ul>
       </section>
+      {s.status === "PAYMENT_UNKNOWN" && unknownPayment ? (
+        <section aria-label="Payment reconciliation">
+          <h2>Payment needs reconciliation</h2>
+          <p>
+            The provider outcome is unknown. Do not create a second payment or retry the sale with a new key.
+          </p>
+          {canReconcile ? (
+            <div>
+              <button
+                type="button"
+                disabled={reconciling}
+                onClick={() => void reconcilePayment(unknownPayment.id, "SUCCEEDED")}
+              >
+                Mark payment succeeded
+              </button>
+              <button
+                type="button"
+                disabled={reconciling}
+                onClick={() => void reconcilePayment(unknownPayment.id, "FAILED")}
+              >
+                Mark payment failed
+              </button>
+            </div>
+          ) : (
+            <p>Ask an owner or manager to reconcile this payment.</p>
+          )}
+        </section>
+      ) : null}
       <section aria-label="Refunds">
         <h2>Refunds</h2>
         {s.refunds.length === 0 && <p>No refunds recorded.</p>}
@@ -205,9 +258,11 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
           </div>
         </section>
       )}
-      <p>
-        <Link href={"/receipts/" + s.id}>View receipt</Link>
-      </p>
+      {s.status === "COMPLETED" || s.status === "PARTIALLY_REFUNDED" || s.status === "REFUNDED" ? (
+        <p>
+          <Link href={"/receipts/" + s.id}>View receipt</Link>
+        </p>
+      ) : null}
       {status !== "" && <p role="status">{status}</p>}
     </main>
   );
