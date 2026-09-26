@@ -19,8 +19,9 @@ Key constraints the architecture imposes on any hosting choice:
 - `WEB_URL` (API) must be the **exact web origin, https**; it drives CORS and
   every email link. `NEXT_PUBLIC_API_BASE` (web) must be the **exact API
   origin** and is inlined at web **build time**.
-- Production refuses to boot without `DATABASE_URL` and a complete SMTP
-  configuration (`ENV_MISSING_DATABASE_URL` / `ENV_MISSING_EMAIL_CONFIG`).
+- Production refuses to boot without `DATABASE_URL` and a complete
+  transactional-email configuration (`ENV_MISSING_DATABASE_URL` /
+  `ENV_MISSING_EMAIL_CONFIG`).
   There is no silent fallback to the in-memory store.
 - The API needs **Node >= 24** (see `.nvmrc`).
 
@@ -35,11 +36,12 @@ in an image.
 | `DATABASE_URL` | **yes** | yes | Postgres connection string of the production DB |
 | `WEB_URL` | no | yes | Public https origin of the web app (CORS + email links) |
 | `API_PORT` | no | per platform | API listen port (default 3001; platforms often inject `PORT`) |
-| `SMTP_HOST` | no | yes | `smtp-relay.brevo.com` |
-| `SMTP_PORT` | no | yes | `587` (STARTTLS) |
-| `SMTP_SECURE` | no | yes | `false` on 587 — nodemailer upgrades via STARTTLS |
-| `SMTP_USER` | **yes** | yes | Brevo SMTP login (Brevo → SMTP & API) |
-| `SMTP_PASS` | **yes** | yes | Brevo SMTP key (fresh key; old leaked keys are revoked) |
+| `BREVO_API_KEY` | **yes** | one email transport required | Brevo HTTPS API key; preferred on Railway Free/Hobby because SMTP is blocked there |
+| `SMTP_HOST` | no | SMTP alternative | `smtp-relay.brevo.com` |
+| `SMTP_PORT` | no | SMTP alternative | `587` (STARTTLS) |
+| `SMTP_SECURE` | no | SMTP alternative | `false` on 587 — nodemailer upgrades via STARTTLS |
+| `SMTP_USER` | **yes** | SMTP alternative | Brevo SMTP login |
+| `SMTP_PASS` | **yes** | SMTP alternative | Brevo SMTP key |
 | `EMAIL_FROM` | no | yes | `NexPOS <sender@your-domain>` — must be a Brevo-verified sender |
 | `AUTH_REQUIRE_EMAIL_VERIFICATION` | no | recommended (`1`) | Login gate until the emailed verification link is redeemed |
 | `NEXT_PUBLIC_API_BASE` | no | yes (build arg) | Public https origin of the API, e.g. `https://api.example.com` |
@@ -65,11 +67,13 @@ in an image.
 
 ## 4. Brevo transactional email
 
-1. Generate **fresh** SMTP credentials: Brevo → profile → **SMTP & API** →
-   create a new SMTP key. The previously leaked keys are considered revoked;
+1. Generate a **fresh Brevo API key** for hosts using HTTPS delivery (including
+   Railway Free/Hobby). The previously leaked keys are considered revoked;
    never paste secrets into chat or tickets — enter them only in the hosting
-   platform's secret store.
-2. Note the **SMTP login** shown on the same page (this is `SMTP_USER`).
+   platform's secret store as `BREVO_API_KEY`.
+2. If the host allows SMTP and SMTP is preferred, generate a fresh SMTP key
+   instead and use the SMTP variables from section 2. Configure exactly one
+   transport; the API refuses ambiguous API+SMTP configuration.
 3. Verify the sending identity: Brevo → **Senders, Domains & IP** → add and
    verify the sender used in `EMAIL_FROM` (single-sender verification is
    enough to send; domain authentication below is what keeps mail out of
@@ -101,7 +105,30 @@ one-shot migration job. Copy it, fill in the environment block from section 2
 docker compose -f production-compose.yml up -d --wait
 ```
 
-### 5.2 Platform-managed containers (Railway / Render / Fly / Cloud Run …)
+### 5.2 Railway
+
+Railway can run the existing Docker images directly. Use three services in one
+project: `web`, `api`, and PostgreSQL. On Railway Free/Hobby, outbound SMTP is
+disabled, so configure `BREVO_API_KEY` and do **not** set the SMTP variables.
+
+1. Add Railway PostgreSQL.
+2. Create the API service from this repository and set
+   `RAILWAY_DOCKERFILE_PATH=/docker/api.Dockerfile`.
+3. Add `DATABASE_URL=${{Postgres.DATABASE_URL}}`, `NODE_ENV=production`,
+   `WEB_URL`, `BREVO_API_KEY`, `EMAIL_FROM`, and
+   `AUTH_REQUIRE_EMAIL_VERIFICATION=1` to the API service.
+4. Set the API pre-deploy command to
+   `node /app/scripts/apply-migrations.mjs`. A failed migration blocks the
+   rollout before new traffic is served.
+5. Set the API health check to `/readyz`.
+6. Create the web service from the same repository and set
+   `RAILWAY_DOCKERFILE_PATH=/docker/web.Dockerfile` plus the build-time
+   `NEXT_PUBLIC_API_BASE=https://<api-domain>` variable.
+7. Generate HTTPS domains for web and API. Keep them on the same registrable
+   custom domain for the current `SameSite=Lax` session model, e.g.
+   `app.example.com` and `api.example.com`.
+
+### 5.3 Other platform-managed containers (Render / Fly / Cloud Run …)
 
 1. Create a managed Postgres and note `DATABASE_URL`.
 2. Create two services from the repo: web (Dockerfile `docker/web.Dockerfile`,
@@ -115,13 +142,13 @@ docker compose -f production-compose.yml up -d --wait
    service. Point platform HTTPS domains at the two services and keep them on
    one registrable domain (section 1).
 
-### 5.3 Floot (evaluated, not viable)
+### 5.4 Floot (evaluated, not viable)
 
 Floot is a closed app-builder: per its docs it "cannot run your existing
 codebase as-is — it rebuilds it", has no import tool, no terminal/git, and no
-custom Node backend or SMTP configuration. Deploying NexPOS there would mean
+custom Node backend or transactional-email configuration. Deploying NexPOS there would mean
 rebuilding every backend guarantee (PG locking, idempotency, session/CSRF
-model, Brevo SMTP) on a proprietary stack. Not supported; see section 1 for
+model, transactional email) on a proprietary stack. Not supported; see section 1 for
 the requirements any real host must meet.
 
 ## 6. First-boot checklist
@@ -156,7 +183,7 @@ node scripts/load/dashboard-mix.mjs   # optional latency budget check
 - Security headers incl. HSTS applied by middleware; API sets
   `Cache-Control: no-store` on API responses.
 - Tokens (sessions, verification, reset) are stored hashed; only hashes hit
-  the database; responses never echo them; SMTP failures are audit events
+  the database; email-provider failures are audit events
   (`auth.*.delivery-failed`) and leak nothing.
 - Password reset and verification resend are enumeration-resistant (generic
   responses, 5/min/IP rate limits) and reset revokes all sessions.

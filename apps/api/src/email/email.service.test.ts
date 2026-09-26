@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  BrevoApiTransport,
   TransactionalEmailService,
   loadEmailConfig,
   type MailMessage,
@@ -97,6 +98,7 @@ describe("transactional email", () => {
       }),
     ).toEqual({
       enabled: true,
+      provider: "smtp",
       host: "smtp.example.com",
       port: 587,
       secure: false,
@@ -105,5 +107,84 @@ describe("transactional email", () => {
       from: "NexPOS <noreply@example.com>",
       webUrl: "https://pos.example.com",
     });
+  });
+
+  it("accepts Brevo HTTPS API configuration without SMTP", () => {
+    expect(
+      loadEmailConfig({
+        NODE_ENV: "production",
+        BREVO_API_KEY: "test-api-key",
+        EMAIL_FROM: "NexPOS <noreply@example.com>",
+        WEB_URL: "https://pos.example.com/",
+      }),
+    ).toEqual({
+      enabled: true,
+      provider: "brevo-api",
+      apiKey: "test-api-key",
+      from: "NexPOS <noreply@example.com>",
+      webUrl: "https://pos.example.com",
+    });
+  });
+
+  it("rejects ambiguous SMTP plus Brevo API configuration", () => {
+    expect(() =>
+      loadEmailConfig({
+        NODE_ENV: "production",
+        BREVO_API_KEY: "test-api-key",
+        SMTP_HOST: "smtp.example.com",
+        SMTP_PORT: "587",
+        EMAIL_FROM: "NexPOS <noreply@example.com>",
+        WEB_URL: "https://pos.example.com",
+      }),
+    ).toThrow("ENV_INVALID_EMAIL_CONFIG");
+  });
+
+  it("sends through Brevo's HTTPS API without leaking the API key into payloads", async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const fakeFetch: typeof fetch = async (input, init) => {
+      calls.push({ url: String(input), init: init ?? {} });
+      return new Response(JSON.stringify({ messageId: "msg-1" }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      });
+    };
+    const transport = new BrevoApiTransport("secret-api-key", fakeFetch);
+
+    await transport.send({
+      from: "NexPOS <noreply@example.com>",
+      to: "owner@example.com",
+      subject: "Verify your NexPOS email",
+      text: "plain fallback",
+      html: "<p>Verify</p>",
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe("https://api.brevo.com/v3/smtp/email");
+    const headers = calls[0]!.init.headers as Record<string, string>;
+    expect(headers["api-key"]).toBe("secret-api-key");
+    const body = String(calls[0]!.init.body);
+    expect(body).not.toContain("secret-api-key");
+    expect(JSON.parse(body)).toMatchObject({
+      sender: { name: "NexPOS", email: "noreply@example.com" },
+      to: [{ email: "owner@example.com" }],
+      subject: "Verify your NexPOS email",
+      htmlContent: "<p>Verify</p>",
+    });
+  });
+
+  it("turns Brevo API failures into a generic delivery error", async () => {
+    const fakeFetch: typeof fetch = async () =>
+      new Response(JSON.stringify({ message: "provider detail" }), { status: 401 });
+    const transport = new BrevoApiTransport("bad-key", fakeFetch);
+
+    await expect(
+      transport.send({
+        from: "NexPOS <noreply@example.com>",
+        to: "owner@example.com",
+        subject: "Reset",
+        text: "text",
+        html: "<p>text</p>",
+      }),
+    ).rejects.toThrow("EMAIL_DELIVERY_FAILED");
   });
 });

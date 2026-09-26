@@ -28,6 +28,14 @@ export type EmailRuntimeConfig =
   | { enabled: false }
   | {
       enabled: true;
+      provider: "brevo-api";
+      apiKey: string;
+      from: string;
+      webUrl: string;
+    }
+  | {
+      enabled: true;
+      provider: "smtp";
       host: string;
       port: number;
       secure: boolean;
@@ -62,6 +70,7 @@ function parsePort(value: string): number {
 export function loadEmailConfig(source: NodeJS.ProcessEnv = process.env): EmailRuntimeConfig {
   const production = (source["NODE_ENV"] ?? "development") === "production";
   const values = {
+    apiKey: source["BREVO_API_KEY"]?.trim() ?? "",
     host: source["SMTP_HOST"]?.trim() ?? "",
     port: source["SMTP_PORT"]?.trim() ?? "",
     user: source["SMTP_USER"]?.trim() ?? "",
@@ -69,10 +78,15 @@ export function loadEmailConfig(source: NodeJS.ProcessEnv = process.env): EmailR
     from: source["EMAIL_FROM"]?.trim() ?? "",
     webUrl: source["WEB_URL"]?.trim() ?? "",
   };
-  const anyConfigured = Object.values(values).some(Boolean) || source["SMTP_SECURE"] !== undefined;
+  const smtpConfigured = Boolean(values.host || values.port || values.user || values.pass || source["SMTP_SECURE"] !== undefined);
+  const apiConfigured = Boolean(values.apiKey);
+  const anyConfigured = apiConfigured || smtpConfigured || Boolean(values.from || values.webUrl);
   if (!anyConfigured && !production) return { enabled: false };
-  if (!values.host || !values.port || !values.from || !values.webUrl) {
+  if (!values.from || !values.webUrl) {
     throw new Error("ENV_MISSING_EMAIL_CONFIG");
+  }
+  if (apiConfigured && smtpConfigured) {
+    throw new Error("ENV_INVALID_EMAIL_CONFIG");
   }
   if (Boolean(values.user) !== Boolean(values.pass)) {
     throw new Error("ENV_INVALID_EMAIL_CONFIG");
@@ -87,8 +101,23 @@ export function loadEmailConfig(source: NodeJS.ProcessEnv = process.env): EmailR
   } catch {
     throw new Error("ENV_INVALID_EMAIL_CONFIG");
   }
+
+  if (apiConfigured) {
+    return {
+      enabled: true,
+      provider: "brevo-api",
+      apiKey: values.apiKey,
+      from: values.from,
+      webUrl,
+    };
+  }
+
+  if (!values.host || !values.port) {
+    throw new Error("ENV_MISSING_EMAIL_CONFIG");
+  }
   return {
     enabled: true,
+    provider: "smtp",
     host: values.host,
     port: parsePort(values.port),
     secure: secureRaw === "true" || secureRaw === "1",
@@ -96,6 +125,40 @@ export function loadEmailConfig(source: NodeJS.ProcessEnv = process.env): EmailR
     from: values.from,
     webUrl,
   };
+}
+
+function parseMailbox(value: string): { name?: string; email: string } {
+  const match = value.trim().match(/^(?:(.*?)\s*<)?([^<>\s@]+@[^<>\s@]+)>?$/);
+  if (!match) throw new Error("ENV_INVALID_EMAIL_CONFIG");
+  const name = match[1]?.trim().replace(/^"|"$/g, "");
+  return { ...(name ? { name } : {}), email: match[2]! };
+}
+
+export class BrevoApiTransport implements MailTransport {
+  constructor(
+    private readonly apiKey: string,
+    private readonly fetchImpl: typeof fetch = fetch,
+  ) {}
+
+  async send(message: MailMessage): Promise<void> {
+    const sender = parseMailbox(message.from);
+    const response = await this.fetchImpl("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        "api-key": this.apiKey,
+      },
+      body: JSON.stringify({
+        sender,
+        to: [{ email: message.to }],
+        subject: message.subject,
+        htmlContent: message.html,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) throw new Error("EMAIL_DELIVERY_FAILED");
+  }
 }
 
 function escapeHtml(value: string): string {
@@ -178,6 +241,12 @@ export class TransactionalEmailService implements TransactionalEmailPort {
 export function createTransactionalEmailFromEnv(source: NodeJS.ProcessEnv = process.env): TransactionalEmailPort {
   const config = loadEmailConfig(source);
   if (!config.enabled) return NOOP_TRANSACTIONAL_EMAIL;
+  if (config.provider === "brevo-api") {
+    return new TransactionalEmailService(new BrevoApiTransport(config.apiKey), {
+      from: config.from,
+      webUrl: config.webUrl,
+    });
+  }
   const transporter = nodemailer.createTransport({
     host: config.host,
     port: config.port,

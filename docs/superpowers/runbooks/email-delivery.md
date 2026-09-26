@@ -2,33 +2,29 @@
 
 ## Purpose
 
-NexPOS uses transactional email for password resets and optional email verification. The implementation is provider-agnostic SMTP through Nodemailer; no provider-specific SDK is required.
+NexPOS uses transactional email for password resets and optional email verification. It supports two delivery transports: Brevo's HTTPS transactional-email API and provider-agnostic SMTP through Nodemailer. The message/template layer is shared, so reset and verification behavior is identical across transports.
 
 ## Required production environment
 
-Set all of the following before starting the production API:
+For Brevo's HTTPS API (preferred on Railway Free/Hobby), set:
 
 ```text
 WEB_URL=https://pos.example.com
-SMTP_HOST=smtp.provider.example
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=provider-user
-SMTP_PASS=provider-secret
+BREVO_API_KEY=provider-api-key
 EMAIL_FROM=NexPOS <noreply@example.com>
 ```
 
-`SMTP_USER` and `SMTP_PASS` must either both be present or both be absent (for an authenticated vs trusted relay). `SMTP_SECURE=true` is normally used for implicit TLS such as port 465; `false` allows the normal STARTTLS path. Production requires an HTTPS `WEB_URL` because reset and verification links point there.
+For SMTP-capable hosts, use `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, and `SMTP_PASS` instead of `BREVO_API_KEY`. Do not configure both transports at once; startup rejects ambiguous configuration. `SMTP_USER` and `SMTP_PASS` must either both be present or both be absent. Production requires an HTTPS `WEB_URL` because reset and verification links point there.
 
 If production mail configuration is absent or malformed, API startup fails with `ENV_MISSING_EMAIL_CONFIG` or `ENV_INVALID_EMAIL_CONFIG` instead of silently running with broken account recovery.
 
 ## Provider/domain setup
 
-Create a transactional sender/domain with the selected provider and publish the DNS records the provider requires. At minimum, verify SPF and DKIM; publish an appropriate DMARC policy once alignment is confirmed. Use a dedicated transactional sender such as `noreply@...` and keep SMTP credentials in the deployment secret store, never in the repository.
+Create a transactional sender/domain with the selected provider and publish the DNS records the provider requires. At minimum, verify SPF and DKIM; publish an appropriate DMARC policy once alignment is confirmed. Use a dedicated transactional sender such as `noreply@...` and keep API/SMTP credentials in the deployment secret store, never in the repository.
 
 ## Smoke procedure
 
-1. Start the API with production-like PostgreSQL and SMTP settings.
+1. Start the API with production-like PostgreSQL and one configured email transport.
 2. Register a new account with `AUTH_REQUIRE_EMAIL_VERIFICATION=1`.
 3. Confirm the API response contains `verificationRequired: true` and no verification token.
 4. Confirm the verification email arrives and its link points to `WEB_URL/verify-email?token=...`.
@@ -44,9 +40,9 @@ Create a transactional sender/domain with the selected provider and publish the 
 - Public reset/resend routes do not reveal whether an account exists.
 - Tokens are stored hashed and are not written to the HTTP response or audit log.
 - User-controlled display names are HTML-escaped in templates.
-- SMTP delivery errors do not disclose account existence; failures write `auth.password-reset.delivery-failed` or `auth.email-verification.delivery-failed` audit actions for operations review.
+- Provider delivery errors do not disclose account existence; failures write `auth.password-reset.delivery-failed` or `auth.email-verification.delivery-failed` audit actions for operations review.
 - Repeated reset/verification requests are rate-limited.
 
 ## Operational checks
 
-Investigate delivery-failed audit events, provider bounce/complaint dashboards, and SMTP authentication errors. If links are generated with the wrong host, fix `WEB_URL`; do not rewrite tokens manually. If a sender credential is exposed, rotate it at the provider and update the deployment secret immediately.
+Investigate delivery-failed audit events and provider bounce/complaint dashboards. For the Brevo API transport, inspect API authentication/quota errors in Brevo; for SMTP, inspect SMTP authentication/connection errors. If links are generated with the wrong host, fix `WEB_URL`; do not rewrite tokens manually. If a sender credential is exposed, rotate it at the provider and update the deployment secret immediately.
