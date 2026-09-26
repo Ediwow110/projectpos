@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { API } from "./helpers";
 
-test("privacy-first login signs into the real business without exposing metrics before auth", async ({ page, request }) => {
+test("privacy-first login signs into the real business without exposing metrics before auth", async ({ page, request }, testInfo) => {
   const stamp = Date.now();
-  const email = "e2e-login-" + stamp + "@example.com";
+  const email = `e2e-login-${testInfo.project.name}-${stamp}@example.com`;
   const password = "correct-horse-12";
   const businessName = "Login E2E Store " + stamp;
 
