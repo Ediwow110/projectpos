@@ -18,7 +18,8 @@ export class AuthService {
     const seed = await buildRegistrationSeed(input);
     // FR-AUTH-01: email verification is opt-in at the instance level. The
     // initial owner is created unverified under the flag and receives a
-    // single-use token in the response (a mailer is a later integration).
+    // single-use token at the service boundary. HTTP never exposes it; a
+    // production mailer is still required to deliver it to the owner.
     const requireEmailVerification = process.env["AUTH_REQUIRE_EMAIL_VERIFICATION"] === "1";
     const user = await this.db.createUser({
       name: seed.user.name, email: seed.user.email, passwordHash: seed.user.passwordHash,
@@ -145,16 +146,18 @@ export class AuthService {
 
   async confirmReset(token: string, newPassword: string, requestId: string): Promise<void> {
     const tokenHash = hashToken(token);
-    const stored = await this.db.findResetToken(tokenHash);
-    if (!stored) throw new Error("AUTH_TOKEN_INVALID");
-    try {
-      consumeResetToken({ ...stored, createdAt: new Date(0), requestId: stored.requestId, ip: stored.ip }, new Date());
-    } catch (e) {
-      throw e;
-    }
-    await this.db.updateUserPassword(stored.userId, await hashPassword(newPassword));
-    await this.db.markResetTokenUsed(tokenHash, new Date());
-    await this.db.revokeAllUserSessions(stored.userId);
+    const passwordHash = await hashPassword(newPassword);
+    await this.db.withLock(`password-reset:${tokenHash}`, async () => {
+      const stored = await this.db.findResetToken(tokenHash);
+      if (!stored) throw new Error("AUTH_TOKEN_INVALID");
+      consumeResetToken(
+        { ...stored, createdAt: new Date(0), requestId: stored.requestId, ip: stored.ip },
+        new Date(),
+      );
+      await this.db.updateUserPassword(stored.userId, passwordHash);
+      await this.db.markResetTokenUsed(tokenHash, new Date());
+      await this.db.revokeAllUserSessions(stored.userId);
+    });
   }
 
   async switchBusiness(userId: string, businessId: string, sessionId: string, requestId: string): Promise<void> {
@@ -184,6 +187,12 @@ export class AuthService {
     const user = await this.db.findUserById(userId);
     if (!user) return false;
     return verifyPassword(user.passwordHash, plain);
+  }
+
+  async confirmPassword(userId: string, sessionId: string, plain: string): Promise<boolean> {
+    if (!(await this.checkPassword(userId, plain))) return false;
+    await this.db.updateSession(sessionId, { authenticatedAt: new Date() });
+    return true;
   }
 
   rolePermissions(role: string): string[] {

@@ -161,7 +161,6 @@ export class AuthController {
     res.json({
       ok: true,
       message: "If the email exists, a reset link was issued.",
-      ...(out.tokenForTest ? { tokenForTest: out.tokenForTest } : {}),
     });
   }
 
@@ -241,7 +240,7 @@ export class AuthController {
       return;
     }
     const auth = req.auth!;
-    if (!(await this.auth.checkPassword(auth.userId, parsed.data.password))) {
+    if (!(await this.auth.confirmPassword(auth.userId, auth.sessionId, parsed.data.password))) {
       fail(res, 401, "AUTH_INVALID_CREDENTIALS", "Invalid password", req);
       return;
     }

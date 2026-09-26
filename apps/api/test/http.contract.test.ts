@@ -55,4 +55,31 @@ describe("phase1 HTTP contract", () => {
     expect(res.status).toBe(429);
     expect(res.body.code).toBe("RATE_LIMITED");
   });
+
+  it("never exposes password reset credentials in production responses", async () => {
+    const email = `reset-${Date.now()}@example.com`;
+    const reg = await request(app.getHttpServer())
+      .post("/api/v1/auth/register")
+      .send({
+        ownerName: "Reset Owner",
+        email,
+        password: "correct-horse-12",
+        businessName: "Reset Store",
+      });
+    expect(reg.status).toBe(201);
+
+    const previous = process.env["NODE_ENV"];
+    process.env["NODE_ENV"] = "production";
+    try {
+      const res = await request(app.getHttpServer())
+        .post("/api/v1/auth/password-reset/request")
+        .send({ email });
+      expect(res.status).toBeGreaterThanOrEqual(200);
+      expect(res.status).toBeLessThan(300);
+      expect(res.body).not.toHaveProperty("tokenForTest");
+    } finally {
+      if (previous === undefined) delete process.env["NODE_ENV"];
+      else process.env["NODE_ENV"] = previous;
+    }
+  });
 });

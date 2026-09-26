@@ -459,7 +459,10 @@ export interface DbPort {
   createSession(s: Omit<DbSession, "id">): Promise<DbSession>;
   findSessionByTokenHash(tokenHash: string): Promise<DbSession | null>;
   listSessionsByUser(userId: string): Promise<DbSession[]>;
-  updateSession(id: string, patch: { activeBusinessId: string | null }): Promise<void>;
+  updateSession(
+    id: string,
+    patch: { activeBusinessId?: string | null; authenticatedAt?: Date },
+  ): Promise<void>;
   revokeSession(id: string): Promise<void>;
   revokeAllUserSessions(userId: string, exceptId?: string): Promise<void>;
   saveResetToken(t: DbResetToken): Promise<void>;

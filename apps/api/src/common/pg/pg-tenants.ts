@@ -224,10 +224,28 @@ export function tenantsFamily(ctx: PgContext) {
       }
     },
 
-    async updateSession(id: string, patch: { activeBusinessId: string | null }): Promise<void> {
+    async updateSession(
+      id: string,
+      patch: { activeBusinessId?: string | null; authenticatedAt?: Date },
+    ): Promise<void> {
       const c = await ctx.client();
       try {
-        await c.query('UPDATE "Session" SET "activeBusinessId" = $1 WHERE "id" = $2', [patch.activeBusinessId, id]);
+        const sets: string[] = [];
+        const values: unknown[] = [];
+        if (patch.activeBusinessId !== undefined) {
+          values.push(patch.activeBusinessId);
+          sets.push(`"activeBusinessId" = $${values.length}`);
+        }
+        if (patch.authenticatedAt !== undefined) {
+          values.push(patch.authenticatedAt);
+          sets.push(`"authenticatedAt" = $${values.length}`);
+        }
+        if (sets.length === 0) return;
+        values.push(id);
+        await c.query(
+          `UPDATE "Session" SET ${sets.join(", ")} WHERE "id" = $${values.length}`,
+          values,
+        );
       } finally {
         if (ctx.owns()) c.release();
       }

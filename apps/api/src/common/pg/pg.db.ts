@@ -118,7 +118,7 @@ export class PgDbPort implements DbPort {
   listSessionsByUser(userId: string): Promise<DbSession[]> {
     return this.tenants.listSessionsByUser(userId);
   }
-  updateSession(id: string, patch: { activeBusinessId: string | null }): Promise<void> {
+  updateSession(id: string, patch: { activeBusinessId?: string | null; authenticatedAt?: Date }): Promise<void> {
     return this.tenants.updateSession(id, patch);
   }
   revokeSession(id: string): Promise<void> {

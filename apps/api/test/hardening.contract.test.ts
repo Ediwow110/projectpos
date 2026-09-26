@@ -81,4 +81,25 @@ describe("phase8 hardening", () => {
   it("echoes nothing sensitive (uses existing csrf token shape)", () => {
     expect(csrf.length).toBeGreaterThan(16);
   });
+
+  it("refuses to start a production API without a persistent database", async () => {
+    const previousNodeEnv = process.env["NODE_ENV"];
+    const previousDatabaseUrl = process.env["DATABASE_URL"];
+    process.env["NODE_ENV"] = "production";
+    delete process.env["DATABASE_URL"];
+    let created: INestApplication | undefined;
+    let failure: unknown;
+    try {
+      created = await createTestApp();
+    } catch (error) {
+      failure = error;
+    } finally {
+      if (created) await created.close();
+      if (previousNodeEnv === undefined) delete process.env["NODE_ENV"];
+      else process.env["NODE_ENV"] = previousNodeEnv;
+      if (previousDatabaseUrl === undefined) delete process.env["DATABASE_URL"];
+      else process.env["DATABASE_URL"] = previousDatabaseUrl;
+    }
+    expect(failure).toEqual(new Error("ENV_MISSING_DATABASE_URL"));
+  });
 });

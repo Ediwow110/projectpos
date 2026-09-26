@@ -149,6 +149,9 @@ export class SalesService {
     if (input.branchId !== undefined && input.branchId !== null) {
       const branch = await this.db.findBranchById(input.branchId, businessId);
       if (!branch) throw new Error("VALIDATION");
+      if (registerBranchId !== null && branch.id !== registerBranchId) {
+        throw new Error("VALIDATION");
+      }
       branchId = branch.id;
     }
     let customerId: string | null = null;
@@ -229,10 +232,19 @@ export class SalesService {
         const reg = await this.db.findRegisterById(registerId, businessId);
         registerBranchId = reg?.branchId ?? null;
       }
+      if (sale.branchId != null && registerBranchId !== null && sale.branchId !== registerBranchId) {
+        throw new Error("VALIDATION");
+      }
       let branchId: string | null = sale.branchId ?? registerBranchId;
       if (input.branchId !== undefined && input.branchId !== null) {
         const branch = await this.db.findBranchById(input.branchId, businessId);
         if (!branch) throw new Error("VALIDATION");
+        if (
+          (registerBranchId !== null && branch.id !== registerBranchId) ||
+          (sale.branchId != null && branch.id !== sale.branchId)
+        ) {
+          throw new Error("VALIDATION");
+        }
         branchId = branch.id;
       }
       const fingerprint = fingerprintPayload({ saleId, payments: input.payments, registerId });
@@ -322,7 +334,7 @@ export class SalesService {
         incrementMetric("pos_payment_unknown_total");
         return { sale: await this.embed(updated), replayed: false };
       }
-        await this.applyStockEffect(businessId, actorId, requestId, sale.id, items, sale.branchId ?? null);
+      await this.applyStockEffect(businessId, actorId, requestId, sale.id, items, branchId);
       // A split may repeat a method (two cash legs), so the idempotency key
       // carries the leg index, not just the method.
       for (const [legIndex, p] of input.payments.entries()) {

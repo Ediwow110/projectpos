@@ -33,34 +33,47 @@ export class MembershipService {
     const name = input.name.trim();
     if (!email.includes("@") || !name || name.length > 80) throw new Error("VALIDATION");
     if (!ASSIGNABLE_ROLES.has(input.role)) throw new Error("VALIDATION");
-    await new BillingService(this.db).requireCreate(businessId, actorId, requestId, "users");
-
-    const existing = await this.db.findUserByEmail(email);
-    let userId: string;
-    let tempPassword: string | undefined;
-    if (existing) {
-      userId = existing.id;
-    } else {
-      tempPassword = randomBytes(12).toString("base64url").slice(0, 16);
-      const user = await this.db.createUser({
-        name,
-        email,
-        passwordHash: await hashPassword(tempPassword),
-        emailVerified: true,
-      });
-      userId = user.id;
-    }
-    const membership = await this.db.createMembership({ businessId, userId, role: input.role });
+    const candidateTempPassword = randomBytes(12).toString("base64url").slice(0, 16);
+    const candidatePasswordHash = await hashPassword(candidateTempPassword);
+    const created = await new BillingService(this.db).withCap(
+      businessId,
+      actorId,
+      requestId,
+      "users",
+      async () => {
+        const existing = await this.db.findUserByEmail(email);
+        let userId: string;
+        let tempPassword: string | undefined;
+        if (existing) {
+          userId = existing.id;
+        } else {
+          const user = await this.db.createUser({
+            name,
+            email,
+            passwordHash: candidatePasswordHash,
+            emailVerified: true,
+          });
+          userId = user.id;
+          tempPassword = candidateTempPassword;
+        }
+        const membership = await this.db.createMembership({ businessId, userId, role: input.role });
+        return { membership, userId, tempPassword };
+      },
+    );
     await this.db.appendAudit({
       businessId,
       actorId,
       action: "member.invited",
       entityType: "BusinessMembership",
-      entityId: membership.id,
+      entityId: created.membership.id,
       requestId,
-      reason: `role ${input.role}${tempPassword ? " (new user)" : " (existing user)"}`,
+      reason: `role ${input.role}${created.tempPassword ? " (new user)" : " (existing user)"}`,
     });
-    return { membershipId: membership.id, userId, ...(tempPassword ? { tempPassword } : {}) };
+    return {
+      membershipId: created.membership.id,
+      userId: created.userId,
+      ...(created.tempPassword ? { tempPassword: created.tempPassword } : {}),
+    };
   }
 
   async list(businessId: string): Promise<{

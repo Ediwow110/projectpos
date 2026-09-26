@@ -30,6 +30,13 @@ export class SessionGuard implements CanActivate {
       req.authError = "SESSION_REVOKED";
       return false;
     }
+    if (process.env["AUTH_REQUIRE_EMAIL_VERIFICATION"] === "1") {
+      const user = await this.db.findUserById(session.userId);
+      if (!user || user.emailVerified === false) {
+        req.authError = "EMAIL_UNVERIFIED";
+        return false;
+      }
+    }
     // FR-TENANT-02: the active business is whatever the user switched to on
     // this session, falling back to the login home business.
     const targetBusinessId = session.activeBusinessId ?? session.businessId;

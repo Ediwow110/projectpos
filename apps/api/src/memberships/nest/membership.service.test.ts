@@ -64,4 +64,32 @@ describe("phase11 membership management", () => {
     const members = await svc.list(biz.id);
     expect(members.items.find((m) => m.id === out.membershipId)!.deactivatedAt).toBeNull();
   });
+
+  it("does not exceed the user cap under concurrent invites", async () => {
+    const db = createMemoryDb();
+    const biz = await db.createBusiness({ name: "Concurrent Seats", currency: "PHP" });
+    const free = (await db.findPlanByKey("free"))!;
+    await db.upsertSubscription({
+      businessId: biz.id,
+      planId: free.id,
+      status: "active",
+      trialEndsAt: null,
+      currentPeriodEnd: new Date("2030-01-01T00:00:00.000Z"),
+    });
+    await db.createMembership({ businessId: biz.id, userId: "owner-1", role: "owner" });
+    await db.createMembership({ businessId: biz.id, userId: "manager-1", role: "manager" });
+    const svc = new MembershipService(db);
+
+    const outcomes = await Promise.allSettled([
+      svc.create(biz.id, "owner-1", "r-a", OWNER, {
+        email: `seat-a-${Date.now()}@x.test`, name: "Seat A", role: "cashier",
+      }),
+      svc.create(biz.id, "owner-1", "r-b", OWNER, {
+        email: `seat-b-${Date.now()}@x.test`, name: "Seat B", role: "cashier",
+      }),
+    ]);
+
+    expect(outcomes.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect((await svc.list(biz.id)).items).toHaveLength(3);
+  });
 });

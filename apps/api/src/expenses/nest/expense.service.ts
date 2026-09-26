@@ -57,61 +57,67 @@ export class ExpenseService {
         throw new Error("VALIDATION");
       }
     }
-    let shiftId: string | null = null;
-    let branchId: string | null = null;
-    if (input.branchId !== undefined && input.branchId !== null) {
-      const branch = await this.db.findBranchById(input.branchId, businessId);
-      if (!branch) throw new Error("VALIDATION");
-      branchId = branch.id;
-    }
-    if (input.method === "cash" && input.shiftId !== undefined) {
-      const shift = await this.db.findShiftById(input.shiftId, businessId);
-      if (!shift) throw new Error("NOT_FOUND");
-      if (shift.status !== "OPEN") throw new Error("SHIFT_CLOSED_IMMUTABLE");
-      shiftId = shift.id;
-      branchId = shift.branchId ?? null;
-    }
-    const expense = await this.db.createExpense({
-      businessId,
-      category,
-      amountMinor: input.amountMinor,
-      description: input.description?.trim() ? input.description.trim() : null,
-      method: input.method,
-      shiftId,
-      branchId,
-      expenseDate,
-      actorId,
-      requestId,
-      attachmentUrl: input.attachmentUrl?.trim() ? input.attachmentUrl.trim() : null,
-      voidedAt: null,
-      voidReason: null,
-      cashAdjusted: true,
-    });
-    if (shiftId) {
-      const shift = (await this.db.findShiftById(shiftId, businessId))!;
-      await this.db.createCashMovement({
+    const write = async (): Promise<DbExpense> => {
+      let shiftId: string | null = null;
+      let branchId: string | null = null;
+      if (input.branchId !== undefined && input.branchId !== null) {
+        const branch = await this.db.findBranchById(input.branchId, businessId);
+        if (!branch) throw new Error("VALIDATION");
+        branchId = branch.id;
+      }
+      if (input.method === "cash" && input.shiftId !== undefined) {
+        const shift = await this.db.findShiftById(input.shiftId, businessId);
+        if (!shift) throw new Error("NOT_FOUND");
+        if (shift.status !== "OPEN") throw new Error("SHIFT_CLOSED_IMMUTABLE");
+        shiftId = shift.id;
+        branchId = shift.branchId ?? null;
+      }
+      const expense = await this.db.createExpense({
         businessId,
-        shiftId: shift.id,
-        registerId: shift.registerId,
-        branchId: shift.branchId ?? null,
-        type: "paid_out",
-        amountMinor: -input.amountMinor,
-        reason: category,
-        referenceType: "Expense",
-        referenceId: expense.id,
+        category,
+        amountMinor: input.amountMinor,
+        description: input.description?.trim() ? input.description.trim() : null,
+        method: input.method,
+        shiftId,
+        branchId,
+        expenseDate,
         actorId,
         requestId,
+        attachmentUrl: input.attachmentUrl?.trim() ? input.attachmentUrl.trim() : null,
+        voidedAt: null,
+        voidReason: null,
+        cashAdjusted: true,
       });
+      if (shiftId) {
+        const shift = (await this.db.findShiftById(shiftId, businessId))!;
+        await this.db.createCashMovement({
+          businessId,
+          shiftId: shift.id,
+          registerId: shift.registerId,
+          branchId: shift.branchId ?? null,
+          type: "paid_out",
+          amountMinor: -input.amountMinor,
+          reason: category,
+          referenceType: "Expense",
+          referenceId: expense.id,
+          actorId,
+          requestId,
+        });
+      }
+      await this.db.appendAudit({
+        businessId,
+        actorId,
+        action: "expense.create",
+        entityType: "Expense",
+        entityId: expense.id,
+        requestId,
+      });
+      return expense;
+    };
+    if (input.method === "cash" && input.shiftId !== undefined) {
+      return this.db.withLock(`shift:${businessId}:${input.shiftId}`, write);
     }
-    await this.db.appendAudit({
-      businessId,
-      actorId,
-      action: "expense.create",
-      entityType: "Expense",
-      entityId: expense.id,
-      requestId,
-    });
-    return expense;
+    return write();
   }
 
   async listExpenses(
@@ -173,47 +179,64 @@ export class ExpenseService {
     if (!VOID_ROLES.has(role)) throw new Error("FORBIDDEN");
     await new BillingService(this.db).requireFeature(businessId, "expenses");
     if (!reason || reason.trim().length < 3) throw new Error("VALIDATION");
-    const expense = await this.db.findExpenseById(id, businessId);
-    if (!expense) throw new Error("NOT_FOUND");
-    if (expense.voidedAt !== null) throw new Error("VALIDATION");
-    let cashAdjusted = true;
-    if (expense.method === "cash" && expense.shiftId) {
-      const linked = await this.db.findShiftById(expense.shiftId, businessId);
-      const open = linked
-        ? await this.db.findOpenShiftByRegister(businessId, linked.registerId)
-        : null;
-      if (open) {
-        await this.db.createCashMovement({
-          businessId,
-          shiftId: open.id,
-          registerId: open.registerId,
-          branchId: open.branchId ?? null,
-          type: "adjustment",
-          amountMinor: expense.amountMinor,
-          reason: `void:${reason.trim()}`,
-          referenceType: "Expense",
-          referenceId: expense.id,
-          actorId,
-          requestId,
-        });
-      } else {
-        cashAdjusted = false;
-      }
+    const snapshot = await this.db.findExpenseById(id, businessId);
+    if (!snapshot) throw new Error("NOT_FOUND");
+    if (snapshot.voidedAt !== null) throw new Error("VALIDATION");
+    let lockedShiftId: string | null = null;
+    if (snapshot.method === "cash" && snapshot.shiftId) {
+      const linked = await this.db.findShiftById(snapshot.shiftId, businessId);
+      const open = linked ? await this.db.findOpenShiftByRegister(businessId, linked.registerId) : null;
+      lockedShiftId = open?.id ?? null;
     }
-    const updated = await this.db.updateExpense(id, businessId, {
-      voidedAt: new Date(),
-      voidReason: reason.trim(),
-      cashAdjusted,
-    });
-    if (!updated) throw new Error("NOT_FOUND");
-    await this.db.appendAudit({
-      businessId,
-      actorId,
-      action: "expense.void",
-      entityType: "Expense",
-      entityId: id,
-      requestId,
-    });
-    return { expense: updated, cashAdjusted };
+
+    const write = async (): Promise<{ expense: DbExpense; cashAdjusted: boolean }> => {
+      const expense = await this.db.findExpenseById(id, businessId);
+      if (!expense) throw new Error("NOT_FOUND");
+      if (expense.voidedAt !== null) throw new Error("VALIDATION");
+      let cashAdjusted = true;
+      if (expense.method === "cash" && expense.shiftId) {
+        const linked = await this.db.findShiftById(expense.shiftId, businessId);
+        const open = linked
+          ? await this.db.findOpenShiftByRegister(businessId, linked.registerId)
+          : null;
+        if (open && open.id === lockedShiftId) {
+          await this.db.createCashMovement({
+            businessId,
+            shiftId: open.id,
+            registerId: open.registerId,
+            branchId: open.branchId ?? null,
+            type: "adjustment",
+            amountMinor: expense.amountMinor,
+            reason: `void:${reason.trim()}`,
+            referenceType: "Expense",
+            referenceId: expense.id,
+            actorId,
+            requestId,
+          });
+        } else {
+          cashAdjusted = false;
+        }
+      }
+      const updated = await this.db.updateExpense(id, businessId, {
+        voidedAt: new Date(),
+        voidReason: reason.trim(),
+        cashAdjusted,
+      });
+      if (!updated) throw new Error("NOT_FOUND");
+      await this.db.appendAudit({
+        businessId,
+        actorId,
+        action: "expense.void",
+        entityType: "Expense",
+        entityId: id,
+        requestId,
+      });
+      return { expense: updated, cashAdjusted };
+    };
+
+    if (lockedShiftId) {
+      return this.db.withLock(`shift:${businessId}:${lockedShiftId}`, write);
+    }
+    return write();
   }
 }

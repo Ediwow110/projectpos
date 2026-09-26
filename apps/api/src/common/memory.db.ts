@@ -156,7 +156,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     },
     async updateSession(id, patch) {
       const s = sessions.get(id);
-      if (s) sessions.set(id, { ...s, activeBusinessId: patch.activeBusinessId });
+      if (s) sessions.set(id, { ...s, ...patch });
     },
     async findSessionByTokenHash(tokenHash) {
       for (const s of sessions.values()) if (s.tokenHash === tokenHash) return s;

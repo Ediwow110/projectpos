@@ -201,4 +201,82 @@ describe("phase9a sale branch scope", () => {
     // The branch-keyed deduction must not leak into the legacy null scope.
     expect(await db.findBalance(prod.id, "b1", null)).toBeNull();
   });
+
+  it("deducts the completion-time branch when a draft had no branch yet", async () => {
+    const db = createMemoryDb();
+    const branch = await db.createBranch({ businessId: "b1", name: "South", type: "store", isActive: true });
+    const prod = await db.createProduct({
+      businessId: "b1", categoryId: null, name: "Juice", sku: null, barcode: null,
+      brand: null, unit: "pc", costMinor: 700, priceMinor: 1500, taxRateBps: null,
+      reorderLevel: 0, trackInventory: true, isActive: true, imageUrl: null,
+    });
+    await db.upsertBalance({ businessId: "b1", branchId: branch.id, productId: prod.id, qtyOnHand: 5 });
+    const svc = new SalesService(db);
+    const ALL = ["discount.override", "sale.void", "sale.refund", "cost.view"];
+    const draft = await svc.createDraft("b1", "u1", "r1", {
+      lines: [{ productId: prod.id, qty: 2, lineDiscountMinor: 0 }], orderDiscountMinor: 0,
+    }, ALL);
+
+    const done = await svc.completeSale("b1", "u1", "r2", draft.id, {
+      payments: [{ method: "card", amountMinor: draft.totalMinor }],
+      key: "br-sale-complete-1",
+      granted: ALL,
+      branchId: branch.id,
+    });
+
+    expect(done.sale.status).toBe("COMPLETED");
+    expect(done.sale.branchId).toBe(branch.id);
+    expect((await db.findBalance(prod.id, "b1", branch.id))!.qtyOnHand).toBe(3);
+    expect(await db.findBalance(prod.id, "b1", null)).toBeNull();
+  });
+
+  it("rejects a draft branch that disagrees with the selected register branch", async () => {
+    const db = createMemoryDb();
+    const north = await db.createBranch({ businessId: "b1", name: "North", type: "store", isActive: true });
+    const south = await db.createBranch({ businessId: "b1", name: "South", type: "store", isActive: true });
+    const register = await db.createRegister({ businessId: "b1", name: "North till", isActive: true, branchId: north.id });
+    const prod = await db.createProduct({
+      businessId: "b1", categoryId: null, name: "Tea", sku: null, barcode: null,
+      brand: null, unit: "pc", costMinor: 500, priceMinor: 1200, taxRateBps: null,
+      reorderLevel: 0, trackInventory: true, isActive: true, imageUrl: null,
+    });
+    const svc = new SalesService(db);
+
+    await expect(
+      svc.createDraft("b1", "u1", "r1", {
+        lines: [{ productId: prod.id, qty: 1, lineDiscountMinor: 0 }],
+        orderDiscountMinor: 0,
+        registerId: register.id,
+        branchId: south.id,
+      }, ["discount.override"]),
+    ).rejects.toThrow("VALIDATION");
+  });
+
+  it("rejects a completion branch that disagrees with the selected register branch", async () => {
+    const db = createMemoryDb();
+    const north = await db.createBranch({ businessId: "b1", name: "North", type: "store", isActive: true });
+    const south = await db.createBranch({ businessId: "b1", name: "South", type: "store", isActive: true });
+    const register = await db.createRegister({ businessId: "b1", name: "North till", isActive: true, branchId: north.id });
+    const prod = await db.createProduct({
+      businessId: "b1", categoryId: null, name: "Coffee", sku: null, barcode: null,
+      brand: null, unit: "pc", costMinor: 600, priceMinor: 1400, taxRateBps: null,
+      reorderLevel: 0, trackInventory: true, isActive: true, imageUrl: null,
+    });
+    await db.upsertBalance({ businessId: "b1", branchId: north.id, productId: prod.id, qtyOnHand: 5 });
+    await db.upsertBalance({ businessId: "b1", branchId: south.id, productId: prod.id, qtyOnHand: 5 });
+    const svc = new SalesService(db);
+    const draft = await svc.createDraft("b1", "u1", "r1", {
+      lines: [{ productId: prod.id, qty: 1, lineDiscountMinor: 0 }], orderDiscountMinor: 0,
+    }, ["discount.override"]);
+
+    await expect(
+      svc.completeSale("b1", "u1", "r2", draft.id, {
+        payments: [{ method: "card", amountMinor: draft.totalMinor }],
+        key: "branch-mismatch-1",
+        granted: ["discount.override"],
+        registerId: register.id,
+        branchId: south.id,
+      }),
+    ).rejects.toThrow("VALIDATION");
+  });
 });
