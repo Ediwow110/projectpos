@@ -16,6 +16,13 @@ import { transitionSale } from "../state-machine";
 import { BillingService } from "../../billing/nest/billing.service";
 import { fingerprintPayload } from "../idempotency";
 import { queryProviderStatus, type ProviderVerdict } from "../../payments/provider";
+import {
+  DisabledPayMongo,
+  isPayMongoMethod,
+  payMongoMethodType,
+  type PayMongoMethod,
+  type PayMongoPort,
+} from "../../payments/paymongo";
 import { resolvePaymentMethods } from "../payment-methods";
 import { renderReceiptText } from "../receipt-text";
 import { incrementMetric } from "../../common/metrics";
@@ -56,11 +63,103 @@ export type SaleDetail = SaleWithLines & {
 
 const CASH_METHODS = new Set(["cash"]);
 
+interface PayMongoPaidEvent {
+  eventId: string;
+  type: "checkout_session.payment.paid";
+  businessId: string;
+  saleId: string;
+  checkoutSessionId: string;
+  method: PayMongoMethod;
+  sourceType: "card" | "gcash" | "paymaya";
+  amountMinor: number;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function parsePayMongoPaidEvent(payload: unknown, rawBody: string): PayMongoPaidEvent | null {
+  const root = asRecord(payload);
+  if (!root) throw new Error("VALIDATION");
+  const topData = asRecord(root["data"]);
+  if (!topData) throw new Error("VALIDATION");
+
+  // PayMongo currently documents both the generic Event envelope and the
+  // Hosted Checkout delivery envelope. Support both without trusting either
+  // until the raw-body signature has already been verified.
+  const genericAttrs = asRecord(topData["attributes"]);
+  const genericType = typeof genericAttrs?.["type"] === "string" ? genericAttrs["type"] : null;
+  const hostedType = typeof topData["type"] === "string" ? topData["type"] : null;
+  const type = genericType ?? hostedType;
+  if (type !== "checkout_session.payment.paid") return null;
+
+  const session = genericType
+    ? asRecord(genericAttrs?.["data"])
+    : asRecord(topData["data"]);
+  if (!session) throw new Error("VALIDATION");
+  const attrs = asRecord(session["attributes"]);
+  if (!attrs) throw new Error("VALIDATION");
+  const metadata = asRecord(attrs["metadata"]);
+  const businessId = metadata?.["businessId"];
+  const metadataSaleId = metadata?.["saleId"];
+  const referenceNumber = attrs["reference_number"];
+  const rawMethod = metadata?.["method"];
+  const sessionId = session["id"];
+  if (
+    typeof businessId !== "string" ||
+    typeof sessionId !== "string" ||
+    typeof rawMethod !== "string" ||
+    !isPayMongoMethod(rawMethod)
+  ) {
+    throw new Error("VALIDATION");
+  }
+  const saleId = typeof metadataSaleId === "string"
+    ? metadataSaleId
+    : typeof referenceNumber === "string" ? referenceNumber : null;
+  if (!saleId || (typeof referenceNumber === "string" && referenceNumber !== saleId)) {
+    throw new Error("PAYMENT_PROVIDER_MISMATCH");
+  }
+  const payments = Array.isArray(attrs["payments"]) ? attrs["payments"] : [];
+  const paid = payments
+    .map(asRecord)
+    .filter((payment): payment is Record<string, unknown> => payment !== null)
+    .find((payment) => asRecord(payment["attributes"])?.["status"] === "paid");
+  const paidAttrs = paid ? asRecord(paid["attributes"]) : null;
+  const source = paidAttrs ? asRecord(paidAttrs["source"]) : null;
+  const sourceType = source?.["type"];
+  const amount = paidAttrs?.["amount"];
+  if (
+    typeof amount !== "number" || !Number.isInteger(amount) || amount <= 0 ||
+    (sourceType !== "card" && sourceType !== "gcash" && sourceType !== "paymaya")
+  ) {
+    throw new Error("PAYMENT_PROVIDER_INVALID_RESPONSE");
+  }
+  const explicitEventId = topData["id"];
+  const eventId = typeof explicitEventId === "string" && explicitEventId.length > 0
+    ? explicitEventId
+    : `evt_sha256_${createHash("sha256").update(rawBody).digest("hex")}`;
+  return {
+    eventId,
+    type,
+    businessId,
+    saleId,
+    checkoutSessionId: sessionId,
+    method: rawMethod,
+    sourceType,
+    amountMinor: amount,
+  };
+}
+
 @Injectable()
 export class SalesService {
   private readonly shifts: ShiftService;
 
-  constructor(@Inject("DbPort") private readonly db: DbPort) {
+  constructor(
+    @Inject("DbPort") private readonly db: DbPort,
+    private readonly paymongo: PayMongoPort = new DisabledPayMongo(),
+  ) {
     // Same-DbPort instance (not Nest DI) to avoid a Sales<->Shift DI cycle.
     this.shifts = new ShiftService(db);
   }
@@ -87,6 +186,10 @@ export class SalesService {
     const settings = await this.db.getSettings(businessId);
     const rate = settings["taxRateBps"];
     return typeof rate === "number" ? rate : null;
+  }
+
+  isPayMongoConfigured(): boolean {
+    return this.paymongo.configured();
   }
 
   async createDraft(
@@ -395,13 +498,140 @@ export class SalesService {
     });
   }
 
-  private async applyStockEffect(
+  async startPayMongoCheckout(
     businessId: string,
     actorId: string,
     requestId: string,
     saleId: string,
+    method: PayMongoMethod,
+    key: string,
+    webUrl: string,
+  ): Promise<{
+    sale: SaleWithLines;
+    payment: DbPayment;
+    checkoutUrl: string;
+    checkoutSessionId: string;
+    replayed: boolean;
+  }> {
+    withScope(businessId, {});
+    if (!this.paymongo.configured()) throw new Error("PAYMENT_PROVIDER_NOT_CONFIGURED");
+    return this.db.withLock(`sales:${businessId}`, async () => {
+      let sale = await this.requireSale(businessId, saleId);
+      if (sale.status !== "DRAFT" && sale.status !== "PENDING_PAYMENT" && sale.status !== "PAYMENT_FAILED") {
+        throw new Error("SALE_INVALID_TRANSITION");
+      }
+      const configuredMethods = new Set((await resolvePaymentMethods(this.db, businessId)).map((entry) => entry.key));
+      if (!configuredMethods.has(method)) throw new Error("VALIDATION");
+      const items = await this.db.listSaleItems(sale.id, businessId);
+      if (items.length === 0) throw new Error("VALIDATION");
+      await this.assertStockAvailable(businessId, items, sale.branchId ?? null);
+
+      const existingKey = await this.db.findIdempotency(businessId, key, "paymongo.checkout");
+      if (existingKey) {
+        const payment = await this.db.findPaymentById(existingKey.resultId, businessId);
+        if (!payment || !payment.providerRef) throw new Error("PAYMENT_PROVIDER_INVALID_RESPONSE");
+        const snapshot = await this.paymongo.retrieveCheckout(payment.providerRef);
+        if (snapshot.paid) throw new Error("PAYMENT_ALREADY_SUCCEEDED");
+        if (!snapshot.checkoutUrl) throw new Error("PAYMENT_PROVIDER_UNAVAILABLE");
+        return {
+          sale: await this.embed(sale),
+          payment,
+          checkoutUrl: snapshot.checkoutUrl,
+          checkoutSessionId: payment.providerRef,
+          replayed: true,
+        };
+      }
+
+      const priorPayments = await this.db.listPaymentsBySale(sale.id, businessId);
+      if (priorPayments.some(
+        (payment) => payment.status === "SUCCEEDED" && isPayMongoMethod(payment.method) && payment.providerRef?.startsWith("cs_"),
+      )) {
+        throw new Error("PAYMENT_ALREADY_SUCCEEDED");
+      }
+      const pending = priorPayments.find(
+        (payment) => payment.status === "PENDING" && isPayMongoMethod(payment.method) && payment.providerRef?.startsWith("cs_"),
+      );
+      if (pending?.providerRef) {
+        if (pending.method !== method) throw new Error("PAYMENT_PROVIDER_MISMATCH");
+        const snapshot = await this.paymongo.retrieveCheckout(pending.providerRef);
+        if (snapshot.paid) throw new Error("PAYMENT_ALREADY_SUCCEEDED");
+        if (snapshot.status === "active" && snapshot.checkoutUrl) {
+          return {
+            sale: await this.embed(sale),
+            payment: pending,
+            checkoutUrl: snapshot.checkoutUrl,
+            checkoutSessionId: pending.providerRef,
+            replayed: true,
+          };
+        }
+        if (snapshot.status === "expired") {
+          await this.db.updatePayment(pending.id, businessId, { status: "FAILED" });
+          if (sale.status === "PENDING_PAYMENT") {
+            sale = (await this.db.updateSale(sale.id, businessId, {
+              status: transitionSale(sale.status, "PAYMENT_FAILED"),
+            })) ?? sale;
+          }
+        }
+      }
+
+      const base = webUrl.replace(/\/$/, "");
+      const remote = await this.paymongo.createCheckout({
+        saleId: sale.id,
+        receiptNo: sale.receiptNo,
+        businessId,
+        method,
+        idempotencyKey: key,
+        successUrl: `${base}/sales/${encodeURIComponent(sale.id)}?paymongo=success`,
+        cancelUrl: `${base}/sales/${encodeURIComponent(sale.id)}?paymongo=cancelled`,
+        // The local sale total includes discounts and tax, so use one
+        // authoritative checkout line instead of reconstructing totals from
+        // catalog rows and risking a provider/local amount mismatch.
+        lineItems: [{ name: `NexPOS sale ${sale.receiptNo}`, amount: sale.totalMinor, quantity: 1 }],
+      });
+
+      const payment = await this.db.createPayment({
+        businessId,
+        saleId: sale.id,
+        method,
+        amountMinor: sale.totalMinor,
+        status: "PENDING",
+        providerRef: remote.sessionId,
+        idempotencyKey: `${key}:paymongo`,
+      });
+      let nextStatus = sale.status;
+      if (nextStatus === "DRAFT" || nextStatus === "PAYMENT_FAILED") {
+        nextStatus = transitionSale(nextStatus, "PENDING_PAYMENT");
+      }
+      sale = (await this.db.updateSale(sale.id, businessId, { status: nextStatus })) ?? sale;
+      await this.db.claimIdempotency({
+        businessId,
+        key,
+        commandType: "paymongo.checkout",
+        fingerprint: fingerprintPayload({ saleId, method }),
+        resultId: payment.id,
+      });
+      await this.db.appendAudit({
+        businessId,
+        actorId,
+        action: "payment.paymongo.checkout",
+        entityType: "Payment",
+        entityId: payment.id,
+        requestId,
+      });
+      return {
+        sale: await this.embed(sale),
+        payment,
+        checkoutUrl: remote.checkoutUrl,
+        checkoutSessionId: remote.sessionId,
+        replayed: false,
+      };
+    });
+  }
+
+  private async assertStockAvailable(
+    businessId: string,
     items: DbSaleItem[],
-    branchId: string | null = null,
+    branchId: string | null,
   ): Promise<void> {
     for (const item of items) {
       const product = await this.requireProduct(businessId, item.productId);
@@ -413,6 +643,92 @@ export class SalesService {
         throw new Error("INSUFFICIENT_STOCK");
       }
     }
+  }
+
+  async handlePayMongoWebhook(
+    rawBody: string,
+    signatureHeader: string | undefined,
+    payload: unknown,
+    requestId: string,
+  ): Promise<{ handled: boolean; deduplicated?: boolean }> {
+    if (!this.paymongo.configured()) throw new Error("PAYMENT_PROVIDER_NOT_CONFIGURED");
+    if (!this.paymongo.verifyWebhook(rawBody, signatureHeader)) throw new Error("FORBIDDEN");
+    const event = parsePayMongoPaidEvent(payload, rawBody);
+    if (!event) return { handled: false };
+    const businessId = event.businessId;
+    return this.db.withLock(`paymongo-webhook:${event.eventId}`, async () => {
+      const claimed = await this.db.claimWebhookEvent({
+        businessId,
+        provider: "paymongo",
+        eventId: event.eventId,
+        type: event.type,
+        payload,
+        status: "processing",
+      });
+      if (!claimed) return { handled: true, deduplicated: true };
+      try {
+        await this.settlePayMongoPaid(event, requestId);
+        await this.db.updateWebhookEventStatus(claimed.id, "processed");
+        return { handled: true };
+      } catch (error) {
+        await this.db.deleteWebhookEvent(claimed.id);
+        throw error;
+      }
+    });
+  }
+
+  private async settlePayMongoPaid(
+    event: PayMongoPaidEvent,
+    requestId: string,
+  ): Promise<void> {
+    await this.db.withLock(`sales:${event.businessId}`, async () => {
+      const sale = await this.requireSale(event.businessId, event.saleId);
+      const payments = await this.db.listPaymentsBySale(sale.id, event.businessId);
+      const payment = payments.find((row) => row.providerRef === event.checkoutSessionId) ?? null;
+      if (!payment || !isPayMongoMethod(payment.method)) throw new Error("NOT_FOUND");
+      if (payment.method !== event.method) throw new Error("PAYMENT_PROVIDER_MISMATCH");
+      if (event.sourceType !== payMongoMethodType(payment.method)) throw new Error("PAYMENT_PROVIDER_MISMATCH");
+      if (event.amountMinor !== payment.amountMinor || event.amountMinor !== sale.totalMinor) {
+        throw new Error("PAYMENT_TOTAL_MISMATCH");
+      }
+      if (sale.status === "COMPLETED" && payment.status === "SUCCEEDED") return;
+      if (sale.status !== "PENDING_PAYMENT") throw new Error("SALE_INVALID_TRANSITION");
+      if (payment.status !== "PENDING") throw new Error("SALE_INVALID_TRANSITION");
+
+      const items = await this.db.listSaleItems(sale.id, event.businessId);
+      await this.applyStockEffect(event.businessId, "paymongo-webhook", requestId, sale.id, items, sale.branchId ?? null);
+      await this.db.updatePayment(payment.id, event.businessId, { status: "SUCCEEDED" });
+      let status = transitionSale(sale.status, "PAID");
+      status = transitionSale(status, "COMPLETED");
+      const completedAt = new Date();
+      await this.db.updateSale(sale.id, event.businessId, {
+        status,
+        paidMinor: sale.totalMinor,
+        changeMinor: 0,
+        completedAt,
+      });
+      await new BillingService(this.db).recordSale(event.businessId, completedAt);
+      await this.db.appendAudit({
+        businessId: event.businessId,
+        actorId: "paymongo-webhook",
+        action: "payment.paymongo.paid",
+        entityType: "Payment",
+        entityId: payment.id,
+        requestId,
+      });
+      incrementMetric("pos_sales_completed_total");
+    });
+  }
+
+  private async applyStockEffect(
+    businessId: string,
+    actorId: string,
+    requestId: string,
+    saleId: string,
+    items: DbSaleItem[],
+    branchId: string | null = null,
+  ): Promise<void> {
+    await this.assertStockAvailable(businessId, items, branchId);
     for (const item of items) {
       const product = await this.requireProduct(businessId, item.productId);
       if (!product.trackInventory) continue;
@@ -447,6 +763,13 @@ export class SalesService {
     withScope(businessId, {});
     const payment = await this.db.findPaymentById(paymentId, businessId);
     if (!payment) throw new Error("NOT_FOUND");
+    if (provider === "paymongo" || payment.providerRef?.startsWith("cs_")) {
+      if (!payment.providerRef || !this.paymongo.configured()) return { status: "UNKNOWN" };
+      const snapshot = await this.paymongo.retrieveCheckout(payment.providerRef);
+      if (snapshot.paid) return { status: "SUCCEEDED" };
+      if (snapshot.status === "expired") return { status: "FAILED" };
+      return { status: "UNKNOWN" };
+    }
     return {
       status: await queryProviderStatus(payment.method, payment.providerRef, provider, businessId),
     };

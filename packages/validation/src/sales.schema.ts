@@ -44,6 +44,10 @@ export const reconcileSchema = z.object({
   outcome: z.enum(["SUCCEEDED", "FAILED"]),
 });
 
+export const paymongoCheckoutSchema = z.object({
+  method: z.enum(["card", "gcash", "maya"]),
+});
+
 export const refundRequestSchema = z.object({
   reason: z.string().trim().min(3, "VALIDATION").max(500, "VALIDATION"),
 });

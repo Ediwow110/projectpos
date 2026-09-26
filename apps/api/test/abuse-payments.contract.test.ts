@@ -102,7 +102,7 @@ describe("phase8 abuse: money and validation", () => {
     const res = await request(app.getHttpServer()).post("/api/v1/sales/complete")
       .set("Cookie", cookie).set("X-CSRF-Token", csrf)
       .set("Idempotency-Key", "abuse-pay-03")
-      .send({ saleId: sale.id, payments: [{ method: "card", amountMinor: 1 }] });
+      .send({ saleId: sale.id, payments: [{ method: "cash", amountMinor: 1 }] });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("PAYMENT_TOTAL_MISMATCH");
   });

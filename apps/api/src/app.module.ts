@@ -30,6 +30,7 @@ import { PrintController } from "./print/nest/print.controller";
 import { DisplayController } from "./display/nest/display.controller";
 import { MembershipController } from "./memberships/nest/membership.controller";
 import { ReceiptShareController } from "./sales/nest/receipt-share.controller";
+import { PayMongoController } from "./payments/paymongo.controller";
 import { CatalogService } from "./catalog/nest/catalog.service";
 import { InventoryService } from "./inventory/nest/inventory.service";
 import { SalesService } from "./sales/nest/sales.service";
@@ -49,6 +50,11 @@ import { BillingService } from "./billing/nest/billing.service";
 import { ExportService } from "./exports/nest/export.service";
 import { PrintService } from "./print/nest/print.service";
 import { DisplayService } from "./display/nest/display.service";
+import {
+  createPayMongoFromEnv,
+  PAYMONGO_PORT,
+  type PayMongoPort,
+} from "./payments/paymongo";
 import { HealthController } from "./common/health.controller";
 import { RequestIdMiddleware } from "./common/request-id.middleware";
 import { SecurityHeadersMiddleware, securityHeaders } from "./common/security-headers.middleware";
@@ -79,8 +85,12 @@ function runtimeDatabaseUrl(): string | undefined {
 }
 
 @Module({
-    controllers: [HealthController, AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, MetricsController],
+    controllers: [HealthController, AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, MetricsController],
   providers: [
+    {
+      provide: PAYMONGO_PORT,
+      useFactory: () => createPayMongoFromEnv(process.env),
+    },
     {
       provide: TRANSACTIONAL_EMAIL_PORT,
       useFactory: () => createTransactionalEmailFromEnv(process.env),
@@ -94,7 +104,11 @@ function runtimeDatabaseUrl(): string | undefined {
     BusinessService,
     CatalogService,
     InventoryService,
-    SalesService,
+    {
+      provide: SalesService,
+      useFactory: (d: DbPort, paymongo: PayMongoPort) => new SalesService(d, paymongo),
+      inject: ["DbPort", PAYMONGO_PORT],
+    },
     ShiftService,
     CustomerService,
     ExpenseService,
@@ -155,7 +169,7 @@ export class AppModule implements NestModule {
   }
 }
 
-export async function createTestApp(): Promise<INestApplication> {
+export async function createTestApp(options: { paymongo?: PayMongoPort } = {}): Promise<INestApplication> {
   // Same store contract as boot: memory unless DATABASE_URL opts into
   // PostgreSQL (used by the load cohorts and any pg-backed contract run).
   const databaseUrl = runtimeDatabaseUrl();
@@ -163,9 +177,10 @@ export async function createTestApp(): Promise<INestApplication> {
     ? new PgDbPort(new PgContext(databaseUrl))
     : createMemoryDb();
   const moduleRef = await Test.createTestingModule({
-  controllers: [HealthController, AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, MetricsController],
+  controllers: [HealthController, AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, MetricsController],
     providers: [
       { provide: "DbPort", useValue: db },
+      { provide: PAYMONGO_PORT, useValue: options.paymongo ?? createPayMongoFromEnv({}) },
       { provide: TRANSACTIONAL_EMAIL_PORT, useValue: NOOP_TRANSACTIONAL_EMAIL },
       {
         provide: AuthService,
@@ -194,8 +209,8 @@ export async function createTestApp(): Promise<INestApplication> {
       },
       {
         provide: SalesService,
-        useFactory: (d: DbPort) => new SalesService(d),
-        inject: ["DbPort"],
+        useFactory: (d: DbPort, paymongo: PayMongoPort) => new SalesService(d, paymongo),
+        inject: ["DbPort", PAYMONGO_PORT],
       },
       {
         provide: ShiftService,

@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import {
   completeSchema,
   draftCreateSchema,
+  paymongoCheckoutSchema,
   reconcileSchema,
   refundRequestSchema,
   salesQuerySchema,
@@ -19,6 +20,7 @@ import { resolvePaymentMethods } from "../payment-methods";
 import type { DbPort } from "../../common/db.port";
 import { ApiTokenGuard } from "../../apitokens/api-token.guard";
 import { Scopes } from "../../apitokens/scopes.decorator";
+import { isPayMongoMethod } from "../../payments/paymongo";
 
 function rid(req: Request): string {
   const headers: Record<string, string | undefined> = {};
@@ -92,6 +94,51 @@ export class SalesController {
     }
   }
 
+  @Post("sales/:id/paymongo/checkout")
+  @UseGuards(CsrfGuard)
+  async paymongoCheckout(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Param("id") id: string,
+    @Body() body: unknown,
+  ): Promise<void> {
+    if (!SELL_ROLES.has(req.auth!.role)) {
+      fail(res, 403, "FORBIDDEN", "Payment initiation not permitted for this role", req);
+      return;
+    }
+    const key = idemKey(req);
+    if (!key) {
+      fail(res, 400, "VALIDATION", "Idempotency-Key header required", req);
+      return;
+    }
+    const parsed = paymongoCheckoutSchema.safeParse(body);
+    if (!parsed.success) {
+      fail(res, 400, "VALIDATION", "Invalid PayMongo checkout payload", req);
+      return;
+    }
+    try {
+      const auth = req.auth!;
+      if (await moneyLimiter.hit(`${auth.businessId}:paymongo-checkout`)) {
+        fail(res, 429, "RATE_LIMITED", "Too many attempts", req);
+        return;
+      }
+      const webUrl = process.env["WEB_URL"] ?? "http://localhost:3000";
+      const out = await this.sales.startPayMongoCheckout(
+        auth.businessId,
+        auth.userId,
+        rid(req),
+        id,
+        parsed.data.method,
+        key,
+        webUrl,
+      );
+      res.status(out.replayed ? 200 : 201).json(out);
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "VALIDATION";
+      fail(res, statusFor(code), code, "PayMongo checkout failed", req);
+    }
+  }
+
   @Post("sales/complete")
   @UseGuards(CsrfGuard)
   async complete(
@@ -111,6 +158,17 @@ export class SalesController {
     const parsed = completeSchema.safeParse({ ...(body as Record<string, unknown>), idempotencyKey: key });
     if (!parsed.success) {
       fail(res, 400, "VALIDATION", "Invalid complete payload", req);
+      return;
+    }
+    const configuredMethods = new Set(
+      (await resolvePaymentMethods(this.db, req.auth!.businessId)).map((method) => method.key),
+    );
+    if (parsed.data.payments.some((payment) => !configuredMethods.has(payment.method))) {
+      fail(res, 400, "VALIDATION", "Payment method is not configured for this business", req);
+      return;
+    }
+    if (parsed.data.payments.some((payment) => isPayMongoMethod(payment.method) && !(payment.providerRef ?? "").startsWith("unknown-"))) {
+      fail(res, 409, "PAYMENT_PROVIDER_REQUIRED", "Card, GCash, and Maya payments must use the PayMongo checkout flow", req);
       return;
     }
     try {
@@ -387,7 +445,13 @@ export class SalesController {
     // FR-PAY-01: methods are configuration — the business's list, not a
     // hard-coded enum.
     const methods = await resolvePaymentMethods(this.db, req.auth!.businessId);
-    res.json({ methods });
+    res.json({
+      methods: methods.map((method) => ({
+        ...method,
+        available: isPayMongoMethod(method.key) ? this.sales.isPayMongoConfigured() : true,
+        provider: isPayMongoMethod(method.key) ? "paymongo" : "manual",
+      })),
+    });
   }
 
   @Get("receipts/:saleId")

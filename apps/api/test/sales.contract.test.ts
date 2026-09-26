@@ -78,7 +78,7 @@ describe("phase4 sales HTTP contract", () => {
     const res = await request(app.getHttpServer()).post("/api/v1/sales/complete")
       .set("Cookie", cookie).set("X-CSRF-Token", csrf)
       .set("Idempotency-Key", "sale-key-mismatch")
-      .send({ saleId: draft.body.id, payments: [{ method: "card", amountMinor: 1 }] });
+      .send({ saleId: draft.body.id, payments: [{ method: "cash", amountMinor: 1 }] });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("PAYMENT_TOTAL_MISMATCH");
   });
