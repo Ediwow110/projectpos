@@ -53,9 +53,9 @@ The SMTP adapter was exercised end-to-end against a disposable SMTP server (Mail
 
 ### 2. PayMongo production credentials and live-mode verification
 
-Card, GCash, and Maya now use a PayMongo Hosted Checkout v2 integration rather than direct/manual success recording. Checkout creation is server-side and idempotent; Maya maps to PayMongo's `paymaya` method; local payments remain `PENDING` until a verified `checkout_session.payment.paid` webhook matches the expected business, sale, checkout session, method, and amount. Webhook deliveries use the raw request body for `Paymongo-Signature` verification and the existing webhook-event ledger for deduplication. The POS disables those electronic methods when PayMongo is not configured, and the legacy direct-completion endpoint refuses to mark Card/GCash/Maya successful outside the provider workflow.
+Card, GCash, Maya, and QR Ph now use a PayMongo Hosted Checkout v2 integration rather than direct/manual success recording. Checkout creation is server-side and idempotent; Maya maps to PayMongo's `paymaya` method while QR Ph uses `qrph`; local payments remain `PENDING` until a verified `checkout_session.payment.paid` webhook matches the expected business, sale, checkout session, method, and amount. Webhook deliveries use the raw request body for `Paymongo-Signature` verification and the existing webhook-event ledger for deduplication. The POS disables those electronic methods when PayMongo is not configured, and the legacy direct-completion endpoint refuses to mark Card/GCash/Maya/QR Ph successful outside the provider workflow.
 
-The remaining external dependency is operational rather than architectural: configure PayMongo test credentials and a test-mode webhook, run Card/GCash/Maya sandbox flows, then configure fresh live credentials and a separate live webhook only after UAT. The deployment and smoke sequence is documented in `docs/superpowers/runbooks/paymongo-payments.md`.
+The remaining external dependency is operational rather than architectural: configure PayMongo test credentials and a test-mode webhook, run Card/GCash/Maya/QR Ph sandbox flows, then configure fresh live credentials and a separate live webhook only after UAT. The deployment and smoke sequence is documented in `docs/superpowers/runbooks/paymongo-payments.md`.
 
 ## Release position
 

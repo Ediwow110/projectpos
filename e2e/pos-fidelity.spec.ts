@@ -63,5 +63,8 @@ test("POS shell and responsive geometry match the current navigation contract", 
   } else {
     await page.getByRole("region", { name: "Tablet cart" }).getByRole("button", { name: "Pay", exact: true }).click();
   }
-  await expect(page.getByRole("dialog", { name: "Payment" })).toBeVisible();
+  const paymentDialog = page.getByRole("dialog", { name: "Payment" });
+  await expect(paymentDialog).toBeVisible();
+  await expect(paymentDialog.getByRole("button", { name: "QR Ph", exact: true })).toBeVisible();
+  await expect(paymentDialog.getByRole("button", { name: "QR Ph", exact: true })).toBeDisabled();
 });

@@ -8,7 +8,7 @@ export type ProviderVerdict = "SUCCEEDED" | "FAILED" | "UNKNOWN";
 
 export type ProviderName = "manual" | "test-double";
 
-const ELECTRONIC_METHODS = new Set(["gcash", "maya", "card"]);
+const ELECTRONIC_METHODS = new Set(["gcash", "maya", "card", "qrph"]);
 
 // Scripted outcomes are keyed by tenant as well as provider reference: payment
 // references are business-scoped, so one tenant's script must never settle

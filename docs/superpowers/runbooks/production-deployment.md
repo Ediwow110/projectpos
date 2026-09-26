@@ -43,8 +43,8 @@ in an image.
 | `SMTP_USER` | **yes** | SMTP alternative | Brevo SMTP login |
 | `SMTP_PASS` | **yes** | SMTP alternative | Brevo SMTP key |
 | `EMAIL_FROM` | no | yes | `NexPOS <sender@your-domain>` — must be a Brevo-verified sender |
-| `PAYMONGO_SECRET_KEY` | **yes** | if Card/GCash/Maya are enabled | PayMongo server secret key (`sk_test_*` in staging, `sk_live_*` in production) |
-| `PAYMONGO_WEBHOOK_SECRET` | **yes** | if Card/GCash/Maya are enabled | Secret for `/api/v1/payments/paymongo/webhook` |
+| `PAYMONGO_SECRET_KEY` | **yes** | if Card/GCash/Maya/QR Ph are enabled | PayMongo server secret key (`sk_test_*` in staging, `sk_live_*` in production) |
+| `PAYMONGO_WEBHOOK_SECRET` | **yes** | if Card/GCash/Maya/QR Ph are enabled | Secret for `/api/v1/payments/paymongo/webhook` |
 | `PAYMONGO_API_BASE` | no | no | Defaults to `https://api.paymongo.com` |
 | `PAYMONGO_WEBHOOK_TOLERANCE_SECONDS` | no | no | Signature timestamp tolerance, default 300 seconds |
 | `AUTH_REQUIRE_EMAIL_VERIFICATION` | no | recommended (`1`) | Login gate until the emailed verification link is redeemed |
@@ -165,7 +165,7 @@ the requirements any real host must meet.
 - [ ] Redeem the link; login succeeds
 - [ ] `GET https://<web>` renders the dashboard and calls the API with
       credentials (cookies stick across the two origins)
-- [ ] `GET /api/v1/payments/methods` reports Card/GCash/Maya as available only
+- [ ] `GET /api/v1/payments/methods` reports Card/GCash/Maya/QR Ph as available only
       when PayMongo is configured
 - [ ] PayMongo test-mode checkout redirects to PayMongo and the signed webhook
       completes the local sale; see `docs/superpowers/runbooks/paymongo-payments.md`
@@ -195,6 +195,6 @@ node scripts/load/dashboard-mix.mjs   # optional latency budget check
   (`auth.*.delivery-failed`) and leak nothing.
 - Password reset and verification resend are enumeration-resistant (generic
   responses, 5/min/IP rate limits) and reset revokes all sessions.
-- Card / GCash / Maya use PayMongo Hosted Checkout. NexPOS never accepts or
+- Card / GCash / Maya / QR Ph use PayMongo Hosted Checkout. NexPOS never accepts or
   stores raw card numbers, CVC, or PAN data; browser redirects are not treated
   as payment confirmation, and signed webhooks are the settlement authority.

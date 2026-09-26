@@ -168,7 +168,7 @@ export class SalesController {
       return;
     }
     if (parsed.data.payments.some((payment) => isPayMongoMethod(payment.method) && !(payment.providerRef ?? "").startsWith("unknown-"))) {
-      fail(res, 409, "PAYMENT_PROVIDER_REQUIRED", "Card, GCash, and Maya payments must use the PayMongo checkout flow", req);
+      fail(res, 409, "PAYMENT_PROVIDER_REQUIRED", "Card, GCash, Maya, and QR Ph payments must use the PayMongo checkout flow", req);
       return;
     }
     try {

@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 export const PAYMONGO_PORT = "PayMongoPort";
 
-export type PayMongoMethod = "card" | "gcash" | "maya";
+export type PayMongoMethod = "card" | "gcash" | "maya" | "qrph";
 
 export interface PayMongoCheckoutInput {
   saleId: string;
@@ -35,10 +35,10 @@ export interface PayMongoPort {
 }
 
 export function isPayMongoMethod(value: string): value is PayMongoMethod {
-  return value === "card" || value === "gcash" || value === "maya";
+  return value === "card" || value === "gcash" || value === "maya" || value === "qrph";
 }
 
-export function payMongoMethodType(method: PayMongoMethod): "card" | "gcash" | "paymaya" {
+export function payMongoMethodType(method: PayMongoMethod): "card" | "gcash" | "paymaya" | "qrph" {
   return method === "maya" ? "paymaya" : method;
 }
 

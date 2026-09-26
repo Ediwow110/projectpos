@@ -49,6 +49,8 @@ function money(minor: number): string {
 }
 
 function methodLabel(method: string): string {
+  if (method === "qrph") return "QR Ph";
+  if (method === "gcash") return "GCash";
   return method.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 

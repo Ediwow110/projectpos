@@ -79,6 +79,8 @@ function statusTone(status: string): "ok" | "warn" | "bad" | "info" {
 }
 
 function methodLabel(method: string): string {
+  if (method === "qrph") return "QR Ph";
+  if (method === "gcash") return "GCash";
   return method.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
@@ -108,11 +110,11 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
   const sale = detailQuery.data;
   const unknownPayment = sale?.payments.find((payment) => payment.status === "UNKNOWN") ?? null;
   const paymongoPayment = sale?.payments.find(
-    (payment) => ["card", "gcash", "maya"].includes(payment.method) && ["PENDING", "SUCCEEDED", "FAILED"].includes(payment.status),
+    (payment) => ["card", "gcash", "maya", "qrph"].includes(payment.method) && ["PENDING", "SUCCEEDED", "FAILED"].includes(payment.status),
   ) ?? null;
 
   async function continuePayMongo(): Promise<void> {
-    if (!sale || !paymongoPayment || !["card", "gcash", "maya"].includes(paymongoPayment.method)) return;
+    if (!sale || !paymongoPayment || !["card", "gcash", "maya", "qrph"].includes(paymongoPayment.method)) return;
     setStatusMessage("");
     setBusy(true);
     try {

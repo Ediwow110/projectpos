@@ -1,7 +1,7 @@
 # PayMongo payments runbook
 
-This integration uses **PayMongo Hosted Checkout v2** for Card, GCash, and
-Maya. NexPOS never accepts raw card numbers or CVC values. The browser is sent
+This integration uses **PayMongo Hosted Checkout v2** for Card, GCash, Maya,
+and QR Ph. NexPOS never accepts raw card numbers or CVC values. The browser is sent
 to PayMongo's checkout page, and NexPOS completes the local sale only after a
 verified PayMongo webhook confirms payment.
 
@@ -25,7 +25,9 @@ secret key; NexPOS does not need a PayMongo public key for this flow.
 
 1. Complete PayMongo merchant activation/KYC.
 2. In **Settings → Developers**, start with the test secret key.
-3. Ensure Card, GCash, and Maya are enabled for the merchant account.
+3. Ensure Card, GCash, Maya, and QR Ph are available for the merchant account.
+   QR Ph is enabled by default on activated PayMongo accounts; the other methods
+   may require activation/approval in the dashboard.
 4. In **Settings → Webhooks**, create an endpoint:
 
    ```text
@@ -44,7 +46,7 @@ secret key; NexPOS does not need a PayMongo public key for this flow.
 ## NexPOS payment lifecycle
 
 1. The cashier creates a normal NexPOS draft sale.
-2. Card / GCash / Maya calls
+2. Card / GCash / Maya / QR Ph calls
    `POST /api/v1/sales/:id/paymongo/checkout` with an idempotency key.
 3. The API verifies stock is currently available, creates one PayMongo Hosted
    Checkout session, and records a local `PENDING` payment.
@@ -61,7 +63,7 @@ secret key; NexPOS does not need a PayMongo public key for this flow.
    - marks the sale `COMPLETED`,
    - records the billing usage and audit event.
 
-The old direct sale-completion endpoint refuses successful Card / GCash / Maya
+The old direct sale-completion endpoint refuses successful Card / GCash / Maya / QR Ph
 recording. Those methods must go through PayMongo. Manual cash, bank transfer,
 and other tender flows remain separate.
 
@@ -87,7 +89,7 @@ and other tender flows remain separate.
 1. Deploy or run NexPOS with `sk_test_...` and the **test-mode** webhook
    endpoint secret.
 2. Open a register/shift and make sure the product has stock.
-3. Create three test sales, one each for Card, GCash, and Maya.
+3. Create four test sales, one each for Card, GCash, Maya, and QR Ph.
 4. Confirm the POS redirects to PayMongo rather than collecting card details.
 5. Complete the PayMongo test checkout.
 6. Confirm the sale page changes from `PENDING_PAYMENT` to `COMPLETED` after
@@ -102,11 +104,11 @@ and other tender flows remain separate.
 
 ## Go-live checklist
 
-- [ ] Test-mode Card, GCash, and Maya flows all pass end to end.
+- [ ] Test-mode Card, GCash, Maya, and QR Ph flows all pass end to end.
 - [ ] Test webhook signature validation passes using PayMongo's real test-event sender.
 - [ ] Webhook redelivery is idempotent.
 - [ ] `WEB_URL` and the public API domain are HTTPS.
-- [ ] Live Card, GCash, and Maya are enabled on the PayMongo account.
+- [ ] Live Card, GCash, Maya, and QR Ph are available on the PayMongo account.
 - [ ] Replace only `PAYMONGO_SECRET_KEY` and `PAYMONGO_WEBHOOK_SECRET` with the
       live-mode values; do not change application code.
 - [ ] Create a separate live-mode webhook endpoint in PayMongo.

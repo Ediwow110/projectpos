@@ -76,6 +76,7 @@ const METHODS: Array<{ key: string; label: string; tile: string }> = [
   { key: "card", label: "Card", tile: "bg-[#776b62]" },
   { key: "gcash", label: "GCash", tile: "bg-[#3468d4]" },
   { key: "maya", label: "Maya", tile: "bg-[#1f8a5b]" },
+  { key: "qrph", label: "QR Ph", tile: "bg-[#6554c0]" },
   { key: "bank_transfer", label: "Bank transfer", tile: "bg-[#3468d4]" },
   { key: "other", label: "Other", tile: "bg-[#5d534b]" },
 ];
@@ -162,8 +163,8 @@ export default function PosPage(): JSX.Element {
   const paymentConfig = paymentMethodsQuery.data?.methods ?? METHODS.map((entry) => ({
     key: entry.key,
     label: entry.label,
-    provider: ["card", "gcash", "maya"].includes(entry.key) ? "paymongo" : "manual",
-    available: !["card", "gcash", "maya"].includes(entry.key),
+    provider: ["card", "gcash", "maya", "qrph"].includes(entry.key) ? "paymongo" : "manual",
+    available: !["card", "gcash", "maya", "qrph"].includes(entry.key),
   }));
   const configuredMethodKeys = new Set(paymentConfig.map((entry) => entry.key));
   const methodAvailable = (key: string): boolean => paymentConfig.find((entry) => entry.key === key)?.available ?? false;
@@ -302,7 +303,7 @@ export default function PosPage(): JSX.Element {
       await payOffline();
       return;
     }
-    if (["card", "gcash", "maya"].includes(method) && !methodAvailable(method)) {
+    if (["card", "gcash", "maya", "qrph"].includes(method) && !methodAvailable(method)) {
       setStatus("PayMongo is not configured for this payment method yet.");
       return;
     }
@@ -324,7 +325,7 @@ export default function PosPage(): JSX.Element {
       const total = draft.totalMinor;
       const tendered = received.trim() === "" ? total : Math.round(Number(received) * 100);
       const key = crypto.randomUUID();
-      if (["card", "gcash", "maya"].includes(method)) {
+      if (["card", "gcash", "maya", "qrph"].includes(method)) {
         const checkout = await apiFetch<{ checkoutUrl: string }>(`/api/v1/sales/${draft.id}/paymongo/checkout`, {
           csrfToken: csrf.csrfToken,
           init: {
@@ -974,7 +975,7 @@ export default function PosPage(): JSX.Element {
                       type="button"
                       onClick={() => setMethod(m.key)}
                       disabled={!methodAvailable(m.key)}
-                      title={!methodAvailable(m.key) && ["card", "gcash", "maya"].includes(m.key) ? "Configure PayMongo to enable this method" : undefined}
+                      title={!methodAvailable(m.key) && ["card", "gcash", "maya", "qrph"].includes(m.key) ? "Configure PayMongo to enable this method" : undefined}
                       className={`rounded-xl px-1 py-2.5 text-[12px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-30 ${effectiveMethod === m.key ? m.tile + " text-white ring-2 ring-white/60" : "bg-white/[0.06] text-white/60 hover:bg-white/10"}`}
                     >
                       {m.label}
@@ -1028,7 +1029,7 @@ export default function PosPage(): JSX.Element {
                       type="button"
                       onClick={() => setMethod(m.key)}
                       disabled={!methodAvailable(m.key)}
-                      title={!methodAvailable(m.key) && ["card", "gcash", "maya"].includes(m.key) ? "Configure PayMongo to enable this method" : undefined}
+                      title={!methodAvailable(m.key) && ["card", "gcash", "maya", "qrph"].includes(m.key) ? "Configure PayMongo to enable this method" : undefined}
                       className={
                         "h-[52px] rounded-[10px] border text-[10px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-30 " +
                         (effectiveMethod === m.key

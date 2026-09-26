@@ -26,6 +26,14 @@ describe("phase4 sales schemas", () => {
     const out = draftCreateSchema.parse({ lines: [{ productId: "p1", qty: 2 }] });
     expect(out.lines[0].qty).toBe(2);
   });
+  it("accepts QR Ph as a payment method", () => {
+    const out = completeSchema.parse({
+      saleId: "s1",
+      payments: [{ method: "qrph", amountMinor: 100 }],
+      idempotencyKey: "key-qrph-1",
+    });
+    expect(out.payments[0]?.method).toBe("qrph");
+  });
 });
 
 describe("phase5 registerId on sales schemas", () => {

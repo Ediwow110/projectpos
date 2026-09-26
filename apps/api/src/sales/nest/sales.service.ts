@@ -70,7 +70,7 @@ interface PayMongoPaidEvent {
   saleId: string;
   checkoutSessionId: string;
   method: PayMongoMethod;
-  sourceType: "card" | "gcash" | "paymaya";
+  sourceType: "card" | "gcash" | "paymaya" | "qrph";
   amountMinor: number;
 }
 
@@ -132,7 +132,7 @@ function parsePayMongoPaidEvent(payload: unknown, rawBody: string): PayMongoPaid
   const amount = paidAttrs?.["amount"];
   if (
     typeof amount !== "number" || !Number.isInteger(amount) || amount <= 0 ||
-    (sourceType !== "card" && sourceType !== "gcash" && sourceType !== "paymaya")
+    (sourceType !== "card" && sourceType !== "gcash" && sourceType !== "paymaya" && sourceType !== "qrph")
   ) {
     throw new Error("PAYMENT_PROVIDER_INVALID_RESPONSE");
   }

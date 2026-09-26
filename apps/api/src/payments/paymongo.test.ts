@@ -24,6 +24,32 @@ describe("PayMongo adapter", () => {
     expect(payMongoMethodType("card")).toBe("card");
     expect(payMongoMethodType("gcash")).toBe("gcash");
     expect(payMongoMethodType("maya")).toBe("paymaya");
+    expect(payMongoMethodType("qrph")).toBe("qrph");
+  });
+
+  it("creates a QR Ph hosted checkout using the qrph method type", async () => {
+    const fetchMock = vi.fn(async (
+      _input: Parameters<typeof fetch>[0],
+      _init?: Parameters<typeof fetch>[1],
+    ) => new Response(JSON.stringify({
+      data: { id: "cs_qrph", attributes: { checkout_url: "https://checkout.paymongo.test/cs_qrph" } },
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await client().createCheckout({
+      saleId: "sale_qrph",
+      receiptNo: "2026-000002",
+      businessId: "biz_1",
+      method: "qrph",
+      idempotencyKey: "checkout-key-qrph",
+      successUrl: "https://pos.example.com/sales/sale_qrph?paymongo=success",
+      cancelUrl: "https://pos.example.com/sales/sale_qrph?paymongo=cancelled",
+      lineItems: [{ name: "QR Ph sale", amount: 10000, quantity: 1 }],
+    });
+
+    const [, init] = fetchMock.mock.calls[0]!;
+    const body = JSON.parse(String(init?.body)) as { data: { attributes: Record<string, unknown> } };
+    expect(body.data.attributes["payment_method_types"]).toEqual(["qrph"]);
   });
 
   it("stays disabled until both the API key and webhook secret exist", () => {

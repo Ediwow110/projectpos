@@ -61,7 +61,7 @@ export async function buildRegistrationSeed(input: RegistrationInput): Promise<R
     defaultSettings: [
       { key: "currency", value: "PHP" },
       // FR-PAY-01: methods are data; every new business starts with the
-      // plan's initial six and can reconfigure them.
+      // plan's initial methods and can reconfigure them.
       { key: "paymentMethods", value: DEFAULT_PAYMENT_METHODS },
     ],
     onboarding: {

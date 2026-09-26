@@ -30,7 +30,7 @@ test("unknown provider outcome stays visibly unresolved and blocks false success
 
   // PAYMENT_UNKNOWN remains available as a privileged recovery path for
   // genuinely uncertain legacy/manual provider outcomes, but normal POS
-  // Card/GCash/Maya now goes through PayMongo Hosted Checkout instead.
+  // Card/GCash/Maya/QR Ph now goes through PayMongo Hosted Checkout instead.
   const draft = await request.post(`${API}/api/v1/sales/drafts`, {
     headers,
     data: { lines: [{ productId, qty: 1 }] },

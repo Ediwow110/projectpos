@@ -10,7 +10,11 @@ import { BarChart } from "../../../lib/charts";
 import { money } from "../../../lib/reports";
 
 interface PaymentsPayload { byMethod: Array<{ method: string; total: number; count: number }>; unknown: number; refunded: number; }
-const label = (value: string): string => value.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
+const label = (value: string): string => {
+  if (value === "qrph") return "QR Ph";
+  if (value === "gcash") return "GCash";
+  return value.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
+};
 
 export default function PaymentsReportPage(): JSX.Element {
   const query = useQuery({ queryKey: ["report-payments"], queryFn: () => apiFetch<PaymentsPayload>("/api/v1/reports/payments?compare=none"), retry: false });

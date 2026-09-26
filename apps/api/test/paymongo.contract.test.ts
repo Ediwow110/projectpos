@@ -90,7 +90,7 @@ describe("PayMongo hosted checkout contract", () => {
   it("advertises PayMongo-backed electronic methods", async () => {
     const response = await request(app.getHttpServer()).get("/api/v1/payments/methods").set("Cookie", cookie);
     expect(response.status).toBe(200);
-    for (const key of ["card", "gcash", "maya"]) {
+    for (const key of ["card", "gcash", "maya", "qrph"]) {
       expect(response.body.methods).toContainEqual(expect.objectContaining({ key, available: true, provider: "paymongo" }));
     }
   });
@@ -205,5 +205,40 @@ describe("PayMongo hosted checkout contract", () => {
     const pending = await request(app.getHttpServer()).get(`/api/v1/sales/${sale.id}`).set("Cookie", cookie);
     expect(pending.body.status).toBe("PENDING_PAYMENT");
     expect(pending.body.payments[0].status).toBe("PENDING");
+  });
+
+  it("settles QR Ph from the hosted-checkout paid webhook", async () => {
+    const sale = await draftSale();
+    const checkout = await request(app.getHttpServer()).post(`/api/v1/sales/${sale.id}/paymongo/checkout`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .set("Idempotency-Key", "paymongo-checkout-qrph")
+      .send({ method: "qrph" });
+    expect(checkout.status).toBe(201);
+    expect(checkout.body.payment).toMatchObject({ method: "qrph", status: "PENDING", amountMinor: sale.totalMinor });
+
+    const raw = JSON.stringify({
+      data: {
+        id: "evt_checkout_qrph_paid",
+        type: "checkout_session.payment.paid",
+        data: {
+          id: checkout.body.checkoutSessionId,
+          attributes: {
+            reference_number: sale.id,
+            metadata: { businessId, saleId: sale.id, method: "qrph" },
+            payments: [{ attributes: { status: "paid", amount: sale.totalMinor, source: { type: "qrph" } } }],
+          },
+        },
+      },
+    });
+    const webhook = await request(app.getHttpServer()).post("/api/v1/payments/paymongo/webhook")
+      .set("Content-Type", "application/json")
+      .set("Paymongo-Signature", "valid")
+      .send(raw);
+    expect(webhook.status).toBe(200);
+    expect(webhook.body).toEqual({ handled: true });
+
+    const completed = await request(app.getHttpServer()).get(`/api/v1/sales/${sale.id}`).set("Cookie", cookie);
+    expect(completed.body.status).toBe("COMPLETED");
+    expect(completed.body.payments[0]).toMatchObject({ method: "qrph", status: "SUCCEEDED" });
   });
 });

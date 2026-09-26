@@ -6,6 +6,7 @@ export const PAYMENT_METHODS = [
   "card",
   "gcash",
   "maya",
+  "qrph",
   "bank_transfer",
   "other",
 ] as const;
@@ -45,7 +46,7 @@ export const reconcileSchema = z.object({
 });
 
 export const paymongoCheckoutSchema = z.object({
-  method: z.enum(["card", "gcash", "maya"]),
+  method: z.enum(["card", "gcash", "maya", "qrph"]),
 });
 
 export const refundRequestSchema = z.object({
