@@ -12,6 +12,7 @@ describe("web api wrapper", () => {
     const [, init] = fetchMock.mock.calls[0];
     expect(init.credentials).toBe("include");
     expect((init.headers as Record<string, string>)["X-CSRF-Token"]).toBe("csrf_1");
+    expect(init.signal).toBeInstanceOf(AbortSignal);
     vi.unstubAllGlobals();
   });
   it("throws ApiError with code on error envelope", async () => {
@@ -25,6 +26,24 @@ describe("web api wrapper", () => {
     );
     await expect(apiFetch("/api/v1/me", {})).rejects.toMatchObject({
       code: "TENANT_REQUIRED",
+    });
+    vi.unstubAllGlobals();
+  });
+  it("normalizes transport failures", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
+    await expect(apiFetch("/api/v1/me")).rejects.toMatchObject({
+      code: "NETWORK_ERROR",
+      status: 0,
+    });
+    vi.unstubAllGlobals();
+  });
+  it("normalizes request timeouts", async () => {
+    const timeout = new Error("timed out");
+    timeout.name = "TimeoutError";
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(timeout));
+    await expect(apiFetch("/api/v1/me", { timeoutMs: 5 })).rejects.toMatchObject({
+      code: "NETWORK_TIMEOUT",
+      status: 0,
     });
     vi.unstubAllGlobals();
   });

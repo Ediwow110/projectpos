@@ -10,6 +10,10 @@
         ".next/**"
       ]
     },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
     "lint": {},
     "typecheck": {},
     "test": {}
