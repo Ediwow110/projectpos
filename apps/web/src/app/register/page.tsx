@@ -18,12 +18,17 @@ export default function RegisterPage(): JSX.Element {
     e.preventDefault();
     setError("");
     try {
-      await apiFetch("/api/v1/auth/register", {
+      const result = await apiFetch<{ verificationRequired?: boolean }>("/api/v1/auth/register", {
         init: {
           method: "POST",
           body: JSON.stringify({ ownerName, email, password, businessName }),
         },
       });
+      if (result.verificationRequired) {
+        window.sessionStorage.setItem("nexpos-verification-email", email);
+        router.push("/verify-email");
+        return;
+      }
       router.push("/onboarding");
     } catch (err) {
       setError(err instanceof ApiError ? `${err.code}: ${err.message}` : "Registration failed");

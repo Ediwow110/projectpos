@@ -20,6 +20,7 @@ import { AuthService } from "./auth.service";
 
 const loginLimiter = createRateLimiter(5, 60_000);
 const resetLimiter = createRateLimiter(5, 60_000);
+const verificationLimiter = createRateLimiter(5, 60_000);
 
 function rid(req: Request): string {
   const headers: Record<string, string | undefined> = {};
@@ -63,7 +64,12 @@ export class AuthController {
       });
       res.cookie("pos_session", out.token, cookieOpts(req));
       res.cookie("pos_csrf", out.csrfToken, { ...cookieOpts(req), httpOnly: false });
-      res.status(201).json({ user: out.user, business: out.business, csrfToken: out.csrfToken });
+      res.status(201).json({
+        user: out.user,
+        business: out.business,
+        csrfToken: out.csrfToken,
+        verificationRequired: out.verificationRequired,
+      });
     } catch (e) {
       const code = e instanceof Error ? e.message : "VALIDATION";
       fail(
@@ -154,13 +160,38 @@ export class AuthController {
       fail(res, 400, "VALIDATION", "Invalid payload", req);
       return;
     }
-    const out = await this.auth.requestReset(parsed.data.email, {
+    await this.auth.requestReset(parsed.data.email, {
       requestId: rid(req),
       ip: req.ip ?? null,
     });
     res.json({
       ok: true,
       message: "If the email exists, a reset link was issued.",
+    });
+  }
+
+  @Post("verify-email/resend")
+  async resendVerification(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Body() body: unknown,
+  ): Promise<void> {
+    if (await verificationLimiter.hit(`${req.ip ?? "unknown"}:verify-email`)) {
+      fail(res, 429, "RATE_LIMITED", "Too many attempts", req);
+      return;
+    }
+    const parsed = passwordResetRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      fail(res, 400, "VALIDATION", "Invalid payload", req);
+      return;
+    }
+    await this.auth.resendVerification(parsed.data.email, {
+      requestId: rid(req),
+      ip: req.ip ?? null,
+    });
+    res.json({
+      ok: true,
+      message: "If the account exists and still needs verification, a new link was issued.",
     });
   }
 

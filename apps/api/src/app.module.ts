@@ -62,6 +62,12 @@ import { PgContext } from "./common/pg/context";
 import { PgDbPort } from "./common/pg/pg.db";
 import { PgRateLimitBackend } from "./common/pg/pg-rate-limit";
 import { setRateLimitBackend } from "./common/rate-limit";
+import {
+  createTransactionalEmailFromEnv,
+  NOOP_TRANSACTIONAL_EMAIL,
+  TRANSACTIONAL_EMAIL_PORT,
+  type TransactionalEmailPort,
+} from "./email/email.service";
 
 function runtimeDatabaseUrl(): string | undefined {
   const url = process.env["DATABASE_URL"];
@@ -74,7 +80,15 @@ function runtimeDatabaseUrl(): string | undefined {
 @Module({
     controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, MetricsController],
   providers: [
-    AuthService,
+    {
+      provide: TRANSACTIONAL_EMAIL_PORT,
+      useFactory: () => createTransactionalEmailFromEnv(process.env),
+    },
+    {
+      provide: AuthService,
+      useFactory: (d: DbPort, email: TransactionalEmailPort) => new AuthService(d, email),
+      inject: ["DbPort", TRANSACTIONAL_EMAIL_PORT],
+    },
     TenantService,
     BusinessService,
     CatalogService,
@@ -136,7 +150,12 @@ export async function createTestApp(): Promise<INestApplication> {
   controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, MetricsController],
     providers: [
       { provide: "DbPort", useValue: db },
-      { provide: AuthService, useFactory: (d: DbPort) => new AuthService(d), inject: ["DbPort"] },
+      { provide: TRANSACTIONAL_EMAIL_PORT, useValue: NOOP_TRANSACTIONAL_EMAIL },
+      {
+        provide: AuthService,
+        useFactory: (d: DbPort, email: TransactionalEmailPort) => new AuthService(d, email),
+        inject: ["DbPort", TRANSACTIONAL_EMAIL_PORT],
+      },
       {
         provide: TenantService,
         useFactory: (d: DbPort) => new TenantService(d),

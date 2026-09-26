@@ -7,12 +7,19 @@ import { issueCsrfToken } from "../csrf";
 import { incrementMetric } from "../../common/metrics";
 import { buildRegistrationSeed, resolveActiveBusiness, ROLE_SEED } from "../../tenant/seed";
 import type { DbPort } from "../../common/db.port";
+import {
+  NOOP_TRANSACTIONAL_EMAIL,
+  type TransactionalEmailPort,
+} from "../../email/email.service";
 
 @Injectable()
 export class AuthService {
-  constructor(@Inject("DbPort") private readonly db: DbPort) {}
+  constructor(
+    @Inject("DbPort") private readonly db: DbPort,
+    private readonly email: TransactionalEmailPort = NOOP_TRANSACTIONAL_EMAIL,
+  ) {}
 
-  async register(input: { ownerName: string; email: string; password: string; businessName: string }, meta: { requestId: string; ip: string | null; userAgent: string | null }): Promise<{ user: { id: string; email: string; name: string }; business: { id: string; name: string; currency: string }; token: string; csrfToken: string; verificationToken?: string }> {
+  async register(input: { ownerName: string; email: string; password: string; businessName: string }, meta: { requestId: string; ip: string | null; userAgent: string | null }): Promise<{ user: { id: string; email: string; name: string }; business: { id: string; name: string; currency: string }; token: string; csrfToken: string; verificationRequired: boolean; verificationToken?: string }> {
     const existing = await this.db.findUserByEmail(input.email);
     if (existing) throw new Error("AUTH_EMAIL_TAKEN");
     const seed = await buildRegistrationSeed(input);
@@ -70,11 +77,38 @@ export class AuthService {
     void created;
     await this.db.appendAudit({ businessId: business.id, actorId: user.id, action: "auth.register", entityType: "User", entityId: user.id, requestId: meta.requestId });
     await this.db.appendAudit({ businessId: business.id, actorId: user.id, action: "business.create", entityType: "Business", entityId: business.id, requestId: meta.requestId });
+    if (verificationToken) {
+      try {
+        await this.email.sendEmailVerification({
+          to: user.email,
+          name: user.name,
+          token: verificationToken,
+        });
+        await this.db.appendAudit({
+          businessId: business.id,
+          actorId: user.id,
+          action: "auth.email-verification.sent",
+          entityType: "User",
+          entityId: user.id,
+          requestId: meta.requestId,
+        });
+      } catch {
+        await this.db.appendAudit({
+          businessId: business.id,
+          actorId: user.id,
+          action: "auth.email-verification.delivery-failed",
+          entityType: "User",
+          entityId: user.id,
+          requestId: meta.requestId,
+        });
+      }
+    }
     return {
       user: { id: user.id, email: user.email, name: user.name },
       business: { id: business.id, name: business.name, currency: business.currency },
       token: rec.token,
       csrfToken: issueCsrfToken(),
+      verificationRequired: requireEmailVerification,
       ...(verificationToken ? { verificationToken } : {}),
     };
   }
@@ -141,7 +175,59 @@ export class AuthService {
     if (!user) return {};
     const rec = createResetToken({ userId: user.id, requestId: meta.requestId, ip: meta.ip });
     await this.db.saveResetToken({ userId: rec.userId, tokenHash: rec.tokenHash, expiresAt: rec.expiresAt, usedAt: null, requestId: rec.requestId, ip: rec.ip });
+    try {
+      await this.email.sendPasswordReset({ to: user.email, name: user.name, token: rec.token });
+      await this.db.appendAudit({
+        businessId: null,
+        actorId: user.id,
+        action: "auth.password-reset.sent",
+        entityType: "User",
+        entityId: user.id,
+        requestId: meta.requestId,
+      });
+    } catch {
+      await this.db.appendAudit({
+        businessId: null,
+        actorId: user.id,
+        action: "auth.password-reset.delivery-failed",
+        entityType: "User",
+        entityId: user.id,
+        requestId: meta.requestId,
+      });
+    }
     return { tokenForTest: rec.token };
+  }
+
+  async resendVerification(email: string, meta: { requestId: string; ip: string | null }): Promise<void> {
+    void meta.ip;
+    const user = await this.db.findUserByEmail(email);
+    if (!user || user.emailVerified) return;
+    const token = randomBytes(16).toString("hex");
+    await this.db.createEmailVerificationToken({
+      userId: user.id,
+      tokenHash: hashToken(token),
+      expiresAt: new Date(Date.now() + 24 * 3600 * 1000),
+    });
+    try {
+      await this.email.sendEmailVerification({ to: user.email, name: user.name, token });
+      await this.db.appendAudit({
+        businessId: null,
+        actorId: user.id,
+        action: "auth.email-verification.resent",
+        entityType: "User",
+        entityId: user.id,
+        requestId: meta.requestId,
+      });
+    } catch {
+      await this.db.appendAudit({
+        businessId: null,
+        actorId: user.id,
+        action: "auth.email-verification.delivery-failed",
+        entityType: "User",
+        entityId: user.id,
+        requestId: meta.requestId,
+      });
+    }
   }
 
   async confirmReset(token: string, newPassword: string, requestId: string): Promise<void> {

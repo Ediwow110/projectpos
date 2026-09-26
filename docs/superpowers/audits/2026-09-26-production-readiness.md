@@ -8,7 +8,7 @@ The audit used the repository's memory-backed deterministic tests plus desktop/t
 
 ## Critical / high findings fixed
 
-1. **Password-reset credential disclosure.** `POST /api/v1/auth/password-reset/request` returned the reset token to an unauthenticated caller. The HTTP response now returns only the generic success message; a production delivery channel must provide the token out of band.
+1. **Password-reset credential disclosure.** `POST /api/v1/auth/password-reset/request` returned the reset token to an unauthenticated caller. The HTTP response now returns only the generic success message, and the credential is delivered out of band through the transactional-email service.
 2. **Production could silently run on ephemeral memory storage.** API startup now fails with `ENV_MISSING_DATABASE_URL` when `NODE_ENV=production` and `DATABASE_URL` is absent.
 3. **Password re-authentication did not refresh the sensitive-action window.** Confirming the password now refreshes the session `authenticatedAt` timestamp in both memory and PostgreSQL ports.
 4. **Password-reset single-use race.** Concurrent confirmations of one token could both pass the read-before-mark sequence. Reset consumption, password update, token use, and session revocation now run under the shared reset-token lock/transaction.
@@ -23,12 +23,13 @@ Each code finding above has a focused regression test that reproduced the pre-fi
 
 ## Verification evidence
 
-- `pnpm test`: all 7 package tasks passed; after the final email-verification guard regression, the API suite is 71 files / 360 tests and the web suite is 26 files / 81 tests.
+- `pnpm test`: all 7 package tasks passed; after transactional-email integration the API suite is **73 files / 368 tests** and the web suite is **26 files / 81 tests**.
 - `pnpm typecheck`: all 7 package tasks passed.
-- `pnpm build`: production web build passed and generated 31/31 pages.
+- `pnpm build`: production web build passed and generated **32/32 pages**, including `/verify-email`.
 - `pnpm verify`: `SCAFFOLD_OK`.
 - `pnpm audit --prod`: no known vulnerabilities.
 - Critical Playwright matrix: desktop + 1024px tablet `critical-path`, `payment-unknown`, and `offline` suites passed 8/8.
+- Registration/billing Playwright matrix after email integration passed **14/14** across desktop and tablet.
 
 ## PostgreSQL release gate — passed
 
@@ -44,9 +45,11 @@ Each code finding above has a focused regression test that reproduced the pre-fi
 
 ## Remaining release blockers / external dependencies
 
-### 1. Transactional email delivery is not implemented
+### 1. Transactional email provider deployment configuration
 
-Password reset and optional email verification create secure, hashed, expiring tokens, but there is no SMTP/email-provider integration in the repository. The HTTP API intentionally does not reveal these credentials. Before production use of password reset—or before enabling `AUTH_REQUIRE_EMAIL_VERIFICATION=1`—connect a transactional email provider and deliver the generated token/link out of band.
+Transactional email is now implemented through a provider-agnostic SMTP adapter using Nodemailer. Password-reset links expire in one hour; verification links expire in 24 hours; neither credential is returned by the public HTTP endpoints. Registration reports only `verificationRequired`, resend responses are non-enumerating, and delivery failures are recorded as audit actions without leaking credentials. Production startup fails closed when mail configuration is missing, and production `WEB_URL` must be HTTPS.
+
+The adapter was exercised end-to-end against a disposable SMTP server (Mailpit): registration emitted a verification email, password reset emitted a reset email, both messages contained the expected web links, the verification link completed successfully in a real browser, and the reset link opened directly on the new-password form. Before public deployment, configure the chosen external SMTP provider plus sender-domain authentication (SPF/DKIM/DMARC as required by that provider) and run the smoke procedure in `docs/superpowers/runbooks/email-delivery.md`.
 
 ### 2. Real card/e-wallet settlement is not integrated
 
@@ -54,4 +57,4 @@ The payment-provider layer currently contains manual/test-double adapters, and t
 
 ## Release position
 
-The application is materially safer and more internally consistent after this pass, and the memory-backed, PostgreSQL, migration, backup/restore, unit, contract, and desktop/tablet E2E gates are green. The remaining release blockers are external integrations: transactional email delivery for reset/verification credentials and real provider settlement if Card/GCash/Maya are expected to settle automatically rather than operate as manual tenders.
+The application is materially safer and more internally consistent after this pass, and the memory-backed, PostgreSQL, migration, backup/restore, unit, contract, SMTP-smoke, and desktop/tablet E2E gates are green. Transactional email code is complete; deployment still needs real SMTP credentials/sender-domain setup. The remaining product integration blocker is real provider settlement if Card/GCash/Maya are expected to settle automatically rather than operate as manual tenders.
