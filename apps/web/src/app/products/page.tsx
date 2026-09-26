@@ -2,14 +2,15 @@
 
 import type { JSX } from "react";
 import Link from "next/link";
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AppShell } from "../../components/AppShell";
+import { Modal } from "../../components/Modal";
 import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "../../components/premium";
 import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { ApiError, apiFetch } from "../../lib/api";
-import { buildProductSearch } from "../../lib/catalog";
+import { buildProductSearch, canEditCatalog, canSeeCost } from "../../lib/catalog";
 
 interface ProductRow {
   id: string;
@@ -31,15 +32,133 @@ interface Me {
   businessName?: string;
 }
 
+interface Category {
+  id: string;
+  name: string;
+  isActive: boolean;
+}
+
+interface Csrf {
+  csrfToken: string;
+}
+
+interface CreatedProduct {
+  id: string;
+  name: string;
+}
+
+function toMinor(value: string): number | null {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount < 0) return null;
+  const minor = Math.round(amount * 100);
+  return Number.isSafeInteger(minor) ? minor : null;
+}
+
 export default function ProductsPage(): JSX.Element {
+  const queryClient = useQueryClient();
   const [q, setQ] = useState("");
   const [active, setActive] = useState("true");
   const [page, setPage] = useState(1);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [createSuccess, setCreateSuccess] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [name, setName] = useState("");
+  const [sku, setSku] = useState("");
+  const [barcode, setBarcode] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [price, setPrice] = useState("");
+  const [cost, setCost] = useState("");
+  const [unit, setUnit] = useState("pc");
+  const [reorderLevel, setReorderLevel] = useState("0");
+  const [trackInventory, setTrackInventory] = useState(true);
   const meQuery = useQuery({
     queryKey: ["me"],
     queryFn: () => apiFetch<Me>("/api/v1/me"),
     retry: false,
   });
+  const categoriesQuery = useQuery({
+    queryKey: ["categories"],
+    queryFn: () => apiFetch<{ items: Category[] }>("/api/v1/categories"),
+    retry: false,
+    enabled: createOpen,
+  });
+
+  const closeCreate = useCallback((): void => {
+    if (saving) return;
+    setCreateOpen(false);
+    setCreateError("");
+    if (typeof window !== "undefined" && window.location.search.includes("create=1")) {
+      window.history.replaceState(null, "", "/products");
+    }
+  }, [saving]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const shouldCreate = new URLSearchParams(window.location.search).get("create") === "1";
+    if (shouldCreate) setCreateOpen(true);
+  }, []);
+
+  async function createProduct(event: React.FormEvent): Promise<void> {
+    event.preventDefault();
+    setCreateError("");
+    const priceMinor = toMinor(price);
+    const costMinor = cost.trim() === "" ? 0 : toMinor(cost);
+    const reorder = Number(reorderLevel);
+    if (priceMinor === null) {
+      setCreateError("VALIDATION: Enter a valid non-negative selling price.");
+      return;
+    }
+    if (costMinor === null) {
+      setCreateError("VALIDATION: Enter a valid non-negative cost.");
+      return;
+    }
+    if (!Number.isInteger(reorder) || reorder < 0) {
+      setCreateError("VALIDATION: Reorder level must be a whole number of 0 or more.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
+      const created = await apiFetch<CreatedProduct>("/api/v1/products", {
+        csrfToken: csrf.csrfToken,
+        init: {
+          method: "POST",
+          body: JSON.stringify({
+            name: name.trim(),
+            ...(sku.trim() ? { sku: sku.trim() } : {}),
+            ...(barcode.trim() ? { barcode: barcode.trim() } : {}),
+            ...(categoryId ? { categoryId } : {}),
+            unit: unit.trim() || "pc",
+            priceMinor,
+            costMinor,
+            reorderLevel: reorder,
+            trackInventory,
+          }),
+        },
+      });
+      setName("");
+      setSku("");
+      setBarcode("");
+      setCategoryId("");
+      setPrice("");
+      setCost("");
+      setUnit("pc");
+      setReorderLevel("0");
+      setTrackInventory(true);
+      setCreateSuccess(`${created.name} was added to the catalog.`);
+      setCreateOpen(false);
+      if (typeof window !== "undefined" && window.location.search.includes("create=1")) {
+        window.history.replaceState(null, "", "/products");
+      }
+      await queryClient.invalidateQueries({ queryKey: ["products"] });
+    } catch (err) {
+      setCreateError(err instanceof ApiError ? `${err.code}: ${err.message}` : "Product create failed");
+    } finally {
+      setSaving(false);
+    }
+  }
   const searchQuery = useQuery({
     queryKey: ["products", q, active, page],
     queryFn: () => apiFetch<SearchResult>(buildProductSearch({ q, active, page, pageSize: 20 })),
@@ -76,6 +195,9 @@ export default function ProductsPage(): JSX.Element {
   const pages = Math.max(1, Math.ceil(data.total / data.pageSize));
   const visibleActive = data.items.filter((product) => product.isActive).length;
   const visibleArchived = data.items.length - visibleActive;
+  const role = meQuery.data?.role ?? "cashier";
+  const editable = canEditCatalog(role);
+  const showCost = canSeeCost(role);
 
   return (
     <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role}>
@@ -87,12 +209,28 @@ export default function ProductsPage(): JSX.Element {
           actions={
             <>
               <GhostButton type="button">⇩ Import / Export</GhostButton>
-              <Link href="/products/new" className="inline-flex min-h-10 items-center rounded-[10px] bg-[#f35d3f] px-4 text-sm font-semibold text-white shadow-[0_8px_20px_-8px_rgb(243_93_63/0.55)] hover:bg-[#d94a30]">
-                + Add product
-              </Link>
+              {editable ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreateError("");
+                    setCreateSuccess("");
+                    setCreateOpen(true);
+                  }}
+                  className="inline-flex min-h-10 items-center rounded-[10px] bg-[#f35d3f] px-4 text-sm font-semibold text-white shadow-[0_8px_20px_-8px_rgb(243_93_63/0.55)] hover:bg-[#d94a30]"
+                >
+                  + Add product
+                </button>
+              ) : null}
             </>
           }
         />
+
+        {createSuccess ? (
+          <div role="status" className="rounded-xl border border-[#cfe9dc] bg-[#eaf7f0] px-4 py-3 text-sm font-medium text-[#1f8a5b]">
+            {createSuccess}
+          </div>
+        ) : null}
 
         <section aria-label="Catalog summary" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard label="Matching products" value={data.total.toLocaleString("en-PH")} icon="◇" meta={active === "all" ? "All statuses" : active === "true" ? "Active filter" : "Archived filter"} />
@@ -178,6 +316,87 @@ export default function ProductsPage(): JSX.Element {
           </div>
         </DataTableFrame>
       </main>
+
+      <Modal
+        open={createOpen && editable}
+        onClose={closeCreate}
+        title="Add product"
+        description="Create a sellable catalog item without leaving the Products workspace. Inventory quantity is recorded separately as an audited stock movement."
+        footer={
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <GhostButton type="button" onClick={closeCreate} disabled={saving}>Cancel</GhostButton>
+            <PrimaryButton type="submit" form="create-product-form" disabled={saving}>
+              {saving ? "Adding product…" : "Add product"}
+            </PrimaryButton>
+          </div>
+        }
+      >
+        <form id="create-product-form" onSubmit={(event) => void createProduct(event)} className="space-y-5">
+          <section>
+            <SectionHeader title="Product identity" description="Name is required. SKU and barcode are optional but must remain unique within the business." />
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <label className="text-[11px] font-semibold text-[#655b53] sm:col-span-2">
+                Product name
+                <input value={name} onChange={(event) => setName(event.target.value)} required maxLength={160} autoFocus placeholder="e.g. Iced Latte" className="field mt-1.5" />
+              </label>
+              <label className="text-[11px] font-semibold text-[#655b53]">
+                SKU
+                <input value={sku} onChange={(event) => setSku(event.target.value)} maxLength={64} placeholder="Optional" className="field mt-1.5" />
+              </label>
+              <label className="text-[11px] font-semibold text-[#655b53]">
+                Barcode
+                <input value={barcode} onChange={(event) => setBarcode(event.target.value)} maxLength={64} placeholder="Optional" className="field mt-1.5" />
+              </label>
+              <label className="text-[11px] font-semibold text-[#655b53]">
+                Category
+                <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className="field mt-1.5">
+                  <option value="">Uncategorized</option>
+                  {(categoriesQuery.data?.items ?? []).filter((category) => category.isActive).map((category) => (
+                    <option key={category.id} value={category.id}>{category.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-[11px] font-semibold text-[#655b53]">
+                Unit
+                <input value={unit} onChange={(event) => setUnit(event.target.value)} required maxLength={16} placeholder="pc" className="field mt-1.5" />
+              </label>
+            </div>
+          </section>
+
+          <section className="border-t border-[#eadfd6] pt-5">
+            <SectionHeader title="Pricing" description="Amounts are stored in minor currency units and validated by the API." />
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <label className="text-[11px] font-semibold text-[#655b53]">
+                Selling price (PHP)
+                <input inputMode="decimal" value={price} onChange={(event) => setPrice(event.target.value)} required placeholder="0.00" className="field mt-1.5" />
+              </label>
+              {showCost ? (
+                <label className="text-[11px] font-semibold text-[#655b53]">
+                  Cost (PHP)
+                  <input inputMode="decimal" value={cost} onChange={(event) => setCost(event.target.value)} placeholder="0.00" className="field mt-1.5" />
+                </label>
+              ) : null}
+            </div>
+          </section>
+
+          <section className="border-t border-[#eadfd6] pt-5">
+            <SectionHeader title="Inventory behavior" description="Creating a product does not fabricate opening stock. Add actual quantity later through Inventory movements." />
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <label className="text-[11px] font-semibold text-[#655b53]">
+                Reorder level
+                <input type="number" min={0} step={1} value={reorderLevel} onChange={(event) => setReorderLevel(event.target.value)} className="field mt-1.5" />
+              </label>
+              <label className="flex min-h-[54px] items-center gap-3 self-end rounded-[10px] border border-[#e4d9d0] bg-white px-4 text-[12px] font-semibold text-[#655b53]">
+                <input type="checkbox" checked={trackInventory} onChange={(event) => setTrackInventory(event.target.checked)} className="h-4 w-4 accent-[#f35d3f]" />
+                Track inventory for this product
+              </label>
+            </div>
+          </section>
+
+          {categoriesQuery.isError ? <p className="text-[11px] text-[#b56d0c]">Categories could not be loaded. You can still create the product uncategorized.</p> : null}
+          {createError ? <p role="alert" className="rounded-xl bg-[#fff0f0] px-3 py-2.5 text-[12px] font-medium text-[#c43e3e]">{createError}</p> : null}
+        </form>
+      </Modal>
     </AppShell>
   );
 }
