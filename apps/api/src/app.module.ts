@@ -1,4 +1,4 @@
-import { MiddlewareConsumer, Module, type NestModule } from "@nestjs/common";
+import { MiddlewareConsumer, Module, type NestModule, Optional, Inject } from "@nestjs/common";
 import { APP_FILTER } from "@nestjs/core";
 import { Test } from "@nestjs/testing";
 import type { INestApplication } from "@nestjs/common";
@@ -49,6 +49,7 @@ import { BillingService } from "./billing/nest/billing.service";
 import { ExportService } from "./exports/nest/export.service";
 import { PrintService } from "./print/nest/print.service";
 import { DisplayService } from "./display/nest/display.service";
+import { HealthController } from "./common/health.controller";
 import { RequestIdMiddleware } from "./common/request-id.middleware";
 import { SecurityHeadersMiddleware, securityHeaders } from "./common/security-headers.middleware";
 import { MetricsMiddleware, httpMetrics } from "./common/metrics.middleware";
@@ -78,7 +79,7 @@ function runtimeDatabaseUrl(): string | undefined {
 }
 
 @Module({
-    controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, MetricsController],
+    controllers: [HealthController, AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, MetricsController],
   providers: [
     {
       provide: TRANSACTIONAL_EMAIL_PORT,
@@ -115,13 +116,19 @@ function runtimeDatabaseUrl(): string | undefined {
     // Phase 12: DATABASE_URL selects the PostgreSQL runtime store (the
     // migrations under packages/database must be applied to that database
     // first — see scripts/verify-phase11-migration.mjs). Unset keeps the
-    // single-process memory store for local dev and tests.
+    // single-process memory store for local dev and tests. The context is
+    // its own provider so shutdown can end the pool.
+    {
+      provide: "PgContext",
+      useFactory: (): PgContext | null => {
+        const url = runtimeDatabaseUrl();
+        return url ? new PgContext(url) : null;
+      },
+    },
     {
       provide: "DbPort",
-      useFactory: () => {
-        const url = runtimeDatabaseUrl();
-        if (url) {
-          const ctx = new PgContext(url);
+      useFactory: (ctx: PgContext | null) => {
+        if (ctx) {
           // Rate limits become cross-process with the store (PLAN §7).
           setRateLimitBackend(new PgRateLimitBackend(ctx));
           return new PgDbPort(ctx);
@@ -129,13 +136,22 @@ function runtimeDatabaseUrl(): string | undefined {
         setRateLimitBackend(null);
         return createMemoryDb();
       },
+      inject: ["PgContext"],
     },
     { provide: APP_FILTER, useClass: AuthErrorFilter },
   ],
 })
 export class AppModule implements NestModule {
+  constructor(@Optional() @Inject("PgContext") private readonly pg: PgContext | null) {}
+
   configure(consumer: MiddlewareConsumer): void {
     consumer.apply(RequestIdMiddleware, SecurityHeadersMiddleware, MetricsMiddleware).forRoutes("*");
+  }
+
+  // Hosting platforms stop instances with SIGTERM; ending the pool lets
+  // in-flight transactions commit before the process exits.
+  async beforeApplicationShutdown(): Promise<void> {
+    await this.pg?.close();
   }
 }
 
@@ -147,7 +163,7 @@ export async function createTestApp(): Promise<INestApplication> {
     ? new PgDbPort(new PgContext(databaseUrl))
     : createMemoryDb();
   const moduleRef = await Test.createTestingModule({
-  controllers: [AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, MetricsController],
+  controllers: [HealthController, AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, MetricsController],
     providers: [
       { provide: "DbPort", useValue: db },
       { provide: TRANSACTIONAL_EMAIL_PORT, useValue: NOOP_TRANSACTIONAL_EMAIL },
