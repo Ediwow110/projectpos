@@ -1,0 +1,62 @@
+# Render Blueprint for the free-tier deployment.
+#
+#   Render dashboard → New → Blueprint → connect this repository, then fill
+#   the sync:false values (DATABASE_URL, BREVO_API_KEY, EMAIL_FROM) in the
+#   dashboard when prompted. They are secrets and are never stored in git.
+#
+# Design constraints this file encodes:
+# - PostgreSQL lives in Neon's free tier (Render's own free Postgres expires
+#   after 30 days). The API applies pending migrations at boot via the
+#   idempotent _migrations ledger, so first boot and every redeploy are safe.
+# - Free plans block outbound SMTP (25/465/587), so email uses the Brevo
+#   HTTPS transport: set BREVO_API_KEY and do NOT set SMTP_* variables
+#   (the API refuses a configuration with both transports).
+# - nexpos-api.onrender.com and nexpos-web.onrender.com share the
+#   registrable domain onrender.com, which is what makes SameSite=Lax session
+#   cookies work across the two origins. If a service name is taken and you
+#   rename one, update WEB_URL / NEXT_PUBLIC_API_BASE and
+#   docker/web.render.Dockerfile to match.
+services:
+  - type: web
+    name: nexpos-api
+    runtime: docker
+    dockerfilePath: ./docker/api.Dockerfile
+    dockerContext: ./
+    plan: free
+    healthCheckPath: /healthz
+    autoDeploy: true
+    dockerCommand: sh -c "cd /app && node scripts/apply-migrations.mjs && cd apps/api && exec node --import tsx src/main.ts"
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Render routes web traffic to $PORT (10000 on free plans).
+      - key: API_PORT
+        value: "10000"
+      - key: WEB_URL
+        value: https://nexpos-web.onrender.com
+      - key: AUTH_REQUIRE_EMAIL_VERIFICATION
+        value: "1"
+      # Neon free compute is small; keep the pool modest.
+      - key: PG_POOL_MAX
+        value: "10"
+      - key: DATABASE_URL
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+
+  - type: web
+    name: nexpos-web
+    runtime: docker
+    dockerfilePath: ./docker/web.render.Dockerfile
+    dockerContext: ./
+    plan: free
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Client bundles inline this at build time; the runtime value keeps
+      # server rendering consistent with it.
+      - key: NEXT_PUBLIC_API_BASE
+        value: https://nexpos-api.onrender.com
