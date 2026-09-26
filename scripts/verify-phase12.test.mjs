@@ -21,6 +21,7 @@ const checks = [
   existsSync("tests/phase12-exit.test.ts"),
   ci.includes("pg:"),
   ci.includes("vitest.pg.config.ts"),
+  ci.includes("PGTEST_BASE"),
   ci.includes("verify-phase12"),
   // The boot branch: DATABASE_URL selects the PostgreSQL store.
   readFileSync("apps/api/src/app.module.ts", "utf8").includes("DATABASE_URL"),

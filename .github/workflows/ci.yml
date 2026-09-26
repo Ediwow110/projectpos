@@ -63,7 +63,7 @@ jobs:
       # compose port 5433, so point it at the service.
       - run: pnpm --filter @pos/api exec vitest run --config vitest.pg.config.ts
         env:
-          PGTEST_URL: postgres://pos:pos@localhost:5432/postgres
+          PGTEST_BASE: postgres://pos:pos@localhost:5432
       - run: node scripts/verify-phase12.test.mjs
   e2e:
     if: github.event_name == 'pull_request'

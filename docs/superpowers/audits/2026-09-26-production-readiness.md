@@ -4,7 +4,7 @@
 
 This pass audited the current `master` application after the premium Figma UI merge, with emphasis on authentication, tenant/RBAC boundaries, payment/idempotency behavior, inventory and branch attribution, offline replay, shift/cash consistency, plan entitlements, production persistence, dependency security, and release verification.
 
-The audit used the repository's memory-backed deterministic tests plus the desktop/tablet Playwright critical flows. PostgreSQL-specific execution was not available in this session because `DATABASE_URL` was not set; PostgreSQL behavior therefore remains a mandatory pre-deployment verification item.
+The audit used the repository's memory-backed deterministic tests plus desktop/tablet Playwright flows. A follow-up release gate then ran the PostgreSQL parity, migration, multi-instance, production-boot, browser, and backup/restore checks against the repository's PostgreSQL 16 Docker runtime.
 
 ## Critical / high findings fixed
 
@@ -30,6 +30,18 @@ Each code finding above has a focused regression test that reproduced the pre-fi
 - `pnpm audit --prod`: no known vulnerabilities.
 - Critical Playwright matrix: desktop + 1024px tablet `critical-path`, `payment-unknown`, and `offline` suites passed 8/8.
 
+## PostgreSQL release gate — passed
+
+- Local runtime: PostgreSQL 16 (`postgres:16-alpine`) through `docker/docker-compose.yml` on port 5433.
+- PG parity suite: `pnpm --filter @pos/api test:pg` passed **13 files / 130 tests**.
+- Multi-instance proofs passed for last-unit stock, one idempotency key, and one webhook claim.
+- A clean disposable `pos_release_gate` database applied **16/16 migrations** from zero; an immediate rerun applied **0**, proving migration idempotency at HEAD.
+- PostgreSQL-backed critical Playwright matrix passed **8/8** across desktop and tablet.
+- Full PostgreSQL-backed Playwright suite passed **32/32** across desktop and tablet.
+- `NODE_ENV=production` API booted successfully against the migrated PostgreSQL database. Its unauthenticated `/api/v1/health` response remained the documented protected-route `401 TENANT_REQUIRED` contract.
+- `pg_dump`/`pg_restore` round trip succeeded into a separate `pos_restore_gate` database. Source/restored representative counts matched exactly: `_migrations=16`, `Business=32`, `User=32`, `Product=32`, `Sale=14`, `Payment=12`, `Shift=4`, `Expense=0`.
+- Fixed the Phase 12 CI PG harness environment mismatch: the helper reads `PGTEST_BASE`, and CI now sets `PGTEST_BASE` instead of the unused `PGTEST_URL`. `verify-phase12` now asserts this wiring and passes.
+
 ## Remaining release blockers / external dependencies
 
 ### 1. Transactional email delivery is not implemented
@@ -40,10 +52,6 @@ Password reset and optional email verification create secure, hashed, expiring t
 
 The payment-provider layer currently contains manual/test-double adapters, and the repository explicitly has no real-money provider SDK integration. Cash flows are complete; Card/GCash/Maya should be treated as manual tender recording unless a real provider integration and operational reconciliation process are added. Do not represent those methods as automatically settled by an external provider until that integration exists.
 
-### 3. PostgreSQL-backed release verification is still required
-
-This audit session had no `DATABASE_URL`, so the PostgreSQL-specific test suites and cross-process lock behavior were not executed here. Before deployment, run the PostgreSQL suite against the exact production-compatible PostgreSQL version, including multi-instance/advisory-lock tests, migrations, backup/restore verification, and the critical Playwright flows with the API on PostgreSQL.
-
 ## Release position
 
-The application is materially safer and more internally consistent after this pass, and the memory-backed/unit/contract/E2E gates are green. It should not yet be called fully production-ready until the remaining external delivery/provider integrations are resolved as applicable and the PostgreSQL-backed release gate is executed successfully.
+The application is materially safer and more internally consistent after this pass, and the memory-backed, PostgreSQL, migration, backup/restore, unit, contract, and desktop/tablet E2E gates are green. The remaining release blockers are external integrations: transactional email delivery for reset/verification credentials and real provider settlement if Card/GCash/Maya are expected to settle automatically rather than operate as manual tenders.
