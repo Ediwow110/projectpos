@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { canPresentPayAction, paymentPresentation, productInitials, saleFromCompleteResponse } from "./pos-view";
+import { canPresentPayAction, paymentPresentation, productInitials, productTileClass, saleFromCompleteResponse } from "./pos-view";
 
 describe("POS presentation safety", () => {
   it("never presents PAYMENT_UNKNOWN as success", () => {
@@ -48,9 +48,10 @@ describe("POS presentation safety", () => {
   });
 
   it("keeps a compact persistent cart action surface for 1024px tablet POS", () => {
-    const source = readFileSync(resolve(process.cwd(), "src/app/pos/page.tsx"), "utf8");
-    expect(source).toContain("lg:max-xl:flex");
-    expect(source).toContain("Tablet cart");
+    const productSource = readFileSync(resolve(process.cwd(), "src/components/PosProductCatalog.tsx"), "utf8");
+    const responsiveCartSource = readFileSync(resolve(process.cwd(), "src/components/PosResponsiveCart.tsx"), "utf8");
+    expect(productSource).toContain("lg:max-xl:flex");
+    expect(responsiveCartSource).toContain("Tablet cart");
   });
 
   it("builds compact two-character initials for product tiles", () => {
@@ -58,5 +59,10 @@ describe("POS presentation safety", () => {
     expect(productInitials("Fresh Milk")).toBe("FM");
     expect(productInitials("Cola")).toBe("CO");
     expect(productInitials("  ")).toBe("?");
+  });
+
+  it("keeps product tile colors deterministic", () => {
+    expect(productTileClass("Coffee")).toBe(productTileClass("Coffee"));
+    expect(productTileClass("Coffee")).toMatch(/^bg-\[#/);
   });
 });

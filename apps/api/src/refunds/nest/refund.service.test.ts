@@ -73,6 +73,68 @@ describe("phase6 refund service", () => {
     expect(again.replayed).toBe(true);
     expect((await db.listRefundsBySale(saleId, "b1")).length).toBe(1);
   });
+  it("serializes approval and rejection of the same requested refund", async () => {
+    const { db, svc, saleId } = await setupRefund();
+    const sales = new SalesService(db);
+    await sales.requestRefund(
+      "b1",
+      "u1",
+      "r-request",
+      saleId,
+      "customer complaint",
+      "refund-race-request",
+      ALL,
+    );
+    const items = await db.listSaleItems(saleId, "b1");
+    const originalCreateRefund = db.createRefund.bind(db);
+    let enteredCreate!: () => void;
+    let releaseCreate!: () => void;
+    const createEntered = new Promise<void>((resolve) => {
+      enteredCreate = resolve;
+    });
+    const createReleased = new Promise<void>((resolve) => {
+      releaseCreate = resolve;
+    });
+    db.createRefund = async (input) => {
+      enteredCreate();
+      await createReleased;
+      return originalCreateRefund(input);
+    };
+
+    const approving = svc.approveRefund(
+      "b1",
+      "u2",
+      "r-approve",
+      saleId,
+      {
+        items: [{ saleItemId: items[0]!.id, qty: 1 }],
+        key: "refund-race-approve",
+      },
+      ALL,
+      "owner",
+    );
+    await createEntered;
+
+    let rejectSettled = false;
+    const rejecting = svc
+      .rejectRefund(
+        "b1",
+        "u3",
+        "r-reject",
+        saleId,
+        "not justified",
+        ALL,
+      )
+      .finally(() => {
+        rejectSettled = true;
+      });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(rejectSettled).toBe(false);
+
+    releaseCreate();
+    await approving;
+    await expect(rejecting).rejects.toThrow("SALE_INVALID_TRANSITION");
+  });
 });
 
 describe("phase11 refund approval threshold", () => {

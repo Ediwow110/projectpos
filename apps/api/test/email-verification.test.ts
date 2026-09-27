@@ -44,5 +44,25 @@ describe("phase11 email verification (FR-AUTH-01 when enabled)", () => {
       // The token is single-use.
       await expect(auth.verifyEmail(reg.verificationToken!)).rejects.toThrow("VALIDATION");
     });
+
+    it("allows exactly one concurrent redemption of a verification token", async () => {
+      const db = createMemoryDb();
+      const auth = new AuthService(db);
+      const stamp = Date.now();
+      const meta = { requestId: "r3", ip: null, userAgent: null };
+      const reg = await auth.register(
+        { ownerName: "O", email: `concurrent-${stamp}@x.test`, password: "long-enough-pass", businessName: "B" },
+        meta,
+      );
+      expect(typeof reg.verificationToken).toBe("string");
+
+      const settled = await Promise.allSettled([
+        auth.verifyEmail(reg.verificationToken!),
+        auth.verifyEmail(reg.verificationToken!),
+      ]);
+
+      expect(settled.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+      expect(settled.filter((result) => result.status === "rejected")).toHaveLength(1);
+    });
   });
 });

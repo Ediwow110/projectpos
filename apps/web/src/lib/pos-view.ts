@@ -46,3 +46,10 @@ export function productInitials(name: string): string {
   if (words.length === 1) return words[0]!.slice(0, 2).toUpperCase();
   return (words[0]!.slice(0, 1) + words[1]!.slice(0, 1)).toUpperCase();
 }
+
+export function productTileClass(name: string): string {
+  const palette = ["bg-[#4a2118]", "bg-[#302e2b]", "bg-[#34302c]", "bg-[#3d332d]", "bg-[#292725]", "bg-[#46342e]"];
+  let hash = 0;
+  for (const ch of name) hash = (hash * 31 + ch.charCodeAt(0)) % 997;
+  return palette[hash % palette.length]!;
+}

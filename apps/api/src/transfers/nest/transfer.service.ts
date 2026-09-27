@@ -2,6 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { withScope } from "@pos/database";
 import type { DbPort, DbStockTransfer, DbStockTransferLine } from "../../common/db.port";
 import { fingerprintPayload } from "../../sales/idempotency";
+import { withInventoryLocks } from "../../inventory/inventory-locks";
 import { canTransitionTransfer } from "../transfer-math";
 
 export interface TransferLineInput {
@@ -143,58 +144,68 @@ export class TransferService {
       }
       canTransitionTransfer(t.status, "IN_TRANSIT");
       const lines = await this.db.listTransferLines(t.id, businessId);
-      // Pre-check every line before writing anything.
-      for (const line of lines) {
-        const product = await this.db.findProductById(line.productId, businessId);
-        if (!product) throw new Error("NOT_FOUND");
-        const preventOversell =
-          (product as { preventOversell?: boolean }).preventOversell ?? true;
-        const balance = await this.db.findBalance(line.productId, businessId, t.fromBranchId);
-        const onHand = balance?.qtyOnHand ?? 0;
-        if (preventOversell && onHand < line.qty) throw new Error("INSUFFICIENT_STOCK");
-      }
-      for (const line of lines) {
-        await this.db.createMovement({
-          businessId,
-          productId: line.productId,
-          type: "transfer_out",
-          qtyDelta: -line.qty,
-          reason: null,
-          referenceType: "StockTransfer",
-          referenceId: t.id,
-          actorId,
-          requestId,
-          branchId: t.fromBranchId,
-        });
-        const balance = await this.db.findBalance(line.productId, businessId, t.fromBranchId);
-        await this.db.upsertBalance({
-          businessId,
-          branchId: t.fromBranchId,
-          productId: line.productId,
-          qtyOnHand: (balance?.qtyOnHand ?? 0) - line.qty,
-        });
-      }
-      const updated =
-        (await this.db.updateTransfer(t.id, businessId, {
-          status: "IN_TRANSIT",
-          dispatchedBy: actorId,
-        })) ?? t;
-      await this.db.claimIdempotency({
+      return withInventoryLocks(
+        this.db,
         businessId,
-        key,
-        commandType: "transfer.dispatch",
-        fingerprint,
-        resultId: t.id,
-      });
-      await this.db.appendAudit({
-        businessId,
-        actorId,
-        action: "transfer.dispatch",
-        entityType: "StockTransfer",
-        entityId: t.id,
-        requestId,
-      });
-      return { transfer: await this.embed(updated), replayed: false };
+        lines.map((line) => ({
+          productId: line.productId,
+          branchId: t.fromBranchId,
+        })),
+        async () => {
+          // Pre-check every line after the canonical inventory locks are held.
+          for (const line of lines) {
+            const product = await this.db.findProductById(line.productId, businessId);
+            if (!product) throw new Error("NOT_FOUND");
+            const preventOversell =
+              (product as { preventOversell?: boolean }).preventOversell ?? true;
+            const balance = await this.db.findBalance(line.productId, businessId, t.fromBranchId);
+            const onHand = balance?.qtyOnHand ?? 0;
+            if (preventOversell && onHand < line.qty) throw new Error("INSUFFICIENT_STOCK");
+          }
+          for (const line of lines) {
+            await this.db.createMovement({
+              businessId,
+              productId: line.productId,
+              type: "transfer_out",
+              qtyDelta: -line.qty,
+              reason: null,
+              referenceType: "StockTransfer",
+              referenceId: t.id,
+              actorId,
+              requestId,
+              branchId: t.fromBranchId,
+            });
+            const balance = await this.db.findBalance(line.productId, businessId, t.fromBranchId);
+            await this.db.upsertBalance({
+              businessId,
+              branchId: t.fromBranchId,
+              productId: line.productId,
+              qtyOnHand: (balance?.qtyOnHand ?? 0) - line.qty,
+            });
+          }
+          const updated =
+            (await this.db.updateTransfer(t.id, businessId, {
+              status: "IN_TRANSIT",
+              dispatchedBy: actorId,
+            })) ?? t;
+          await this.db.claimIdempotency({
+            businessId,
+            key,
+            commandType: "transfer.dispatch",
+            fingerprint,
+            resultId: t.id,
+          });
+          await this.db.appendAudit({
+            businessId,
+            actorId,
+            action: "transfer.dispatch",
+            entityType: "StockTransfer",
+            entityId: t.id,
+            requestId,
+          });
+          return { transfer: await this.embed(updated), replayed: false };
+        },
+      );
     });
   }
 
@@ -219,48 +230,58 @@ export class TransferService {
       }
       canTransitionTransfer(t.status, "RECEIVED");
       const lines = await this.db.listTransferLines(t.id, businessId);
-      for (const line of lines) {
-        await this.db.createMovement({
-          businessId,
-          productId: line.productId,
-          type: "transfer_in",
-          qtyDelta: line.qty,
-          reason: null,
-          referenceType: "StockTransfer",
-          referenceId: t.id,
-          actorId,
-          requestId,
-          branchId: t.toBranchId,
-        });
-        const balance = await this.db.findBalance(line.productId, businessId, t.toBranchId);
-        await this.db.upsertBalance({
-          businessId,
-          branchId: t.toBranchId,
-          productId: line.productId,
-          qtyOnHand: (balance?.qtyOnHand ?? 0) + line.qty,
-        });
-      }
-      const updated =
-        (await this.db.updateTransfer(t.id, businessId, {
-          status: "RECEIVED",
-          receivedBy: actorId,
-        })) ?? t;
-      await this.db.claimIdempotency({
+      return withInventoryLocks(
+        this.db,
         businessId,
-        key,
-        commandType: "transfer.receive",
-        fingerprint,
-        resultId: t.id,
-      });
-      await this.db.appendAudit({
-        businessId,
-        actorId,
-        action: "transfer.receive",
-        entityType: "StockTransfer",
-        entityId: t.id,
-        requestId,
-      });
-      return { transfer: await this.embed(updated), replayed: false };
+        lines.map((line) => ({
+          productId: line.productId,
+          branchId: t.toBranchId,
+        })),
+        async () => {
+          for (const line of lines) {
+            await this.db.createMovement({
+              businessId,
+              productId: line.productId,
+              type: "transfer_in",
+              qtyDelta: line.qty,
+              reason: null,
+              referenceType: "StockTransfer",
+              referenceId: t.id,
+              actorId,
+              requestId,
+              branchId: t.toBranchId,
+            });
+            const balance = await this.db.findBalance(line.productId, businessId, t.toBranchId);
+            await this.db.upsertBalance({
+              businessId,
+              branchId: t.toBranchId,
+              productId: line.productId,
+              qtyOnHand: (balance?.qtyOnHand ?? 0) + line.qty,
+            });
+          }
+          const updated =
+            (await this.db.updateTransfer(t.id, businessId, {
+              status: "RECEIVED",
+              receivedBy: actorId,
+            })) ?? t;
+          await this.db.claimIdempotency({
+            businessId,
+            key,
+            commandType: "transfer.receive",
+            fingerprint,
+            resultId: t.id,
+          });
+          await this.db.appendAudit({
+            businessId,
+            actorId,
+            action: "transfer.receive",
+            entityType: "StockTransfer",
+            entityId: t.id,
+            requestId,
+          });
+          return { transfer: await this.embed(updated), replayed: false };
+        },
+      );
     });
   }
 
@@ -284,48 +305,59 @@ export class TransferService {
         return { transfer: await this.embed(await this.requireTransfer(businessId, transferId)), replayed: true };
       }
       canTransitionTransfer(t.status, "CANCELLED");
-      if (t.status === "IN_TRANSIT") {
-        const lines = await this.db.listTransferLines(t.id, businessId);
-        for (const line of lines) {
-          await this.db.createMovement({
+      const lines =
+        t.status === "IN_TRANSIT"
+          ? await this.db.listTransferLines(t.id, businessId)
+          : [];
+      return withInventoryLocks(
+        this.db,
+        businessId,
+        lines.map((line) => ({
+          productId: line.productId,
+          branchId: t.fromBranchId,
+        })),
+        async () => {
+          for (const line of lines) {
+            await this.db.createMovement({
+              businessId,
+              productId: line.productId,
+              type: "transfer_in",
+              qtyDelta: line.qty,
+              reason: `cancel:${t.id}`,
+              referenceType: "StockTransfer",
+              referenceId: t.id,
+              actorId,
+              requestId,
+              branchId: t.fromBranchId,
+            });
+            const balance = await this.db.findBalance(line.productId, businessId, t.fromBranchId);
+            await this.db.upsertBalance({
+              businessId,
+              branchId: t.fromBranchId,
+              productId: line.productId,
+              qtyOnHand: (balance?.qtyOnHand ?? 0) + line.qty,
+            });
+          }
+          const updated =
+            (await this.db.updateTransfer(t.id, businessId, { status: "CANCELLED" })) ?? t;
+          await this.db.claimIdempotency({
             businessId,
-            productId: line.productId,
-            type: "transfer_in",
-            qtyDelta: line.qty,
-            reason: `cancel:${t.id}`,
-            referenceType: "StockTransfer",
-            referenceId: t.id,
+            key,
+            commandType: "transfer.cancel",
+            fingerprint,
+            resultId: t.id,
+          });
+          await this.db.appendAudit({
+            businessId,
             actorId,
+            action: "transfer.cancel",
+            entityType: "StockTransfer",
+            entityId: t.id,
             requestId,
-            branchId: t.fromBranchId,
           });
-          const balance = await this.db.findBalance(line.productId, businessId, t.fromBranchId);
-          await this.db.upsertBalance({
-            businessId,
-            branchId: t.fromBranchId,
-            productId: line.productId,
-            qtyOnHand: (balance?.qtyOnHand ?? 0) + line.qty,
-          });
-        }
-      }
-      const updated =
-        (await this.db.updateTransfer(t.id, businessId, { status: "CANCELLED" })) ?? t;
-      await this.db.claimIdempotency({
-        businessId,
-        key,
-        commandType: "transfer.cancel",
-        fingerprint,
-        resultId: t.id,
-      });
-      await this.db.appendAudit({
-        businessId,
-        actorId,
-        action: "transfer.cancel",
-        entityType: "StockTransfer",
-        entityId: t.id,
-        requestId,
-      });
-      return { transfer: await this.embed(updated), replayed: false };
+          return { transfer: await this.embed(updated), replayed: false };
+        },
+      );
     });
   }
 }

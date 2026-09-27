@@ -377,6 +377,9 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
         (p) => p.saleId === saleId && p.businessId === businessId,
       );
     },
+    async listPaymentsByBusiness(businessId) {
+      return [...payments.values()].filter((p) => p.businessId === businessId);
+    },
     async updatePayment(id, businessId, patch) {
       const p = payments.get(id) ?? null;
       if (!p || p.businessId !== businessId) return null;

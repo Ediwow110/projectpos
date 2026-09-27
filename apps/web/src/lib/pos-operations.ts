@@ -1,0 +1,134 @@
+import { apiFetch } from "./api";
+import { buildCompletePayload } from "./sales";
+import {
+  buildDraftSaleInput,
+  buildOfflineSalePayload,
+  isPayMongoMethodKey,
+  resolveTenderedMinor,
+  type PosCartEntry,
+} from "./pos-sale-model";
+import { fingerprintPayload, provisionalReceipt } from "./sync-state";
+import type { SyncStore } from "./sync-store";
+import { saleFromCompleteResponse, type CompleteSaleResponse } from "./pos-view";
+
+interface ApiOptions {
+  csrfToken?: string;
+  init?: RequestInit;
+}
+
+export type PosApiCall = <T>(path: string, options?: ApiOptions) => Promise<T>;
+
+interface SaleIdentityInput {
+  cart: PosCartEntry[];
+  registerId: string;
+  customerId: string;
+  walkIn: string;
+}
+
+export async function holdPosSale(
+  input: SaleIdentityInput,
+  deps: { api?: PosApiCall } = {},
+): Promise<{ draftId: string }> {
+  const api = deps.api ?? apiFetch;
+  const csrf = await api<{ csrfToken: string }>("/api/v1/auth/csrf");
+  const draft = await api<{ id: string }>("/api/v1/sales/drafts", {
+    csrfToken: csrf.csrfToken,
+    init: {
+      method: "POST",
+      body: JSON.stringify(buildDraftSaleInput(input.cart, input.registerId, input.customerId, input.walkIn)),
+    },
+  });
+  await api("/api/v1/sales/" + draft.id + "/hold", {
+    csrfToken: csrf.csrfToken,
+    init: { method: "POST", body: JSON.stringify({}) },
+  });
+  return { draftId: draft.id };
+}
+
+export async function queueOfflinePosSale(
+  input: SaleIdentityInput & {
+    store: SyncStore;
+    received: string;
+    dueMinor: number;
+  },
+  deps: { uuid?: () => string } = {},
+): Promise<{ provisionalReceipt: string }> {
+  const uuid = deps.uuid ?? (() => crypto.randomUUID());
+  const tendered = resolveTenderedMinor(input.received, input.dueMinor);
+  const key = uuid();
+  const payload = buildOfflineSalePayload(
+    input.cart,
+    input.registerId,
+    input.customerId,
+    input.walkIn,
+    tendered,
+  );
+  const fingerprint = await fingerprintPayload({ ...payload, key });
+  const receipt = provisionalReceipt(key.slice(0, 8));
+  await input.store.enqueue({
+    localId: key,
+    commandType: "sale.complete",
+    key,
+    fingerprint,
+    payload,
+    queuedAt: new Date().toISOString(),
+    lastAttemptAt: null,
+    provisionalReceipt: receipt,
+  });
+  return { provisionalReceipt: receipt };
+}
+
+export type CompletePosSaleResult =
+  | { kind: "redirect"; checkoutUrl: string }
+  | { kind: "unknown"; saleId: string; paymentId: string | null }
+  | { kind: "completed"; saleId: string };
+
+export async function completePosSale(
+  input: SaleIdentityInput & {
+    received: string;
+    method: string;
+  },
+  deps: { api?: PosApiCall; uuid?: () => string } = {},
+): Promise<CompletePosSaleResult> {
+  const api = deps.api ?? apiFetch;
+  const uuid = deps.uuid ?? (() => crypto.randomUUID());
+  const csrf = await api<{ csrfToken: string }>("/api/v1/auth/csrf");
+  const draft = await api<{ id: string; totalMinor: number }>("/api/v1/sales/drafts", {
+    csrfToken: csrf.csrfToken,
+    init: {
+      method: "POST",
+      body: JSON.stringify(buildDraftSaleInput(input.cart, input.registerId, input.customerId, input.walkIn)),
+    },
+  });
+  const key = uuid();
+  if (isPayMongoMethodKey(input.method)) {
+    const checkout = await api<{ checkoutUrl: string }>(`/api/v1/sales/${draft.id}/paymongo/checkout`, {
+      csrfToken: csrf.csrfToken,
+      init: {
+        method: "POST",
+        body: JSON.stringify({ method: input.method }),
+        headers: { "Idempotency-Key": key },
+      },
+    });
+    return { kind: "redirect", checkoutUrl: checkout.checkoutUrl };
+  }
+  const tendered = resolveTenderedMinor(input.received, draft.totalMinor);
+  const payments =
+    input.method === "cash" && tendered >= draft.totalMinor
+      ? [{ method: input.method, amountMinor: tendered }]
+      : [{ method: input.method, amountMinor: draft.totalMinor }];
+  const payload = buildCompletePayload(draft.id, payments, key);
+  const response = await api<CompleteSaleResponse>("/api/v1/sales/complete", {
+    csrfToken: csrf.csrfToken,
+    init: {
+      method: "POST",
+      body: JSON.stringify(input.registerId !== "" ? { ...payload, registerId: input.registerId } : payload),
+      headers: { "Idempotency-Key": key },
+    },
+  });
+  const sale = saleFromCompleteResponse(response);
+  if (sale.status === "PAYMENT_UNKNOWN") {
+    return { kind: "unknown", saleId: sale.id, paymentId: sale.payments[0]?.id ?? null };
+  }
+  return { kind: "completed", saleId: sale.id };
+}

@@ -510,6 +510,7 @@ export interface DbPort {
   createPayment(p: Omit<DbPayment, "id">): Promise<DbPayment>;
   findPaymentById(id: string, businessId: string): Promise<DbPayment | null>;
   listPaymentsBySale(saleId: string, businessId: string): Promise<DbPayment[]>;
+  listPaymentsByBusiness(businessId: string): Promise<DbPayment[]>;
   updatePayment(id: string, businessId: string, patch: Partial<Omit<DbPayment, "id" | "businessId">>): Promise<DbPayment | null>;
   createHeldSale(h: Omit<DbHeldSale, "id">): Promise<DbHeldSale>;
   findHeldSaleById(id: string, businessId: string): Promise<DbHeldSale | null>;

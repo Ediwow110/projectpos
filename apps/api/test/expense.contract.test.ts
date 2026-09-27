@@ -55,4 +55,27 @@ describe("phase6 expense HTTP contract", () => {
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("VALIDATION");
   });
+
+  it("returns NOT_FOUND when another tenant tries to void an expense", async () => {
+    const created = await request(app.getHttpServer()).post("/api/v1/expenses")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ category: "Tenant scoped", amountMinor: 700, method: "cash" });
+    expect(created.status).toBe(201);
+
+    const reg = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
+      ownerName: "Other Owner",
+      email: `expense-other-${Date.now()}@example.com`,
+      password: "correct-horse-12",
+      businessName: "Other Expense Store",
+    });
+    const otherCookie = jar(reg.headers["set-cookie"]);
+    const otherCsrf = reg.body.csrfToken as string;
+
+    const attempt = await request(app.getHttpServer()).post(`/api/v1/expenses/${created.body.id}/void`)
+      .set("Cookie", otherCookie).set("X-CSRF-Token", otherCsrf)
+      .send({ reason: "cross tenant attempt" });
+
+    expect(attempt.status).toBe(404);
+    expect(attempt.body.code).toBe("NOT_FOUND");
+  });
 });

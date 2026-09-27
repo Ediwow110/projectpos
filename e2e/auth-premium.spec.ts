@@ -1,6 +1,18 @@
 import { expect, test } from "@playwright/test";
 import { API } from "./helpers";
 
+test("password recovery is discoverable from login", async ({ page }) => {
+  await page.goto("/login");
+
+  const recovery = page.getByRole("link", { name: "Forgot password?" });
+  await expect(recovery).toBeVisible();
+  await recovery.click();
+
+  await expect(page).toHaveURL("/password-reset");
+  await expect(page.getByRole("heading", { name: "Reset password" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Back to sign in" })).toBeVisible();
+});
+
 test("privacy-first login signs into the real business without exposing metrics before auth", async ({ page, request }, testInfo) => {
   const stamp = Date.now();
   const email = `e2e-login-${testInfo.project.name}-${stamp}@example.com`;

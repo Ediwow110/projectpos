@@ -5,7 +5,9 @@ import type { JSX } from "react";
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiFetch } from "../../lib/api";
+import { persistActiveSyncScope } from "../../lib/sync-store";
 
 const SETUP_STEPS = [
   ["01", "Create the workspace", "Owner + business identity"],
@@ -15,6 +17,7 @@ const SETUP_STEPS = [
 
 export default function RegisterPage(): JSX.Element {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [ownerName, setOwnerName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -28,12 +31,18 @@ export default function RegisterPage(): JSX.Element {
     setError("");
     setSubmitting(true);
     try {
-      const result = await apiFetch<{ verificationRequired?: boolean }>("/api/v1/auth/register", {
+      const result = await apiFetch<{
+        user: { id: string };
+        business: { id: string };
+        verificationRequired?: boolean;
+      }>("/api/v1/auth/register", {
         init: {
           method: "POST",
           body: JSON.stringify({ ownerName, email, password, businessName }),
         },
       });
+      persistActiveSyncScope({ userId: result.user.id, businessId: result.business.id });
+      queryClient.clear();
       if (result.verificationRequired) {
         window.sessionStorage.setItem("nexpos-verification-email", email);
         router.push("/verify-email");

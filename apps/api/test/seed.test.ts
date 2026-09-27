@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ROLE_SEED, buildRegistrationSeed, resolveActiveBusiness } from "../src/tenant/seed";
+import { buildRegistrationSeed, resolveActiveBusiness } from "../src/tenant/seed";
 
 describe("registration seed", () => {
   it("owner holds all sensitive actions", async () => {

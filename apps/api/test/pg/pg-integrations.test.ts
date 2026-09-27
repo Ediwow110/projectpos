@@ -3,8 +3,10 @@ import { Client } from "pg";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PgContext } from "../../src/common/pg/context";
+import { PgDbPort } from "../../src/common/pg/pg.db";
 import { tenantsFamily } from "../../src/common/pg/pg-tenants";
 import { integrationsFamily } from "../../src/common/pg/pg-integrations";
+import { SupportGrantService } from "../../src/billing/nest/support-grant.service";
 
 // Integrations-family tests: api tokens, printers, print jobs, display tokens,
 // support grants, shift corrections and receipt shares. The family runs
@@ -369,6 +371,22 @@ describe("phase12 pg integrations: support grants", () => {
       expiresAt: new Date(Date.now() - 60_000),
     });
     expect(await integrations.findValidSupportGrant(hash)).toBeNull();
+  });
+
+  it("atomically claims a one-time grant under concurrent PostgreSQL requests", async () => {
+    const service = new SupportGrantService(new PgDbPort(ctx));
+    const grant = await service.mint(
+      { purpose: "concurrent pg support", ttlMinutes: 30, actorId: "ops" },
+      uniq("rq"),
+    );
+
+    const resolved = await Promise.all([
+      service.resolve(grant.token),
+      service.resolve(grant.token),
+    ]);
+
+    expect(resolved.filter((entry) => entry !== null)).toHaveLength(1);
+    expect(resolved.filter((entry) => entry === null)).toHaveLength(1);
   });
 });
 

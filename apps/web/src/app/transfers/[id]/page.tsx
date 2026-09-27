@@ -8,7 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "../../../components/AppShell";
 import { ConfirmDialog } from "../../../components/ConfirmDialog";
 import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "../../../components/premium";
-import { DangerButton, PrimaryButton, StatusPill } from "../../../components/ui";
+import { DangerButton, PrimaryButton } from "../../../components/ui";
 import { ApiError, apiFetch } from "../../../lib/api";
 import { transferStatusLabel } from "../../../lib/branches";
 import type { BranchRow } from "../../branches/page";

@@ -4,7 +4,14 @@ import { apiAuthedContext, registerBusiness, seedProduct } from "./helpers";
 test("POS shell and responsive geometry match the current navigation contract", async ({ page, request }, testInfo) => {
   test.setTimeout(120_000);
   const desktop = testInfo.project.name === "desktop";
-  await page.setViewportSize(desktop ? { width: 1440, height: 1024 } : { width: 1024, height: 1366 });
+  const tablet = testInfo.project.name === "tablet";
+  await page.setViewportSize(
+    desktop
+      ? { width: 1440, height: 1024 }
+      : tablet
+        ? { width: 1024, height: 1366 }
+        : { width: 390, height: 844 },
+  );
 
   const stamp = Date.now();
   const email = `fidelity-${testInfo.project.name}-${stamp}@example.com`;
@@ -43,25 +50,40 @@ test("POS shell and responsive geometry match the current navigation contract", 
     expect(mainBox!.x).toBeGreaterThanOrEqual(215);
     expect(mainBox!.width).toBeGreaterThan(1100);
     await expect(page.getByRole("complementary", { name: "Cart" })).toBeVisible();
+  } else if (tablet) {
+    await expect(sidebar).toBeHidden();
+    await expect(mobileNav).toBeVisible();
+    const mainBox = await main.boundingBox();
+    expect(mainBox).not.toBeNull();
+    expect(mainBox!.x).toBeCloseTo(0, 0);
+    expect(mainBox!.width).toBeCloseTo(page.viewportSize()!.width, 0);
+    const tabletCart = page.getByRole("region", { name: "Tablet cart" });
+    await expect(tabletCart).toBeVisible();
+    const cartBox = await tabletCart.boundingBox();
+    expect(cartBox).not.toBeNull();
+    expect(cartBox!.height).toBeCloseTo(160, 0);
   } else {
     await expect(sidebar).toBeHidden();
     await expect(mobileNav).toBeVisible();
     const mainBox = await main.boundingBox();
     expect(mainBox).not.toBeNull();
     expect(mainBox!.x).toBeCloseTo(0, 0);
-    expect(mainBox!.width).toBeCloseTo(1024, 0);
-    const tabletCart = page.getByRole("region", { name: "Tablet cart" });
-    await expect(tabletCart).toBeVisible();
-    const cartBox = await tabletCart.boundingBox();
-    expect(cartBox).not.toBeNull();
-    expect(cartBox!.height).toBeCloseTo(160, 0);
+    expect(mainBox!.width).toBeCloseTo(390, 0);
+    await expect(page.getByRole("region", { name: "Tablet cart" })).toBeHidden();
+    const mobileCart = page.getByRole("region", { name: "Mobile cart" });
+    await expect(mobileCart).toBeVisible();
+    const mobileCartBox = await mobileCart.boundingBox();
+    expect(mobileCartBox).not.toBeNull();
+    expect(mobileCartBox!.height).toBeGreaterThanOrEqual(100);
   }
 
   await product.click();
   if (desktop) {
     await page.getByRole("button", { name: /Pay ₱145\.00/ }).click();
-  } else {
+  } else if (tablet) {
     await page.getByRole("region", { name: "Tablet cart" }).getByRole("button", { name: "Pay", exact: true }).click();
+  } else {
+    await page.getByRole("region", { name: "Mobile cart" }).getByRole("button", { name: "Pay", exact: true }).click();
   }
   const paymentDialog = page.getByRole("dialog", { name: "Payment" });
   await expect(paymentDialog).toBeVisible();

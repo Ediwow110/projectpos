@@ -2,7 +2,7 @@
 
 import type { JSX } from "react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { AppShell } from "../../components/AppShell";
@@ -10,7 +10,13 @@ import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "..
 import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { ApiError, apiFetch } from "../../lib/api";
 import { backoffDelayMs } from "../../lib/sync-state";
-import { IndexedDbSyncStore, type OutboxCommand } from "../../lib/sync-store";
+import {
+  IndexedDbSyncStore,
+  clearActiveSyncScope,
+  createActiveSyncStore,
+  persistActiveSyncScope,
+  type OutboxCommand,
+} from "../../lib/sync-store";
 import { runReplayOnce } from "../../lib/replay";
 import { sendSaleCommand } from "../../lib/replay-sale";
 import { ConnectivityBanner } from "../../lib/sync-ui";
@@ -21,6 +27,8 @@ interface Csrf {
 }
 
 interface Me {
+  userId: string;
+  businessId: string;
   role: string;
   businessName?: string;
 }
@@ -28,7 +36,7 @@ interface Me {
 const STATUSES = ["QUEUED", "SENDING", "SYNCED", "CONFLICT", "FAILED", "RESOLVED"];
 
 export default function SyncPage(): JSX.Element {
-  const [store] = useState(() => new IndexedDbSyncStore());
+  const [store, setStore] = useState<IndexedDbSyncStore | null>(() => createActiveSyncStore());
   const [status, setStatus] = useState("");
   const [resolveReason, setResolveReason] = useState<Record<string, string>>({});
   const [deviceLabel, setDeviceLabel] = useState("");
@@ -38,10 +46,25 @@ export default function SyncPage(): JSX.Element {
     queryFn: () => apiFetch<Me>("/api/v1/me"),
     retry: false,
   });
+  useEffect(() => {
+    if (meQuery.data) {
+      const scope = { userId: meQuery.data.userId, businessId: meQuery.data.businessId };
+      persistActiveSyncScope(scope);
+      setStore((current) => current?.scope.userId === scope.userId && current.scope.businessId === scope.businessId
+        ? current
+        : new IndexedDbSyncStore(scope));
+      return;
+    }
+    if (meQuery.error instanceof ApiError && (meQuery.error.status === 401 || meQuery.error.status === 403)) {
+      clearActiveSyncScope();
+      setStore(null);
+    }
+  }, [meQuery.data, meQuery.error]);
   const listQuery = useQuery({
-    queryKey: ["sync-outbox"],
-    queryFn: () => store.listAll(),
+    queryKey: ["sync-outbox", store?.databaseName ?? "none"],
+    queryFn: () => store!.listAll(),
     retry: false,
+    enabled: store !== null && !meQuery.isLoading && !(meQuery.error instanceof ApiError && (meQuery.error.status === 401 || meQuery.error.status === 403)),
   });
 
   async function sendReal(cmd: OutboxCommand): Promise<{ status: number; code: string | null; resultId: string | null }> {
@@ -91,6 +114,10 @@ export default function SyncPage(): JSX.Element {
 
   async function syncNow(): Promise<void> {
     setStatus("");
+    if (!store) {
+      setStatus("Sync is unavailable until this signed-in workspace is identified.");
+      return;
+    }
     try {
       const summary = await runReplayOnce({
         store,
@@ -111,12 +138,14 @@ export default function SyncPage(): JSX.Element {
   }
 
   async function retry(cmd: OutboxCommand): Promise<void> {
+    if (!store) return;
     await store.mark({ localId: cmd.localId, status: "QUEUED", lastError: null });
     await listQuery.refetch();
     await syncNow();
   }
 
   async function resolve(cmd: OutboxCommand): Promise<void> {
+    if (!store) return;
     const reason = (resolveReason[cmd.localId] ?? "").trim();
     if (reason.length < 3) {
       setStatus("A reason of at least 3 characters is required to resolve.");
@@ -174,7 +203,7 @@ export default function SyncPage(): JSX.Element {
           actions={<PrimaryButton type="button" onClick={() => void syncNow()}>↻ Sync now</PrimaryButton>}
         />
 
-        <ConnectivityBanner store={store} />
+        {store ? <ConnectivityBanner store={store} /> : null}
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Sync summary">
           <MetricCard label="Queued / sending" value={queued} icon="↻" tone={queued > 0 ? "info" : "success"} meta="Not final yet" />

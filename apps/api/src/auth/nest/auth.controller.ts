@@ -21,6 +21,12 @@ import { AuthService } from "./auth.service";
 const loginLimiter = createRateLimiter(5, 60_000);
 const resetLimiter = createRateLimiter(5, 60_000);
 const verificationLimiter = createRateLimiter(5, 60_000);
+const defaultRegistrationLimit = (process.env["NODE_ENV"] ?? "development") === "production" ? 10 : 1000;
+const registrationLimit = Number(process.env["REGISTRATION_RATE_LIMIT"] ?? defaultRegistrationLimit);
+const registrationLimiter = createRateLimiter(
+  Number.isInteger(registrationLimit) && registrationLimit > 0 ? registrationLimit : 10,
+  60_000,
+);
 
 function rid(req: Request): string {
   const headers: Record<string, string | undefined> = {};
@@ -48,6 +54,10 @@ export class AuthController {
 
   @Post("register")
   async register(@Req() req: Request, @Res() res: Response, @Body() body: unknown): Promise<void> {
+    if (await registrationLimiter.hit(`${req.ip ?? "unknown"}:register`)) {
+      fail(res, 429, "RATE_LIMITED", "Too many registration attempts", req);
+      return;
+    }
     const parsed = registerSchema.safeParse(body);
     if (!parsed.success) {
       const first = parsed.error.issues[0];

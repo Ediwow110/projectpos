@@ -140,7 +140,7 @@ describe("phase10 subscription status handling", () => {
 
   it("fails closed on unknown statuses and dangling plans", async () => {
     for (const status of ["incomplete", "unpaid", "TYPO", "pro"]) {
-      const { db, business, billing } = await subscription(status, "pro", null);
+      const { business, billing } = await subscription(status, "pro", null);
       expect((await billing.resolvePlan(business.id)).key).toBe("free");
       await expect(billing.requireFeature(business.id, "reports")).rejects.toThrow("PLAN_LIMIT");
     }

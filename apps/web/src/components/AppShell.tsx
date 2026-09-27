@@ -4,7 +4,10 @@ import React from "react";
 import type { JSX, ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { DecorativeBackdrop } from "./premium";
+import { ApiError, apiFetch } from "../lib/api";
+import { clearActiveSyncScope } from "../lib/sync-store";
 
 const NAV: Array<{ href: string; label: string; icon: string }> = [
   { href: "/", label: "Dashboard", icon: "⌂" },
@@ -77,11 +80,35 @@ export function AppShell({
   posMode?: boolean;
 }): JSX.Element {
   const pathname = usePathname();
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const [signingOut, setSigningOut] = React.useState(false);
+  const [signOutError, setSignOutError] = React.useState("");
   const today = new Date().toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
   const year = new Date().getFullYear();
   const name = businessName ?? "NexPOS";
   const initial = name.slice(0, 1).toUpperCase();
   const mobileHeaderHeight = posMode ? "min-h-[62px]" : "min-h-[60px]";
+  const showSessionControls = businessName !== undefined || role !== undefined;
+
+  async function signOut(): Promise<void> {
+    if (signingOut) return;
+    setSigningOut(true);
+    setSignOutError("");
+    try {
+      await apiFetch("/api/v1/auth/logout", { init: { method: "POST" } });
+    } catch (error) {
+      if (!(error instanceof ApiError) || (error.status !== 401 && error.status !== 403)) {
+        setSignOutError("Sign out needs a connection.");
+        setSigningOut(false);
+        return;
+      }
+    }
+    clearActiveSyncScope();
+    queryClient.clear();
+    router.replace("/login");
+    router.refresh();
+  }
 
   return (
     <div className="relative flex min-h-screen flex-col overflow-x-clip bg-[#fcf8f3]">
@@ -141,6 +168,7 @@ export function AppShell({
 
             <div className="ml-auto flex min-w-0 items-center gap-2">
               {topbar ? <div className="hidden min-w-0 md:block">{topbar}</div> : null}
+              {signOutError ? <span role="alert" className="max-w-28 text-right text-[8px] font-medium text-[#c43e3e]">{signOutError}</span> : null}
               <span aria-hidden className="hidden text-sm text-[#2a241f] sm:inline">⌕</span>
               <span aria-hidden className="hidden text-sm text-[#2a241f] sm:inline">♢</span>
               <div className="font-display grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#f35d3f] text-[11px] font-bold text-white">
@@ -150,6 +178,16 @@ export function AppShell({
                 <p className="truncate text-[9px] font-semibold text-[#2a241f]">{name}</p>
                 <p className="truncate text-[8px] capitalize text-[#84786e]">{role ?? "owner"} · Main branch</p>
               </div>
+              {showSessionControls ? (
+                <button
+                  type="button"
+                  onClick={() => void signOut()}
+                  disabled={signingOut}
+                  className="min-h-8 shrink-0 rounded-lg border border-[#eadfd6] bg-white px-2.5 text-[9px] font-semibold text-[#665b53] transition hover:border-[#f2b8a9] hover:text-[#d94a30] disabled:cursor-wait disabled:opacity-60"
+                >
+                  {signingOut ? "Signing out…" : "Sign out"}
+                </button>
+              ) : null}
             </div>
           </div>
         </header>

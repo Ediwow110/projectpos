@@ -1,11 +1,17 @@
 # Production web image. NEXT_PUBLIC_API_BASE is inlined into the client
-# bundle at build time, so it must be supplied as a build arg:
+# bundle at build time, and API_PROXY_TARGET is compiled into Next.js rewrite
+# configuration when the same-origin proxy shape is enabled. Supply either or
+# both as non-secret build args:
 #   docker build -f docker/web.Dockerfile \
-#     --build-arg NEXT_PUBLIC_API_BASE=https://api.example.com -t nexpos-web .
-# The same value also stays in the runtime environment for the server bundle.
+#     --build-arg NEXT_PUBLIC_API_BASE=https://app.example.com \
+#     --build-arg API_PROXY_TARGET=https://api.example.com \
+#     -t nexpos-web .
 FROM node:24-slim AS build
 ARG NEXT_PUBLIC_API_BASE=http://localhost:3001
-ENV NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_API_BASE=$NEXT_PUBLIC_API_BASE
+ARG API_PROXY_TARGET
+ENV NEXT_TELEMETRY_DISABLED=1 \
+    NEXT_PUBLIC_API_BASE=$NEXT_PUBLIC_API_BASE \
+    API_PROXY_TARGET=$API_PROXY_TARGET
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./

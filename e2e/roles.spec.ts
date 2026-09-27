@@ -1,14 +1,13 @@
-// Role-workflow smoke (PLAN.md 13.1) with an honest constraint: no
-// member-invite API exists, so all sessions here are owner sessions. These
-// specs prove each role's characteristic UI surfaces render and behave for
-// an authorized user, plus logged-out gating; cross-role denial is proven
-// by unit/contract tests (rolePermissions matrix, FORBIDDEN gates).
+// Role-workflow smoke (PLAN.md 13.1). Owner coverage validates privileged
+// surfaces; cashier coverage creates a real membership and signs in as that
+// user so browser tests exercise role-specific UI instead of reusing owner.
 import { expect, test } from "@playwright/test";
-import { registerBusiness } from "./helpers";
+import { API, apiAuthedContext, posCartRegion, registerBusiness } from "./helpers";
 
+let ownerEmail = "";
 test.beforeEach(async ({ page }) => {
   const stamp = Date.now();
-  await registerBusiness(page, {
+  ownerEmail = await registerBusiness(page, {
     ownerName: "Role Owner",
     email: `roles-${stamp}@example.com`,
     password: "correct-horse-12",
@@ -25,20 +24,48 @@ test("owner surfaces: registers, cashiers report, export buttons", async ({ page
   await expect(page.getByRole("heading", { name: "Cashiers report" })).toBeVisible();
 
   await page.goto("/sales");
-  await expect(page.getByRole("button", { name: "Export CSV" })).toBeVisible();
+  const exportButton = page.getByRole("button", { name: "Export CSV" });
+  await expect(exportButton).toBeVisible();
+  const exportResponsePromise = page.waitForResponse((response) =>
+    response.url().includes("/api/v1/sales/export?format=csv"),
+  );
+  await exportButton.click();
+  const exportResponse = await exportResponsePromise;
+  expect(exportResponse.status()).toBe(200);
+  expect(exportResponse.headers()["content-type"]).toContain("text/csv");
 });
 
-test("cashier surfaces: POS sells, inventory reads", async ({ page }) => {
+test("cashier session can sell and read inventory without owner controls", async ({ page, request }, testInfo) => {
+  const ownerAuth = await apiAuthedContext(request, ownerEmail, "correct-horse-12", page);
+  const cashierEmail = `cashier-${testInfo.project.name}-${Date.now()}@example.com`;
+  const created = await request.post(`${API}/api/v1/memberships`, {
+    headers: ownerAuth.headers,
+    data: { email: cashierEmail, name: "Role Cashier", role: "cashier" },
+  });
+  expect(created.ok()).toBe(true);
+  const membership = (await created.json()) as { tempPassword?: string };
+  expect(membership.tempPassword).toBeTruthy();
+
+  await page.context().clearCookies();
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(cashierEmail);
+  await page.getByLabel("Password").fill(membership.tempPassword!);
+  await page.getByRole("button", { name: "Sign in securely" }).click();
+  await expect(page).toHaveURL(/\/$/);
+
   await page.goto("/pos");
   await expect(page.getByRole("region", { name: "Products" })).toBeVisible();
-  if ((page.viewportSize()?.width ?? 1440) < 1280) {
-    await expect(page.getByRole("region", { name: "Tablet cart" })).toBeVisible();
-  } else {
-    await expect(page.getByRole("complementary", { name: "Cart" })).toBeVisible();
-  }
+  await expect(posCartRegion(page)).toBeVisible();
 
   await page.goto("/inventory");
   await expect(page.getByRole("heading", { name: "Inventory", exact: true })).toBeVisible();
+
+  await page.goto("/registers");
+  await expect(page.getByRole("button", { name: "+ Create register", exact: true })).toHaveCount(0);
+  await expect(page.getByText("Only owners and managers can create or archive registers.")).toBeVisible();
+
+  await page.goto("/sales");
+  await expect(page.getByRole("button", { name: "Export CSV" })).toHaveCount(0);
 });
 
 test("logged-out users are gated", async ({ page }) => {

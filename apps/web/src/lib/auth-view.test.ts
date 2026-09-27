@@ -14,4 +14,14 @@ describe("pre-auth privacy presentation", () => {
     expect(source).not.toContain("owner@mabuhaymarket.ph");
     expect(source).not.toContain("cash variance");
   });
+
+  it("makes account recovery discoverable from sign-in", () => {
+    const login = readFileSync(resolve(process.cwd(), "src/app/login/page.tsx"), "utf8");
+    const reset = readFileSync(resolve(process.cwd(), "src/app/password-reset/page.tsx"), "utf8");
+
+    expect(login).toContain('href="/password-reset"');
+    expect(login).toContain("Forgot password?");
+    expect(reset).toContain('href="/login"');
+    expect(reset).toContain("Back to sign in");
+  });
 });

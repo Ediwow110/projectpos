@@ -23,4 +23,21 @@ describe("phase11 support grants (FR-PLATFORM-01)", () => {
     await expect(svc.mint({ purpose: "x", ttlMinutes: 61, actorId: "ops" }, "r2")).rejects.toThrow("VALIDATION");
     await expect(svc.mint({ purpose: "ok ttl", ttlMinutes: 60, actorId: "ops" }, "r3")).resolves.toBeTruthy();
   });
+
+  it("atomically claims a grant so concurrent resolutions cannot both authorize", async () => {
+    const db = createMemoryDb();
+    const svc = new SupportGrantService(db);
+    const grant = await svc.mint(
+      { purpose: "concurrent platform mutation", ttlMinutes: 30, actorId: "ops" },
+      "r4",
+    );
+
+    const resolved = await Promise.all([
+      svc.resolve(grant.token),
+      svc.resolve(grant.token),
+    ]);
+
+    expect(resolved.filter((entry) => entry !== null)).toHaveLength(1);
+    expect(resolved.filter((entry) => entry === null)).toHaveLength(1);
+  });
 });

@@ -2,6 +2,7 @@ import { MiddlewareConsumer, Module, type NestModule, Optional, Inject } from "@
 import { APP_FILTER } from "@nestjs/core";
 import { Test } from "@nestjs/testing";
 import type { INestApplication } from "@nestjs/common";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import type { RequestHandler } from "express";
 import cookieParser from "cookie-parser";
 import { AuthController } from "./auth/nest/auth.controller";
@@ -301,7 +302,10 @@ export async function createTestApp(options: { paymongo?: PayMongoPort } = {}): 
       { provide: APP_FILTER, useClass: AuthErrorFilter },
     ],
   }).compile();
-  const app = moduleRef.createNestApplication({ rawBody: true });
+  const app = moduleRef.createNestApplication<NestExpressApplication>({ rawBody: true });
+  // Mirror production's single trusted reverse-proxy hop so forwarded-IP
+  // abuse controls are exercised correctly in contract tests.
+  app.set("trust proxy", 1);
   app.use(cookieParser() as RequestHandler);
   // createTestApp bypasses AppModule.configure(), so apply shared
   // middleware explicitly here (production covers it via configure()).

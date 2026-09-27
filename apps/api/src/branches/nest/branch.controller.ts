@@ -4,7 +4,7 @@ import { branchCreateSchema, branchUpdateSchema } from "@pos/validation";
 import { SessionGuard } from "../../common/session.guard";
 import { CsrfGuard } from "../../common/csrf.guard";
 import { getCorrelationId } from "../../correlation";
-import { fail, failFromError, statusFor } from "../../common/http-helpers";
+import { fail, failFromError } from "../../common/http-helpers";
 import { AuthService } from "../../auth/nest/auth.service";
 import { BranchService } from "./branch.service";
 

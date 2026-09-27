@@ -32,6 +32,52 @@ export interface SyncStore {
   metaSet(key: string, value: string): Promise<void>;
 }
 
+export interface SyncScope {
+  userId: string;
+  businessId: string;
+}
+
+const ACTIVE_SYNC_SCOPE_KEY = "nexpos-active-sync-scope-v1";
+
+function browserStorage(): Storage | null {
+  return typeof window === "undefined" ? null : window.localStorage;
+}
+
+function validScope(value: unknown): value is SyncScope {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<SyncScope>;
+  return typeof candidate.userId === "string" && candidate.userId.length > 0 &&
+    typeof candidate.businessId === "string" && candidate.businessId.length > 0;
+}
+
+export function persistActiveSyncScope(
+  scope: SyncScope,
+  storage: Storage | null = browserStorage(),
+): void {
+  if (!storage) return;
+  storage.setItem(ACTIVE_SYNC_SCOPE_KEY, JSON.stringify(scope));
+}
+
+export function activeSyncScope(storage: Storage | null = browserStorage()): SyncScope | null {
+  if (!storage) return null;
+  const raw = storage.getItem(ACTIVE_SYNC_SCOPE_KEY);
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return validScope(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearActiveSyncScope(storage: Storage | null = browserStorage()): void {
+  storage?.removeItem(ACTIVE_SYNC_SCOPE_KEY);
+}
+
+export function syncDatabaseName(scope: SyncScope): string {
+  return `pos-sync-v2:${encodeURIComponent(scope.userId)}:${encodeURIComponent(scope.businessId)}`;
+}
+
 function pendingFirst(a: OutboxCommand, b: OutboxCommand): number {
   return a.queuedAt < b.queuedAt ? -1 : a.queuedAt > b.queuedAt ? 1 : 0;
 }
@@ -98,7 +144,6 @@ export class MemorySyncStore implements SyncStore {
   }
 }
 
-const DB_NAME = "pos-sync-v1";
 const DB_VERSION = 1;
 
 function idb(): IDBFactory {
@@ -107,9 +152,9 @@ function idb(): IDBFactory {
   return factory;
 }
 
-function openDb(): Promise<IDBDatabase> {
+function openDb(databaseName: string): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = idb().open(DB_NAME, DB_VERSION);
+    const req = idb().open(databaseName, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains("outbox")) db.createObjectStore("outbox", { keyPath: "localId" });
@@ -128,8 +173,8 @@ function req<T>(r: IDBRequest<T>): Promise<T> {
   });
 }
 
-async function tx<T>(store: string, mode: IDBTransactionMode, fn: (s: IDBObjectStore) => Promise<T>): Promise<T> {
-  const db = await openDb();
+async function tx<T>(databaseName: string, store: string, mode: IDBTransactionMode, fn: (s: IDBObjectStore) => Promise<T>): Promise<T> {
+  const db = await openDb(databaseName);
   try {
     return await fn(db.transaction(store, mode).objectStore(store));
   } finally {
@@ -138,6 +183,14 @@ async function tx<T>(store: string, mode: IDBTransactionMode, fn: (s: IDBObjectS
 }
 
 export class IndexedDbSyncStore implements SyncStore {
+  readonly scope: SyncScope;
+  readonly databaseName: string;
+
+  constructor(scope: SyncScope) {
+    this.scope = scope;
+    this.databaseName = syncDatabaseName(scope);
+  }
+
   async enqueue(cmd: NewOutboxCommand): Promise<OutboxCommand> {
     const row: OutboxCommand = {
       ...cmd,
@@ -146,7 +199,7 @@ export class IndexedDbSyncStore implements SyncStore {
       lastError: null,
       serverResultId: null,
     };
-    await tx("outbox", "readwrite", (s) => req(s.put(row)));
+    await tx(this.databaseName, "outbox", "readwrite", (s) => req(s.put(row)));
     return row;
   }
 
@@ -156,24 +209,24 @@ export class IndexedDbSyncStore implements SyncStore {
   }
 
   async listAll(): Promise<OutboxCommand[]> {
-    const rows = await tx("outbox", "readonly", (s) => req(s.getAll() as IDBRequest<OutboxCommand[]>));
+    const rows = await tx(this.databaseName, "outbox", "readonly", (s) => req(s.getAll() as IDBRequest<OutboxCommand[]>));
     return [...rows].sort(pendingFirst);
   }
 
   async mark(cmd: Partial<OutboxCommand> & { localId: string }): Promise<OutboxCommand> {
-    const current = await tx("outbox", "readonly", (s) => req(s.get(cmd.localId) as IDBRequest<OutboxCommand | undefined>));
+    const current = await tx(this.databaseName, "outbox", "readonly", (s) => req(s.get(cmd.localId) as IDBRequest<OutboxCommand | undefined>));
     if (!current) throw new Error("NOT_FOUND");
     const next = { ...current, ...cmd, localId: current.localId };
-    await tx("outbox", "readwrite", (s) => req(s.put(next)));
+    await tx(this.databaseName, "outbox", "readwrite", (s) => req(s.put(next)));
     return next;
   }
 
   async cachePut(kind: string, key: string, value: unknown, cachedAt: string): Promise<void> {
-    await tx("cache", "readwrite", (s) => req(s.put({ key: `${kind}:${key}`, value, cachedAt })));
+    await tx(this.databaseName, "cache", "readwrite", (s) => req(s.put({ key: `${kind}:${key}`, value, cachedAt })));
   }
 
   async cacheGet<T>(kind: string, key: string): Promise<{ value: T; cachedAt: string } | null> {
-    const hit = await tx("cache", "readonly", (s) =>
+    const hit = await tx(this.databaseName, "cache", "readonly", (s) =>
       req(s.get(`${kind}:${key}`) as IDBRequest<{ value: T; cachedAt: string } | undefined>),
     );
     return hit ?? null;
@@ -181,7 +234,7 @@ export class IndexedDbSyncStore implements SyncStore {
 
   async cacheList<T>(kind: string): Promise<Array<{ key: string; value: T; cachedAt: string }>> {
     const prefix = `${kind}:`;
-    const rows = await tx("cache", "readonly", (s) =>
+    const rows = await tx(this.databaseName, "cache", "readonly", (s) =>
       req(s.getAll() as IDBRequest<Array<{ key: string; value: T; cachedAt: string }>>),
     );
     return rows
@@ -191,13 +244,20 @@ export class IndexedDbSyncStore implements SyncStore {
   }
 
   async metaGet(key: string): Promise<string | null> {
-    const hit = await tx("meta", "readonly", (s) =>
+    const hit = await tx(this.databaseName, "meta", "readonly", (s) =>
       req(s.get(key) as IDBRequest<{ key: string; value: string } | undefined>),
     );
     return hit?.value ?? null;
   }
 
   async metaSet(key: string, value: string): Promise<void> {
-    await tx("meta", "readwrite", (s) => req(s.put({ key, value })));
+    await tx(this.databaseName, "meta", "readwrite", (s) => req(s.put({ key, value })));
   }
+}
+
+export function createActiveSyncStore(
+  storage: Storage | null = browserStorage(),
+): IndexedDbSyncStore | null {
+  const scope = activeSyncScope(storage);
+  return scope ? new IndexedDbSyncStore(scope) : null;
 }

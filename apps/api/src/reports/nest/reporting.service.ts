@@ -1,176 +1,29 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { withScope } from "@pos/database";
-import type { DbPort, DbSale, DbSaleItem } from "../../common/db.port";
+
 import { BillingService } from "../../billing/nest/billing.service";
-import {
-  bucketKey,
-  bucketRange,
-  compareLabel,
-  delta,
-  isSettled,
-  previousRange,
-  resolveRange,
-  type DateRange,
-} from "../aggregate";
+import type { DbPort } from "../../common/db.port";
 import { deriveStockStatus } from "../../inventory/projection";
 import { sumCashComponents } from "../../shifts/cash";
+import { bucketKey, bucketRange } from "../aggregate";
+import { ReportingBreakdownService } from "../reporting-breakdown-service";
+import {
+  ReportingCore,
+  type Kpi,
+  type ReportQuery,
+  type SeriesPoint,
+} from "../reporting-core";
 
-export interface ReportQuery {
-  dateFrom?: string;
-  dateTo?: string;
-  compare?: string;
-  registerId?: string;
-  // Phase 9a: optional branch scope; absent = all branches including null scope.
-  branchId?: string;
-  granularity?: "day" | "hour";
-  tab?: string;
-  limit?: number;
-}
-
-export interface Kpi {
-  // Nullable only for entitlement-gated metrics: a plan without the feature
-  // gets an absent value rather than a misleading zero.
-  value: number | null;
-  previous: number | null;
-  deltaMinor: number | null;
-  deltaPct: number | null;
-}
-
-export interface SeriesPoint {
-  bucket: string;
-  netRevenue: number;
-  orders: number;
-}
-
-interface SaleWithLines {
-  sale: DbSale;
-  items: DbSaleItem[];
-  refunded: number;
-}
+export type { Kpi, ReportQuery, SeriesPoint } from "../reporting-core";
 
 @Injectable()
 export class ReportingService {
-  constructor(@Inject("DbPort") private readonly db: DbPort) {}
+  private readonly breakdowns: ReportingBreakdownService;
+  private readonly core: ReportingCore;
 
-  private resolved(query: ReportQuery): { range: DateRange; prev: DateRange | null; compare: string; label: string } {
-    const compare = query.compare ?? "previous_period";
-    const range = resolveRange(query.dateFrom, query.dateTo);
-    return { range, prev: previousRange(range, compare), compare, label: compareLabel(range, compare) };
-  }
-
-  private inRange(d: Date, range: DateRange): boolean {
-    return d.getTime() >= range.from.getTime() && d.getTime() <= range.to.getTime();
-  }
-
-  private async settledSales(
-    businessId: string,
-    range: DateRange,
-    registerId?: string,
-    branchId?: string,
-  ): Promise<DbSale[]> {
-    const all = await this.db.listSalesByBusiness(businessId);
-    return all.filter(
-      (s) =>
-        isSettled(s.status) &&
-        this.inRange(s.createdAt, range) &&
-        (!registerId || s.registerId === registerId) &&
-        (!branchId || (s.branchId ?? null) === branchId),
-    );
-  }
-
-  // Three bulk reads grouped in memory — never two queries per sale (PLAN §12:
-  // N+1 patterns are detected and removed; on PostgreSQL they made the
-  // dashboard p95 grow with sales count).
-  private async linesFor(businessId: string, sales: DbSale[]): Promise<SaleWithLines[]> {
-    const [allItems, allRefundItems, allRefunds] = await Promise.all([
-      this.db.listSaleItemsByBusiness(businessId),
-      this.db.listRefundItemsByBusiness(businessId),
-      this.db.listRefundsByBusiness(businessId),
-    ]);
-    const itemsBySale = new Map<string, DbSaleItem[]>();
-    for (const item of allItems) {
-      const list = itemsBySale.get(item.saleId) ?? [];
-      list.push(item);
-      itemsBySale.set(item.saleId, list);
-    }
-    // Refund items reference the sale through their refund.
-    const saleOfRefund = new Map(allRefunds.map((r) => [r.id, r.saleId]));
-    const refundedBySale = new Map<string, number>();
-    for (const ri of allRefundItems) {
-      const saleId = saleOfRefund.get(ri.refundId);
-      if (!saleId) continue;
-      refundedBySale.set(saleId, (refundedBySale.get(saleId) ?? 0) + ri.amountMinor);
-    }
-    return sales.map((sale) => ({
-      sale,
-      items: itemsBySale.get(sale.id) ?? [],
-      refunded: refundedBySale.get(sale.id) ?? 0,
-    }));
-  }
-
-  private kpi(value: number, previous: number | null): Kpi {
-    if (previous === null) {
-      return { value, previous, deltaMinor: null, deltaPct: null };
-    }
-    const d = delta(value, previous);
-    return { value, previous, deltaMinor: d.deltaMinor, deltaPct: d.deltaPct };
-  }
-
-  // Kpi for a metric the plan may not be entitled to see: no entitlement
-  // means no value and no comparison, not a zero that reads as "spent nothing".
-  private kpiMaybe(value: number | null, previous: number | null): Kpi {
-    if (value === null) return { value: null, previous: null, deltaMinor: null, deltaPct: null };
-    return this.kpi(value, previous);
-  }
-
-  private profitOf(lines: SaleWithLines[], businessId: string): Promise<number> {
-    void businessId;
-    let profit = 0;
-    const jobs = lines.map(async (s) => {
-      let p = 0;
-      for (const l of s.items) p += l.lineTotalMinor - l.costMinor * l.qty;
-      const refundItems = await this.db.listRefundItemsBySale(s.sale.id, s.sale.businessId);
-      const byLine = new Map(s.items.map((l) => [l.id, l.costMinor]));
-      for (const r of refundItems) p -= (byLine.get(r.saleItemId) ?? 0) * r.qty;
-      return p;
-    });
-    return Promise.all(jobs).then((parts) => parts.reduce((a, b) => a + b, profit));
-  }
-
-  private async metrics(
-    businessId: string,
-    range: DateRange,
-    registerId?: string,
-    branchId?: string,
-  ): Promise<{
-    netRevenue: number;
-    orders: number;
-    avgOrder: number;
-    grossProfit: number;
-    refundTotal: number;
-    discountTotal: number;
-  }> {
-    const sales = await this.settledSales(businessId, range, registerId, branchId);
-    const withLines = await this.linesFor(businessId, sales);
-    const gross = withLines.reduce((sum, s) => sum + s.sale.totalMinor, 0);
-    const refundTotal = withLines.reduce((sum, s) => sum + s.refunded, 0);
-    const netRevenue = gross - refundTotal;
-    const orders = withLines.length;
-    return {
-      netRevenue,
-      orders,
-      avgOrder: orders === 0 ? 0 : netRevenue / orders,
-      grossProfit: await this.profitOf(withLines, businessId),
-      refundTotal,
-      discountTotal: withLines.reduce((sum, s) => sum + s.sale.discountMinor, 0),
-    };
-  }
-
-  private async expensesTotal(businessId: string, range: DateRange): Promise<number> {
-    const all = await this.db.listExpensesByBusiness(businessId);
-    return all
-      .filter((e) => e.voidedAt === null && this.inRange(e.expenseDate, range))
-      .reduce((sum, e) => sum + e.amountMinor, 0);
+  constructor(@Inject("DbPort") private readonly db: DbPort) {
+    this.breakdowns = new ReportingBreakdownService(db);
+    this.core = new ReportingCore(db);
   }
 
   async getOverview(
@@ -189,8 +42,18 @@ export class ReportingService {
       expenseTotal: Kpi;
     };
     series: SeriesPoint[];
-    topProducts: Array<{ productId: string; name: string; qty: number; revenue: number }>;
-    attention: Array<{ kind: string; label: string; href: string; count: number }>;
+    topProducts: Array<{
+      productId: string;
+      name: string;
+      qty: number;
+      revenue: number;
+    }>;
+    attention: Array<{
+      kind: string;
+      label: string;
+      href: string;
+      count: number;
+    }>;
     generatedAt: string;
     range: { from: string; to: string };
     compare: string;
@@ -198,14 +61,35 @@ export class ReportingService {
   }> {
     withScope(businessId, {});
     void role;
-    const { range, prev, compare, label } = this.resolved(query);
-    // Expenses are a paid feature (PLAN.md 16.2): a plan without the
-    // entitlement gets the daily loop, not the expense total.
-    const canSeeExpenses = await new BillingService(this.db).checkFeature(businessId, "expenses");
-    const cur = await this.metrics(businessId, range, query.registerId, query.branchId);
-    const curExpenses = canSeeExpenses ? await this.expensesTotal(businessId, range) : null;
-    const old = prev ? await this.metrics(businessId, prev, query.registerId, query.branchId) : null;
-    const oldExpenses = canSeeExpenses && prev ? await this.expensesTotal(businessId, prev) : null;
+    const { range, prev, compare, label } = this.core.resolved(query);
+    const billing = new BillingService(this.db);
+    const canSeeExpenses = await billing.checkFeature(
+      businessId,
+      "expenses",
+    );
+    const sales = await this.core.settledSales(
+      businessId,
+      range,
+      query.registerId,
+      query.branchId,
+    );
+    const withLines = await this.core.linesFor(businessId, sales);
+    const cur = this.core.metricsFromLines(withLines);
+    const curExpenses = canSeeExpenses
+      ? await this.core.expensesTotal(businessId, range)
+      : null;
+    const old = prev
+      ? await this.core.metrics(
+          businessId,
+          prev,
+          query.registerId,
+          query.branchId,
+        )
+      : null;
+    const oldExpenses =
+      canSeeExpenses && prev
+        ? await this.core.expensesTotal(businessId, prev)
+        : null;
     const canSeeProfit = granted.includes("cost.view");
     const kpis: {
       netRevenue: Kpi;
@@ -216,49 +100,82 @@ export class ReportingService {
       discountTotal: Kpi;
       expenseTotal: Kpi;
     } = {
-      netRevenue: this.kpi(cur.netRevenue, old?.netRevenue ?? null),
-      orders: this.kpi(cur.orders, old?.orders ?? null),
-      avgOrder: this.kpi(cur.avgOrder, old?.avgOrder ?? null),
-      refundTotal: this.kpi(cur.refundTotal, old?.refundTotal ?? null),
-      discountTotal: this.kpi(cur.discountTotal, old?.discountTotal ?? null),
-      expenseTotal: this.kpiMaybe(curExpenses, oldExpenses),
+      netRevenue: this.core.kpi(
+        cur.netRevenue,
+        old?.netRevenue ?? null,
+      ),
+      orders: this.core.kpi(cur.orders, old?.orders ?? null),
+      avgOrder: this.core.kpi(cur.avgOrder, old?.avgOrder ?? null),
+      refundTotal: this.core.kpi(
+        cur.refundTotal,
+        old?.refundTotal ?? null,
+      ),
+      discountTotal: this.core.kpi(
+        cur.discountTotal,
+        old?.discountTotal ?? null,
+      ),
+      expenseTotal: this.core.kpiMaybe(curExpenses, oldExpenses),
     };
-    if (canSeeProfit) kpis.grossProfit = this.kpi(cur.grossProfit, old?.grossProfit ?? null);
+    if (canSeeProfit) {
+      kpis.grossProfit = this.core.kpi(
+        cur.grossProfit,
+        old?.grossProfit ?? null,
+      );
+    }
     const granularity = "day";
     const buckets = bucketRange(range.from, range.to, granularity);
-    const byBucket = new Map<string, { netRevenue: number; orders: number }>();
-    for (const b of buckets) byBucket.set(b, { netRevenue: 0, orders: 0 });
-    const sales = await this.settledSales(businessId, range, query.registerId, query.branchId);
-    const withLines = await this.linesFor(businessId, sales);
-    for (const s of withLines) {
-      const key = bucketKey(s.sale.createdAt, granularity);
+    const byBucket = new Map<
+      string,
+      { netRevenue: number; orders: number }
+    >();
+    for (const bucket of buckets) {
+      byBucket.set(bucket, { netRevenue: 0, orders: 0 });
+    }
+    for (const sale of withLines) {
+      const key = bucketKey(sale.sale.createdAt, granularity);
       const slot = byBucket.get(key);
       if (!slot) continue;
-      slot.netRevenue += s.sale.totalMinor - s.refunded;
+      slot.netRevenue += sale.sale.totalMinor - sale.refunded;
       slot.orders += 1;
     }
-    const series: SeriesPoint[] = buckets.map((bucket) => ({ bucket, ...byBucket.get(bucket)! }));
-    const agg = new Map<string, { name: string; qty: number; revenue: number }>();
-    for (const s of withLines) {
-      for (const l of s.items) {
-        const row = agg.get(l.productId) ?? { name: l.name, qty: 0, revenue: 0 };
-        row.qty += l.qty;
-        row.revenue += l.lineTotalMinor;
-        agg.set(l.productId, row);
+    const series: SeriesPoint[] = buckets.map((bucket) => ({
+      bucket,
+      ...byBucket.get(bucket)!,
+    }));
+    const aggregate = new Map<
+      string,
+      { name: string; qty: number; revenue: number }
+    >();
+    for (const sale of withLines) {
+      for (const line of sale.items) {
+        const row = aggregate.get(line.productId) ?? {
+          name: line.name,
+          qty: 0,
+          revenue: 0,
+        };
+        row.qty += line.qty;
+        row.revenue += line.lineTotalMinor;
+        aggregate.set(line.productId, row);
       }
     }
-    const topProducts = [...agg.entries()]
-      .map(([productId, r]) => ({ productId, ...r }))
+    const topProducts = [...aggregate.entries()]
+      .map(([productId, row]) => ({ productId, ...row }))
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 5);
-    const attention = await this.attentionFor(businessId, query.branchId);
+    const attention = await this.attentionFor(
+      businessId,
+      query.branchId,
+    );
     return {
       kpis,
       series,
       topProducts,
       attention,
       generatedAt: new Date().toISOString(),
-      range: { from: range.from.toISOString(), to: range.to.toISOString() },
+      range: {
+        from: range.from.toISOString(),
+        to: range.to.toISOString(),
+      },
       compare,
       compareLabel: label,
     };
@@ -267,44 +184,97 @@ export class ReportingService {
   private async attentionFor(
     businessId: string,
     branchId?: string,
-  ): Promise<Array<{ kind: string; label: string; href: string; count: number }>> {
-    const out: Array<{ kind: string; label: string; href: string; count: number }> = [];
-    const products = await this.db.listProducts(businessId);
+  ): Promise<
+    Array<{
+      kind: string;
+      label: string;
+      href: string;
+      count: number;
+    }>
+  > {
+    const out: Array<{
+      kind: string;
+      label: string;
+      href: string;
+      count: number;
+    }> = [];
+    const [products, balances, shifts, sales, payments] =
+      await Promise.all([
+        this.db.listProducts(businessId),
+        this.db.listBalances(businessId),
+        this.db.listShiftsByBusiness(businessId),
+        this.db.listSalesByBusiness(businessId),
+        this.db.listPaymentsByBusiness(businessId),
+      ]);
+    const targetBranch = branchId ?? null;
+    const balanceByProduct = new Map(
+      balances
+        .filter(
+          (balance) =>
+            (balance.branchId ?? null) === targetBranch,
+        )
+        .map((balance) => [balance.productId, balance]),
+    );
     let low = 0;
     let outCount = 0;
-    for (const p of products) {
-      if (!p.isActive) continue;
-      const bal = branchId
-        ? await this.db.findBalance(p.id, businessId, branchId)
-        : await this.db.findBalance(p.id, businessId);
+    for (const product of products) {
+      if (!product.isActive) continue;
+      const balance = balanceByProduct.get(product.id) ?? null;
       const status = deriveStockStatus({
-        qtyOnHand: bal?.qtyOnHand ?? 0,
-        reorderLevel: p.reorderLevel,
-        trackInventory: p.trackInventory,
+        qtyOnHand: balance?.qtyOnHand ?? 0,
+        reorderLevel: product.reorderLevel,
+        trackInventory: product.trackInventory,
       });
       if (status === "low") low += 1;
       if (status === "out") outCount += 1;
     }
-    if (low > 0) out.push({ kind: "low_stock", label: `${low} products low on stock`, href: "/inventory", count: low });
+    if (low > 0) {
+      out.push({
+        kind: "low_stock",
+        label: `${low} products low on stock`,
+        href: "/inventory",
+        count: low,
+      });
+    }
     if (outCount > 0) {
-      out.push({ kind: "out_of_stock", label: `${outCount} products out of stock`, href: "/inventory", count: outCount });
+      out.push({
+        kind: "out_of_stock",
+        label: `${outCount} products out of stock`,
+        href: "/inventory",
+        count: outCount,
+      });
     }
-    const shifts = await this.db.listShiftsByBusiness(businessId);
-    const open = shifts.filter((s) => s.status === "OPEN").length;
-    if (open > 0) out.push({ kind: "open_shifts", label: `${open} shifts open`, href: "/shifts", count: open });
-    const sales = await this.db.listSalesByBusiness(businessId);
-    let unknown = 0;
-    let pending = 0;
-    for (const s of sales) {
-      if (s.status === "REFUND_REQUESTED") pending += 1;
-      const payments = await this.db.listPaymentsBySale(s.id, businessId);
-      unknown += payments.filter((p) => p.status === "UNKNOWN").length;
+    const open = shifts.filter((shift) => shift.status === "OPEN")
+      .length;
+    if (open > 0) {
+      out.push({
+        kind: "open_shifts",
+        label: `${open} shifts open`,
+        href: "/shifts",
+        count: open,
+      });
     }
+    const pending = sales.filter(
+      (sale) => sale.status === "REFUND_REQUESTED",
+    ).length;
+    const unknown = payments.filter(
+      (payment) => payment.status === "UNKNOWN",
+    ).length;
     if (unknown > 0) {
-      out.push({ kind: "unknown_payments", label: `${unknown} payments need reconciliation`, href: "/sales?status=PAYMENT_UNKNOWN", count: unknown });
+      out.push({
+        kind: "unknown_payments",
+        label: `${unknown} payments need reconciliation`,
+        href: "/sales?status=PAYMENT_UNKNOWN",
+        count: unknown,
+      });
     }
     if (pending > 0) {
-      out.push({ kind: "pending_refunds", label: `${pending} refunds awaiting approval`, href: "/sales?status=REFUND_REQUESTED", count: pending });
+      out.push({
+        kind: "pending_refunds",
+        label: `${pending} refunds awaiting approval`,
+        href: "/sales?status=REFUND_REQUESTED",
+        count: pending,
+      });
     }
     return out;
   }
@@ -314,28 +284,49 @@ export class ReportingService {
     query: ReportQuery,
     role: string,
     granted: string[],
-  ): Promise<{
-    totals: { netRevenue: number; orders: number; avgOrder: number; grossProfit: number | null; refundTotal: number; discountTotal: number };
-    series: SeriesPoint[];
-    generatedAt: string;
-    range: { from: string; to: string };
-    compare: string;
-    compareLabel: string;
-  }> {
+  ) {
     withScope(businessId, {});
     void role;
-    const { range, compare, label } = this.resolved(query);
-    const granularity = query.granularity === "hour" ? "hour" : "day";
-    await new BillingService(this.db).requireFeature(businessId, "reports");
-    const cur = await this.metrics(businessId, range, query.registerId, query.branchId);
-    const buckets = bucketRange(range.from, range.to, granularity);
-    const byBucket = new Map<string, { netRevenue: number; orders: number }>();
-    for (const b of buckets) byBucket.set(b, { netRevenue: 0, orders: 0 });
-    const withLines = await this.linesFor(businessId, await this.settledSales(businessId, range, query.registerId, query.branchId));
-    for (const s of withLines) {
-      const slot = byBucket.get(bucketKey(s.sale.createdAt, granularity));
+    const { range, compare, label } = this.core.resolved(query);
+    const granularity =
+      query.granularity === "hour" ? "hour" : "day";
+    await new BillingService(this.db).requireFeature(
+      businessId,
+      "reports",
+    );
+    const cur = await this.core.metrics(
+      businessId,
+      range,
+      query.registerId,
+      query.branchId,
+    );
+    const buckets = bucketRange(
+      range.from,
+      range.to,
+      granularity,
+    );
+    const byBucket = new Map<
+      string,
+      { netRevenue: number; orders: number }
+    >();
+    for (const bucket of buckets) {
+      byBucket.set(bucket, { netRevenue: 0, orders: 0 });
+    }
+    const withLines = await this.core.linesFor(
+      businessId,
+      await this.core.settledSales(
+        businessId,
+        range,
+        query.registerId,
+        query.branchId,
+      ),
+    );
+    for (const sale of withLines) {
+      const slot = byBucket.get(
+        bucketKey(sale.sale.createdAt, granularity),
+      );
       if (!slot) continue;
-      slot.netRevenue += s.sale.totalMinor - s.refunded;
+      slot.netRevenue += sale.sale.totalMinor - sale.refunded;
       slot.orders += 1;
     }
     return {
@@ -343,13 +334,21 @@ export class ReportingService {
         netRevenue: cur.netRevenue,
         orders: cur.orders,
         avgOrder: cur.avgOrder,
-        grossProfit: granted.includes("cost.view") ? cur.grossProfit : null,
+        grossProfit: granted.includes("cost.view")
+          ? cur.grossProfit
+          : null,
         refundTotal: cur.refundTotal,
         discountTotal: cur.discountTotal,
       },
-      series: buckets.map((bucket) => ({ bucket, ...byBucket.get(bucket)! })),
+      series: buckets.map((bucket) => ({
+        bucket,
+        ...byBucket.get(bucket)!,
+      })),
       generatedAt: new Date().toISOString(),
-      range: { from: range.from.toISOString(), to: range.to.toISOString() },
+      range: {
+        from: range.from.toISOString(),
+        to: range.to.toISOString(),
+      },
       compare,
       compareLabel: label,
     };
@@ -360,156 +359,23 @@ export class ReportingService {
     query: ReportQuery,
     role: string,
     granted: string[],
-  ): Promise<{
-    rows: Array<{ productId: string; name: string; qty: number; revenue: number; profit: number | null; marginPct: number | null }>;
-    generatedAt: string;
-    range: { from: string; to: string };
-    compare: string;
-    compareLabel: string;
-  }> {
-    withScope(businessId, {});
-    void role;
-    const { range, compare, label } = this.resolved(query);
-    const canSeeProfit = granted.includes("cost.view");
-    const limit = Math.min(Math.max(query.limit ?? 20, 1), 100);
-    const tab = query.tab ?? "top";
-    await new BillingService(this.db).requireFeature(businessId, "reports");
-    const withLines = await this.linesFor(businessId, await this.settledSales(businessId, range, query.registerId, query.branchId));
-    const agg = new Map<string, { name: string; qty: number; revenue: number; profit: number }>();
-    for (const s of withLines) {
-      for (const l of s.items) {
-        const row = agg.get(l.productId) ?? { name: l.name, qty: 0, revenue: 0, profit: 0 };
-        row.qty += l.qty;
-        row.revenue += l.lineTotalMinor;
-        row.profit += l.lineTotalMinor - l.costMinor * l.qty;
-        agg.set(l.productId, row);
-      }
-    }
-    // Refund cost relief per product.
-    for (const s of withLines) {
-      const refundItems = await this.db.listRefundItemsBySale(s.sale.id, businessId);
-      const costByLine = new Map(s.items.map((l) => [l.id, l.costMinor]));
-      for (const r of refundItems) {
-        const row = agg.get(r.productId);
-        if (row) row.profit -= (costByLine.get(r.saleItemId) ?? 0) * r.qty;
-      }
-    }
-    const toRow = (productId: string, r: { name: string; qty: number; revenue: number; profit: number }) => ({
-      productId,
-      name: r.name,
-      qty: r.qty,
-      revenue: r.revenue,
-      profit: canSeeProfit ? r.profit : null,
-      marginPct: canSeeProfit && r.revenue > 0 ? Math.round((r.profit / r.revenue) * 100) : null,
-    });
-    let rows;
-    if (tab === "top") {
-      rows = [...agg.entries()]
-        .map(([productId, r]) => toRow(productId, r))
-        .sort((a, b) => b.revenue - a.revenue)
-        .slice(0, limit);
-    } else {
-      const products = await this.db.listProducts(businessId);
-      const soldIds = new Set(agg.keys());
-      if (tab === "slow") {
-        rows = products
-          .filter((p) => p.isActive && !soldIds.has(p.id))
-          .map((p) => toRow(p.id, { name: p.name, qty: 0, revenue: 0, profit: 0 }))
-          .sort((a, b) => a.name.localeCompare(b.name))
-          .slice(0, limit);
-      } else {
-        const cutoff = range.to.getTime() - 90 * 24 * 3600 * 1000;
-        const allSales = await this.db.listSalesByBusiness(businessId);
-        const recentIds = new Set<string>();
-        for (const s of allSales) {
-          if (!isSettled(s.status) || s.createdAt.getTime() < cutoff) continue;
-          for (const l of await this.db.listSaleItems(s.id, businessId)) recentIds.add(l.productId);
-        }
-        rows = products
-          .filter((p) => !recentIds.has(p.id))
-          .map((p) => toRow(p.id, { name: p.name, qty: 0, revenue: 0, profit: 0 }))
-          .sort((a, b) => a.name.localeCompare(b.name))
-          .slice(0, limit);
-      }
-    }
-    return {
-      rows,
-      generatedAt: new Date().toISOString(),
-      range: { from: range.from.toISOString(), to: range.to.toISOString() },
-      compare,
-      compareLabel: label,
-    };
+  ) {
+    return this.breakdowns.getProductsReport(
+      businessId,
+      query,
+      role,
+      granted,
+    );
   }
 
-  async getInventoryReport(businessId: string, branchId?: string): Promise<{
-    healthy: number;
-    low: number;
-    out: number;
-    untracked: number;
-    lowStock: Array<{ productId: string; name: string; onHand: number; reorderLevel: number }>;
-    movements: { received: number; sold: number; damaged: number; adjusted: number };
-    generatedAt: string;
-  }> {
-    withScope(businessId, {});
-    await new BillingService(this.db).requireFeature(businessId, "reports");
-    const products = await this.db.listProducts(businessId);
-    let healthy = 0;
-    let low = 0;
-    let out = 0;
-    let untracked = 0;
-    const lowStock: Array<{ productId: string; name: string; onHand: number; reorderLevel: number }> = [];
-    for (const p of products) {
-      if (!p.isActive) continue;
-      // Phase 9a: when a branch filter is active, health counts derive from
-      // that branch's balances; the movements section stays business-wide
-      // (pre-9a rows are null-scoped, so filtering would undercount history).
-      const bal = branchId
-        ? await this.db.findBalance(p.id, businessId, branchId)
-        : await this.db.findBalance(p.id, businessId);
-      const onHand = bal?.qtyOnHand ?? 0;
-      const status = deriveStockStatus({ qtyOnHand: onHand, reorderLevel: p.reorderLevel, trackInventory: p.trackInventory });
-      if (status === "untracked") {
-        untracked += 1;
-        continue;
-      }
-      if (status === "ok") healthy += 1;
-      if (status === "low") {
-        low += 1;
-        lowStock.push({ productId: p.id, name: p.name, onHand, reorderLevel: p.reorderLevel });
-      }
-      if (status === "out") {
-        out += 1;
-        lowStock.push({ productId: p.id, name: p.name, onHand, reorderLevel: p.reorderLevel });
-      }
-    }
-    lowStock.sort((a, b) => a.name.localeCompare(b.name));
-    // All-time ledger sums: DbMovement carries no timestamp, so no date
-    // filtering is possible here. Documented, not a bug.
-    const movements = await this.db.listMovementsByBusiness(businessId);
-    let received = 0;
-    let sold = 0;
-    let damaged = 0;
-    let adjusted = 0;
-    for (const m of movements) {
-      if (m.type === "opening_stock" || m.type === "receive" || m.type === "return" || m.type === "transfer_in") {
-        received += m.qtyDelta;
-      } else if (m.type === "sale" || m.type === "transfer_out") {
-        sold += -m.qtyDelta;
-      } else if (m.type === "damage") {
-        damaged += -m.qtyDelta;
-      } else if (m.type === "adjustment" || m.type === "stock_count") {
-        adjusted += m.qtyDelta;
-      }
-    }
-    return {
-      healthy,
-      low,
-      out,
-      untracked,
-      lowStock: lowStock.slice(0, 50),
-      movements: { received, sold, damaged, adjusted },
-      generatedAt: new Date().toISOString(),
-    };
+  async getInventoryReport(
+    businessId: string,
+    branchId?: string,
+  ) {
+    return this.breakdowns.getInventoryReport(
+      businessId,
+      branchId,
+    );
   }
 
   async getPaymentsReport(
@@ -517,46 +383,57 @@ export class ReportingService {
     query: ReportQuery,
     role: string,
     granted: string[],
-  ): Promise<{
-    byMethod: Array<{ method: string; total: number; count: number }>;
-    unknown: number;
-    refunded: number;
-    generatedAt: string;
-    range: { from: string; to: string };
-    compare: string;
-    compareLabel: string;
-  }> {
+  ) {
     withScope(businessId, {});
     void role;
     void granted;
-    await new BillingService(this.db).requireFeature(businessId, "reports");
-    const { range, compare, label } = this.resolved(query);
-    const sales = await this.settledSales(businessId, range, query.registerId);
-    const byMethod = new Map<string, { total: number; count: number }>();
+    await new BillingService(this.db).requireFeature(
+      businessId,
+      "reports",
+    );
+    const { range, compare, label } = this.core.resolved(query);
+    const sales = await this.core.settledSales(
+      businessId,
+      range,
+      query.registerId,
+    );
+    const byMethod = new Map<
+      string,
+      { total: number; count: number }
+    >();
     let unknown = 0;
     let refunded = 0;
-    for (const s of sales) {
-      for (const p of await this.db.listPaymentsBySale(s.id, businessId)) {
-        if (p.status === "SUCCEEDED") {
-          const row = byMethod.get(p.method) ?? { total: 0, count: 0 };
-          row.total += p.amountMinor;
+    for (const sale of sales) {
+      for (const payment of await this.db.listPaymentsBySale(
+        sale.id,
+        businessId,
+      )) {
+        if (payment.status === "SUCCEEDED") {
+          const row = byMethod.get(payment.method) ?? {
+            total: 0,
+            count: 0,
+          };
+          row.total += payment.amountMinor;
           row.count += 1;
-          byMethod.set(p.method, row);
-        } else if (p.status === "UNKNOWN") {
+          byMethod.set(payment.method, row);
+        } else if (payment.status === "UNKNOWN") {
           unknown += 1;
-        } else if (p.status === "REFUNDED") {
-          refunded += p.amountMinor;
+        } else if (payment.status === "REFUNDED") {
+          refunded += payment.amountMinor;
         }
       }
     }
     return {
       byMethod: [...byMethod.entries()]
-        .map(([method, r]) => ({ method, ...r }))
+        .map(([method, row]) => ({ method, ...row }))
         .sort((a, b) => b.total - a.total),
       unknown,
       refunded,
       generatedAt: new Date().toISOString(),
-      range: { from: range.from.toISOString(), to: range.to.toISOString() },
+      range: {
+        from: range.from.toISOString(),
+        to: range.to.toISOString(),
+      },
       compare,
       compareLabel: label,
     };
@@ -565,25 +442,26 @@ export class ReportingService {
   async getCashReport(
     businessId: string,
     query: ReportQuery,
-  ): Promise<{
-    shifts: Array<{
-      shiftId: string;
-      registerId: string;
-      status: string;
-      expectedCash: number;
-      countedCash: number | null;
-      variance: number | null;
-    }>;
-    generatedAt: string;
-  }> {
+  ) {
     withScope(businessId, {});
-    await new BillingService(this.db).requireFeature(businessId, "reports");
-    // DbShift carries no timestamp fields, so no date filtering is applied;
-    // date scoping arrives with a future openedAt column (no migration here).
+    await new BillingService(this.db).requireFeature(
+      businessId,
+      "reports",
+    );
     let shifts = await this.db.listShiftsByBusiness(businessId);
-    if (query.registerId) shifts = shifts.filter((s) => s.registerId === query.registerId);
-    if (query.branchId) shifts = shifts.filter((s) => (s.branchId ?? null) === query.branchId);
-    shifts = [...shifts].sort((a, b) => (a.id < b.id ? 1 : -1)).slice(0, 100);
+    if (query.registerId) {
+      shifts = shifts.filter(
+        (shift) => shift.registerId === query.registerId,
+      );
+    }
+    if (query.branchId) {
+      shifts = shifts.filter(
+        (shift) => (shift.branchId ?? null) === query.branchId,
+      );
+    }
+    shifts = [...shifts]
+      .sort((a, b) => (a.id < b.id ? 1 : -1))
+      .slice(0, 100);
     const out: Array<{
       shiftId: string;
       registerId: string;
@@ -592,30 +470,44 @@ export class ReportingService {
       countedCash: number | null;
       variance: number | null;
     }> = [];
-    for (const s of shifts) {
-      if (s.status === "CLOSED") {
+    for (const shift of shifts) {
+      if (shift.status === "CLOSED") {
         out.push({
-          shiftId: s.id,
-          registerId: s.registerId,
-          status: s.status,
-          expectedCash: s.expectedCashMinor,
-          countedCash: s.countedCashMinor,
-          variance: s.varianceMinor,
+          shiftId: shift.id,
+          registerId: shift.registerId,
+          status: shift.status,
+          expectedCash: shift.expectedCashMinor,
+          countedCash: shift.countedCashMinor,
+          variance: shift.varianceMinor,
         });
       } else {
-        const movements = await this.db.listCashMovementsByShift(s.id, businessId);
+        const movements =
+          await this.db.listCashMovementsByShift(
+            shift.id,
+            businessId,
+          );
         const sums = sumCashComponents(movements);
         out.push({
-          shiftId: s.id,
-          registerId: s.registerId,
-          status: s.status,
-          expectedCash: s.openingFloatMinor + sums.cashSales - sums.cashRefunds - sums.cashExpenses + sums.cashDeposits - sums.cashWithdrawals + sums.adjustments,
+          shiftId: shift.id,
+          registerId: shift.registerId,
+          status: shift.status,
+          expectedCash:
+            shift.openingFloatMinor +
+            sums.cashSales -
+            sums.cashRefunds -
+            sums.cashExpenses +
+            sums.cashDeposits -
+            sums.cashWithdrawals +
+            sums.adjustments,
           countedCash: null,
           variance: null,
         });
       }
     }
-    return { shifts: out, generatedAt: new Date().toISOString() };
+    return {
+      shifts: out,
+      generatedAt: new Date().toISOString(),
+    };
   }
 
   async getBranchesReport(
@@ -623,157 +515,40 @@ export class ReportingService {
     query: ReportQuery,
     role: string,
     granted: string[],
-  ): Promise<{
-    rows: Array<{ branchId: string | null; name: string; type: string; sales: number; orders: number; margin: number | null }>;
-    generatedAt: string;
-    range: { from: string; to: string };
-    compare: string;
-    compareLabel: string;
-  }> {
-    withScope(businessId, {});
-    void role;
-    const { range, compare, label } = this.resolved(query);
-    const canSeeProfit = granted.includes("cost.view");
-    const branches = await this.db.listBranchesByBusiness(businessId);
-    await new BillingService(this.db).requireFeature(businessId, "reports");
-    const withLines = await this.linesFor(businessId, await this.settledSales(businessId, range));
-    const groups = new Map<string | null, SaleWithLines[]>();
-    for (const s of withLines) {
-      const key = s.sale.branchId ?? null;
-      const arr = groups.get(key) ?? [];
-      arr.push(s);
-      groups.set(key, arr);
-    }
-    const summarize = async (items: SaleWithLines[]) => ({
-      sales: items.reduce((sum, s) => sum + s.sale.totalMinor - s.refunded, 0),
-      orders: items.length,
-      margin: canSeeProfit ? await this.profitOf(items, businessId) : null,
-    });
-    const rows: Array<{ branchId: string | null; name: string; type: string; sales: number; orders: number; margin: number | null }> = [];
-    for (const b of branches) {
-      const { sales, orders, margin } = await summarize(groups.get(b.id) ?? []);
-      rows.push({ branchId: b.id, name: b.name, type: b.type, sales, orders, margin });
-    }
-    // Null-branch (legacy single-location) activity gets its own row so the
-    // table reconciles with the unfiltered totals.
-    const unscoped = groups.get(null) ?? [];
-    if (unscoped.length > 0) {
-      const { sales, orders, margin } = await summarize(unscoped);
-      rows.push({ branchId: null, name: "Unscoped", type: "unscoped", sales, orders, margin });
-    }
-    rows.sort((a, b) => b.sales - a.sales);
-    return {
-      rows,
-      generatedAt: new Date().toISOString(),
-      range: { from: range.from.toISOString(), to: range.to.toISOString() },
-      compare,
-      compareLabel: label,
-    };
+  ) {
+    return this.breakdowns.getBranchesReport(
+      businessId,
+      query,
+      role,
+      granted,
+    );
   }
 
   async getCustomersReport(
     businessId: string,
-    query: { dateFrom?: string; dateTo?: string; compare?: string },
+    query: {
+      dateFrom?: string;
+      dateTo?: string;
+      compare?: string;
+    },
     role: string,
-  ): Promise<{
-    total: number;
-    active: number;
-    top: Array<{ customerId: string; name: string; spend: number; orders: number }>;
-    generatedAt: string;
-    range: { from: string; to: string };
-    compare: string;
-    compareLabel: string;
-  }> {
-    withScope(businessId, {});
-    void role;
-    const { range, compare, label } = this.resolved(query);
-    const customers = await this.db.listCustomersByBusiness(businessId);
-    await new BillingService(this.db).requireFeature(businessId, "customers");
-    const sales = await this.settledSales(businessId, range);
-    const withLines = await this.linesFor(businessId, sales);
-    const spend = new Map<string, { spend: number; orders: number }>();
-    for (const s of withLines) {
-      if (!s.sale.customerId) continue;
-      const row = spend.get(s.sale.customerId) ?? { spend: 0, orders: 0 };
-      row.spend += s.sale.totalMinor - s.refunded;
-      row.orders += 1;
-      spend.set(s.sale.customerId, row);
-    }
-    const top: Array<{ customerId: string; name: string; spend: number; orders: number }> = [];
-    for (const [customerId, r] of spend) {
-      const row = await this.db.findCustomerById(customerId, businessId);
-      top.push({ customerId, name: row?.name ?? "Walk-in", ...r });
-    }
-    top.sort((a, b) => b.spend - a.spend);
-    return {
-      total: customers.length,
-      active: customers.filter((c) => c.isActive).length,
-      top: top.slice(0, 10),
-      generatedAt: new Date().toISOString(),
-      range: { from: range.from.toISOString(), to: range.to.toISOString() },
-      compare,
-      compareLabel: label,
-    };
+  ) {
+    return this.breakdowns.getCustomersReport(
+      businessId,
+      query,
+      role,
+    );
   }
 
   async getCashiersReport(
     businessId: string,
     query: ReportQuery,
     role: string,
-  ): Promise<{
-    actors: Array<{
-      actorId: string;
-      name: string;
-      sales: number;
-      orders: number;
-      refunds: number;
-      refundTotal: number;
-      discounts: number;
-      varianceContext: { shiftsClosed: number; totalVariance: number };
-    }>;
-    generatedAt: string;
-    range: { from: string; to: string };
-    compare: string;
-    compareLabel: string;
-  }> {
-    withScope(businessId, {});
-    if (role !== "owner" && role !== "manager") throw new Error("FORBIDDEN");
-    await new BillingService(this.db).requireFeature(businessId, "advanced_reports");
-    const { range, compare, label } = this.resolved(query);
-    const sales = await this.settledSales(businessId, range, query.registerId);
-    const withLines = await this.linesFor(businessId, sales);
-    const agg = new Map<string, { sales: number; orders: number; refunds: number; refundTotal: number; discounts: number }>();
-    for (const s of withLines) {
-      const row = agg.get(s.sale.actorId) ?? { sales: 0, orders: 0, refunds: 0, refundTotal: 0, discounts: 0 };
-      row.sales += s.sale.totalMinor - s.refunded;
-      row.orders += 1;
-      row.discounts += s.sale.discountMinor;
-      const refundRows = await this.db.listRefundsBySale(s.sale.id, businessId);
-      row.refunds += refundRows.length;
-      row.refundTotal += s.refunded;
-      agg.set(s.sale.actorId, row);
-    }
-    const shifts = await this.db.listShiftsByBusiness(businessId);
-    const actors = [];
-    for (const [actorId, r] of agg) {
-      const user = await this.db.findUserById(actorId);
-      const closed = shifts.filter((s) => s.status === "CLOSED" && s.closedBy === actorId);
-      actors.push({
-        actorId,
-        name: user?.name ?? actorId,
-        ...r,
-        varianceContext: {
-          shiftsClosed: closed.length,
-          totalVariance: closed.reduce((sum, s) => sum + (s.varianceMinor ?? 0), 0),
-        },
-      });
-    }
-    return {
-      actors,
-      generatedAt: new Date().toISOString(),
-      range: { from: range.from.toISOString(), to: range.to.toISOString() },
-      compare,
-      compareLabel: label,
-    };
+  ) {
+    return this.breakdowns.getCashiersReport(
+      businessId,
+      query,
+      role,
+    );
   }
 }

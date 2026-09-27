@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { withPg } from "./helpers";
 import type { DbPort } from "../../src/common/db.port";
+import { PgContext } from "../../src/common/pg/context";
 
 describe("phase12 pg foundation", () => {
   it("seeds the four plans and reads them back", async () => {
@@ -76,6 +77,47 @@ describe("phase12 pg foundation", () => {
       // The settings write was part of the transaction: gone after rollback.
       expect(await db.getSettings(biz.id)).toEqual({});
       expect(await db.findBusinessById(biz.id)).not.toBeNull(); // outside tx: survived
+    });
+  });
+
+  it("nested locks inside one transaction still block another PostgreSQL instance", async () => {
+    await withPg(async (_db, ctx) => {
+      const base = process.env["PGTEST_BASE"] ?? "postgres://pos:pos@localhost:5433";
+      const competitor = new PgContext(base + "/pos_test_pg");
+      const outerKey = "foundation-outer-" + Date.now();
+      const innerKey = "foundation-inner-" + Date.now();
+      let releaseInner!: () => void;
+      const innerReleased = new Promise<void>((resolve) => {
+        releaseInner = resolve;
+      });
+      let innerEntered!: () => void;
+      const innerStarted = new Promise<void>((resolve) => {
+        innerEntered = resolve;
+      });
+      let competitorEntered = false;
+
+      try {
+        const holder = ctx.withLock(outerKey, async () => {
+          await ctx.withLock(innerKey, async () => {
+            innerEntered();
+            await innerReleased;
+          });
+        });
+        await innerStarted;
+
+        const contender = competitor.withLock(innerKey, async () => {
+          competitorEntered = true;
+        });
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        expect(competitorEntered).toBe(false);
+
+        releaseInner();
+        await Promise.all([holder, contender]);
+        expect(competitorEntered).toBe(true);
+      } finally {
+        releaseInner?.();
+        await competitor.close();
+      }
     });
   });
 });

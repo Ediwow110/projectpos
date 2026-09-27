@@ -104,7 +104,7 @@ describe("phase10 exit", () => {
   });
 
   it("gates features by plan and honors flag overrides", async () => {
-    const { db, billing, business, free, pro } = await setup();
+    const { db, billing, business, free } = await setup();
     await db.upsertSubscription({
       businessId: business.id, planId: free.id, status: "active",
       trialEndsAt: null, currentPeriodEnd: new Date("2030-01-01T00:00:00.000Z"),

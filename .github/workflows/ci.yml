@@ -15,6 +15,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
       - run: pnpm typecheck
       - run: node scripts/verify-scaffold.test.mjs
       - run: node scripts/verify-phase0.test.mjs

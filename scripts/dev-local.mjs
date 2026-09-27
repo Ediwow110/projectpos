@@ -54,14 +54,27 @@ if (migrate.error || migrate.status !== 0) fail("Local database migrations faile
 const displayUrl = databaseUrl.replace(/:[^:@/]+@/, ":***@");
 console.log(`starting NexPOS with persistent PostgreSQL (${displayUrl})`);
 
+const devEnv = {
+  ...process.env,
+  DATABASE_URL: databaseUrl,
+  // Mirror production's same-origin browser/API contract locally. This keeps
+  // navigation-based endpoints (CSV exports, downloads) on the web origin
+  // while Next proxies /api/* to the API service.
+  NEXT_PUBLIC_API_BASE: process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:3000",
+  API_PROXY_TARGET: process.env.API_PROXY_TARGET ?? "http://localhost:3001",
+  // Local test/dev runs create many disposable businesses from one loopback
+  // address; production retains the controller's stricter default of 10/min.
+  REGISTRATION_RATE_LIMIT: process.env.REGISTRATION_RATE_LIMIT ?? "1000",
+};
+
 const child = process.platform === "win32"
   ? spawn("cmd.exe", ["/d", "/s", "/c", "pnpm turbo run dev"], {
       stdio: "inherit",
-      env: { ...process.env, DATABASE_URL: databaseUrl },
+      env: devEnv,
     })
   : spawn("pnpm", ["turbo", "run", "dev"], {
       stdio: "inherit",
-      env: { ...process.env, DATABASE_URL: databaseUrl },
+      env: devEnv,
     });
 
 child.on("exit", (code, signal) => {

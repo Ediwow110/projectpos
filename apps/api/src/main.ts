@@ -10,6 +10,10 @@ async function bootstrap(): Promise<void> {
   // provider's signature over what was actually sent instead of over
   // re-serialized JSON.
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
+  // Render and the documented production topologies terminate TLS at one
+  // reverse-proxy hop. Trust that hop so req.ip / req.protocol reflect the
+  // real client values used by auth rate limits and audit rows.
+  app.set("trust proxy", 1);
   app.use(cookieParser() as RequestHandler);
   // Explicit JSON body limit through Nest's own parser (a second manual
   // json() middleware would double-parse and break requests).
@@ -28,5 +32,4 @@ async function bootstrap(): Promise<void> {
   app.enableShutdownHooks();
 }
 
-// eslint-disable-next-line no-console
 bootstrap().catch((e) => console.error(e));

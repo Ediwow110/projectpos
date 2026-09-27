@@ -29,58 +29,67 @@ export class AuthService {
     // single-use token at the service boundary. HTTP never exposes it; a
     // production mailer is still required to deliver it to the owner.
     const requireEmailVerification = process.env["AUTH_REQUIRE_EMAIL_VERIFICATION"] === "1";
-    const user = await this.db.createUser({
-      name: seed.user.name, email: seed.user.email, passwordHash: seed.user.passwordHash,
-      emailVerified: !requireEmailVerification,
-    });
-    let verificationToken: string | undefined;
-    if (requireEmailVerification) {
-      verificationToken = randomBytes(16).toString("hex");
-      await this.db.createEmailVerificationToken({
-        userId: user.id,
-        tokenHash: hashToken(verificationToken),
-        expiresAt: new Date(Date.now() + 24 * 3600 * 1000),
+    const provisioned = await this.db.withTransaction(async (db) => {
+      // Re-check inside the transaction so concurrent attempts do not proceed
+      // through the rest of account provisioning after the initial fast-path
+      // lookup above.
+      const concurrentExisting = await db.findUserByEmail(input.email);
+      if (concurrentExisting) throw new Error("AUTH_EMAIL_TAKEN");
+
+      const user = await db.createUser({
+        name: seed.user.name, email: seed.user.email, passwordHash: seed.user.passwordHash,
+        emailVerified: !requireEmailVerification,
       });
-    }
-    const business = await this.db.createBusiness({ name: seed.business.name, currency: seed.business.currency });
-    for (const [roleName, permissions] of Object.entries(seed.roles)) {
-      void roleName;
-      void permissions;
-    }
-    await this.db.createMembership({ businessId: business.id, userId: user.id, role: seed.ownerRoleName });
-    const settings: Record<string, unknown> = { currency: seed.business.currency, onboarding: seed.onboarding };
-    for (const entry of seed.defaultSettings) settings[entry.key] = entry.value;
-    await this.db.saveSettings(business.id, settings);
-    if (billingEnabled()) {
-      // Billing is opt-in. Tests keep the subscription lifecycle covered, but
-      // normal development/production instances run with unrestricted
-      // Enterprise-equivalent entitlements until BILLING_ENABLED=1.
-      const pro = await this.db.findPlanByKey("pro");
-      const trialEndsAt = new Date(Date.now() + 14 * 86400000);
-      const sub = await this.db.upsertSubscription({
-        businessId: business.id,
-        planId: pro!.id,
-        status: "trialing",
-        trialEndsAt,
-        currentPeriodEnd: trialEndsAt,
+      let verificationToken: string | undefined;
+      if (requireEmailVerification) {
+        verificationToken = randomBytes(16).toString("hex");
+        await db.createEmailVerificationToken({
+          userId: user.id,
+          tokenHash: hashToken(verificationToken),
+          expiresAt: new Date(Date.now() + 24 * 3600 * 1000),
+        });
+      }
+      const business = await db.createBusiness({ name: seed.business.name, currency: seed.business.currency });
+      for (const [roleName, permissions] of Object.entries(seed.roles)) {
+        void roleName;
+        void permissions;
+      }
+      await db.createMembership({ businessId: business.id, userId: user.id, role: seed.ownerRoleName });
+      const settings: Record<string, unknown> = { currency: seed.business.currency, onboarding: seed.onboarding };
+      for (const entry of seed.defaultSettings) settings[entry.key] = entry.value;
+      await db.saveSettings(business.id, settings);
+      if (billingEnabled()) {
+        // Billing is opt-in. Tests keep the subscription lifecycle covered, but
+        // normal development/production instances run with unrestricted
+        // Enterprise-equivalent entitlements until BILLING_ENABLED=1.
+        const pro = await db.findPlanByKey("pro");
+        const trialEndsAt = new Date(Date.now() + 14 * 86400000);
+        const sub = await db.upsertSubscription({
+          businessId: business.id,
+          planId: pro!.id,
+          status: "trialing",
+          trialEndsAt,
+          currentPeriodEnd: trialEndsAt,
+        });
+        await db.appendAudit({ businessId: business.id, actorId: user.id, action: "subscription.created", entityType: "Subscription", entityId: sub.id, requestId: meta.requestId });
+      }
+      const rec = buildSessionRecord({ userId: user.id, businessId: business.id, ip: meta.ip, userAgent: meta.userAgent });
+      await db.createSession({
+        userId: rec.userId,
+        businessId: rec.businessId,
+        tokenHash: rec.tokenHash,
+        expiresAt: rec.expiresAt,
+        revokedAt: null,
+        authenticatedAt: rec.createdAt,
+        ip: rec.ip,
+        userAgent: rec.userAgent,
+        deviceId: null,
       });
-      await this.db.appendAudit({ businessId: business.id, actorId: user.id, action: "subscription.created", entityType: "Subscription", entityId: sub.id, requestId: meta.requestId });
-    }
-    const rec = buildSessionRecord({ userId: user.id, businessId: business.id, ip: meta.ip, userAgent: meta.userAgent });
-    const created = await this.db.createSession({
-      userId: rec.userId,
-      businessId: rec.businessId,
-      tokenHash: rec.tokenHash,
-      expiresAt: rec.expiresAt,
-      revokedAt: null,
-      authenticatedAt: rec.createdAt,
-      ip: rec.ip,
-      userAgent: rec.userAgent,
-      deviceId: null,
+      await db.appendAudit({ businessId: business.id, actorId: user.id, action: "auth.register", entityType: "User", entityId: user.id, requestId: meta.requestId });
+      await db.appendAudit({ businessId: business.id, actorId: user.id, action: "business.create", entityType: "Business", entityId: business.id, requestId: meta.requestId });
+      return { user, business, rec, verificationToken };
     });
-    void created;
-    await this.db.appendAudit({ businessId: business.id, actorId: user.id, action: "auth.register", entityType: "User", entityId: user.id, requestId: meta.requestId });
-    await this.db.appendAudit({ businessId: business.id, actorId: user.id, action: "business.create", entityType: "Business", entityId: business.id, requestId: meta.requestId });
+    const { user, business, rec, verificationToken } = provisioned;
     if (verificationToken) {
       try {
         await this.email.sendEmailVerification({
@@ -120,17 +129,20 @@ export class AuthService {
   // FR-AUTH-01: single-use redemption flips the account to verified and
   // lifts the login gate.
   async verifyEmail(token: string): Promise<{ verified: true }> {
-    const stored = await this.db.findEmailVerificationToken(hashToken(token));
-    if (!stored || stored.usedAt !== null || stored.expiresAt.getTime() <= Date.now()) {
-      throw new Error("VALIDATION");
-    }
-    await this.db.markEmailVerificationTokenUsed(stored.id);
-    await this.db.setUserEmailVerified(stored.userId, true);
-    await this.db.appendAudit({
-      businessId: null, actorId: stored.userId, action: "email.verified",
-      entityType: "User", entityId: stored.userId, requestId: "verify-email",
+    const tokenHash = hashToken(token);
+    return this.db.withLock(`email-verification:${tokenHash}`, async () => {
+      const stored = await this.db.findEmailVerificationToken(tokenHash);
+      if (!stored || stored.usedAt !== null || stored.expiresAt.getTime() <= Date.now()) {
+        throw new Error("VALIDATION");
+      }
+      await this.db.markEmailVerificationTokenUsed(stored.id);
+      await this.db.setUserEmailVerified(stored.userId, true);
+      await this.db.appendAudit({
+        businessId: null, actorId: stored.userId, action: "email.verified",
+        entityType: "User", entityId: stored.userId, requestId: "verify-email",
+      });
+      return { verified: true };
     });
-    return { verified: true };
   }
 
   async login(input: { email: string; password: string }, meta: { requestId: string; ip: string | null; userAgent: string | null }, deviceId?: string): Promise<{ token: string; csrfToken: string; userId: string; businessId: string }> {
@@ -234,7 +246,7 @@ export class AuthService {
     }
   }
 
-  async confirmReset(token: string, newPassword: string, requestId: string): Promise<void> {
+  async confirmReset(token: string, newPassword: string, _requestId: string): Promise<void> {
     const tokenHash = hashToken(token);
     const passwordHash = await hashPassword(newPassword);
     await this.db.withLock(`password-reset:${tokenHash}`, async () => {

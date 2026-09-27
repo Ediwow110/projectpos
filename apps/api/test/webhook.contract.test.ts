@@ -7,7 +7,6 @@ import { canonicalWebhookBody } from "../src/billing/nest/billing.service";
 
 let app: INestApplication;
 let cookie: string;
-let csrf: string;
 let businessId: string;
 
 function jar(h: unknown): string {
@@ -34,7 +33,6 @@ beforeAll(async () => {
     password: "correct-horse-12", businessName: "Webhook Store",
   });
   cookie = jar(reg.headers["set-cookie"]);
-  csrf = reg.body.csrfToken;
   const me = await request(app.getHttpServer()).get("/api/v1/business")
     .set("Cookie", cookie);
   businessId = me.body.id;

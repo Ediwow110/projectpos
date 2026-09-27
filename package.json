@@ -10,7 +10,7 @@
     "build": "turbo run build",
     "dev": "node scripts/dev-local.mjs",
     "dev:memory": "turbo run dev",
-    "lint": "turbo run lint",
+    "lint": "eslint \"apps/**/*.{ts,tsx}\" \"packages/**/*.{ts,tsx}\" \"e2e/**/*.ts\" \"tests/**/*.ts\" playwright.config.ts",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:exit": "vitest run --root . tests/",
@@ -19,8 +19,12 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
+    "eslint": "10.11.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.12.0",
     "turbo": "^2.11.2",
     "typescript": "5.6.3",
+    "typescript-eslint": "8.70.1",
     "vitest": "3.2.7"
   },
   "dependencies": {

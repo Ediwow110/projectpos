@@ -83,6 +83,52 @@ describe("phase5 shift service", () => {
       svc.recordCash("b1", "u1", "r3", shift.id, { kind: "cash_deposit", amountMinor: 100 }, []),
     ).rejects.toThrow("SHIFT_CLOSED_IMMUTABLE");
   });
+  it("serializes cash recording with close so no movement lands after closure", async () => {
+    const { db, svc, registerId } = await setupShift();
+    const shift = await svc.openShift("b1", "u1", "r1", registerId, { openingFloatMinor: 0 }, "cashier");
+    const originalCreateCashMovement = db.createCashMovement.bind(db);
+    let enteredWrite!: () => void;
+    let releaseWrite!: () => void;
+    const writeEntered = new Promise<void>((resolve) => { enteredWrite = resolve; });
+    const writeReleased = new Promise<void>((resolve) => { releaseWrite = resolve; });
+    db.createCashMovement = async (input) => {
+      if (input.requestId === "r2") {
+        enteredWrite();
+        await writeReleased;
+      }
+      return originalCreateCashMovement(input);
+    };
+
+    const recording = svc.recordCash(
+      "b1",
+      "u1",
+      "r2",
+      shift.id,
+      { kind: "cash_deposit", amountMinor: 100 },
+      [],
+    );
+    await writeEntered;
+
+    let closeSettled = false;
+    const closing = svc.closeShift(
+      "b1",
+      "u1",
+      "r3",
+      shift.id,
+      { countedCashMinor: 100 },
+      [],
+    ).finally(() => {
+      closeSettled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(closeSettled).toBe(false);
+
+    releaseWrite();
+    await recording;
+    const closed = await closing;
+    expect(closed.report.expectedCash).toBe(100);
+    await expect(svc.getShift("b1", shift.id, "owner", "u1")).resolves.toBeTruthy();
+  });
   it("requires override to close another actor's shift", async () => {
     const { svc, registerId } = await setupShift();
     const shift = await svc.openShift("b1", "u1", "r1", registerId, { openingFloatMinor: 0 }, "cashier");

@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeAll, afterAll, vi } from "vitest";
+import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import type { INestApplication } from "@nestjs/common";
 import { createTestApp } from "../src/app.module";
@@ -32,6 +32,7 @@ describe("phase8 hardening", () => {
     expect(res.headers["x-content-type-options"]).toBe("nosniff");
     expect(res.headers["x-frame-options"]).toBe("DENY");
     expect(res.headers["referrer-policy"]).toBe("no-referrer");
+    expect(res.headers["cache-control"]).toBe("no-store");
   });
 
   it("sets safe cookie flags on login", async () => {

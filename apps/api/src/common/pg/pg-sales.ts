@@ -219,6 +219,18 @@ export function salesFamily(ctx: PgContext) {
         if (ctx.owns()) c.release();
       }
     },
+    async listPaymentsByBusiness(businessId: string): Promise<DbPayment[]> {
+      const c = await ctx.client();
+      try {
+        const r = await c.query(
+          `SELECT ${PAYMENT_SELECT} FROM "Payment" WHERE "businessId" = $1 ORDER BY "createdAt" ASC, "id" ASC`,
+          [businessId],
+        );
+        return r.rows as DbPayment[];
+      } finally {
+        if (ctx.owns()) c.release();
+      }
+    },
 
     async updatePayment(
       id: string,

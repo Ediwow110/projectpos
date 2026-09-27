@@ -229,44 +229,46 @@ export class ShiftService {
     granted: string[],
   ): Promise<DbCashMovement> {
     withScope(businessId, {});
-    const shift = await this.requireShift(businessId, shiftId);
-    if (shift.status !== "OPEN") throw new Error("SHIFT_CLOSED_IMMUTABLE");
-    const type = kindToType(input.kind);
-    if (type === "adjustment" && !granted.includes("shift.close.override")) {
-      throw new Error("FORBIDDEN");
-    }
-    if (
-      (type === "paid_out" || type === "cash_withdrawal" || type === "adjustment") &&
-      (!input.reason || input.reason.trim().length < 3)
-    ) {
-      throw new Error("VALIDATION");
-    }
-    const signed = signForCash(type) === 0
-      ? input.amountMinor
-      : signForCash(type) * Math.abs(input.amountMinor);
-    validateCashAmount(type, signed);
-    const row = await this.db.createCashMovement({
-      businessId,
-      shiftId: shift.id,
-      registerId: shift.registerId,
-      branchId: shift.branchId ?? null,
-      type,
-      amountMinor: signed,
-      reason: input.reason?.trim() ? input.reason.trim() : null,
-      referenceType: null,
-      referenceId: null,
-      actorId,
-      requestId,
+    return this.db.withLock(`shift:${businessId}:${shiftId}`, async () => {
+      const shift = await this.requireShift(businessId, shiftId);
+      if (shift.status !== "OPEN") throw new Error("SHIFT_CLOSED_IMMUTABLE");
+      const type = kindToType(input.kind);
+      if (type === "adjustment" && !granted.includes("shift.close.override")) {
+        throw new Error("FORBIDDEN");
+      }
+      if (
+        (type === "paid_out" || type === "cash_withdrawal" || type === "adjustment") &&
+        (!input.reason || input.reason.trim().length < 3)
+      ) {
+        throw new Error("VALIDATION");
+      }
+      const signed = signForCash(type) === 0
+        ? input.amountMinor
+        : signForCash(type) * Math.abs(input.amountMinor);
+      validateCashAmount(type, signed);
+      const row = await this.db.createCashMovement({
+        businessId,
+        shiftId: shift.id,
+        registerId: shift.registerId,
+        branchId: shift.branchId ?? null,
+        type,
+        amountMinor: signed,
+        reason: input.reason?.trim() ? input.reason.trim() : null,
+        referenceType: null,
+        referenceId: null,
+        actorId,
+        requestId,
+      });
+      await this.db.appendAudit({
+        businessId,
+        actorId,
+        action: type === "adjustment" ? "shift.adjust" : "shift.cash",
+        entityType: "Shift",
+        entityId: shift.id,
+        requestId,
+      });
+      return row;
     });
-    await this.db.appendAudit({
-      businessId,
-      actorId,
-      action: type === "adjustment" ? "shift.adjust" : "shift.cash",
-      entityType: "Shift",
-      entityId: shift.id,
-      requestId,
-    });
-    return row;
   }
 
   async closeShift(
@@ -444,23 +446,29 @@ export class ShiftService {
     opts?: { type?: "cash_sale" | "cash_refund"; referenceType?: string; referenceId?: string },
   ): Promise<DbCashMovement> {
     withScope(businessId, {});
-    const shift = await this.db.findOpenShiftByRegister(businessId, registerId);
-    if (!shift) throw new Error("SHIFT_NO_OPEN_SHIFT");
-    const type = opts?.type ?? "cash_sale";
-    validateCashAmount(type, type === "cash_refund" ? -Math.abs(cashMinor) : cashMinor);
-    // No audit row of its own: covered by the sale's sale.complete / refund.approve audit.
-    return this.db.createCashMovement({
-      businessId,
-      shiftId: shift.id,
-      registerId,
-      branchId: shift.branchId ?? null,
-      type,
-      amountMinor: type === "cash_refund" ? -Math.abs(cashMinor) : cashMinor,
-      reason: null,
-      referenceType: opts?.referenceType ?? "Sale",
-      referenceId: opts?.referenceId ?? saleId,
-      actorId,
-      requestId,
+    const observed = await this.db.findOpenShiftByRegister(businessId, registerId);
+    if (!observed) throw new Error("SHIFT_NO_OPEN_SHIFT");
+    return this.db.withLock(`shift:${businessId}:${observed.id}`, async () => {
+      // Recheck after acquiring the close/movement lock. The shift may have
+      // closed between the initial lookup and lock acquisition.
+      const shift = await this.db.findOpenShiftByRegister(businessId, registerId);
+      if (!shift || shift.id !== observed.id) throw new Error("SHIFT_NO_OPEN_SHIFT");
+      const type = opts?.type ?? "cash_sale";
+      validateCashAmount(type, type === "cash_refund" ? -Math.abs(cashMinor) : cashMinor);
+      // No audit row of its own: covered by the sale's sale.complete / refund.approve audit.
+      return this.db.createCashMovement({
+        businessId,
+        shiftId: shift.id,
+        registerId,
+        branchId: shift.branchId ?? null,
+        type,
+        amountMinor: type === "cash_refund" ? -Math.abs(cashMinor) : cashMinor,
+        reason: null,
+        referenceType: opts?.referenceType ?? "Sale",
+        referenceId: opts?.referenceId ?? saleId,
+        actorId,
+        requestId,
+      });
     });
   }
 }

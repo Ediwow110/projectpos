@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { API, registerBusiness, apiAuthedContext, seedProduct } from "./helpers";
+import { API, registerBusiness, apiAuthedContext, clickPosPay, seedProduct } from "./helpers";
 
 test("unknown provider outcome stays visibly unresolved and blocks false success", async ({ page, request }) => {
   const stamp = Date.now();
@@ -19,13 +19,7 @@ test("unknown provider outcome stays visibly unresolved and blocks false success
   await page.goto("/pos");
   await page.getByLabel("Search product, SKU or scan barcode").fill("Unknown Cola");
   await page.getByRole("button", { name: /Unknown Cola ₱25\.00/ }).click();
-  const tabletPos = (page.viewportSize()?.width ?? 1440) < 1280;
-
-  if (tabletPos) {
-    await page.getByRole("region", { name: "Tablet cart" }).getByRole("button", { name: "Pay", exact: true }).click();
-  } else {
-    await page.getByRole("button", { name: /Pay ₱25\.00/ }).click();
-  }
+  await clickPosPay(page, "25.00");
   await expect(page.getByRole("button", { name: "GCash", exact: true })).toBeDisabled();
 
   // PAYMENT_UNKNOWN remains available as a privileged recovery path for

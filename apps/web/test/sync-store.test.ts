@@ -1,5 +1,24 @@
 import { describe, expect, it } from "vitest";
-import type { OutboxCommand, SyncStore } from "../src/lib/sync-store";
+import {
+  activeSyncScope,
+  clearActiveSyncScope,
+  persistActiveSyncScope,
+  syncDatabaseName,
+  type OutboxCommand,
+  type SyncStore,
+} from "../src/lib/sync-store";
+
+function memoryStorage(): Storage {
+  const values = new Map<string, string>();
+  return {
+    get length() { return values.size; },
+    clear: () => values.clear(),
+    getItem: (key) => values.get(key) ?? null,
+    key: (index) => [...values.keys()][index] ?? null,
+    removeItem: (key) => { values.delete(key); },
+    setItem: (key, value) => { values.set(key, value); },
+  };
+}
 
 async function conformance(makeStore: () => SyncStore): Promise<void> {
   const store = makeStore();
@@ -36,5 +55,24 @@ describe("phase9b sync store", () => {
   it("memory store passes the conformance suite", async () => {
     const { MemorySyncStore } = await import("../src/lib/sync-store");
     await conformance(() => new MemorySyncStore());
+  });
+
+  it("keeps offline databases distinct for different authenticated tenants", () => {
+    expect(syncDatabaseName({ userId: "user-a", businessId: "biz-1" }))
+      .not.toBe(syncDatabaseName({ userId: "user-b", businessId: "biz-1" }));
+    expect(syncDatabaseName({ userId: "user-a", businessId: "biz-1" }))
+      .not.toBe(syncDatabaseName({ userId: "user-a", businessId: "biz-2" }));
+  });
+
+  it("persists only the active offline tenant and detaches it on logout", () => {
+    const storage = memoryStorage();
+    persistActiveSyncScope({ userId: "user-a", businessId: "biz-a" }, storage);
+    expect(activeSyncScope(storage)).toEqual({ userId: "user-a", businessId: "biz-a" });
+
+    persistActiveSyncScope({ userId: "user-b", businessId: "biz-b" }, storage);
+    expect(activeSyncScope(storage)).toEqual({ userId: "user-b", businessId: "biz-b" });
+
+    clearActiveSyncScope(storage);
+    expect(activeSyncScope(storage)).toBeNull();
   });
 });

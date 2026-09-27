@@ -5,7 +5,6 @@ import { createTestApp } from "../src/app.module";
 
 let app: INestApplication;
 let cookie: string;
-let csrf: string;
 let businessId: string;
 
 function jar(h: unknown): string {
@@ -21,7 +20,6 @@ beforeAll(async () => {
     password: "correct-horse-12", businessName: "Billing Store",
   });
   cookie = jar(reg.headers["set-cookie"]);
-  csrf = reg.body.csrfToken;
   const me = await request(app.getHttpServer()).get("/api/v1/business")
     .set("Cookie", cookie);
   businessId = me.body.id;
@@ -66,5 +64,27 @@ describe("phase10 billing HTTP contract", () => {
       .set("Cookie", other);
     expect(otherInvoices.status).toBe(200);
     expect(otherInvoices.body.items).toEqual([]);
+  });
+
+  it("allows only one concurrent platform mutation per support grant", async () => {
+    const minted = await request(app.getHttpServer()).post("/api/v1/platform/grants")
+      .set("x-platform-key", "test-platform-key")
+      .send({
+        purpose: "phase e concurrent support check",
+        ttlMinutes: 30,
+        actorId: "phase-e-auditor",
+    });
+    expect(minted.status).toBe(201);
+    const token = minted.body.token as string;
+    const [first, second] = await Promise.all([
+      request(app.getHttpServer()).patch("/api/v1/platform/flags")
+        .set("x-support-grant", token)
+        .send({ key: "phase-e-grant-race-a", enabled: true }),
+      request(app.getHttpServer()).patch("/api/v1/platform/flags")
+        .set("x-support-grant", token)
+        .send({ key: "phase-e-grant-race-b", enabled: true }),
+    ]);
+
+    expect([first.status, second.status].sort()).toEqual([200, 403]);
   });
 });

@@ -1,22 +1,28 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { withScope } from "@pos/database";
-import type { DbInvoice, DbPort, DbWebhookEvent } from "../../common/db.port";
-import { PlanLimitError } from "../../common/plan-limit-error";
-import { isSettled } from "../../reports/aggregate";
-import { billingEnabled, ENTERPRISE, isTrialExpired, monthPeriod, normalizeSubscriptionStatus, PLAN_ALLOWANCES, type PlanAllowances } from "../entitlements";
 
-export type CapKind = "users" | "products" | "registers" | "branches";
+import type { DbPort } from "../../common/db.port";
+import {
+  BillingEntitlementService,
+  type CapKind,
+  type UsageSlice,
+} from "../billing-entitlement-service";
+import { BillingInvoiceService } from "../billing-invoice-service";
+import {
+  BillingWebhookService,
+  isBillingSubscriptionStatus,
+} from "../billing-webhook-service";
+import {
+  billingEnabled,
+  ENTERPRISE,
+  isTrialExpired,
+  normalizeSubscriptionStatus,
+  PLAN_ALLOWANCES,
+  type PlanAllowances,
+} from "../entitlements";
 
-const MAX_CATCHUP_PERIODS = 120;
-
-const SUBSCRIPTION_STATUSES = new Set([
-  "trialing", "active", "past_due", "canceled", "paused",
-]);
-
-// A webhook claim older than this is assumed to belong to a crashed process
-// and may be taken over by a redelivery.
-const WEBHOOK_CLAIM_TTL_MS = 5 * 60 * 1000;
+export { canonicalWebhookBody } from "../billing-webhook-service";
+export type { CapKind, UsageSlice } from "../billing-entitlement-service";
 
 export interface ResolvedPlan {
   key: string;
@@ -24,134 +30,177 @@ export interface ResolvedPlan {
   monthlyMinor: number;
 }
 
-export interface UsageSlice {
-  used: number;
-  limit: number | null;
-}
-
-export function canonicalWebhookBody(body: unknown): string {
-  return JSON.stringify(sortKeys(body));
-}
-
-function sortKeys(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sortKeys);
-  if (value !== null && typeof value === "object") {
-    const out: Record<string, unknown> = {};
-    for (const k of Object.keys(value as Record<string, unknown>).sort()) {
-      out[k] = sortKeys((value as Record<string, unknown>)[k]);
-    }
-    return out;
-  }
-  return value;
-}
-
-function webhookSecret(provider: string): string {
-  const envKey = `BILLING_${provider.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_SECRET`;
-  return process.env[envKey] ?? "";
-}
-
 @Injectable()
 export class BillingService {
-  constructor(@Inject("DbPort") private readonly db: DbPort) {}
+  private readonly entitlements: BillingEntitlementService;
+  private readonly invoices: BillingInvoiceService;
+  private readonly webhooks: BillingWebhookService;
 
-  // Only an active subscription (or an unexpired trial) grants its plan.
-  // Canceled, paused, and unknown statuses fall back to Free and are persisted
-  // as such, so every other reader (dashboards, exports, integrations) sees the
-  // same plan this method enforces. past_due keeps the plan: a failed payment is
-  // a grace period, not a silent downgrade.
-  async resolvePlan(businessId: string, now: Date = new Date()): Promise<ResolvedPlan> {
+  constructor(@Inject("DbPort") private readonly db: DbPort) {
+    this.entitlements = new BillingEntitlementService(
+      db,
+      (businessId) => this.resolvePlan(businessId),
+    );
+    this.invoices = new BillingInvoiceService(
+      db,
+      (planId) => this.allowancesOf(planId),
+    );
+    this.webhooks = new BillingWebhookService(
+      db,
+      (businessId, actorId, requestId, planKey, status) =>
+        this.changePlan(
+          businessId,
+          actorId,
+          requestId,
+          planKey,
+          status,
+        ),
+    );
+  }
+
+  async resolvePlan(
+    businessId: string,
+    now: Date = new Date(),
+  ): Promise<ResolvedPlan> {
     withScope(businessId, {});
     if (!billingEnabled()) {
-      return { key: "enterprise", allowances: ENTERPRISE, monthlyMinor: 0 };
+      return {
+        key: "enterprise",
+        allowances: ENTERPRISE,
+        monthlyMinor: 0,
+      };
     }
-    const sub = await this.db.getSubscription(businessId);
-    if (!sub) return { key: "enterprise", allowances: ENTERPRISE, monthlyMinor: 0 };
-    if (isTrialExpired(sub.status, sub.trialEndsAt, now)) {
-      return this.downgradeToFree(businessId, sub, "canceled", "subscription.expired", `expiry-${sub.id}`);
+    const subscription = await this.db.getSubscription(businessId);
+    if (!subscription) {
+      return {
+        key: "enterprise",
+        allowances: ENTERPRISE,
+        monthlyMinor: 0,
+      };
     }
-    const status = normalizeSubscriptionStatus(sub.status);
-    // Allowlist, not denylist: only a known-good status grants the paid plan
-    // (an unexpired trial, an active subscription, or past_due as a grace
-    // period). Anything else — unknown provider vocabulary, a typo,
-    // "incomplete" — fails closed to Free rather than silently keeping paid
-    // entitlements.
-    if (status !== "active" && status !== "past_due" && status !== "trialing") {
-      return this.downgradeToFree(businessId, sub, "canceled", "subscription.canceled", `status-${sub.id}`);
+    if (
+      isTrialExpired(
+        subscription.status,
+        subscription.trialEndsAt,
+        now,
+      )
+    ) {
+      return this.downgradeToFree(
+        businessId,
+        subscription,
+        "canceled",
+        "subscription.expired",
+        "expiry-" + subscription.id,
+      );
     }
-    const plan = (await this.db.listPlans()).find((p) => p.id === sub.planId) ?? null;
+    const status = normalizeSubscriptionStatus(
+      subscription.status,
+    );
+    if (
+      status !== "active" &&
+      status !== "past_due" &&
+      status !== "trialing"
+    ) {
+      return this.downgradeToFree(
+        businessId,
+        subscription,
+        "canceled",
+        "subscription.canceled",
+        "status-" + subscription.id,
+      );
+    }
+    const plan =
+      (await this.db.listPlans()).find(
+        (candidate) => candidate.id === subscription.planId,
+      ) ?? null;
     if (!plan || !plan.isActive) {
-      return this.downgradeToFree(businessId, sub, "canceled", "subscription.canceled", `plan-${sub.id}`);
+      return this.downgradeToFree(
+        businessId,
+        subscription,
+        "canceled",
+        "subscription.canceled",
+        "plan-" + subscription.id,
+      );
     }
-    return this.allowancesOf(sub.planId);
+    return this.allowancesOf(subscription.planId);
   }
 
   private async downgradeToFree(
     businessId: string,
-    sub: { id: string; status: string; planId: string },
+    subscription: {
+      id: string;
+      status: string;
+      planId: string;
+    },
     status: string,
     action: string,
     requestId: string,
   ): Promise<ResolvedPlan> {
     const free = await this.db.findPlanByKey("free");
     if (!free) throw new Error("VALIDATION");
-    if (sub.status !== status || sub.planId !== free.id) {
-      await this.db.updateSubscription(sub.id, businessId, { planId: free.id, status, trialEndsAt: null });
+    if (
+      subscription.status !== status ||
+      subscription.planId !== free.id
+    ) {
+      await this.db.updateSubscription(
+        subscription.id,
+        businessId,
+        {
+          planId: free.id,
+          status,
+          trialEndsAt: null,
+        },
+      );
       await this.db.appendAudit({
         businessId,
         actorId: "system",
         action,
         entityType: "Subscription",
-        entityId: sub.id,
+        entityId: subscription.id,
         requestId,
       });
     }
-    return { key: free.key, allowances: free.allowances, monthlyMinor: free.pricesMinor.monthlyMinor };
+    return {
+      key: free.key,
+      allowances: free.allowances,
+      monthlyMinor: free.pricesMinor.monthlyMinor,
+    };
   }
 
-  private async allowancesOf(planId: string): Promise<ResolvedPlan> {
+  private async allowancesOf(
+    planId: string,
+  ): Promise<ResolvedPlan> {
     const plans = await this.db.listPlans();
-    const found = plans.find((p) => p.id === planId) ?? null;
-    if (!found) return { key: "enterprise", allowances: ENTERPRISE, monthlyMinor: 0 };
-    return { key: found.key, allowances: found.allowances, monthlyMinor: found.pricesMinor.monthlyMinor };
-  }
-
-  private async liveCount(businessId: string, kind: CapKind): Promise<number> {
-    // Deactivated members no longer occupy a seat (Phase 11 memberships).
-    if (kind === "users") {
-      return (await this.db.listMembershipsByBusiness(businessId)).filter((m) => !m.deactivatedAt).length;
+    const found =
+      plans.find((plan) => plan.id === planId) ?? null;
+    if (!found) {
+      return {
+        key: "enterprise",
+        allowances: ENTERPRISE,
+        monthlyMinor: 0,
+      };
     }
-    if (kind === "products") return (await this.db.listProducts(businessId)).length;
-    if (kind === "registers") return (await this.db.listRegisters(businessId)).length;
-    return (await this.db.listBranchesByBusiness(businessId)).length;
+    return {
+      key: found.key,
+      allowances: found.allowances,
+      monthlyMinor: found.pricesMinor.monthlyMinor,
+    };
   }
 
-  // Note: the "users" kind is metered and unit-tested here, but has no live
-  // caller yet — memberships are only created at registration (which must
-  // always succeed). A future TenantService member-add endpoint must call
-  // requireCreate(..., "users") before creating the membership.
-  async requireCreate(businessId: string, actorId: string, requestId: string, kind: CapKind): Promise<void> {
-    withScope(businessId, {});
-    const plan = await this.resolvePlan(businessId);
-    const limit = plan.allowances[kind];
-    const used = await this.liveCount(businessId, kind);
-    await this.db.setCounter(businessId, `cap.${kind}`, "all-time", used);
-    if (limit !== null && used >= limit) {
-      await this.db.appendAudit({
-        businessId,
-        actorId,
-        action: "plan.limit",
-        entityType: "Business",
-        entityId: `${kind}:${used}/${limit}`,
-        requestId,
-      });
-      throw new PlanLimitError({ limit, used, plan: plan.key, resource: kind });
-    }
+  async requireCreate(
+    businessId: string,
+    actorId: string,
+    requestId: string,
+    kind: CapKind,
+  ): Promise<void> {
+    return this.entitlements.requireCreate(
+      businessId,
+      actorId,
+      requestId,
+      kind,
+    );
   }
 
-  // The cap check and the write it guards must not interleave with another
-  // request for the same business, otherwise the limit is advisory. Callers
-  // pass the actual write so the check, the insert, and the counter snapshot
-  // happen inside one critical section.
   async withCap<T>(
     businessId: string,
     actorId: string,
@@ -159,26 +208,25 @@ export class BillingService {
     kind: CapKind,
     write: () => Promise<T>,
   ): Promise<T> {
-    return this.db.withLock(`billing:${businessId}`, async () => {
-      await this.requireCreate(businessId, actorId, requestId, kind);
-      const out = await write();
-      await this.db.setCounter(businessId, `cap.${kind}`, "all-time", await this.liveCount(businessId, kind));
-      return out;
-    });
+    return this.entitlements.withCap(
+      businessId,
+      actorId,
+      requestId,
+      kind,
+      write,
+    );
   }
 
-  async checkFeature(businessId: string, feature: string): Promise<boolean> {
-    withScope(businessId, {});
-    const override = await this.db.getFlag(businessId, feature);
-    if (override) return override.enabled;
-    const global = await this.db.getFlag(null, feature);
-    if (global) return global.enabled;
-    const plan = await this.resolvePlan(businessId);
-    return plan.allowances.features.includes(feature);
+  async checkFeature(
+    businessId: string,
+    feature: string,
+  ): Promise<boolean> {
+    return this.entitlements.checkFeature(
+      businessId,
+      feature,
+    );
   }
 
-  // Batch variant: the whole write runs inside the same critical section as the
-  // capacity check, so an import that does not fit leaves nothing behind.
   async withCapBatch<T>(
     businessId: string,
     actorId: string,
@@ -187,58 +235,52 @@ export class BillingService {
     count: number,
     write: () => Promise<T>,
   ): Promise<T> {
-    return this.db.withLock(`billing:${businessId}`, async () => {
-      const plan = await this.resolvePlan(businessId);
-      const limit = plan.allowances[kind];
-      const used = await this.liveCount(businessId, kind);
-      if (limit !== null && used + count > limit) {
-        await this.db.setCounter(businessId, `cap.${kind}`, "all-time", used);
-        await this.db.appendAudit({
-          businessId,
-          actorId,
-          action: "plan.limit",
-          entityType: "Business",
-          entityId: `${kind}:${used}+${count}/${limit}`,
-          requestId,
-        });
-        throw new PlanLimitError({ limit, used, plan: plan.key, resource: kind });
-      }
-      const out = await write();
-      await this.db.setCounter(businessId, `cap.${kind}`, "all-time", await this.liveCount(businessId, kind));
-      return out;
-    });
-  }
-
-  // Entitlement breaches are auditable, not just enforced: a denied feature is
-  // exactly the kind of event an owner support review needs to see.
-  async requireFeature(businessId: string, feature: string, actorId = "system", requestId = "feature-gate"): Promise<void> {
-    if (await this.checkFeature(businessId, feature)) return;
-    const plan = await this.resolvePlan(businessId);
-    await this.db.appendAudit({
+    return this.entitlements.withCapBatch(
       businessId,
       actorId,
-      action: "plan.limit",
-      entityType: "Feature",
-      entityId: feature,
       requestId,
-    });
-    throw new PlanLimitError({ feature, plan: plan.key });
-  }
-
-  async recordUsage(businessId: string, key: string, period: string): Promise<void> {
-    withScope(businessId, {});
-    const existing = (await this.db.listCounters(businessId)).find(
-      (c) => c.key === key && c.period === period,
+      kind,
+      count,
+      write,
     );
-    await this.db.setCounter(businessId, key, period, (existing?.count ?? 0) + 1);
   }
 
-  async recordSale(businessId: string, completedAt: Date = new Date()): Promise<void> {
-    await this.recordUsage(businessId, "sales.monthly", monthPeriod(completedAt));
+  async requireFeature(
+    businessId: string,
+    feature: string,
+    actorId = "system",
+    requestId = "feature-gate",
+  ): Promise<void> {
+    return this.entitlements.requireFeature(
+      businessId,
+      feature,
+      actorId,
+      requestId,
+    );
   }
 
-  // Plan changes share the business lock with rollover: a period reset that
-  // interleaved with a lazy invoice could bill the outgoing plan.
+  async recordUsage(
+    businessId: string,
+    key: string,
+    period: string,
+  ): Promise<void> {
+    return this.entitlements.recordUsage(
+      businessId,
+      key,
+      period,
+    );
+  }
+
+  async recordSale(
+    businessId: string,
+    completedAt: Date = new Date(),
+  ): Promise<void> {
+    return this.entitlements.recordSale(
+      businessId,
+      completedAt,
+    );
+  }
+
   async changePlan(
     businessId: string,
     actorId: string,
@@ -251,202 +293,146 @@ export class BillingService {
     if (!business) throw new Error("NOT_FOUND");
     const allowances = PLAN_ALLOWANCES[planKey];
     if (!allowances) throw new Error("VALIDATION");
-    if (!SUBSCRIPTION_STATUSES.has(status)) throw new Error("VALIDATION");
+    if (!isBillingSubscriptionStatus(status)) {
+      throw new Error("VALIDATION");
+    }
     const plan = await this.db.findPlanByKey(planKey);
-    if (!plan || !plan.isActive) throw new Error("VALIDATION");
-    return this.db.withLock(`billing:${businessId}`, async () => {
-      const existing = await this.db.getSubscription(businessId);
-      const periodEnd = new Date(Date.now() + 30 * 86400000);
-      const trialEndsAt = status === "trialing" ? new Date(Date.now() + 14 * 86400000) : null;
-      if (existing) {
-        await this.db.updateSubscription(existing.id, businessId, {
-          planId: plan.id, status, trialEndsAt, currentPeriodEnd: periodEnd,
+    if (!plan || !plan.isActive) {
+      throw new Error("VALIDATION");
+    }
+    return this.db.withLock(
+      "billing:" + businessId,
+      async () => {
+        const existing =
+          await this.db.getSubscription(businessId);
+        const periodEnd = new Date(
+          Date.now() + 30 * 86400000,
+        );
+        const trialEndsAt =
+          status === "trialing"
+            ? new Date(Date.now() + 14 * 86400000)
+            : null;
+        if (existing) {
+          await this.db.updateSubscription(
+            existing.id,
+            businessId,
+            {
+              planId: plan.id,
+              status,
+              trialEndsAt,
+              currentPeriodEnd: periodEnd,
+            },
+          );
+        } else {
+          await this.db.upsertSubscription({
+            businessId,
+            planId: plan.id,
+            status,
+            trialEndsAt,
+            currentPeriodEnd: periodEnd,
+          });
+        }
+        await this.db.appendAudit({
+          businessId,
+          actorId,
+          action: "plan.change",
+          entityType: "Subscription",
+          entityId: planKey,
+          requestId,
+          reason: "plan " + planKey + " -> " + status,
         });
-      } else {
-        await this.db.upsertSubscription({
-          businessId, planId: plan.id, status, trialEndsAt, currentPeriodEnd: periodEnd,
-        });
-      }
-      await this.db.appendAudit({
-        businessId,
-        actorId,
-        action: "plan.change",
-        entityType: "Subscription",
-        entityId: planKey,
-        requestId,
-        reason: `plan ${planKey} -> ${status}`,
-      });
-      return { key: planKey };
-    });
+        return { key: planKey };
+      },
+    );
   }
 
-  async rebuildCounters(businessId: string): Promise<{ checked: number; drifts: Array<{ key: string; snapshot: number; live: number }> }> {    withScope(businessId, {});
-    const kinds: CapKind[] = ["users", "products", "registers", "branches"];
-    const snapshots = await this.db.listCounters(businessId);
-    const drifts: Array<{ key: string; snapshot: number; live: number }> = [];
-    for (const kind of kinds) {
-      const live = await this.liveCount(businessId, kind);
-      const snap = snapshots.find((c) => c.key === `cap.${kind}` && c.period === "all-time");
-      await this.db.setCounter(businessId, `cap.${kind}`, "all-time", live);
-      if (snap && snap.count !== live) drifts.push({ key: `cap.${kind}`, snapshot: snap.count, live });
-    }
-    const period = monthPeriod(new Date());
-    const sales = await this.monthlySaleCount(businessId);
-    const salesSnap = snapshots.find((c) => c.key === "sales.monthly" && c.period === period);
-    await this.db.setCounter(businessId, "sales.monthly", period, sales);
-    if (salesSnap && salesSnap.count !== sales) {
-      drifts.push({ key: `sales.monthly:${period}`, snapshot: salesSnap.count, live: sales });
-    }
-    return { checked: kinds.length + 1, drifts };
-  }
-
-  private async monthlySaleCount(businessId: string, now: Date = new Date()): Promise<number> {
-    const [year, month] = monthPeriod(now).split("-").map((n) => Number(n));
-    return (await this.db.listSalesByBusiness(businessId)).filter((s) => {
-      // Only settled sales count as usage: drafts, failed payments, and
-      // unresolved unknown payments are not sales yet.
-      if (!isSettled(s.status)) return false;
-      // Bucket by settlement time, matching recordSale, so the live count and
-      // the counter never disagree for a sale drafted in one month and paid in
-      // the next.
-      const at = new Date(s.completedAt ?? s.createdAt);
-      return at.getUTCFullYear() === year && at.getUTCMonth() + 1 === month;
-    }).length;
+  async rebuildCounters(
+    businessId: string,
+  ): Promise<{
+    checked: number;
+    drifts: Array<{
+      key: string;
+      snapshot: number;
+      live: number;
+    }>;
+  }> {
+    return this.entitlements.rebuildCounters(businessId);
   }
 
   async listInvoices(businessId: string) {
-    withScope(businessId, {});
-    return this.db.listInvoices(businessId);
+    return this.invoices.listInvoices(businessId);
   }
 
-  async usageSummary(businessId: string): Promise<{
-    users: UsageSlice; products: UsageSlice; registers: UsageSlice; branches: UsageSlice; salesMonthly: number;
+  async usageSummary(
+    businessId: string,
+  ): Promise<{
+    users: UsageSlice;
+    products: UsageSlice;
+    registers: UsageSlice;
+    branches: UsageSlice;
+    salesMonthly: number;
   }> {
-    const plan = await this.resolvePlan(businessId);
-    const [users, products, registers, branches] = await Promise.all([
-      this.liveCount(businessId, "users"),
-      this.liveCount(businessId, "products"),
-      this.liveCount(businessId, "registers"),
-      this.liveCount(businessId, "branches"),
-    ]);
-    const sales = await this.monthlySaleCount(businessId);
-    return {
-      users: { used: users, limit: plan.allowances.users },
-      products: { used: products, limit: plan.allowances.products },
-      registers: { used: registers, limit: plan.allowances.registers },
-      branches: { used: branches, limit: plan.allowances.branches },
-      salesMonthly: sales,
-    };
+    return this.entitlements.usageSummary(businessId);
   }
 
-  async getSubscription(businessId: string): Promise<{
-    planKey: string; status: string; trialEndsAt: Date | null; currentPeriodEnd: Date | null;
-    usage: { users: UsageSlice; products: UsageSlice; registers: UsageSlice; branches: UsageSlice; salesMonthly: number };
+  async getSubscription(
+    businessId: string,
+  ): Promise<{
+    planKey: string;
+    status: string;
+    trialEndsAt: Date | null;
+    currentPeriodEnd: Date | null;
+    usage: {
+      users: UsageSlice;
+      products: UsageSlice;
+      registers: UsageSlice;
+      branches: UsageSlice;
+      salesMonthly: number;
+    };
   }> {
     withScope(businessId, {});
     await this.rolloverIfDue(businessId);
     const plan = await this.resolvePlan(businessId);
-    const sub = await this.db.getSubscription(businessId);
+    const subscription =
+      await this.db.getSubscription(businessId);
     return {
       planKey: plan.key,
-      status: sub?.status ?? "active",
-      trialEndsAt: sub?.trialEndsAt ?? null,
-      currentPeriodEnd: sub?.currentPeriodEnd ?? null,
+      status: subscription?.status ?? "active",
+      trialEndsAt: subscription?.trialEndsAt ?? null,
+      currentPeriodEnd:
+        subscription?.currentPeriodEnd ?? null,
       usage: await this.usageSummary(businessId),
     };
   }
 
-  // Lazy time resolution (no cron per the design): every subscription read
-  // catches up any period that has already ended. The lock makes concurrent
-  // readers issue each period once, and the loop covers subscriptions that are
-  // several periods behind instead of advancing a single month per request.
-  async rolloverIfDue(businessId: string, now: Date = new Date()): Promise<void> {
-    withScope(businessId, {});
-    if (!billingEnabled()) return;
-    await this.db.withLock(`billing:${businessId}`, async () => {
-      const sub = await this.db.getSubscription(businessId);
-      if (!sub || sub.status !== "active") return;
-      const plan = await this.allowancesOf(sub.planId);
-      let periodEnd = sub.currentPeriodEnd;
-      for (let billed = 0; billed < MAX_CATCHUP_PERIODS; billed++) {
-        if (periodEnd.getTime() > now.getTime()) break;
-        const periodStart = new Date(periodEnd.getTime() - 30 * 86400000);
-        const invoice = await this.db.createInvoice({
-          businessId,
-          subscriptionId: sub.id,
-          periodStart,
-          periodEnd,
-          amountMinor: plan.monthlyMinor,
-          currency: "PHP",
-          status: "open",
-          paidAt: null,
-        });
-        periodEnd = new Date(periodEnd.getTime() + 30 * 86400000);
-        await this.db.updateSubscription(sub.id, businessId, { currentPeriodEnd: periodEnd });
-        await this.db.appendAudit({
-          businessId,
-          actorId: "system",
-          action: "invoice.issued",
-          entityType: "Invoice",
-          entityId: invoice.id,
-          requestId: `rollover-${sub.id}`,
-        });
-      }
-    });
+  async rolloverIfDue(
+    businessId: string,
+    now: Date = new Date(),
+  ): Promise<void> {
+    return this.invoices.rolloverIfDue(businessId, now);
   }
 
-  // Manual issue shares the business lock with the lazy rollover, and a period
-  // is only ever billed once: re-issuing an open or paid period returns the
-  // existing invoice instead of a duplicate. A voided period can be re-issued.
   async issueInvoice(
     businessId: string,
     actorId: string,
     requestId: string,
-    input: { periodStart: Date; periodEnd: Date },
-  ): Promise<{ id: string; amountMinor: number; status: string }> {
-    withScope(businessId, {});
-    if (input.periodStart.getTime() >= input.periodEnd.getTime()) throw new Error("VALIDATION");
-    return this.db.withLock(`billing:${businessId}`, async () => {
-      const sub = await this.db.getSubscription(businessId);
-      if (!sub) throw new Error("NOT_FOUND");
-      const samePeriod = (await this.db.listInvoices(businessId)).find(
-        (i) =>
-          i.periodStart.getTime() === input.periodStart.getTime() &&
-          i.periodEnd.getTime() === input.periodEnd.getTime() &&
-          i.status !== "void",
-      );
-      if (samePeriod) {
-        return { id: samePeriod.id, amountMinor: samePeriod.amountMinor, status: samePeriod.status };
-      }
-      const plan = await this.allowancesOf(sub.planId);
-      const row = await this.db.createInvoice({
-        businessId,
-        subscriptionId: sub.id,
-        periodStart: input.periodStart,
-        periodEnd: input.periodEnd,
-        amountMinor: plan.monthlyMinor,
-        currency: "PHP",
-        status: "open",
-        paidAt: null,
-      });
-      await this.db.appendAudit({
-        businessId,
-        actorId,
-        action: "invoice.issued",
-        entityType: "Invoice",
-        entityId: row.id,
-        requestId,
-      });
-      return { id: row.id, amountMinor: row.amountMinor, status: row.status };
-    });
+    input: {
+      periodStart: Date;
+      periodEnd: Date;
+    },
+  ): Promise<{
+    id: string;
+    amountMinor: number;
+    status: string;
+  }> {
+    return this.invoices.issueInvoice(
+      businessId,
+      actorId,
+      requestId,
+      input,
+    );
   }
 
-  // Signature first (constant-time), then claim the event id before touching
-  // any billing state: the claim is what makes concurrent redeliveries of the
-  // same event apply exactly once, instead of both mutating and one of them
-  // losing the race on the insert. When the caller has the raw request bytes
-  // (HTTP ingest) the signature is verified over them, because providers sign
-  // exactly what they sent; without raw bytes the canonical JSON form is used.
   async ingestWebhook(
     provider: string,
     eventId: string,
@@ -455,157 +441,22 @@ export class BillingService {
     signature: string | undefined,
     requestId: string,
     rawBody?: string,
-  ): Promise<{ ok: true; handled: boolean; deduplicated: boolean }> {
-    const secret = webhookSecret(provider);
-    if (secret.length === 0) throw new Error("FORBIDDEN");
-    const body = { eventId, type, ...(payload as Record<string, unknown>) };
-    const signedBytes = rawBody ?? canonicalWebhookBody(body);
-    const expected = createHmac("sha256", secret).update(signedBytes).digest("hex");
-    const a = Buffer.from(signature ?? "");
-    const b = Buffer.from(expected);
-    if (a.length !== b.length || !timingSafeEqual(a, b)) throw new Error("FORBIDDEN");
-    const seen = await this.db.findWebhookEvent(provider, eventId);
-    if (seen) {
-      // A claim still in flight is not a duplicate: answering 200 would make
-      // the provider stop retrying while the winner may still fail. A stale
-      // claim (crashed process) is taken over instead.
-      if (seen.status === "processing" && seen.receivedAt.getTime() + WEBHOOK_CLAIM_TTL_MS > Date.now()) {
-        throw new Error("WEBHOOK_IN_PROGRESS");
-      }
-      if (seen.status === "processing") {
-        await this.db.deleteWebhookEvent(seen.id);
-      } else {
-        return { ok: true as const, handled: seen.status === "applied", deduplicated: true };
-      }
-    }
-    // Claim before any mutation. A concurrent redelivery of the same eventId
-    // loses the claim and is told the event is already being processed, so it
-    // does not ack an outcome that does not exist yet; the provider retries
-    // and the retry is answered from the applied state. Exactly one delivery
-    // applies the state change.
-    const claim = await this.db.claimWebhookEvent({
-      businessId: typeof (payload as { businessId?: unknown }).businessId === "string"
-        ? ((payload as { businessId: string }).businessId)
-        : null,
+  ): Promise<{
+    ok: true;
+    handled: boolean;
+    deduplicated: boolean;
+  }> {
+    return this.webhooks.ingest(
       provider,
       eventId,
       type,
-      payload: body as DbWebhookEvent["payload"],
-      status: "processing",
-    });
-    if (!claim) {
-      const stored = await this.db.findWebhookEvent(provider, eventId);
-      if (stored?.status === "processing") throw new Error("WEBHOOK_IN_PROGRESS");
-      return { ok: true as const, handled: stored?.status === "applied", deduplicated: true };
-    }
-
-    const p = payload as {
-      businessId?: string;
-      invoiceId?: string;
-      amountMinor?: number;
-      planKey?: string;
-      status?: string;
-      reason?: string;
-      providerRef?: string;
-    };
-    const businessId = typeof p.businessId === "string" ? p.businessId : null;
-    if (businessId) withScope(businessId, {});
-    // A provider secret authenticates a provider *account*, not a tenant. When
-    // the target subscription records which account it belongs to, the event
-    // must present that same account: otherwise a validly signed event could
-    // name another business. Subscriptions without a providerRef (the local
-    // test-double setup) are trusted, since there is nothing to compare.
-    if (businessId) {
-      const subscription = await this.db.getSubscription(businessId);
-      if (subscription?.providerRef) {
-        const presented = typeof p.providerRef === "string" ? p.providerRef : null;
-        if (presented !== subscription.providerRef) throw new Error("FORBIDDEN");
-      }
-    }
-
-    // From here on the event is claimed. Any failure releases the claim so the
-    // provider can redeliver it: a permanently blocked event id would turn a
-    // transient failure (invoice not synced yet) into a silent data loss.
-    try {
-      if (type === "invoice.paid" || type === "invoice.void") {
-        if (!businessId) throw new Error("VALIDATION");
-        const target = await this.resolveInvoiceForEvent(businessId, p);
-        if (type === "invoice.paid") {
-          if (target.status !== "open") throw new Error("VALIDATION");
-          await this.db.updateInvoice(target.id, businessId, { status: "paid", paidAt: new Date() });
-        } else {
-          if (target.status === "void") throw new Error("VALIDATION");
-          await this.db.updateInvoice(target.id, businessId, { status: "void" });
-        }
-        await this.db.updateWebhookEventStatus(claim.id, "applied");
-        await this.db.appendAudit({
-          businessId,
-          actorId: "webhook",
-          action: type === "invoice.paid" ? "webhook.invoice" : "invoice.void",
-          entityType: "Invoice",
-          entityId: target.id,
-          requestId,
-        });
-        return { ok: true as const, handled: true, deduplicated: false };
-      }
-
-      if (type === "subscription.created" || type === "subscription.updated") {
-        if (!businessId || typeof p.planKey !== "string") throw new Error("VALIDATION");
-        const requested = normalizeSubscriptionStatus(p.status ?? "active");
-        if (!SUBSCRIPTION_STATUSES.has(requested)) throw new Error("VALIDATION");
-        await this.applySubscriptionState(businessId, requestId, p.planKey, requested);
-        await this.db.updateWebhookEventStatus(claim.id, "applied");
-        return { ok: true as const, handled: true, deduplicated: false };
-      }
-
-      await this.db.updateWebhookEventStatus(claim.id, "unhandled");
-      return { ok: true as const, handled: false, deduplicated: false };
-    } catch (e) {
-      await this.db.deleteWebhookEvent(claim.id);
-      throw e;
-    }
-  }
-
-  // Events name their invoice. Amount is verified when the provider sends it,
-  // so a signed-but-wrong event can never mark an unrelated invoice paid.
-  private async resolveInvoiceForEvent(
-    businessId: string,
-    p: { invoiceId?: string; amountMinor?: number },
-  ): Promise<DbInvoice> {
-    const invoices = await this.db.listInvoices(businessId);
-    if (typeof p.invoiceId === "string") {
-      const byId = invoices.find((i) => i.id === p.invoiceId);
-      if (!byId) throw new Error("NOT_FOUND");
-      if (typeof p.amountMinor === "number" && byId.amountMinor !== p.amountMinor) {
-        throw new Error("VALIDATION");
-      }
-      return byId;
-    }
-    if (typeof p.amountMinor !== "number") throw new Error("VALIDATION");
-    const byAmount = invoices.filter((i) => i.amountMinor === p.amountMinor && i.status === "open");
-    if (byAmount.length !== 1) throw byAmount.length === 0 ? new Error("NOT_FOUND") : new Error("VALIDATION");
-    return byAmount[0]!;
-  }
-
-  private async applySubscriptionState(
-    businessId: string,
-    requestId: string,
-    planKey: string,
-    status: string,
-  ): Promise<void> {
-    await this.changePlan(businessId, "webhook", requestId, planKey, status);
-    await this.db.appendAudit({
-      businessId,
-      actorId: "webhook",
-      action: status === "trialing" ? "subscription.created" : "subscription.updated",
-      entityType: "Subscription",
-      entityId: `${planKey}:${status}`,
+      payload,
+      signature,
       requestId,
-    });
+      rawBody,
+    );
   }
 
-  // businessId null means a global flag (platform-wide default); a tenant id
-  // must exist, because a per-business override always targets a real tenant.
   async setFlag(
     businessId: string | null,
     actorId: string,
@@ -615,26 +466,38 @@ export class BillingService {
   ): Promise<{ key: string; enabled: boolean }> {
     withScope(businessId ?? "platform", {});
     if (businessId) {
-      const business = await this.db.findBusinessById(businessId);
+      const business =
+        await this.db.findBusinessById(businessId);
       if (!business) throw new Error("NOT_FOUND");
     }
-    const row = await this.db.setFlag({ businessId, key, enabled });
+    const row = await this.db.setFlag({
+      businessId,
+      key,
+      enabled,
+    });
     await this.db.appendAudit({
-      // Platform rows carry no tenant: the audit table allows a null business.
       businessId,
       actorId,
       action: businessId ? "flag.change" : "flag.global",
       entityType: "FeatureFlag",
-      entityId: `${key}:${enabled}`,
+      entityId: key + ":" + String(enabled),
       requestId,
-      reason: `flag ${key}=${String(enabled)}${businessId ? "" : " (global)"}`,
+      reason:
+        "flag " +
+        key +
+        "=" +
+        String(enabled) +
+        (businessId ? "" : " (global)"),
     });
     return { key: row.key, enabled: row.enabled };
   }
 
-  // FR-PLATFORM-01: every action taken under a support grant is audited with
-  // the grant id and its declared purpose, next to the action's own row.
-  async auditGrantUse(businessId: string | null, grantId: string, purpose: string, requestId: string): Promise<void> {
+  async auditGrantUse(
+    businessId: string | null,
+    grantId: string,
+    purpose: string,
+    requestId: string,
+  ): Promise<void> {
     await this.db.appendAudit({
       businessId,
       actorId: "platform",

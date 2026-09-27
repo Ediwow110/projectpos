@@ -1,8 +1,9 @@
 # Render Blueprint for the free-tier deployment.
 #
 #   Render dashboard → New → Blueprint → connect this repository, then fill
-#   the sync:false values (DATABASE_URL, BREVO_API_KEY, EMAIL_FROM) in the
-#   dashboard when prompted. They are secrets and are never stored in git.
+#   the sync:false values (DATABASE_URL, BREVO_API_KEY, EMAIL_FROM,
+#   PAYMONGO_SECRET_KEY, PAYMONGO_WEBHOOK_SECRET) in the dashboard when
+#   prompted. Secret values are never stored in git.
 #
 # Design constraints this file encodes:
 # - PostgreSQL lives in Supabase's free tier (Render's own free Postgres
@@ -16,11 +17,14 @@
 # - Free plans block outbound SMTP (25/465/587), so email uses the Brevo
 #   HTTPS transport: set BREVO_API_KEY and do NOT set SMTP_* variables
 #   (the API refuses a configuration with both transports).
-# - nexpos-api.onrender.com and nexpos-web.onrender.com share the
-#   registrable domain onrender.com, which is what makes SameSite=Lax session
-#   cookies work across the two origins. If a service name is taken and you
-#   rename one, update WEB_URL / NEXT_PUBLIC_API_BASE and
-#   docker/web.render.Dockerfile to match.
+# - onrender.com is a public suffix, so the generated web/API hostnames are
+#   different sites for SameSite cookie rules. The browser therefore calls
+#   /api/* on the web origin; Next.js proxies those requests over Render's
+#   private network to the API service. This keeps session/CSRF cookies
+#   first-party without switching them to SameSite=None.
+# - WEB_URL is the only public web origin stored in this Blueprint. The web
+#   service copies it for NEXT_PUBLIC_API_BASE, while API_PROXY_TARGET is
+#   derived from the API service's private host:port.
 services:
   - type: web
     name: nexpos-api
@@ -28,7 +32,7 @@ services:
     dockerfilePath: ./docker/api.Dockerfile
     dockerContext: ./
     plan: free
-    healthCheckPath: /healthz
+    healthCheckPath: /readyz
     autoDeploy: true
     dockerCommand: sh -c "cd /app && node scripts/apply-migrations.mjs && cd apps/api && exec node --import tsx src/main.ts"
     envVars:
@@ -50,18 +54,32 @@ services:
         sync: false
       - key: EMAIL_FROM
         sync: false
+      - key: PAYMONGO_SECRET_KEY
+        sync: false
+      - key: PAYMONGO_WEBHOOK_SECRET
+        sync: false
 
   - type: web
     name: nexpos-web
     runtime: docker
-    dockerfilePath: ./docker/web.render.Dockerfile
+    dockerfilePath: ./docker/web.Dockerfile
     dockerContext: ./
     plan: free
     autoDeploy: true
     envVars:
       - key: NODE_ENV
         value: production
-      # Client bundles inline this at build time; the runtime value keeps
-      # server rendering consistent with it.
+      # Render exposes service env vars as Docker build args too. Copy the
+      # canonical public web origin instead of repeating it here.
       - key: NEXT_PUBLIC_API_BASE
-        value: https://nexpos-api.onrender.com
+        fromService:
+          type: web
+          name: nexpos-api
+          envVarKey: WEB_URL
+      # hostport is the API's stable private-network address. next.config.js
+      # normalizes the bare host:port to http:// for the server-side rewrite.
+      - key: API_PROXY_TARGET
+        fromService:
+          type: web
+          name: nexpos-api
+          property: hostport

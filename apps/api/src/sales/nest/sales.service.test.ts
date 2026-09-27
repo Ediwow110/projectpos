@@ -113,6 +113,57 @@ describe("phase4 sales service", () => {
     }, ALL);
     await expect(svc.getSale("b2", draft.id, ALL)).rejects.toThrow("NOT_FOUND");
   });
+  it("serializes void with in-flight completion of the same business", async () => {
+    const { db, svc, productId, ALL } = await setupSale();
+    const draft = await svc.createDraft("b1", "u1", "r1", {
+      lines: [{ productId, qty: 1, lineDiscountMinor: 0 }],
+      orderDiscountMinor: 0,
+    }, ALL);
+    const originalCreateMovement = db.createMovement.bind(db);
+    let enteredStockWrite!: () => void;
+    let releaseStockWrite!: () => void;
+    const stockWriteEntered = new Promise<void>((resolve) => {
+      enteredStockWrite = resolve;
+    });
+    const stockWriteReleased = new Promise<void>((resolve) => {
+      releaseStockWrite = resolve;
+    });
+    db.createMovement = async (input) => {
+      if (input.requestId === "r-complete" && input.referenceType === "Sale") {
+        enteredStockWrite();
+        await stockWriteReleased;
+      }
+      return originalCreateMovement(input);
+    };
+
+    const completing = svc.completeSale("b1", "u1", "r-complete", draft.id, {
+      payments: [{ method: "card", amountMinor: draft.totalMinor }],
+      key: "complete-vs-void",
+      granted: ALL,
+    });
+    await stockWriteEntered;
+
+    let voidSettled = false;
+    const voiding = svc
+      .voidSale(
+        "b1",
+        "u1",
+        "r-void",
+        draft.id,
+        "operator cancel",
+        ALL,
+      )
+      .finally(() => {
+        voidSettled = true;
+      });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(voidSettled).toBe(false);
+
+    releaseStockWrite();
+    await completing;
+    await expect(voiding).rejects.toThrow("SALE_INVALID_TRANSITION");
+    expect((await db.findSaleById(draft.id, "b1"))?.status).toBe("COMPLETED");
+  });
 });
 
 describe("phase5 cash auto-post", () => {

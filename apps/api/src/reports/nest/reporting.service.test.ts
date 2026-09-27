@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { createMemoryDb } from "../../common/memory.db";
 import { ReportingService } from "./reporting.service";
 import { SalesService } from "../../sales/nest/sales.service";
-import { RefundService } from "../../refunds/nest/refund.service";
 
 const ALL = ["discount.override", "sale.void", "sale.refund", "cost.view"];
 

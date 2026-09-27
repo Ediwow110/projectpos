@@ -4,7 +4,9 @@ import type { DbPort, DbRefund, DbSale } from "../../common/db.port";
 import { transitionSale } from "../../sales/state-machine";
 import { fingerprintPayload } from "../../sales/idempotency";
 import { ShiftService } from "../../shifts/nest/shift.service";
+import { withInventoryLocks } from "../../inventory/inventory-locks";
 import { lineRefundAmount, refundableQty } from "../refund-math";
+import { refundLockKey } from "../refund-lock";
 
 export interface RefundItemInput {
   saleItemId: string;
@@ -47,7 +49,7 @@ export class RefundService {
   ): Promise<{ refund: DbRefund; sale: DbSale; replayed: boolean }> {
     withScope(businessId, {});
     if (!granted.includes("sale.refund")) throw new Error("FORBIDDEN");
-    return this.db.withLock(`refunds:${businessId}:${saleId}`, async () => {
+    return this.db.withLock(refundLockKey(businessId, saleId), async () => {
       const fingerprint = fingerprintPayload({ saleId, items: input.items, reason: input.reason ?? null });
       const existing = await this.db.findIdempotency(businessId, input.key, "refund.approve");
       if (existing) {
@@ -123,42 +125,64 @@ export class RefundService {
         approvedRequestId: requestId,
         singleStep,
       });
-      for (const r of resolved) {
-        const product = await this.db.findProductById(r.line.productId, businessId);
-        const tracked = product?.trackInventory === true;
-        await this.db.createRefundItem({
-          businessId,
-          refundId: refund.id,
-          saleItemId: r.line.id,
-          productId: r.line.productId,
-          qty: r.qty,
-          amountMinor: r.amount,
-          restocked: tracked,
-        });
-        if (tracked) {
-          const saleBranchId = sale.branchId ?? null;
-          const current = await this.db.findBalance(r.line.productId, businessId, saleBranchId);
-          const onHand = current?.qtyOnHand ?? 0;
-          await this.db.createMovement({
-            businessId,
-            productId: r.line.productId,
-            type: "return",
-            qtyDelta: r.qty,
-            reason: null,
-            referenceType: "Refund",
-            referenceId: refund.id,
-            actorId,
-            requestId,
-            branchId: saleBranchId,
-          });
-          await this.db.upsertBalance({
-            businessId,
-            branchId: saleBranchId,
-            productId: r.line.productId,
-            qtyOnHand: onHand + r.qty,
-          });
-        }
-      }
+      const resolvedWithTracking = await Promise.all(
+        resolved.map(async (row) => ({
+          ...row,
+          tracked:
+            (await this.db.findProductById(row.line.productId, businessId))
+              ?.trackInventory === true,
+        })),
+      );
+      await withInventoryLocks(
+        this.db,
+        businessId,
+        resolvedWithTracking
+          .filter((row) => row.tracked)
+          .map((row) => ({
+            productId: row.line.productId,
+            branchId: sale.branchId ?? null,
+          })),
+        async () => {
+          for (const r of resolvedWithTracking) {
+            await this.db.createRefundItem({
+              businessId,
+              refundId: refund.id,
+              saleItemId: r.line.id,
+              productId: r.line.productId,
+              qty: r.qty,
+              amountMinor: r.amount,
+              restocked: r.tracked,
+            });
+            if (r.tracked) {
+              const saleBranchId = sale.branchId ?? null;
+              const current = await this.db.findBalance(
+                r.line.productId,
+                businessId,
+                saleBranchId,
+              );
+              const onHand = current?.qtyOnHand ?? 0;
+              await this.db.createMovement({
+                businessId,
+                productId: r.line.productId,
+                type: "return",
+                qtyDelta: r.qty,
+                reason: null,
+                referenceType: "Refund",
+                referenceId: refund.id,
+                actorId,
+                requestId,
+                branchId: saleBranchId,
+              });
+              await this.db.upsertBalance({
+                businessId,
+                branchId: saleBranchId,
+                productId: r.line.productId,
+                qtyOnHand: onHand + r.qty,
+              });
+            }
+          }
+        },
+      );
       for (const [legIndex, a] of allocations.entries()) {
         await this.db.createPayment({
           businessId,
@@ -229,18 +253,20 @@ export class RefundService {
     withScope(businessId, {});
     if (!granted.includes("sale.refund")) throw new Error("FORBIDDEN");
     if (!reason || reason.trim().length < 3) throw new Error("VALIDATION");
-    const sale = await this.requireSale(businessId, saleId);
-    if (sale.status !== "REFUND_REQUESTED") throw new Error("SALE_INVALID_TRANSITION");
-    const status = transitionSale(sale.status, "COMPLETED");
-    const updated = (await this.db.updateSale(sale.id, businessId, { status })) ?? sale;
-    await this.db.appendAudit({
-      businessId,
-      actorId,
-      action: "refund.reject",
-      entityType: "Sale",
-      entityId: sale.id,
-      requestId,
+    return this.db.withLock(refundLockKey(businessId, saleId), async () => {
+      const sale = await this.requireSale(businessId, saleId);
+      if (sale.status !== "REFUND_REQUESTED") throw new Error("SALE_INVALID_TRANSITION");
+      const status = transitionSale(sale.status, "COMPLETED");
+      const updated = (await this.db.updateSale(sale.id, businessId, { status })) ?? sale;
+      await this.db.appendAudit({
+        businessId,
+        actorId,
+        action: "refund.reject",
+        entityType: "Sale",
+        entityId: sale.id,
+        requestId,
+      });
+      return updated;
     });
-    return updated;
   }
 }

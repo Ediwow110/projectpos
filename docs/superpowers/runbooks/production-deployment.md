@@ -7,18 +7,23 @@ before the first deploy; after that, sections 4–7 are the routine path.
 
 | Component | Image / command | Port | Notes |
 |---|---|---|---|
-| Web (Next.js 15) | `docker/web.Dockerfile` → `next start -p 3000` | 3000 | Browser app; calls the API cross-origin with cookies |
+| Web (Next.js 15) | `docker/web.Dockerfile` → `next start -p 3000` | 3000 | Browser app; uses same-site API traffic or a same-origin `/api` proxy |
 | API (NestJS 11) | `docker/api.Dockerfile` → `tsx src/main.ts` | 3001 | Runs TypeScript from source by design (no build step) |
 | PostgreSQL 16 | any managed Postgres | 5432 | Raw `pg` driver; migrations via `scripts/apply-migrations.mjs` |
 
 Key constraints the architecture imposes on any hosting choice:
 
-- **Web and API must share a registrable domain** (e.g. `app.example.com` +
-  `api.example.com`). Session cookies are `SameSite=Lax`, so two unrelated
-  domains would silently break login.
+- Session cookies are `SameSite=Lax`. Browser API traffic must therefore be
+  same-site with the web app. The normal production shape is a shared
+  registrable domain (e.g. `app.example.com` + `api.example.com`). If a host's
+  generated domains are separate sites because their parent is a public
+  suffix (Render's `*.onrender.com` is the concrete case), keep browser
+  traffic on the **web origin** and proxy `/api/*` server-side to the API.
 - `WEB_URL` (API) must be the **exact web origin, https**; it drives CORS and
-  every email link. `NEXT_PUBLIC_API_BASE` (web) must be the **exact API
-  origin** and is inlined at web **build time**.
+  every email link. `NEXT_PUBLIC_API_BASE` (web) is the browser-visible API
+  origin and is inlined at web **build time**: normally the API origin, but
+  for the Render same-origin proxy it is the web origin. `API_PROXY_TARGET`
+  is the server-side API origin used only by that proxy shape.
 - Production refuses to boot without `DATABASE_URL` and a complete
   transactional-email configuration (`ENV_MISSING_DATABASE_URL` /
   `ENV_MISSING_EMAIL_CONFIG`).
@@ -48,7 +53,8 @@ in an image.
 | `PAYMONGO_API_BASE` | no | no | Defaults to `https://api.paymongo.com` |
 | `PAYMONGO_WEBHOOK_TOLERANCE_SECONDS` | no | no | Signature timestamp tolerance, default 300 seconds |
 | `AUTH_REQUIRE_EMAIL_VERIFICATION` | no | recommended (`1`) | Login gate until the emailed verification link is redeemed |
-| `NEXT_PUBLIC_API_BASE` | no | yes (build arg) | Public https origin of the API, e.g. `https://api.example.com` |
+| `NEXT_PUBLIC_API_BASE` | no | yes (build arg) | Browser-visible API origin. Usually `https://api.example.com`; Render's default proxy uses the web origin instead. |
+| `API_PROXY_TARGET` | no | only for same-origin proxy deployments | Server-side API target used by the Next.js `/api/*` rewrite. Accepts a full URL or a private `host:port`; Render uses the API service's private `hostport`. |
 | `PG_POOL_MAX` | no | no | Pool size, default 30 |
 | `PLATFORM_API_KEY` | **yes** | if using platform routes | Timing-safe key for `/api/v1/platform/*` |
 | `BILLING_<PROVIDER>_SECRET` | **yes** | if billing webhooks are on | HMAC verification per provider |
@@ -135,16 +141,40 @@ disabled, so configure `BREVO_API_KEY` and do **not** set the SMTP variables.
 ### 5.3 Other platform-managed containers (Render / Fly / Cloud Run …)
 
 1. Create a managed Postgres and note `DATABASE_URL`.
-2. Create two services from the repo: web (Dockerfile `docker/web.Dockerfile`,
-   build arg `NEXT_PUBLIC_API_BASE=https://<api-host>`) and api
-   (`docker/api.Dockerfile`). Attach the secret env from section 2 to the API
-   service.
+2. Create two services from the repo: web (`docker/web.Dockerfile`) and api
+   (`docker/api.Dockerfile`). When the generated hostnames are same-site, build
+   web with `NEXT_PUBLIC_API_BASE=https://<api-host>`. When they are not
+   same-site, use `NEXT_PUBLIC_API_BASE=https://<web-host>` plus
+   `API_PROXY_TARGET=https://<api-host>` so Next.js forwards `/api/*` without
+   exposing the session cookie cross-site. Attach the secret env from section
+   2 to the API service.
 3. Add a one-off release step (or run it once manually) that executes
    `node scripts/apply-migrations.mjs` with `DATABASE_URL` set — before the
    API receives traffic.
 4. Health probes: liveness `GET /healthz`, readiness `GET /readyz` on the API
-   service. Point platform HTTPS domains at the two services and keep them on
-   one registrable domain (section 1).
+   service. Prefer one registrable custom domain for web/API. If using the
+   same-origin proxy shape, the API service can keep its platform hostname
+   because browsers never send session cookies to it directly.
+
+#### Render Blueprint
+
+The repository's `render.yaml` uses the same `docker/web.Dockerfile` as other
+container deployments and wires the safe proxy shape for Render's generated
+domains:
+
+```text
+browser -> https://nexpos-web.onrender.com/api/*
+        -> Next.js rewrite
+        -> http://<render-private-api-host>:10000/api/*
+```
+
+`WEB_URL` is the single canonical public web origin in the Blueprint.
+`NEXT_PUBLIC_API_BASE` copies that value through a Blueprint `fromService`
+reference, while `API_PROXY_TARGET` is derived from the API service's private
+`hostport`. Render exposes these non-secret service variables as Docker build
+args, so the same generic web image receives the values when Next.js builds.
+Do not change the session cookie to `SameSite=None` merely to make the two
+generated Render hostnames talk directly from the browser.
 
 ### 5.4 Floot (evaluated, not viable)
 
@@ -163,8 +193,9 @@ the requirements any real host must meet.
       the Brevo inbox receives a link to
       `https://<web>/verify-email?token=…`
 - [ ] Redeem the link; login succeeds
-- [ ] `GET https://<web>` renders the dashboard and calls the API with
-      credentials (cookies stick across the two origins)
+- [ ] `GET https://<web>` renders the dashboard and authenticated API calls
+      succeed. On Render defaults, confirm browser requests target
+      `https://<web>/api/*` rather than the API hostname directly.
 - [ ] `GET /api/v1/payments/methods` reports Card/GCash/Maya/QR Ph as available only
       when PayMongo is configured
 - [ ] PayMongo test-mode checkout redirects to PayMongo and the signed webhook
@@ -187,6 +218,8 @@ node scripts/load/dashboard-mix.mjs   # optional latency budget check
 ## 8. Security posture in production
 
 - Cookies: `httpOnly`, `secure` (NODE_ENV=production forces it), `SameSite=Lax`.
+  Cross-origin deployments must remain same-site, or use the documented
+  same-origin web proxy; the default Render blueprint uses the proxy.
 - CORS: exactly one origin — `WEB_URL`, `credentials: true`.
 - Security headers incl. HSTS applied by middleware; API sets
   `Cache-Control: no-store` on API responses.

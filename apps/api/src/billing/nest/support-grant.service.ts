@@ -42,7 +42,15 @@ export class SupportGrantService {
 
   async resolve(token: string): Promise<{ id: string; purpose: string; actorId: string; expiresAt: Date } | null> {
     if (typeof token !== "string" || token.length === 0) return null;
-    return this.db.findValidSupportGrant(hashGrantToken(token));
+    const tokenHash = hashGrantToken(token);
+    return this.db.withLock(`support-grant:${tokenHash}`, async () => {
+      const grant = await this.db.findValidSupportGrant(tokenHash);
+      if (!grant) return null;
+      // Claim at authorization time so two app instances cannot both
+      // authorize mutations with the same one-time bearer.
+      await this.db.markSupportGrantUsed(grant.id);
+      return grant;
+    });
   }
 
   async consume(grantId: string): Promise<void> {

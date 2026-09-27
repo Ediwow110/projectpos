@@ -445,6 +445,9 @@ export class PgDbPort implements DbPort {
   listPaymentsBySale(saleId: string, businessId: string): Promise<DbPayment[]> {
     return this.sales.listPaymentsBySale(saleId, businessId);
   }
+  listPaymentsByBusiness(businessId: string): Promise<DbPayment[]> {
+    return this.sales.listPaymentsByBusiness(businessId);
+  }
   updatePayment(id: string, businessId: string, patch: Partial<Omit<DbPayment, "id" | "businessId">>): Promise<DbPayment | null> {
     return this.sales.updatePayment(id, businessId, patch);
   }

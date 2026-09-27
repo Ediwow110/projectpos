@@ -2,9 +2,12 @@
 
 import type { JSX } from "react";
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { ApiError, apiFetch } from "../../lib/api";
+import { persistActiveSyncScope } from "../../lib/sync-store";
 
 const FEATURES = [
   ["Fast checkout", "Optimized for scan + keyboard"],
@@ -20,6 +23,7 @@ const PRIVACY_ROWS = [
 
 export default function LoginPage(): JSX.Element {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -30,12 +34,14 @@ export default function LoginPage(): JSX.Element {
     setError("");
     try {
       const deviceId = window.localStorage.getItem("pos-device-id");
-      await apiFetch("/api/v1/auth/login", {
+      const result = await apiFetch<{ userId: string; businessId: string }>("/api/v1/auth/login", {
         init: {
           method: "POST",
           body: JSON.stringify({ email, password, ...(deviceId ? { deviceId } : {}) }),
         },
       });
+      persistActiveSyncScope({ userId: result.userId, businessId: result.businessId });
+      queryClient.clear();
       router.push("/");
     } catch (err) {
       setError(err instanceof ApiError ? err.code + ": " + err.message : "Login failed");
@@ -157,8 +163,14 @@ export default function LoginPage(): JSX.Element {
               </span>
             </label>
 
-            <div className="flex justify-end">
-              <span className="text-[11px] font-semibold text-[#e44e34]">Secure account recovery is handled by your administrator.</span>
+            <div className="flex items-center justify-between gap-3 text-[11px]">
+              <span className="text-[#8d8178]">Can’t access your account?</span>
+              <Link
+                href="/password-reset"
+                className="font-semibold text-[#e44e34] underline-offset-4 transition hover:text-[#c33e29] hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f35d3f] focus-visible:ring-offset-2"
+              >
+                Forgot password?
+              </Link>
             </div>
 
             {error ? <p role="alert" className="rounded-xl bg-[#fff0f0] px-3 py-2.5 text-[13px] font-medium text-[#c43e3e]">{error}</p> : null}

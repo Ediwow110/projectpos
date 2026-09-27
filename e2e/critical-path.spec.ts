@@ -4,14 +4,18 @@
 // POS cash sale (UI) -> receipt (UI) -> sales history (UI) ->
 // dashboard revenue (UI) -> close shift (UI) -> shift report reconciles.
 //
-// Known gaps (documented, not faked): no member-invite API exists, so the
-// "create employee / sign in as cashier" step runs through the cashier UI
-// surfaces (POS) on the owner session; multi-session role separation is
-// proven by unit/contract tests (rolePermissions, FORBIDDEN gates).
-// Audit-trail assertions live at the API level (audit rows asserted in
-// service tests); here we assert the user-visible effects.
+// Role separation has its own real cashier browser coverage in roles.spec.ts.
+// Audit-trail assertions live at the API level (audit rows asserted in service
+// tests); here we assert the user-visible end-to-end effects.
 import { expect, test } from "@playwright/test";
-import { API, apiAuthedContext, registerBusiness, seedProduct } from "./helpers";
+import {
+  API,
+  apiAuthedContext,
+  clickPosPay,
+  expectOnePosCartItem,
+  registerBusiness,
+  seedProduct,
+} from "./helpers";
 
 test("critical path: register to reconciled close", async ({ page, request }) => {
   test.setTimeout(150_000);
@@ -47,21 +51,19 @@ test("critical path: register to reconciled close", async ({ page, request }) =>
 
   // POS cash sale via UI.
   await page.goto("/pos");
-  await page.getByLabel("Register").selectOption({ label: "Counter 1" });
+  const viewportWidth = page.viewportSize()?.width ?? 1440;
+  if (viewportWidth < 768) {
+    await page.getByLabel("Mobile register").selectOption({ label: "Counter 1" });
+  } else {
+    await page.getByLabel("Register", { exact: true }).selectOption({ label: "Counter 1" });
+  }
   await page.getByLabel("Search product, SKU or scan barcode").fill("E2E Coke");
   await page.getByRole("button", { name: /E2E Coke ₱25\.00/ }).click();
-  const tabletPos = (page.viewportSize()?.width ?? 1440) < 1280;
-  if (tabletPos) {
-    const tabletCart = page.getByRole("region", { name: "Tablet cart" });
-    await expect(tabletCart.getByText("1 item in cart", { exact: true })).toBeVisible();
-    await tabletCart.getByRole("button", { name: "Pay", exact: true }).click();
-  } else {
-    await expect(page.getByRole("heading", { name: "Cart (1)" })).toBeVisible();
-    await page.getByRole("button", { name: /Pay ₱25\.00/ }).click();
-  }
+  await expectOnePosCartItem(page);
+  await clickPosPay(page, "25.00");
   await expect(page.getByRole("dialog", { name: "Payment" })).toBeVisible();
   await page.getByRole("button", { name: "Complete Payment" }).click();
-  if (tabletPos) {
+  if (viewportWidth < 1280) {
     await expect(page.getByRole("region", { name: "Tablet payment status" }).getByText("Sale completed.")).toBeVisible();
     await page.getByRole("region", { name: "Tablet payment status" }).getByRole("link", { name: "View receipt" }).click();
   } else {

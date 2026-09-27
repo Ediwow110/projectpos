@@ -1,4 +1,4 @@
-import { Controller, Get, Inject, Req, Res } from "@nestjs/common";
+import { Controller, Get, Req, Res } from "@nestjs/common";
 import type { Request, Response } from "express";
 import { timingSafeEqual } from "node:crypto";
 import { renderMetrics } from "./metrics";

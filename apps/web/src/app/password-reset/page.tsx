@@ -3,6 +3,7 @@
 import type { JSX } from "react";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { ApiError, apiFetch } from "../../lib/api";
 
 export default function PasswordResetPage(): JSX.Element {
@@ -54,7 +55,7 @@ export default function PasswordResetPage(): JSX.Element {
           <form onSubmit={requestReset} className="mt-7 space-y-4">
             <label className="block text-sm font-medium">
               Email
-              <input className="mt-2 w-full rounded-xl border border-[#ded3ca] px-4 py-3 outline-none focus:border-[#f35d3f]" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <input className="mt-2 w-full rounded-xl border border-[#ded3ca] px-4 py-3 outline-none focus:border-[#f35d3f]" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
             </label>
             <button className="rounded-xl bg-[#f35d3f] px-5 py-3 font-semibold text-[#211814]" type="submit">Send reset link</button>
           </form>
@@ -78,8 +79,17 @@ export default function PasswordResetPage(): JSX.Element {
           </form>
         )}
 
-        {message && <p className="mt-5 rounded-xl bg-[#f5f0ea] px-4 py-3 text-sm">{message}</p>}
+        {message && <p className="mt-5 rounded-xl bg-[#f5f0ea] px-4 py-3 text-sm" aria-live="polite">{message}</p>}
         {error && <p className="mt-5 rounded-xl bg-[#fff1ee] px-4 py-3 text-sm text-[#9d2f1e]" role="alert">{error}</p>}
+
+        <div className="mt-7 border-t border-[#eadfd6] pt-5">
+          <Link
+            href="/login"
+            className="text-sm font-semibold text-[#e44e34] underline-offset-4 transition hover:text-[#c33e29] hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f35d3f] focus-visible:ring-offset-2"
+          >
+            Back to sign in
+          </Link>
+        </div>
       </section>
     </main>
   );

@@ -17,6 +17,11 @@ export function nid(prefix: string): string {
 export class PgContext {
   private pool: Pool;
   private als = new AsyncLocalStorage<PoolClient>();
+  // Local contenders for the same logical lock queue here before touching the
+  // PostgreSQL pool. PostgreSQL remains the cross-process authority, but one
+  // app instance no longer burns N pool clients waiting on the same advisory
+  // lock.
+  private lockTails = new Map<string, Promise<void>>();
 
   constructor(connectionString: string) {
     // Pool sizing was measured, not guessed: at the growth cohort's 50
@@ -40,12 +45,25 @@ export class PgContext {
 
   async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
     const held = this.als.getStore();
-    if (held) return fn();
+    if (held) {
+      // Nested service operations still need their own logical lock. Reuse
+      // the outer transaction/client so all effects remain atomic, but acquire
+      // the requested advisory xact lock before entering the nested body.
+      await held.query("SELECT pg_advisory_xact_lock(hashtext($1))", [key]);
+      return fn();
+    }
+    const prior = this.lockTails.get(key) ?? Promise.resolve();
+    let releaseLocal!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseLocal = resolve;
+    });
+    const tail = prior.then(() => gate);
+    this.lockTails.set(key, tail);
+    await prior;
+
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      // Transaction-scoped advisory lock: cross-process mutual exclusion that
-      // releases with COMMIT/ROLLBACK, so the locked body is one atomic unit.
       await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [key]);
       const out = await this.als.run(client, () => fn());
       await client.query("COMMIT");
@@ -59,6 +77,8 @@ export class PgContext {
       throw e;
     } finally {
       client.release();
+      releaseLocal();
+      if (this.lockTails.get(key) === tail) this.lockTails.delete(key);
     }
   }
 

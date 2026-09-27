@@ -8,6 +8,7 @@ import {
   deriveStockStatus,
   type StockStatus,
 } from "../projection";
+import { withInventoryLocks } from "../inventory-locks";
 
 export interface MovementInput {
   productId: string;
@@ -70,7 +71,11 @@ export class InventoryService {
     input: MovementInput,
   ): Promise<DbMovement> {
     const branchId = input.branchId ?? null;
-    return this.db.withLock(`${businessId}:${branchId ?? ""}:${input.productId}`, async () => {
+    return withInventoryLocks(
+      this.db,
+      businessId,
+      [{ productId: input.productId, branchId }],
+      async () => {
     withScope(businessId, {});
     const product = await this.requireProduct(businessId, input.productId);
     if (!product.trackInventory && input.type !== "adjustment" && input.type !== "stock_count") {

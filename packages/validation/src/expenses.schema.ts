@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { moneyMinorSchema } from "./money.schema";
 
 export const EXPENSE_METHODS = ["cash", "card", "gcash", "maya", "bank_transfer", "other"] as const;
 

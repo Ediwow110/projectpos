@@ -2,20 +2,21 @@ import { nid } from "./context";
 import type { PgContext } from "./context";
 import type { RateLimitBackend } from "../rate-limit";
 
-// Cross-process sliding-window limiter over one table. Concurrent hits on
-// the same key serialize on a per-key advisory lock inside one transaction,
-// so the recorded hit is always counted — the count is exact, mirroring the
-// single-threaded memory backend. Rows for keys never hit again linger until
-// their next hit prunes them; bounded by distinct keys and the widest window.
+// Cross-process sliding-window limiter over one table, lock-free. Each hit is
+// three autocommit statements (prune, insert, count) on a pool client — no
+// advisory lock, no explicit transaction: the measured growth cohort showed
+// a per-key lock serializing money commands behind the limiter itself while
+// pinning pool connections. Exactness trade: a count can miss concurrent
+// in-flight inserts for the same key, so the boundary may admit a hit or two
+// extra under exact concurrency. For an abuse brake (login 5/min, money
+// 1000/min) that slack is acceptable and documented; overcounting was never
+// produced because inserts always commit before their own count.
 export class PgRateLimitBackend implements RateLimitBackend {
   constructor(private readonly ctx: PgContext) {}
 
   async hitAndCount(key: string, now: number, windowMs: number): Promise<number> {
-    return this.ctx.withTransaction(async () => {
-      const c = await this.ctx.client();
-      // The limiter is called outside service critical sections, so this
-      // transaction owns its client and the lock releases at COMMIT.
-      await c.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`rate-limit:${key}`]);
+    const c = await this.ctx.client();
+    try {
       await c.query('DELETE FROM "RateLimitHit" WHERE "key" = $1 AND "at" < $2', [
         key,
         new Date(now - windowMs),
@@ -30,6 +31,8 @@ export class PgRateLimitBackend implements RateLimitBackend {
         [key, new Date(now - windowMs)],
       );
       return r.rows[0]!.n as number;
-    });
+    } finally {
+      if (this.ctx.owns()) c.release();
+    }
   }
 }

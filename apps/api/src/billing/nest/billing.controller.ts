@@ -2,7 +2,6 @@ import { Body, Controller, Get, Inject, Param, Post, Req, Res, UseGuards } from 
 import type { Request, Response } from "express";
 import { webhookEventSchema } from "@pos/validation";
 import { SessionGuard } from "../../common/session.guard";
-import { CsrfGuard } from "../../common/csrf.guard";
 import { getCorrelationId } from "../../correlation";
 import { fail, statusFor } from "../../common/http-helpers";
 import { BillingService } from "./billing.service";

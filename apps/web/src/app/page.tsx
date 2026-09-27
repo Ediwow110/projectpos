@@ -2,18 +2,23 @@
 
 import type { JSX } from "react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { AppShell } from "../components/AppShell";
 import { MetricCard, PageHeader, Panel, SectionHeader } from "../components/premium";
 import { Card, Delta, Peso, StatusPill } from "../components/ui";
-import { apiFetch } from "../lib/api";
+import { ApiError, apiFetch } from "../lib/api";
 import { errorText } from "../lib/billing";
 import { attentionRows, dashboardKpi, dashboardSeries } from "../lib/dashboard-view";
 import { VerticalBarChart } from "../lib/charts";
 import { availableMetrics, buildOverviewQuery, money } from "../lib/reports";
-import { IndexedDbSyncStore } from "../lib/sync-store";
+import {
+  IndexedDbSyncStore,
+  clearActiveSyncScope,
+  createActiveSyncStore,
+  persistActiveSyncScope,
+} from "../lib/sync-store";
 import { ConnectivityBanner, SyncAttentionItems } from "../lib/sync-ui";
 import type { BranchRow } from "./branches/page";
 
@@ -90,13 +95,28 @@ export default function DashboardPage(): JSX.Element {
   const [compare, setCompare] = useState("previous_period");
   const [metric, setMetric] = useState<"revenue" | "orders">("revenue");
   const [branchId, setBranchId] = useState("");
-  const [syncStore] = useState(() => new IndexedDbSyncStore());
+  const [syncStore, setSyncStore] = useState<IndexedDbSyncStore | null>(() => createActiveSyncStore());
 
   const meQuery = useQuery({
     queryKey: ["me"],
     queryFn: () => apiFetch<Me>("/api/v1/me"),
     retry: false,
   });
+
+  useEffect(() => {
+    if (meQuery.data) {
+      const scope = { userId: meQuery.data.userId, businessId: meQuery.data.businessId };
+      persistActiveSyncScope(scope);
+      setSyncStore((current) => current?.scope.userId === scope.userId && current.scope.businessId === scope.businessId
+        ? current
+        : new IndexedDbSyncStore(scope));
+      return;
+    }
+    if (meQuery.error instanceof ApiError && (meQuery.error.status === 401 || meQuery.error.status === 403)) {
+      clearActiveSyncScope();
+      setSyncStore(null);
+    }
+  }, [meQuery.data, meQuery.error]);
   const branchesQuery = useQuery({
     queryKey: ["branches"],
     queryFn: () => apiFetch<{ items: BranchRow[] }>("/api/v1/branches"),
@@ -173,7 +193,7 @@ export default function DashboardPage(): JSX.Element {
           }
         />
 
-        <ConnectivityBanner store={syncStore} />
+        {syncStore ? <ConnectivityBanner store={syncStore} /> : null}
 
         {overviewQuery.isLoading ? <Panel className="p-6 text-sm text-[#73685f]">Loading dashboard…</Panel> : null}
         {overviewQuery.isError ? (
@@ -272,7 +292,7 @@ export default function DashboardPage(): JSX.Element {
                         </div>
                       </li>
                     ))}
-                    <SyncAttentionItems store={syncStore} />
+                    {syncStore ? <SyncAttentionItems store={syncStore} /> : null}
                   </ul>
                 )}
               </Panel>

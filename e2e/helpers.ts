@@ -1,11 +1,37 @@
-import { expect, type Page, type APIRequestContext } from "@playwright/test";
+import { expect, type Page, type APIRequestContext, type Locator } from "@playwright/test";
 
-export const API = "http://localhost:3001";
+export const API = "http://localhost:3101";
+
+export function posCartRegion(page: Page): Locator {
+  const width = page.viewportSize()?.width ?? 1440;
+  if (width < 1024) return page.getByRole("region", { name: "Mobile cart" });
+  if (width < 1280) return page.getByRole("region", { name: "Tablet cart" });
+  return page.getByRole("complementary", { name: "Cart" });
+}
+
+export async function clickPosPay(page: Page, amount: string): Promise<void> {
+  const width = page.viewportSize()?.width ?? 1440;
+  const cart = posCartRegion(page);
+  if (width < 1280) {
+    await cart.getByRole("button", { name: "Pay", exact: true }).click();
+    return;
+  }
+  await cart.getByRole("button", { name: new RegExp("Pay ₱" + amount.replace(".", "\\.")) }).click();
+}
+
+export async function expectOnePosCartItem(page: Page): Promise<void> {
+  const width = page.viewportSize()?.width ?? 1440;
+  if (width < 1280) {
+    await expect(posCartRegion(page).getByText("1 item in cart", { exact: true })).toBeVisible();
+    return;
+  }
+  await expect(page.getByRole("heading", { name: "Cart (1)" })).toBeVisible();
+}
 
 export async function registerBusiness(
   page: Page,
   input: { ownerName: string; email: string; password: string; businessName: string },
-): Promise<void> {
+): Promise<string> {
   await page.goto("/register");
   // Two Playwright projects can start the same spec in the same millisecond;
   // a worker-unique suffix keeps their registrations from colliding on the
@@ -20,6 +46,7 @@ export async function registerBusiness(
   // Cold-start tolerance: the first registration of a run pays Next dev page
   // compilation plus the API's first queries and argon2 warm-up.
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
+  return email;
 }
 
 export async function apiAuthedContext(

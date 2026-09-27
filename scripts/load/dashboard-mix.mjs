@@ -8,7 +8,9 @@
 // Mix per worker: 50% product search, 20% sale complete (unique keys),
 // 20% dashboard overview, 10% sales list. Prints p50/p95/p99 per operation,
 // throughput, error rate, and budget verdicts. Exits non-zero on any budget
-// breach or error rate above 1%.
+// breach or error rate above 1%. Sale completions are paced globally to a
+// realistic cashier throughput so the mix measures latency rather than the
+// intentional 1000/minute complete-sale abuse brake.
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((acc, cur, i, arr) => {
@@ -23,6 +25,8 @@ const PASSWORD = args["password"] ?? "correct-horse-12";
 const CONCURRENCY = Number(args["concurrency"] ?? 5);
 const DURATION_SECS = Number(args["duration"] ?? 60);
 const CATALOG = Number(args["catalog"] ?? 50);
+const COMPLETE_RATE = Math.max(0.1, Number(args["complete-rate"] ?? 8));
+const COMPLETE_INTERVAL_MS = 1000 / COMPLETE_RATE;
 
 const BUDGETS = {
   search: 200,
@@ -34,6 +38,24 @@ const BUDGETS = {
 const lat = { search: [], complete: [], overview: [], list: [] };
 let errors = 0;
 let total = 0;
+let lastCompleteAt = 0;
+let paceTail = Promise.resolve();
+
+async function paceComplete() {
+  const prior = paceTail;
+  let release;
+  paceTail = new Promise((resolve) => {
+    release = resolve;
+  });
+  await prior;
+  try {
+    const wait = COMPLETE_INTERVAL_MS - (Date.now() - lastCompleteAt);
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+    lastCompleteAt = Date.now();
+  } finally {
+    release();
+  }
+}
 
 function jar() {
   let cookies = "";
@@ -122,6 +144,9 @@ async function worker(ctx, deadline) {
     if (roll < 0.5) {
       await timed("search", () => get(`/api/v1/products?q=Load&page=1&pageSize=20`));
     } else if (roll < 0.7) {
+      // Deliberately outside timed(): cashier pacing is demand shaping, not
+      // application latency.
+      await paceComplete();
       await timed("complete", async () => {
         const draft = await post("/api/v1/sales/drafts", { lines: [{ productId: pick, qty: 1 }] });
         await post("/api/v1/sales/complete", { saleId: draft.id, payments: [{ method: "cash", amountMinor: draft.totalMinor }] }, `load-${Date.now()}-${n}-${Math.random()}`);
@@ -140,6 +165,9 @@ function percentile(sorted, p) {
 }
 
 const ctx = await setup();
+console.log(
+  `load: concurrency=${CONCURRENCY} duration=${DURATION_SECS}s catalog=${CATALOG} completeRate=${COMPLETE_RATE}/s`,
+);
 const deadline = Date.now() + DURATION_SECS * 1000;
 await Promise.all(Array.from({ length: CONCURRENCY }, () => worker(ctx, deadline)));
 

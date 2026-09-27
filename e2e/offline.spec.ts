@@ -7,7 +7,14 @@
 // API origin, which is exactly the outage under test; the Playwright request
 // fixture stays online and plays the "rest of the world" (draining stock).
 import { expect, test } from "@playwright/test";
-import { API, apiAuthedContext, registerBusiness, seedProduct } from "./helpers";
+import {
+  API,
+  apiAuthedContext,
+  clickPosPay,
+  expectOnePosCartItem,
+  registerBusiness,
+  seedProduct,
+} from "./helpers";
 
 async function refreshOutbox(page) {
   await page.goto("/sync");
@@ -15,12 +22,7 @@ async function refreshOutbox(page) {
 }
 
 async function openPayment(page, amount: string) {
-  const tabletPos = (page.viewportSize()?.width ?? 1440) < 1280;
-  if (tabletPos) {
-    await page.getByRole("region", { name: "Tablet cart" }).getByRole("button", { name: "Pay", exact: true }).click();
-  } else {
-    await page.getByRole("button", { name: new RegExp("Pay ₱" + amount.replace(".", "\\.")) }).click();
-  }
+  await clickPosPay(page, amount);
   await expect(page.getByRole("dialog", { name: "Payment" })).toBeVisible();
 }
 
@@ -30,15 +32,6 @@ async function expectPosStatus(page, text: RegExp) {
     ? page.getByRole("region", { name: "Tablet payment status" })
     : page.getByRole("complementary", { name: "Cart" });
   await expect(region.getByText(text)).toBeVisible();
-}
-
-async function expectOneItemInCart(page) {
-  const tabletPos = (page.viewportSize()?.width ?? 1440) < 1280;
-  if (tabletPos) {
-    await expect(page.getByRole("region", { name: "Tablet cart" }).getByText("1 item in cart", { exact: true })).toBeVisible();
-  } else {
-    await expect(page.getByRole("heading", { name: "Cart (1)" })).toBeVisible();
-  }
 }
 
 test("offline cash sale syncs on reconnect", async ({ page, context, request }) => {
@@ -61,7 +54,7 @@ test("offline cash sale syncs on reconnect", async ({ page, context, request }) 
   await page.goto("/pos");
   await page.getByLabel("Search product, SKU or scan barcode").fill("Offline Cola");
   await page.getByRole("button", { name: /Offline Cola ₱25\.00/ }).click();
-  await expectOneItemInCart(page);
+  await expectOnePosCartItem(page);
 
   // Outage: API origin unreachable.
   await context.setOffline(true);
@@ -144,4 +137,53 @@ test("oversell conflict lands in review and resolves", async ({ page, context, r
   await page.getByRole("button", { name: "Resolve conflict", exact: true }).click();
   await expect(page.getByText("Conflict resolved and recorded.")).toBeVisible();
   await expect(page.getByText("Resolved", { exact: true })).toBeVisible();
+});
+
+test("offline queue stays private to its account across logout and re-login", async ({ page, context, request }) => {
+  test.setTimeout(180_000);
+  const stamp = Date.now();
+  const password = "correct-horse-12";
+  const emailA = await registerBusiness(page, {
+    ownerName: "Offline Owner A",
+    email: `e2e-isolation-a-${stamp}@example.com`,
+    password,
+    businessName: "Offline Isolation A",
+  });
+
+  const { headers } = await apiAuthedContext(request, emailA, password, page);
+  await seedProduct(request, headers, { name: "Private Queue Cola", priceMinor: 2500, stock: 10 });
+
+  await page.goto("/pos");
+  await page.getByLabel("Search product, SKU or scan barcode").fill("Private Queue Cola");
+  await page.getByRole("button", { name: /Private Queue Cola ₱25\.00/ }).click();
+  await context.setOffline(true);
+  await expect(page.getByText("Offline — cash only, sales will queue.", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await openPayment(page, "25.00");
+  await page.getByRole("button", { name: "Complete Payment" }).click();
+  await expectPosStatus(page, /Provisional receipt OFFLINE-/);
+  await context.setOffline(false);
+
+  await refreshOutbox(page);
+  await expect(page.getByText("Queued · pending", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/login/);
+
+  await registerBusiness(page, {
+    ownerName: "Offline Owner B",
+    email: `e2e-isolation-b-${stamp}@example.com`,
+    password,
+    businessName: "Offline Isolation B",
+  });
+  await page.goto("/sync");
+  await expect(page.getByText("No offline commands queued.")).toBeVisible();
+  await expect(page.getByText("Queued · pending", { exact: true })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/login/);
+  await page.getByLabel("Email").fill(emailA);
+  await page.getByLabel("Password").fill(password);
+  await page.getByRole("button", { name: "Sign in securely" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await page.goto("/sync");
+  await expect(page.getByText("Queued · pending", { exact: true })).toBeVisible();
 });

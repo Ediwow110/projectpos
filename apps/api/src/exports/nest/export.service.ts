@@ -30,6 +30,7 @@ const PAYMENT_ACCOUNTS: Record<string, string> = {
   bank_transfer: ACCT.cardClearing,
   gcash: ACCT.walletClearing,
   maya: ACCT.walletClearing,
+  qrph: ACCT.walletClearing,
   other: ACCT.otherClearing,
 };
 

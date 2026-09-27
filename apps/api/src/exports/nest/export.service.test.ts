@@ -70,6 +70,17 @@ describe("phase10 ledger export accounting", () => {
     expect(revenue).toBe(5000);
   });
 
+  it("books QR Ph sales to e-wallet clearing instead of generic other clearing", async () => {
+    const { business, sales, product, exports } = await setup();
+    await sell(sales, business.id, product.id, 1, [{ method: "qrph", amountMinor: 2500 }], "qrph-1");
+    const { rows } = await exports.buildLedger(business.id, "u1", "r1", {});
+
+    expect(accountTotal(rows, "2110", 4)).toBe(2500);
+    expect(accountTotal(rows, "2120", 4)).toBe(0);
+    const sum = totals(rows);
+    expect(sum.debit).toBe(sum.credit);
+  });
+
   it("splits a mixed-tender sale across cash and clearing", async () => {
     const { business, sales, product, exports } = await setup();
     await sell(sales, business.id, product.id, 2, [
@@ -210,7 +221,7 @@ describe("phase10 ledger export accounting", () => {
   });
 
   it("reads source tables in bounded pages", async () => {
-    const { db, business, exports } = await setup();
+    const { db, business } = await setup();
     const pageSize = (await import("./export.service")).LEDGER_PAGE;
     for (let i = 0; i < pageSize + 1; i++) {
       await db.createSale({

@@ -15,7 +15,14 @@ test("capture Figma-sized POS surfaces", async ({ page, request }, testInfo) => 
   test.setTimeout(150_000);
   await mkdir(OUT, { recursive: true });
   const desktop = testInfo.project.name === "desktop";
-  await page.setViewportSize(desktop ? { width: 1440, height: 1024 } : { width: 1024, height: 1366 });
+  const tablet = testInfo.project.name === "tablet";
+  await page.setViewportSize(
+    desktop
+      ? { width: 1440, height: 1024 }
+      : tablet
+        ? { width: 1024, height: 1366 }
+        : { width: 390, height: 844 },
+  );
 
   const stamp = Date.now();
   await registerBusiness(page, {
@@ -59,7 +66,14 @@ test("capture Figma-sized POS surfaces", async ({ page, request }, testInfo) => 
   await page.getByRole("button", { name: /Iced Latte ₱145\.00/ }).click();
   await settle(page);
   await page.screenshot({
-    path: join(OUT, desktop ? "polished-pos-desktop.jpg" : "polished-pos-tablet.jpg"),
+    path: join(
+      OUT,
+      desktop
+        ? "polished-pos-desktop.jpg"
+        : tablet
+          ? "polished-pos-tablet.jpg"
+          : "polished-pos-mobile.jpg",
+    ),
     type: "jpeg",
     quality: 82,
   });

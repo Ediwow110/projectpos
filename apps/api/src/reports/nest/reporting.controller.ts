@@ -6,20 +6,11 @@ import {
   salesReportQuerySchema,
 } from "@pos/validation";
 import { SessionGuard } from "../../common/session.guard";
-import { getCorrelationId } from "../../correlation";
-import { fail, failFromError, statusFor } from "../../common/http-helpers";
+import { fail, failFromError } from "../../common/http-helpers";
 import { AuthService } from "../../auth/nest/auth.service";
 import { ReportingService } from "./reporting.service";
 import { ApiTokenGuard } from "../../apitokens/api-token.guard";
 import { Scopes } from "../../apitokens/scopes.decorator";
-
-function rid(req: Request): string {
-  const headers: Record<string, string | undefined> = {};
-  for (const [k, v] of Object.entries(req.headers)) {
-    headers[k.toLowerCase()] = Array.isArray(v) ? v.join(",") : String(v ?? "");
-  }
-  return getCorrelationId(headers);
-}
 
 @Controller("api/v1")
 @UseGuards(ApiTokenGuard, SessionGuard)

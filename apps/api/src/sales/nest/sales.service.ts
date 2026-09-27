@@ -1,160 +1,45 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { createHash, randomBytes } from "node:crypto";
 import { withScope } from "@pos/database";
 import type {
   DbCustomer,
   DbPayment,
   DbPort,
-  DbProduct,
   DbRefund,
   DbRefundItem,
   DbSale,
   DbSaleItem,
 } from "../../common/db.port";
-import { computeSaleTotals, requiresDiscountOverride } from "../totals";
-import { transitionSale } from "../state-machine";
 import { BillingService } from "../../billing/nest/billing.service";
-import { fingerprintPayload } from "../idempotency";
-import { queryProviderStatus, type ProviderVerdict } from "../../payments/provider";
+import type { ProviderVerdict } from "../../payments/provider";
 import {
   DisabledPayMongo,
-  isPayMongoMethod,
-  payMongoMethodType,
   type PayMongoMethod,
   type PayMongoPort,
 } from "../../payments/paymongo";
-import { resolvePaymentMethods } from "../payment-methods";
-import { renderReceiptText } from "../receipt-text";
-import { incrementMetric } from "../../common/metrics";
+import { SalesLifecycleService } from "../sale-lifecycle-service";
+import { SalesPayMongoWebhookService } from "../paymongo-webhook-service";
+import { SalesPaymentProviderService } from "../payment-provider-service";
+import { SalesPaymentReconciliationService } from "../payment-reconciliation-service";
+import { SalesReceiptService } from "../receipt-service";
+import { SalesCompletionService } from "../sale-completion-service";
+import { SalesDraftService } from "../sale-draft-service";
+import { SalesStockService } from "../sale-stock-service";
 import { ShiftService } from "../../shifts/nest/shift.service";
+import type { DraftInput, PaymentInput, SaleDetail, SaleWithLines } from "../sales-types";
 
-export interface DraftLineInput {
-  productId: string;
-  qty: number;
-  lineDiscountMinor: number;
-}
-
-export interface DraftInput {
-  lines: DraftLineInput[];
-  orderDiscountMinor: number;
-  customerId?: string;
-  customerName?: string;
-  notes?: string;
-  registerId?: string;
-  // Phase 9a: explicit branch scope; defaults to the register's branch, else null.
-  branchId?: string | null;
-}
-
-export interface PaymentInput {
-  method: string;
-  amountMinor: number;
-  providerRef?: string;
-}
-
-export type SaleWithLines = DbSale & {
-  items: DbSaleItem[];
-  payments: DbPayment[];
-};
-
-export type SaleDetail = SaleWithLines & {
-  refunds: Array<DbRefund & { items: DbRefundItem[] }>;
-  customer: DbCustomer | null;
-};
-
-const CASH_METHODS = new Set(["cash"]);
-
-interface PayMongoPaidEvent {
-  eventId: string;
-  type: "checkout_session.payment.paid";
-  businessId: string;
-  saleId: string;
-  checkoutSessionId: string;
-  method: PayMongoMethod;
-  sourceType: "card" | "gcash" | "paymaya" | "qrph";
-  amountMinor: number;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
-
-function parsePayMongoPaidEvent(payload: unknown, rawBody: string): PayMongoPaidEvent | null {
-  const root = asRecord(payload);
-  if (!root) throw new Error("VALIDATION");
-  const topData = asRecord(root["data"]);
-  if (!topData) throw new Error("VALIDATION");
-
-  // PayMongo currently documents both the generic Event envelope and the
-  // Hosted Checkout delivery envelope. Support both without trusting either
-  // until the raw-body signature has already been verified.
-  const genericAttrs = asRecord(topData["attributes"]);
-  const genericType = typeof genericAttrs?.["type"] === "string" ? genericAttrs["type"] : null;
-  const hostedType = typeof topData["type"] === "string" ? topData["type"] : null;
-  const type = genericType ?? hostedType;
-  if (type !== "checkout_session.payment.paid") return null;
-
-  const session = genericType
-    ? asRecord(genericAttrs?.["data"])
-    : asRecord(topData["data"]);
-  if (!session) throw new Error("VALIDATION");
-  const attrs = asRecord(session["attributes"]);
-  if (!attrs) throw new Error("VALIDATION");
-  const metadata = asRecord(attrs["metadata"]);
-  const businessId = metadata?.["businessId"];
-  const metadataSaleId = metadata?.["saleId"];
-  const referenceNumber = attrs["reference_number"];
-  const rawMethod = metadata?.["method"];
-  const sessionId = session["id"];
-  if (
-    typeof businessId !== "string" ||
-    typeof sessionId !== "string" ||
-    typeof rawMethod !== "string" ||
-    !isPayMongoMethod(rawMethod)
-  ) {
-    throw new Error("VALIDATION");
-  }
-  const saleId = typeof metadataSaleId === "string"
-    ? metadataSaleId
-    : typeof referenceNumber === "string" ? referenceNumber : null;
-  if (!saleId || (typeof referenceNumber === "string" && referenceNumber !== saleId)) {
-    throw new Error("PAYMENT_PROVIDER_MISMATCH");
-  }
-  const payments = Array.isArray(attrs["payments"]) ? attrs["payments"] : [];
-  const paid = payments
-    .map(asRecord)
-    .filter((payment): payment is Record<string, unknown> => payment !== null)
-    .find((payment) => asRecord(payment["attributes"])?.["status"] === "paid");
-  const paidAttrs = paid ? asRecord(paid["attributes"]) : null;
-  const source = paidAttrs ? asRecord(paidAttrs["source"]) : null;
-  const sourceType = source?.["type"];
-  const amount = paidAttrs?.["amount"];
-  if (
-    typeof amount !== "number" || !Number.isInteger(amount) || amount <= 0 ||
-    (sourceType !== "card" && sourceType !== "gcash" && sourceType !== "paymaya" && sourceType !== "qrph")
-  ) {
-    throw new Error("PAYMENT_PROVIDER_INVALID_RESPONSE");
-  }
-  const explicitEventId = topData["id"];
-  const eventId = typeof explicitEventId === "string" && explicitEventId.length > 0
-    ? explicitEventId
-    : `evt_sha256_${createHash("sha256").update(rawBody).digest("hex")}`;
-  return {
-    eventId,
-    type,
-    businessId,
-    saleId,
-    checkoutSessionId: sessionId,
-    method: rawMethod,
-    sourceType,
-    amountMinor: amount,
-  };
-}
+export type { DraftInput, PaymentInput, SaleDetail, SaleWithLines } from "../sales-types";
 
 @Injectable()
 export class SalesService {
   private readonly shifts: ShiftService;
+  private readonly receipts: SalesReceiptService;
+  private readonly providers: SalesPaymentProviderService;
+  private readonly reconciliation: SalesPaymentReconciliationService;
+  private readonly stock: SalesStockService;
+  private readonly drafts: SalesDraftService;
+  private readonly completion: SalesCompletionService;
+  private readonly lifecycle: SalesLifecycleService;
+  private readonly paymongoWebhooks: SalesPayMongoWebhookService;
 
   constructor(
     @Inject("DbPort") private readonly db: DbPort,
@@ -162,12 +47,27 @@ export class SalesService {
   ) {
     // Same-DbPort instance (not Nest DI) to avoid a Sales<->Shift DI cycle.
     this.shifts = new ShiftService(db);
-  }
-
-  private async requireProduct(businessId: string, productId: string): Promise<DbProduct> {
-    const product = await this.db.findProductById(productId, businessId);
-    if (!product || !product.isActive) throw new Error("NOT_FOUND");
-    return product;
+    this.stock = new SalesStockService(db);
+    this.drafts = new SalesDraftService(db, this.stock);
+    this.completion = new SalesCompletionService(db, this.stock, this.shifts);
+    this.lifecycle = new SalesLifecycleService(db);
+    this.paymongoWebhooks = new SalesPayMongoWebhookService(db, paymongo, this.stock);
+    this.receipts = new SalesReceiptService(db);
+    this.providers = new SalesPaymentProviderService(db, paymongo, {
+      requireSale: (businessId, saleId) => this.requireSale(businessId, saleId),
+      embedSale: (sale) => this.embed(sale),
+      assertStockAvailable: (businessId, items, branchId) => this.stock.assertAvailable(businessId, items, branchId),
+    });
+    this.reconciliation = new SalesPaymentReconciliationService(db, {
+      requireSale: (businessId, saleId) => this.requireSale(businessId, saleId),
+      embedSale: (sale) => this.embed(sale),
+      applyStockEffect: (businessId, actorId, requestId, saleId, items, branchId) =>
+        this.stock.applySale(businessId, actorId, requestId, saleId, items, branchId),
+      postCashSale: async (businessId, actorId, requestId, registerId, saleId, amountMinor) => {
+        await this.shifts.postCashSale(businessId, actorId, requestId, registerId, saleId, amountMinor);
+      },
+      recordSale: (businessId, completedAt) => new BillingService(this.db).recordSale(businessId, completedAt),
+    });
   }
 
   private async requireSale(businessId: string, saleId: string): Promise<DbSale> {
@@ -182,12 +82,6 @@ export class SalesService {
     return { ...sale, items, payments };
   }
 
-  private async businessTaxRateBps(businessId: string): Promise<number | null> {
-    const settings = await this.db.getSettings(businessId);
-    const rate = settings["taxRateBps"];
-    return typeof rate === "number" ? rate : null;
-  }
-
   isPayMongoConfigured(): boolean {
     return this.paymongo.configured();
   }
@@ -200,119 +94,7 @@ export class SalesService {
     granted: string[],
   ): Promise<DbSale> {
     withScope(businessId, {});
-    const businessTax = await this.businessTaxRateBps(businessId);
-    const lines: Array<{
-      product: DbProduct;
-      qty: number;
-      lineDiscountMinor: number;
-    }> = [];
-    for (const line of input.lines) {
-      const product = await this.requireProduct(businessId, line.productId);
-      lines.push({ product, qty: line.qty, lineDiscountMinor: line.lineDiscountMinor ?? 0 });
-    }
-    const subtotalGuess = lines.reduce(
-      (sum, l) => sum + Math.max(0, l.qty * l.product.priceMinor - l.lineDiscountMinor),
-      0,
-    );
-    if (
-      requiresDiscountOverride({
-        orderDiscountMinor: input.orderDiscountMinor ?? 0,
-        subtotalMinor: subtotalGuess,
-        lines: lines.map((l) => ({
-          lineDiscountMinor: l.lineDiscountMinor,
-          qty: l.qty,
-          priceMinor: l.product.priceMinor,
-        })),
-      }) &&
-      !granted.includes("discount.override")
-    ) {
-      throw new Error("FORBIDDEN");
-    }
-    const totals = computeSaleTotals({
-      lines: lines.map((l) => ({
-        qty: l.qty,
-        priceMinor: l.product.priceMinor,
-        costMinor: l.product.costMinor,
-        taxRateBps: l.product.taxRateBps,
-        lineDiscountMinor: l.lineDiscountMinor,
-      })),
-      orderDiscountMinor: input.orderDiscountMinor ?? 0,
-      businessTaxRateBps: businessTax,
-    });
-    const receiptNo = await this.db.nextReceiptNo(businessId);
-    let registerId: string | null = null;
-    let registerBranchId: string | null = null;
-    if (input.registerId !== undefined) {
-      const reg = await this.db.findRegisterById(input.registerId, businessId);
-      if (!reg) throw new Error("VALIDATION");
-      registerId = reg.id;
-      registerBranchId = reg.branchId ?? null;
-    }
-    let branchId: string | null = registerBranchId;
-    if (input.branchId !== undefined && input.branchId !== null) {
-      const branch = await this.db.findBranchById(input.branchId, businessId);
-      if (!branch) throw new Error("VALIDATION");
-      if (registerBranchId !== null && branch.id !== registerBranchId) {
-        throw new Error("VALIDATION");
-      }
-      branchId = branch.id;
-    }
-    let customerId: string | null = null;
-    let customerName: string | null = input.customerName?.trim() ? input.customerName.trim() : null;
-    if (input.customerId !== undefined && input.customerId !== null) {
-      // Customer profiles are a paid feature: attaching one on a plan without
-      // customers would smuggle paid data into the daily loop.
-      await new BillingService(this.db).requireFeature(businessId, "customers", actorId, requestId);
-      const customer = await this.db.findCustomerById(input.customerId, businessId);
-      if (!customer) throw new Error("VALIDATION");
-      customerId = customer.id;
-      if (!customerName) customerName = customer.name;
-    }
-    const sale = await this.db.createSale({
-      businessId,
-      receiptNo,
-      status: "DRAFT",
-      subtotalMinor: totals.subtotalMinor,
-      discountMinor: totals.discountMinor,
-      taxMinor: totals.taxMinor,
-      totalMinor: totals.totalMinor,
-      paidMinor: 0,
-      changeMinor: 0,
-      currency: "PHP",
-      customerId,
-      customerName,
-      notes: input.notes?.trim() ? input.notes.trim() : null,
-      actorId,
-      requestId,
-      idempotencyKey: null,
-      registerId,
-      branchId,
-      createdAt: new Date(),
-    });
-    for (const l of lines) {
-      await this.db.createSaleItem({
-        businessId,
-        saleId: sale.id,
-        productId: l.product.id,
-        name: l.product.name,
-        unit: l.product.unit,
-        qty: l.qty,
-        priceMinor: l.product.priceMinor,
-        costMinor: l.product.costMinor,
-        taxRateBps: l.product.taxRateBps,
-        lineDiscountMinor: l.lineDiscountMinor,
-        lineTotalMinor: Math.max(0, l.qty * l.product.priceMinor - l.lineDiscountMinor),
-      });
-    }
-    await this.db.appendAudit({
-      businessId,
-      actorId,
-      action: "sale.draft",
-      entityType: "Sale",
-      entityId: sale.id,
-      requestId,
-    });
-    return { ...sale, ...totals, totalMinor: totals.totalMinor };
+    return this.drafts.createDraft(businessId, actorId, requestId, input, granted);
   }
 
   async completeSale(
@@ -323,179 +105,7 @@ export class SalesService {
     input: { payments: PaymentInput[]; key: string; granted: string[]; registerId?: string; branchId?: string | null },
   ): Promise<{ sale: SaleWithLines; replayed: boolean }> {
     withScope(businessId, {});
-    return this.db.withLock(`sales:${businessId}`, async () => {
-      const sale = await this.requireSale(businessId, saleId);
-      const registerId = input.registerId ?? sale.registerId ?? null;
-      let registerBranchId: string | null = null;
-      if (input.registerId !== undefined && input.registerId !== null) {
-        const reg = await this.db.findRegisterById(input.registerId, businessId);
-        if (!reg) throw new Error("VALIDATION");
-        registerBranchId = reg.branchId ?? null;
-      } else if (registerId) {
-        const reg = await this.db.findRegisterById(registerId, businessId);
-        registerBranchId = reg?.branchId ?? null;
-      }
-      if (sale.branchId != null && registerBranchId !== null && sale.branchId !== registerBranchId) {
-        throw new Error("VALIDATION");
-      }
-      let branchId: string | null = sale.branchId ?? registerBranchId;
-      if (input.branchId !== undefined && input.branchId !== null) {
-        const branch = await this.db.findBranchById(input.branchId, businessId);
-        if (!branch) throw new Error("VALIDATION");
-        if (
-          (registerBranchId !== null && branch.id !== registerBranchId) ||
-          (sale.branchId != null && branch.id !== sale.branchId)
-        ) {
-          throw new Error("VALIDATION");
-        }
-        branchId = branch.id;
-      }
-      const fingerprint = fingerprintPayload({ saleId, payments: input.payments, registerId });
-      const existing = await this.db.findIdempotency(businessId, input.key, "sale.complete");
-      if (existing) {
-        if (existing.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
-        const original = await this.requireSale(businessId, existing.resultId);
-        return { sale: await this.embed(original), replayed: true };
-      }
-      if (sale.status !== "DRAFT" && sale.status !== "PENDING_PAYMENT") {
-        throw new Error("SALE_INVALID_TRANSITION");
-      }
-      const items = await this.db.listSaleItems(sale.id, businessId);
-      if (items.length === 0) throw new Error("VALIDATION");
-      // FR-PAY-01: every tender must be one of the business's configured
-      // methods; the static enum in the wire schema only bounds the shape.
-      const methods = await resolvePaymentMethods(this.db, businessId);
-      const configured = new Set(methods.map((m) => m.key));
-      for (const p of input.payments) {
-        if (!configured.has(p.method)) throw new Error("VALIDATION");
-      }
-      const businessTax = await this.businessTaxRateBps(businessId);
-      const totals = computeSaleTotals({
-        lines: items.map((i) => ({
-          qty: i.qty,
-          priceMinor: i.priceMinor,
-          costMinor: i.costMinor,
-          taxRateBps: i.taxRateBps,
-          lineDiscountMinor: i.lineDiscountMinor,
-        })),
-        orderDiscountMinor: sale.discountMinor,
-        businessTaxRateBps: businessTax,
-      });
-      const paid = input.payments.reduce((sum, p) => sum + p.amountMinor, 0);
-      if (paid < totals.totalMinor) throw new Error("PAYMENT_TOTAL_MISMATCH");
-      if (paid > totals.totalMinor && input.payments.some((p) => !CASH_METHODS.has(p.method))) {
-        throw new Error("PAYMENT_TOTAL_MISMATCH");
-      }
-      const change = paid - totals.totalMinor;
-      const cashMinor = input.payments
-        .filter((p) => CASH_METHODS.has(p.method))
-        .reduce((sum, p) => sum + p.amountMinor, 0);
-      if (registerId && cashMinor > 0) {
-        const open = await this.db.findOpenShiftByRegister(businessId, registerId);
-        if (!open) throw new Error("SHIFT_NO_OPEN_SHIFT");
-      }
-      const unknown = input.payments.some((p) => (p.providerRef ?? "").startsWith("unknown-"));
-      if (unknown) {
-        for (const [legIndex, p] of input.payments.entries()) {
-          await this.db.createPayment({
-            businessId,
-            saleId: sale.id,
-            method: p.method,
-            amountMinor: p.amountMinor,
-            status: "UNKNOWN",
-            providerRef: p.providerRef ?? null,
-            idempotencyKey: `${input.key}:${p.method}:${legIndex}`,
-          });
-        }
-        const fromStatus = sale.status === "DRAFT" ? "PENDING_PAYMENT" : sale.status;
-        if (sale.status === "DRAFT") transitionSale("DRAFT", "PENDING_PAYMENT");
-        const nextStatus = transitionSale(fromStatus, "PAYMENT_UNKNOWN");
-      const updated =
-        (await this.db.updateSale(sale.id, businessId, {
-          status: nextStatus,
-          paidMinor: paid,
-          changeMinor: change,
-          idempotencyKey: input.key,
-          branchId,
-          ...(input.registerId !== undefined ? { registerId: input.registerId } : {}),
-        })) ?? sale;
-        await this.db.claimIdempotency({
-          businessId,
-          key: input.key,
-          commandType: "sale.complete",
-          fingerprint,
-          resultId: sale.id,
-        });
-        await this.db.appendAudit({
-          businessId,
-          actorId,
-          action: "sale.complete",
-          entityType: "Sale",
-          entityId: sale.id,
-          requestId,
-        });
-        incrementMetric("pos_payment_unknown_total");
-        return { sale: await this.embed(updated), replayed: false };
-      }
-      await this.applyStockEffect(businessId, actorId, requestId, sale.id, items, branchId);
-      // A split may repeat a method (two cash legs), so the idempotency key
-      // carries the leg index, not just the method.
-      for (const [legIndex, p] of input.payments.entries()) {
-        await this.db.createPayment({
-          businessId,
-          saleId: sale.id,
-          method: p.method,
-          amountMinor: p.amountMinor,
-          status: "SUCCEEDED",
-          providerRef: p.providerRef ?? null,
-          idempotencyKey: `${input.key}:${p.method}:${legIndex}`,
-        });
-      }
-      if (registerId && cashMinor > 0) {
-        // Cash in the drawer is what the customer handed over minus the change
-        // returned: posting the gross would overstate expected cash at close.
-        await this.shifts.postCashSale(businessId, actorId, requestId, registerId, sale.id, Math.max(0, cashMinor - change));
-      }
-      let status = sale.status;
-      if (status === "DRAFT") status = transitionSale(status, "PENDING_PAYMENT");
-      status = transitionSale(status, "PAID");
-      status = transitionSale(status, "COMPLETED");
-      const completedAt = new Date();
-      const updated =
-        (await this.db.updateSale(sale.id, businessId, {
-          status,
-          subtotalMinor: totals.subtotalMinor,
-          taxMinor: totals.taxMinor,
-          totalMinor: totals.totalMinor,
-          paidMinor: paid,
-          changeMinor: change,
-          idempotencyKey: input.key,
-          branchId,
-          completedAt,
-          ...(input.registerId !== undefined ? { registerId: input.registerId } : {}),
-        })) ?? sale;
-      await this.db.claimIdempotency({
-        businessId,
-        key: input.key,
-        commandType: "sale.complete",
-        fingerprint,
-        resultId: sale.id,
-      });
-      await this.db.appendAudit({
-        businessId,
-        actorId,
-        action: "sale.complete",
-        entityType: "Sale",
-        entityId: sale.id,
-        requestId,
-      });
-      // Phase 10 metering: the auditable monthly sales counter moves with the
-      // completed sale (same critical section as the write above, so replays
-      // never double-count and failures never leave a phantom sale counted).
-      await new BillingService(this.db).recordSale(businessId);
-      incrementMetric("pos_sales_completed_total");
-      return { sale: await this.embed(updated), replayed: false };
-    });
+    return this.completion.completeSale(businessId, actorId, requestId, saleId, input);
   }
 
   async startPayMongoCheckout(
@@ -514,135 +124,7 @@ export class SalesService {
     replayed: boolean;
   }> {
     withScope(businessId, {});
-    if (!this.paymongo.configured()) throw new Error("PAYMENT_PROVIDER_NOT_CONFIGURED");
-    return this.db.withLock(`sales:${businessId}`, async () => {
-      let sale = await this.requireSale(businessId, saleId);
-      if (sale.status !== "DRAFT" && sale.status !== "PENDING_PAYMENT" && sale.status !== "PAYMENT_FAILED") {
-        throw new Error("SALE_INVALID_TRANSITION");
-      }
-      const configuredMethods = new Set((await resolvePaymentMethods(this.db, businessId)).map((entry) => entry.key));
-      if (!configuredMethods.has(method)) throw new Error("VALIDATION");
-      const items = await this.db.listSaleItems(sale.id, businessId);
-      if (items.length === 0) throw new Error("VALIDATION");
-      await this.assertStockAvailable(businessId, items, sale.branchId ?? null);
-
-      const existingKey = await this.db.findIdempotency(businessId, key, "paymongo.checkout");
-      if (existingKey) {
-        const payment = await this.db.findPaymentById(existingKey.resultId, businessId);
-        if (!payment || !payment.providerRef) throw new Error("PAYMENT_PROVIDER_INVALID_RESPONSE");
-        const snapshot = await this.paymongo.retrieveCheckout(payment.providerRef);
-        if (snapshot.paid) throw new Error("PAYMENT_ALREADY_SUCCEEDED");
-        if (!snapshot.checkoutUrl) throw new Error("PAYMENT_PROVIDER_UNAVAILABLE");
-        return {
-          sale: await this.embed(sale),
-          payment,
-          checkoutUrl: snapshot.checkoutUrl,
-          checkoutSessionId: payment.providerRef,
-          replayed: true,
-        };
-      }
-
-      const priorPayments = await this.db.listPaymentsBySale(sale.id, businessId);
-      if (priorPayments.some(
-        (payment) => payment.status === "SUCCEEDED" && isPayMongoMethod(payment.method) && payment.providerRef?.startsWith("cs_"),
-      )) {
-        throw new Error("PAYMENT_ALREADY_SUCCEEDED");
-      }
-      const pending = priorPayments.find(
-        (payment) => payment.status === "PENDING" && isPayMongoMethod(payment.method) && payment.providerRef?.startsWith("cs_"),
-      );
-      if (pending?.providerRef) {
-        if (pending.method !== method) throw new Error("PAYMENT_PROVIDER_MISMATCH");
-        const snapshot = await this.paymongo.retrieveCheckout(pending.providerRef);
-        if (snapshot.paid) throw new Error("PAYMENT_ALREADY_SUCCEEDED");
-        if (snapshot.status === "active" && snapshot.checkoutUrl) {
-          return {
-            sale: await this.embed(sale),
-            payment: pending,
-            checkoutUrl: snapshot.checkoutUrl,
-            checkoutSessionId: pending.providerRef,
-            replayed: true,
-          };
-        }
-        if (snapshot.status === "expired") {
-          await this.db.updatePayment(pending.id, businessId, { status: "FAILED" });
-          if (sale.status === "PENDING_PAYMENT") {
-            sale = (await this.db.updateSale(sale.id, businessId, {
-              status: transitionSale(sale.status, "PAYMENT_FAILED"),
-            })) ?? sale;
-          }
-        }
-      }
-
-      const base = webUrl.replace(/\/$/, "");
-      const remote = await this.paymongo.createCheckout({
-        saleId: sale.id,
-        receiptNo: sale.receiptNo,
-        businessId,
-        method,
-        idempotencyKey: key,
-        successUrl: `${base}/sales/${encodeURIComponent(sale.id)}?paymongo=success`,
-        cancelUrl: `${base}/sales/${encodeURIComponent(sale.id)}?paymongo=cancelled`,
-        // The local sale total includes discounts and tax, so use one
-        // authoritative checkout line instead of reconstructing totals from
-        // catalog rows and risking a provider/local amount mismatch.
-        lineItems: [{ name: `NexPOS sale ${sale.receiptNo}`, amount: sale.totalMinor, quantity: 1 }],
-      });
-
-      const payment = await this.db.createPayment({
-        businessId,
-        saleId: sale.id,
-        method,
-        amountMinor: sale.totalMinor,
-        status: "PENDING",
-        providerRef: remote.sessionId,
-        idempotencyKey: `${key}:paymongo`,
-      });
-      let nextStatus = sale.status;
-      if (nextStatus === "DRAFT" || nextStatus === "PAYMENT_FAILED") {
-        nextStatus = transitionSale(nextStatus, "PENDING_PAYMENT");
-      }
-      sale = (await this.db.updateSale(sale.id, businessId, { status: nextStatus })) ?? sale;
-      await this.db.claimIdempotency({
-        businessId,
-        key,
-        commandType: "paymongo.checkout",
-        fingerprint: fingerprintPayload({ saleId, method }),
-        resultId: payment.id,
-      });
-      await this.db.appendAudit({
-        businessId,
-        actorId,
-        action: "payment.paymongo.checkout",
-        entityType: "Payment",
-        entityId: payment.id,
-        requestId,
-      });
-      return {
-        sale: await this.embed(sale),
-        payment,
-        checkoutUrl: remote.checkoutUrl,
-        checkoutSessionId: remote.sessionId,
-        replayed: false,
-      };
-    });
-  }
-
-  private async assertStockAvailable(
-    businessId: string,
-    items: DbSaleItem[],
-    branchId: string | null,
-  ): Promise<void> {
-    for (const item of items) {
-      const product = await this.requireProduct(businessId, item.productId);
-      if (!product.trackInventory) continue;
-      const current = await this.db.findBalance(item.productId, businessId, branchId);
-      const onHand = current?.qtyOnHand ?? 0;
-      if (onHand - item.qty < 0) {
-        incrementMetric("pos_inventory_failures_total");
-        throw new Error("INSUFFICIENT_STOCK");
-      }
-    }
+    return this.providers.startPayMongoCheckout(businessId, actorId, requestId, saleId, method, key, webUrl);
   }
 
   async handlePayMongoWebhook(
@@ -651,108 +133,7 @@ export class SalesService {
     payload: unknown,
     requestId: string,
   ): Promise<{ handled: boolean; deduplicated?: boolean }> {
-    if (!this.paymongo.configured()) throw new Error("PAYMENT_PROVIDER_NOT_CONFIGURED");
-    if (!this.paymongo.verifyWebhook(rawBody, signatureHeader)) throw new Error("FORBIDDEN");
-    const event = parsePayMongoPaidEvent(payload, rawBody);
-    if (!event) return { handled: false };
-    const businessId = event.businessId;
-    return this.db.withLock(`paymongo-webhook:${event.eventId}`, async () => {
-      const claimed = await this.db.claimWebhookEvent({
-        businessId,
-        provider: "paymongo",
-        eventId: event.eventId,
-        type: event.type,
-        payload,
-        status: "processing",
-      });
-      if (!claimed) return { handled: true, deduplicated: true };
-      try {
-        await this.settlePayMongoPaid(event, requestId);
-        await this.db.updateWebhookEventStatus(claimed.id, "processed");
-        return { handled: true };
-      } catch (error) {
-        await this.db.deleteWebhookEvent(claimed.id);
-        throw error;
-      }
-    });
-  }
-
-  private async settlePayMongoPaid(
-    event: PayMongoPaidEvent,
-    requestId: string,
-  ): Promise<void> {
-    await this.db.withLock(`sales:${event.businessId}`, async () => {
-      const sale = await this.requireSale(event.businessId, event.saleId);
-      const payments = await this.db.listPaymentsBySale(sale.id, event.businessId);
-      const payment = payments.find((row) => row.providerRef === event.checkoutSessionId) ?? null;
-      if (!payment || !isPayMongoMethod(payment.method)) throw new Error("NOT_FOUND");
-      if (payment.method !== event.method) throw new Error("PAYMENT_PROVIDER_MISMATCH");
-      if (event.sourceType !== payMongoMethodType(payment.method)) throw new Error("PAYMENT_PROVIDER_MISMATCH");
-      if (event.amountMinor !== payment.amountMinor || event.amountMinor !== sale.totalMinor) {
-        throw new Error("PAYMENT_TOTAL_MISMATCH");
-      }
-      if (sale.status === "COMPLETED" && payment.status === "SUCCEEDED") return;
-      if (sale.status !== "PENDING_PAYMENT") throw new Error("SALE_INVALID_TRANSITION");
-      if (payment.status !== "PENDING") throw new Error("SALE_INVALID_TRANSITION");
-
-      const items = await this.db.listSaleItems(sale.id, event.businessId);
-      await this.applyStockEffect(event.businessId, "paymongo-webhook", requestId, sale.id, items, sale.branchId ?? null);
-      await this.db.updatePayment(payment.id, event.businessId, { status: "SUCCEEDED" });
-      let status = transitionSale(sale.status, "PAID");
-      status = transitionSale(status, "COMPLETED");
-      const completedAt = new Date();
-      await this.db.updateSale(sale.id, event.businessId, {
-        status,
-        paidMinor: sale.totalMinor,
-        changeMinor: 0,
-        completedAt,
-      });
-      await new BillingService(this.db).recordSale(event.businessId, completedAt);
-      await this.db.appendAudit({
-        businessId: event.businessId,
-        actorId: "paymongo-webhook",
-        action: "payment.paymongo.paid",
-        entityType: "Payment",
-        entityId: payment.id,
-        requestId,
-      });
-      incrementMetric("pos_sales_completed_total");
-    });
-  }
-
-  private async applyStockEffect(
-    businessId: string,
-    actorId: string,
-    requestId: string,
-    saleId: string,
-    items: DbSaleItem[],
-    branchId: string | null = null,
-  ): Promise<void> {
-    await this.assertStockAvailable(businessId, items, branchId);
-    for (const item of items) {
-      const product = await this.requireProduct(businessId, item.productId);
-      if (!product.trackInventory) continue;
-      const current = await this.db.findBalance(item.productId, businessId, branchId);
-      const onHand = current?.qtyOnHand ?? 0;
-      await this.db.createMovement({
-        businessId,
-        productId: item.productId,
-        type: "sale",
-        qtyDelta: -item.qty,
-        reason: null,
-        referenceType: "Sale",
-        referenceId: saleId,
-        actorId,
-        requestId,
-        branchId,
-      });
-      await this.db.upsertBalance({
-        businessId,
-        branchId,
-        productId: item.productId,
-        qtyOnHand: onHand - item.qty,
-      });
-    }
+    return this.paymongoWebhooks.handle(rawBody, signatureHeader, payload, requestId);
   }
 
   async queryProvider(
@@ -761,18 +142,7 @@ export class SalesService {
     provider = "manual",
   ): Promise<{ status: ProviderVerdict }> {
     withScope(businessId, {});
-    const payment = await this.db.findPaymentById(paymentId, businessId);
-    if (!payment) throw new Error("NOT_FOUND");
-    if (provider === "paymongo" || payment.providerRef?.startsWith("cs_")) {
-      if (!payment.providerRef || !this.paymongo.configured()) return { status: "UNKNOWN" };
-      const snapshot = await this.paymongo.retrieveCheckout(payment.providerRef);
-      if (snapshot.paid) return { status: "SUCCEEDED" };
-      if (snapshot.status === "expired") return { status: "FAILED" };
-      return { status: "UNKNOWN" };
-    }
-    return {
-      status: await queryProviderStatus(payment.method, payment.providerRef, provider, businessId),
-    };
+    return this.providers.queryProvider(businessId, paymentId, provider);
   }
 
   async reconcilePayment(
@@ -784,88 +154,14 @@ export class SalesService {
     key: string,
   ): Promise<{ sale: SaleWithLines; payment: DbPayment }> {
     withScope(businessId, {});
-    return this.db.withLock(`sales:${businessId}`, async () => {
-      const fingerprint = fingerprintPayload({ paymentId, outcome });
-      const existing = await this.db.findIdempotency(businessId, key, "payment.reconcile");
-      if (existing) {
-        if (existing.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
-        const payment = await this.db.findPaymentById(paymentId, businessId);
-        if (!payment) throw new Error("NOT_FOUND");
-        const sale = await this.requireSale(businessId, payment.saleId);
-        return { sale: await this.embed(sale), payment };
-      }
-      const payment = await this.db.findPaymentById(paymentId, businessId);
-      if (!payment) throw new Error("NOT_FOUND");
-      if (payment.status !== "UNKNOWN") throw new Error("SALE_INVALID_TRANSITION");
-      const sale = await this.requireSale(businessId, payment.saleId);
-      if (sale.status !== "PAYMENT_UNKNOWN") throw new Error("SALE_INVALID_TRANSITION");
-      const updatedPayment =
-        (await this.db.updatePayment(payment.id, businessId, {
-          status: outcome === "SUCCEEDED" ? "SUCCEEDED" : "FAILED",
-        })) ?? payment;
-      await this.db.claimIdempotency({
-        businessId,
-        key,
-        commandType: "payment.reconcile",
-        fingerprint,
-        resultId: payment.id,
-      });
-      await this.db.appendAudit({
-        businessId,
-        actorId,
-        action: "payment.reconcile",
-        entityType: "Payment",
-        entityId: payment.id,
-        requestId,
-      });
-
-      // A split sale is only settled when every leg is: one settled leg must not
-      // complete the sale (or apply stock) while another payment is unresolved.
-      const legs = await this.db.listPaymentsBySale(sale.id, businessId);
-      const unresolved = legs.some((p) => p.status === "UNKNOWN");
-      if (unresolved) {
-        return { sale: await this.embed(sale), payment: updatedPayment };
-      }
-      const succeeded = legs
-        .filter((p) => p.status === "SUCCEEDED")
-        .reduce((sum, p) => sum + p.amountMinor, 0);
-      const anyFailed = legs.some((p) => p.status === "FAILED");
-
-      if (anyFailed || succeeded < sale.totalMinor) {
-        // Follow the established chain: a resolved payment reconciles the sale,
-        // then the shortfall moves it to PAYMENT_FAILED.
-        const failed = transitionSale(transitionSale(sale.status, "RECONCILED"), "PENDING_PAYMENT");
-        const failedSale =
-          (await this.db.updateSale(sale.id, businessId, {
-            status: transitionSale(failed, "PAYMENT_FAILED"),
-          })) ?? sale;
-        return { sale: await this.embed(failedSale), payment: updatedPayment };
-      }
-
-      const items = await this.db.listSaleItems(sale.id, businessId);
-      await this.applyStockEffect(businessId, actorId, requestId, sale.id, items, sale.branchId ?? null);
-      const cashMinor = legs
-        .filter((p) => p.status === "SUCCEEDED" && CASH_METHODS.has(p.method))
-        .reduce((sum, p) => sum + p.amountMinor, 0);
-      if (sale.registerId && cashMinor > 0) {
-        const open = await this.db.findOpenShiftByRegister(businessId, sale.registerId);
-        if (!open) throw new Error("SHIFT_NO_OPEN_SHIFT");
-        await this.shifts.postCashSale(
-          businessId, actorId, requestId, sale.registerId, sale.id, Math.max(0, cashMinor - sale.changeMinor),
-        );
-      }
-      let status = transitionSale(sale.status, "RECONCILED");
-      status = transitionSale(status, "PENDING_PAYMENT");
-      status = transitionSale(status, "PAID");
-      status = transitionSale(status, "COMPLETED");
-      const completedAt = new Date();
-      const updated =
-        (await this.db.updateSale(sale.id, businessId, { status, completedAt })) ?? sale;
-      // The sale reaches COMPLETED here, so this is where its monthly usage
-      // is metered (a sale completed directly never reaches this path).
-      await new BillingService(this.db).recordSale(businessId, completedAt);
-      return { sale: await this.embed(updated), payment: updatedPayment };
-    });
+    return this.reconciliation.reconcilePayment(
+      businessId,
+      actorId,
+      requestId,
+      paymentId,
+      outcome,
+      key,
+    );
   }
 
   async holdSale(
@@ -875,24 +171,7 @@ export class SalesService {
     saleId: string,
   ): Promise<{ id: string }> {
     withScope(businessId, {});
-    const sale = await this.requireSale(businessId, saleId);
-    if (sale.status !== "DRAFT") throw new Error("SALE_INVALID_TRANSITION");
-    if (sale.actorId !== actorId) throw new Error("FORBIDDEN");
-    const held = await this.db.createHeldSale({
-      businessId,
-      actorId,
-      payload: { saleId: sale.id },
-      resumedAt: null,
-    });
-    await this.db.appendAudit({
-      businessId,
-      actorId,
-      action: "sale.hold",
-      entityType: "Sale",
-      entityId: sale.id,
-      requestId,
-    });
-    return { id: held.id };
+    return this.lifecycle.holdSale(businessId, actorId, requestId, saleId);
   }
 
   async resumeSale(
@@ -902,24 +181,7 @@ export class SalesService {
     saleId: string,
   ): Promise<DbSale> {
     withScope(businessId, {});
-    const sale = await this.requireSale(businessId, saleId);
-    if (sale.status !== "DRAFT") throw new Error("SALE_INVALID_TRANSITION");
-    if (sale.actorId !== actorId) throw new Error("FORBIDDEN");
-    const heldList = await this.db.listHeldSales(businessId, actorId);
-    const held = heldList.find(
-      (h) => (h.payload as { saleId?: string } | null)?.saleId === saleId && h.resumedAt === null,
-    );
-    if (!held) throw new Error("NOT_FOUND");
-    await this.db.markHeldResumed(held.id, businessId);
-    await this.db.appendAudit({
-      businessId,
-      actorId,
-      action: "sale.resume",
-      entityType: "Sale",
-      entityId: sale.id,
-      requestId,
-    });
-    return sale;
+    return this.lifecycle.resumeSale(businessId, actorId, requestId, saleId);
   }
 
   async voidSale(
@@ -931,21 +193,14 @@ export class SalesService {
     granted: string[],
   ): Promise<DbSale> {
     withScope(businessId, {});
-    if (!granted.includes("sale.void")) throw new Error("FORBIDDEN");
-    if (!reason || reason.trim().length < 3) throw new Error("VALIDATION");
-    const sale = await this.requireSale(businessId, saleId);
-    if (sale.status === "COMPLETED") throw new Error("SALE_INVALID_TRANSITION");
-    const status = transitionSale(sale.status, "VOIDED");
-    const updated = (await this.db.updateSale(sale.id, businessId, { status })) ?? sale;
-    await this.db.appendAudit({
+    return this.lifecycle.voidSale(
       businessId,
       actorId,
-      action: "sale.void",
-      entityType: "Sale",
-      entityId: sale.id,
       requestId,
-    });
-    return updated;
+      saleId,
+      reason,
+      granted,
+    );
   }
 
   async requestRefund(
@@ -958,34 +213,15 @@ export class SalesService {
     granted: string[],
   ): Promise<DbSale> {
     withScope(businessId, {});
-    if (!granted.includes("sale.refund")) throw new Error("FORBIDDEN");
-    if (!reason || reason.trim().length < 3) throw new Error("VALIDATION");
-    const fingerprint = fingerprintPayload({ saleId, reason });
-    const existing = await this.db.findIdempotency(businessId, key, "refund.request");
-    if (existing) {
-      if (existing.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
-      return this.requireSale(businessId, existing.resultId);
-    }
-    const sale = await this.requireSale(businessId, saleId);
-    if (sale.status !== "COMPLETED") throw new Error("SALE_INVALID_TRANSITION");
-    const status = transitionSale(sale.status, "REFUND_REQUESTED");
-    const updated = (await this.db.updateSale(sale.id, businessId, { status })) ?? sale;
-    await this.db.claimIdempotency({
-      businessId,
-      key,
-      commandType: "refund.request",
-      fingerprint,
-      resultId: sale.id,
-    });
-    await this.db.appendAudit({
+    return this.lifecycle.requestRefund(
       businessId,
       actorId,
-      action: "refund.request",
-      entityType: "Sale",
-      entityId: sale.id,
       requestId,
-    });
-    return updated;
+      saleId,
+      reason,
+      key,
+      granted,
+    );
   }
 
   async getSale(
@@ -1086,55 +322,20 @@ export class SalesService {
     payments: DbPayment[];
   }> {
     withScope(businessId, {});
-    const sale = await this.requireSale(businessId, saleId);
-    const full = await this.embed(sale);
-    return {
-      receiptNo: sale.receiptNo,
-      saleId: sale.id,
-      businessId: sale.businessId,
-      currency: sale.currency,
-      status: sale.status,
-      customerName: sale.customerName,
-      items: full.items,
-      subtotalMinor: sale.subtotalMinor,
-      discountMinor: sale.discountMinor,
-      taxMinor: sale.taxMinor,
-      totalMinor: sale.totalMinor,
-      paidMinor: sale.paidMinor,
-      changeMinor: sale.changeMinor,
-      payments: full.payments,
-    };
+    return this.receipts.receiptData(businessId, saleId);
   }
 
   // FR-RECEIPT-01: the downloadable form of the receipt.
   async downloadReceipt(businessId: string, saleId: string): Promise<{ filename: string; text: string }> {
-    const receipt = await this.receiptData(businessId, saleId);
-    const text = renderReceiptText({
-      receiptNo: receipt.receiptNo,
-      status: receipt.status,
-      items: receipt.items.map((i) => ({ name: i.name, qty: i.qty, lineTotalMinor: i.lineTotalMinor })),
-      subtotalMinor: receipt.subtotalMinor,
-      discountMinor: receipt.discountMinor,
-      taxMinor: receipt.taxMinor,
-      totalMinor: receipt.totalMinor,
-      paidMinor: receipt.paidMinor,
-      changeMinor: receipt.changeMinor,
-      tenders: receipt.payments.map((p) => ({ method: p.method, amountMinor: p.amountMinor })),
-    });
-    return { filename: `receipt-${receipt.receiptNo}.txt`, text };
+    withScope(businessId, {});
+    return this.receipts.downloadReceipt(businessId, saleId);
   }
 
   // FR-RECEIPT-01: a share link renders the receipt readable without a
   // session; the token is single-secret, hashed at rest, and short-lived.
   async createShareToken(businessId: string, actorId: string, requestId: string, saleId: string): Promise<{ token: string; expiresAt: Date }> {
-    await this.receiptData(businessId, saleId);
-    const token = randomBytes(16).toString("hex");
-    const expiresAt = new Date(Date.now() + 24 * 3600 * 1000);
-    await this.db.createReceiptShare({ businessId, saleId, tokenHash: createHash("sha256").update(token).digest("hex"), expiresAt });
-    await this.db.appendAudit({
-      businessId, actorId, action: "receipt.shared", entityType: "Sale", entityId: saleId, requestId,
-    });
-    return { token, expiresAt };
+    withScope(businessId, {});
+    return this.receipts.createShareToken(businessId, actorId, requestId, saleId);
   }
 
   async sharedReceipt(token: string): Promise<{
@@ -1144,21 +345,6 @@ export class SalesService {
     totalMinor: number; paidMinor: number; changeMinor: number;
     tenders: Array<{ method: string; amountMinor: number }>;
   }> {
-    if (typeof token !== "string" || token.length < 16) throw new Error("NOT_FOUND");
-    const share = await this.db.findValidReceiptShare(createHash("sha256").update(token).digest("hex"));
-    if (!share) throw new Error("NOT_FOUND");
-    const receipt = await this.receiptData(share.businessId, share.saleId);
-    return {
-      receiptNo: receipt.receiptNo,
-      status: receipt.status,
-      items: receipt.items.map((i) => ({ name: i.name, qty: i.qty, lineTotalMinor: i.lineTotalMinor })),
-      subtotalMinor: receipt.subtotalMinor,
-      discountMinor: receipt.discountMinor,
-      taxMinor: receipt.taxMinor,
-      totalMinor: receipt.totalMinor,
-      paidMinor: receipt.paidMinor,
-      changeMinor: receipt.changeMinor,
-      tenders: receipt.payments.map((p) => ({ method: p.method, amountMinor: p.amountMinor })),
-    };
+    return this.receipts.sharedReceipt(token);
   }
 }

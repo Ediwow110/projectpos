@@ -53,7 +53,7 @@ export class ExpenseService {
         const u = new URL(input.attachmentUrl.trim());
         if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("VALIDATION");
         if (input.attachmentUrl.trim().length > 500) throw new Error("VALIDATION");
-      } catch (e) {
+      } catch {
         throw new Error("VALIDATION");
       }
     }

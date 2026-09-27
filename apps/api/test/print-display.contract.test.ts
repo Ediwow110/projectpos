@@ -6,7 +6,6 @@ import { createTestApp } from "../src/app.module";
 let app: INestApplication;
 let cookie: string;
 let csrf: string;
-let businessId: string;
 let productId: string;
 let receiptNo: string;
 
@@ -23,9 +22,6 @@ beforeAll(async () => {
   });
   cookie = jar(reg.headers["set-cookie"]);
   csrf = reg.body.csrfToken;
-  const me = await request(app.getHttpServer()).get("/api/v1/business")
-    .set("Cookie", cookie);
-  businessId = me.body.id;
   const prod = await request(app.getHttpServer()).post("/api/v1/products")
     .set("Cookie", cookie).set("X-CSRF-Token", csrf)
     .send({ name: "Coke", priceMinor: 2500, costMinor: 1000 });
