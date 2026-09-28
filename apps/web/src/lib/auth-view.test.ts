@@ -25,6 +25,13 @@ describe("pre-auth privacy presentation", () => {
     expect(reset).toContain("Back to sign in");
   });
 
+  it("makes account creation discoverable from sign-in", () => {
+    const login = readFileSync(resolve(process.cwd(), "src/app/login/page.tsx"), "utf8");
+
+    expect(login).toContain('href="/register"');
+    expect(login).toContain("Create account");
+  });
+
   it("redirects an unauthorized dashboard visit to the login page", () => {
     const dashboard = readFileSync(resolve(process.cwd(), "src/app/page.tsx"), "utf8");
 

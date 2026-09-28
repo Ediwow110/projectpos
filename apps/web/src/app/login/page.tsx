@@ -181,6 +181,17 @@ export default function LoginPage(): JSX.Element {
             >
               Sign in securely
             </button>
+            <div className="flex items-center gap-3 py-1" aria-hidden>
+              <span className="h-px flex-1 bg-[#eee4db]" />
+              <span className="font-data text-[9px] font-medium uppercase tracking-[0.12em] text-[#9a8d83]">New to NexPOS?</span>
+              <span className="h-px flex-1 bg-[#eee4db]" />
+            </div>
+            <Link
+              href="/register"
+              className="inline-flex min-h-[52px] w-full items-center justify-center rounded-[9px] border border-[#e4d9d0] bg-white px-4 text-[13px] font-semibold text-[#2a241f] transition hover:border-[#f35d3f] hover:bg-[#fff8f5] hover:text-[#d94a30] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f35d3f] focus-visible:ring-offset-2"
+            >
+              Create account
+            </Link>
             <p className="font-data text-[9px] text-[#9a8d83]">Press Enter to continue</p>
           </form>
 
