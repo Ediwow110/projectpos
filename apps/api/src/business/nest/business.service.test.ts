@@ -26,4 +26,30 @@ describe("phase11 settings gate and audit context", () => {
     expect(row.after).toEqual(expect.objectContaining({ receiptFooter: "x" }));
     expect(row.at).toBeInstanceOf(Date);
   });
+
+  it("protects onboarding mutations with the same settings.write permission as business setup", async () => {
+    const db = createMemoryDb();
+    const biz = await db.createBusiness({ name: "S", currency: "PHP" });
+    const svc = new BusinessService(db);
+
+    await expect(
+      svc.patchOnboarding(
+        biz.id,
+        "u-cashier",
+        { step: "taxCurrency", state: "done" },
+        "r3",
+        [],
+      ),
+    ).rejects.toThrow("FORBIDDEN");
+
+    await expect(
+      svc.patchOnboarding(
+        biz.id,
+        "u-owner",
+        { step: "taxCurrency", state: "done" },
+        "r4",
+        ["settings.write"],
+      ),
+    ).resolves.toMatchObject({ currentStep: "receiptSetup" });
+  });
 });

@@ -66,7 +66,9 @@ export class BusinessService {
     actorId: string,
     patch: { step: "businessDetails" | "taxCurrency" | "receiptSetup" | "products" | "employees"; state: "done" | "skipped" },
     requestId: string,
+    granted: string[] = [],
   ): Promise<OnboardingState> {
+    if (!granted.includes("settings.write")) throw new Error("FORBIDDEN");
     const current = await this.getOnboarding(businessId);
     const next = applyOnboardingPatch(current, patch);
     const settings = await this.db.getSettings(businessId);

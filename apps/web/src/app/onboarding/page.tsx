@@ -54,6 +54,7 @@ async function loadOnboarding(): Promise<OnboardingState> {
 export default function OnboardingPage(): JSX.Element {
   const router = useRouter();
   const [error, setError] = useState("");
+  const [savingStep, setSavingStep] = useState<Step | null>(null);
   const query = useQuery({ queryKey: ["onboarding"], queryFn: loadOnboarding });
 
   useEffect(() => {
@@ -69,7 +70,9 @@ export default function OnboardingPage(): JSX.Element {
   }, [query.data, router]);
 
   async function patchStep(step: Step, state: "done" | "skipped"): Promise<void> {
+    if (savingStep !== null) return;
     setError("");
+    setSavingStep(step);
     try {
       const csrf = await apiFetch<{ csrfToken: string }>("/api/v1/auth/csrf");
       await apiFetch("/api/v1/onboarding", {
@@ -79,6 +82,8 @@ export default function OnboardingPage(): JSX.Element {
       await query.refetch();
     } catch (err) {
       setError(err instanceof ApiError ? err.code + ": " + err.message : "Update failed");
+    } finally {
+      setSavingStep(null);
     }
   }
 
@@ -183,8 +188,23 @@ export default function OnboardingPage(): JSX.Element {
 
               {steps[current] === "pending" ? (
                 <div className="mt-6 flex flex-wrap gap-2">
-                  <PrimaryButton type="button" onClick={() => void patchStep(current, "done")}>Mark step complete</PrimaryButton>
-                  {SKIPPABLE.includes(current) ? <GhostButton type="button" onClick={() => void patchStep(current, "skipped")}>Skip for now</GhostButton> : null}
+                  <PrimaryButton
+                    type="button"
+                    onClick={() => void patchStep(current, "done")}
+                    disabled={savingStep !== null}
+                    aria-busy={savingStep !== null}
+                  >
+                    {savingStep !== null ? "Saving step…" : "Mark step complete"}
+                  </PrimaryButton>
+                  {SKIPPABLE.includes(current) ? (
+                    <GhostButton
+                      type="button"
+                      onClick={() => void patchStep(current, "skipped")}
+                      disabled={savingStep !== null}
+                    >
+                      {savingStep !== null ? "Please wait…" : "Skip for now"}
+                    </GhostButton>
+                  ) : null}
                 </div>
               ) : (
                 <p className="mt-6 text-[11px] font-medium text-[#1f8a5b]">This step is already resolved.</p>

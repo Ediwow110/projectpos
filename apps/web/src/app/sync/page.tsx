@@ -40,6 +40,7 @@ export default function SyncPage(): JSX.Element {
   const [status, setStatus] = useState("");
   const [resolveReason, setResolveReason] = useState<Record<string, string>>({});
   const [deviceLabel, setDeviceLabel] = useState("");
+  const [syncing, setSyncing] = useState(false);
 
   const meQuery = useQuery({
     queryKey: ["me"],
@@ -113,11 +114,13 @@ export default function SyncPage(): JSX.Element {
   }
 
   async function syncNow(): Promise<void> {
+    if (syncing) return;
     setStatus("");
     if (!store) {
       setStatus("Sync is unavailable until this signed-in workspace is identified.");
       return;
     }
+    setSyncing(true);
     try {
       const summary = await runReplayOnce({
         store,
@@ -134,6 +137,8 @@ export default function SyncPage(): JSX.Element {
       setStatus("Sync pass: " + summary.synced + " synced, " + summary.conflicts + " conflicts, " + summary.retried + " retryable.");
     } catch {
       setStatus("Sync pass failed to run.");
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -200,7 +205,11 @@ export default function SyncPage(): JSX.Element {
           eyebrow="System / Sync & devices"
           title="Sync & devices"
           description="Know what is queued, retrying, conflicted, or safely synchronized before it becomes a store problem."
-          actions={<PrimaryButton type="button" onClick={() => void syncNow()}>↻ Sync now</PrimaryButton>}
+          actions={
+            <PrimaryButton type="button" onClick={() => void syncNow()} disabled={syncing} aria-busy={syncing}>
+              {syncing ? "Syncing…" : "↻ Sync now"}
+            </PrimaryButton>
+          }
         />
 
         {store ? <ConnectivityBanner store={store} /> : null}
@@ -234,7 +243,7 @@ export default function SyncPage(): JSX.Element {
                       </div>
                       <StatusPill tone={presentation.tone}>{presentation.label}{presentation.final ? "" : " · pending"}</StatusPill>
                       {(command.status === "FAILED" || command.status === "CONFLICT") ? (
-                        <GhostButton type="button" className="!min-h-8 !px-3 !py-1.5 text-xs" onClick={() => void retry(command)}>Retry</GhostButton>
+                        <GhostButton type="button" className="!min-h-8 !px-3 !py-1.5 text-xs" onClick={() => void retry(command)} disabled={syncing}>Retry</GhostButton>
                       ) : null}
                     </div>
                     {command.status === "CONFLICT" ? (

@@ -72,6 +72,7 @@ test("offline cash sale syncs on reconnect", async ({ page, context, request }) 
   await refreshOutbox(page);
   await expect(page.getByText("Queued · pending", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Sync now" }).click();
+  await expect(page.getByRole("button", { name: "Syncing…" })).toBeDisabled();
   await expect(page.getByText("Synced", { exact: true })).toBeVisible({ timeout: 30000 });
   await expect(page.getByText("Sync pass: 1 synced, 0 conflicts, 0 retryable.")).toBeVisible();
 
@@ -183,7 +184,7 @@ test("offline queue stays private to its account across logout and re-login", as
   await page.getByLabel("Email").fill(emailA);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Sign in securely" }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/onboarding/);
   await page.goto("/sync");
   await expect(page.getByText("Queued · pending", { exact: true })).toBeVisible();
 });

@@ -162,7 +162,8 @@ export class AuthService {
     if (user.emailVerified === false) throw new Error("EMAIL_UNVERIFIED");
     const memberships = await this.db.listMembershipsByUser(user.id);
     if (memberships.length === 0) throw new Error("TENANT_REQUIRED");
-    const businessId = memberships[0].businessId;
+    const membership = memberships[0];
+    const businessId = membership.businessId;
     if (deviceId !== undefined) {
       const device = await this.db.findDeviceById(deviceId, businessId);
       if (!device || device.userId !== user.id || device.revokedAt !== null) {
@@ -189,7 +190,7 @@ export class AuthService {
       csrfToken: issueCsrfToken(),
       userId: user.id,
       businessId,
-      onboardingRequired: !isOnboardingComplete(onboarding),
+      onboardingRequired: membership.role === "owner" && !isOnboardingComplete(onboarding),
     };
   }
 

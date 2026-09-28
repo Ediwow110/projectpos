@@ -75,6 +75,16 @@
   50% { transform: translate3d(0, -8px, 0) scale(1.035); opacity: 0.82; }
 }
 
+@keyframes navigation-progress {
+  0% { transform: translateX(-110%); }
+  55% { transform: translateX(95%); }
+  100% { transform: translateX(250%); }
+}
+
+.navigation-progress-bar {
+  animation: navigation-progress 1.05s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
 .animate-auth-card {
   animation: auth-card-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
@@ -239,5 +249,11 @@ select.field-dark option { color: #17130f; }
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  .navigation-progress-bar {
+    width: 100% !important;
+    animation: none !important;
+    transform: none !important;
   }
 }

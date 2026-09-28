@@ -104,6 +104,26 @@ describe("phase8 abuse: identity and tenancy", () => {
 });
 
 describe("phase11 threat coverage (PLAN 13.3)", () => {
+  it("denies onboarding mutation to a cashier without settings.write", async () => {
+    const invite = await request(app.getHttpServer()).post("/api/v1/memberships")
+      .set("Cookie", cookieA).set("X-CSRF-Token", csrfA)
+      .send({ email: "cashier-onboarding@example.com", name: "Cash Setup", role: "cashier" });
+    expect(invite.status).toBe(201);
+    const login = await request(app.getHttpServer()).post("/api/v1/auth/login")
+      .send({ email: "cashier-onboarding@example.com", password: invite.body.tempPassword });
+    expect(login.status).toBe(201);
+    expect(login.body.onboardingRequired).toBe(false);
+    const cashierCookie = jar(login.headers["set-cookie"]);
+    const cashierCsrf = login.body.csrfToken as string;
+
+    const denied = await request(app.getHttpServer())
+      .patch("/api/v1/onboarding")
+      .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf)
+      .send({ step: "taxCurrency", state: "done" });
+    expect(denied.status).toBe(403);
+    expect(denied.body.code).toBe("FORBIDDEN");
+  });
+
   it("denies ledger export to a role without export.run", async () => {
     // Owner invites a cashier over HTTP, so the denial is proven end to end.
     const invite = await request(app.getHttpServer()).post("/api/v1/memberships")

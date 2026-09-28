@@ -26,7 +26,17 @@ function isActive(pathname: string, href: string): boolean {
   return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
 }
 
-function NavLink({ item, pathname, compact = false }: { item: (typeof NAV)[number]; pathname: string; compact?: boolean }): JSX.Element {
+function NavLink({
+  item,
+  pathname,
+  compact = false,
+  onNavigateStart,
+}: {
+  item: (typeof NAV)[number];
+  pathname: string;
+  compact?: boolean;
+  onNavigateStart: (href: string) => void;
+}): JSX.Element {
   const active = isActive(pathname, item.href);
   const router = useRouter();
   const prefetch = (): void => router.prefetch(item.href);
@@ -36,6 +46,9 @@ function NavLink({ item, pathname, compact = false }: { item: (typeof NAV)[numbe
       prefetch
       onMouseEnter={prefetch}
       onFocus={prefetch}
+      onClick={() => {
+        if (!active) onNavigateStart(item.href);
+      }}
       aria-current={active ? "page" : undefined}
       className={
         compact
@@ -84,12 +97,28 @@ export function AppShell({
   const queryClient = useQueryClient();
   const [signingOut, setSigningOut] = React.useState(false);
   const [signOutError, setSignOutError] = React.useState("");
+  const [pendingHref, setPendingHref] = React.useState<string | null>(null);
+  const [showNavigationProgress, setShowNavigationProgress] = React.useState(false);
   const today = new Date().toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
   const year = new Date().getFullYear();
   const name = businessName ?? "NexPOS";
   const initial = name.slice(0, 1).toUpperCase();
   const mobileHeaderHeight = posMode ? "min-h-[62px]" : "min-h-[60px]";
   const showSessionControls = businessName !== undefined || role !== undefined;
+
+  React.useEffect(() => {
+    setPendingHref(null);
+    setShowNavigationProgress(false);
+  }, [pathname]);
+
+  React.useEffect(() => {
+    if (pendingHref === null) {
+      setShowNavigationProgress(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setShowNavigationProgress(true), 120);
+    return () => window.clearTimeout(timer);
+  }, [pendingHref]);
 
   async function signOut(): Promise<void> {
     if (signingOut) return;
@@ -198,9 +227,19 @@ export function AppShell({
           className="border-b border-[#eadfd6] bg-white/95 px-3 shadow-[0_4px_14px_-10px_rgb(28_20_15/0.12)] backdrop-blur xl:hidden"
         >
           <div className="mx-auto flex w-full items-center overflow-x-auto">
-            {NAV.map((item) => <NavLink key={item.href} item={item} pathname={pathname} />)}
+            {NAV.map((item) => <NavLink key={item.href} item={item} pathname={pathname} onNavigateStart={setPendingHref} />)}
           </div>
         </nav>
+        {showNavigationProgress ? (
+          <div
+            data-ui="navigation-progress"
+            role="progressbar"
+            aria-label="Loading page"
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] overflow-hidden bg-[#ffe3d8]"
+          >
+            <span className="navigation-progress-bar block h-full w-[42%] bg-[#f35d3f]" />
+          </div>
+        ) : null}
       </div>
 
       <div
@@ -219,7 +258,7 @@ export function AppShell({
             </div>
 
             <nav className="space-y-1" aria-label="Primary navigation">
-              {NAV.map((item) => <NavLink key={item.href} item={item} pathname={pathname} compact />)}
+              {NAV.map((item) => <NavLink key={item.href} item={item} pathname={pathname} compact onNavigateStart={setPendingHref} />)}
             </nav>
 
             <div className="mt-auto pt-6">

@@ -52,6 +52,7 @@ test("cashier session can sell and read inventory without owner controls", async
   await page.getByLabel("Password").fill(membership.tempPassword!);
   await page.getByRole("button", { name: "Sign in securely" }).click();
   await expect(page).toHaveURL(/\/$/);
+  await expect(page).not.toHaveURL(/\/onboarding/);
 
   await page.goto("/pos");
   await expect(page.getByRole("region", { name: "Products" })).toBeVisible();
