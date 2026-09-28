@@ -22,6 +22,11 @@ export const passwordResetRequestSchema = z.object({
   email: z.string().email(),
 });
 
+export const verificationResendSchema = z.object({
+  email: z.string().email(),
+  captchaToken: z.string().trim().min(1).max(2048).optional(),
+});
+
 export const passwordResetConfirmSchema = z.object({
   token: z.string().min(32),
   newPassword: passwordSchema,

@@ -4,6 +4,7 @@ import type { INestApplication } from "@nestjs/common";
 
 import { createTestApp } from "../src/app.module";
 import { AuthService } from "../src/auth/nest/auth.service";
+import type { HumanVerificationPort } from "../src/common/human-verification";
 
 describe("email-verification session gate", () => {
   let app: INestApplication;
@@ -89,5 +90,37 @@ describe("email-verification session gate", () => {
     expect(first.body.message).toBe(second.body.message);
     expect(first.body).not.toHaveProperty("token");
     expect(second.body).not.toHaveProperty("token");
+  });
+
+  it("requires a valid human-verification token when resend protection is enabled", async () => {
+    const protectedApp = await createTestApp({
+      humanVerification: {
+        enabled: true,
+        siteKey: "test-site-key",
+        async verify(input) {
+          return input.token === "valid-human-token" && input.action === "verify_email_resend";
+        },
+      } satisfies HumanVerificationPort,
+    });
+
+    try {
+      const missing = await request(protectedApp.getHttpServer())
+        .post("/api/v1/auth/verify-email/resend")
+        .send({ email: "person@example.com" });
+      const invalid = await request(protectedApp.getHttpServer())
+        .post("/api/v1/auth/verify-email/resend")
+        .send({ email: "person@example.com", captchaToken: "invalid" });
+      const valid = await request(protectedApp.getHttpServer())
+        .post("/api/v1/auth/verify-email/resend")
+        .send({ email: "person@example.com", captchaToken: "valid-human-token" });
+
+      expect(missing.status).toBe(400);
+      expect(missing.body.code).toBe("CAPTCHA_REQUIRED");
+      expect(invalid.status).toBe(400);
+      expect(invalid.body.code).toBe("CAPTCHA_FAILED");
+      expect(valid.status).toBe(201);
+    } finally {
+      await protectedApp.close();
+    }
   });
 });

@@ -69,7 +69,7 @@ export default function RegisterPage(): JSX.Element {
           </div>
         </div>
 
-        <div className="relative z-10 mx-auto mt-16 max-w-[650px] lg:mt-28">
+        <div className="animate-auth-copy relative z-10 mx-auto mt-16 max-w-[650px] lg:mt-28">
           <p className="font-data text-[10px] font-medium uppercase tracking-[0.14em] text-[#ff8061]">
             New business workspace
           </p>
@@ -105,7 +105,7 @@ export default function RegisterPage(): JSX.Element {
       <section className="relative grid min-h-[720px] place-items-center overflow-hidden p-5 sm:p-10 lg:min-h-screen">
         <div aria-hidden className="pointer-events-none absolute left-1/2 top-1/2 h-[720px] w-[430px] -translate-x-1/2 -translate-y-1/2 rounded-[28px] bg-[#f7f1ea]" />
 
-        <div className="relative z-10 w-full max-w-[536px] rounded-[14px] border border-[#eee4db] bg-white p-6 shadow-[0_18px_48px_-14px_rgb(22_18_14/0.14)] sm:p-8">
+        <div className="animate-auth-card relative z-10 w-full max-w-[536px] rounded-[14px] border border-[#eee4db] bg-white p-6 shadow-[0_18px_48px_-14px_rgb(22_18_14/0.14)] sm:p-8">
           <p className="font-data text-[9px] font-medium uppercase tracking-[0.14em] text-[#e44e34]">Create secure workspace</p>
           <h2 className="font-display mt-5 text-[30px] font-bold text-[#17130f]">Create your business</h2>
           <p className="mt-2 text-sm leading-5 text-[#73685f]">Set up the owner account and your primary business identity.</p>
@@ -181,7 +181,7 @@ export default function RegisterPage(): JSX.Element {
             <button
               type="submit"
               disabled={submitting}
-              className="min-h-[52px] w-full rounded-[9px] bg-[#f35d3f] px-4 text-[13px] font-semibold text-white shadow-[0_8px_20px_-8px_rgb(243_93_63/0.55)] transition hover:bg-[#d94a30] disabled:cursor-not-allowed disabled:opacity-65"
+              className="auth-interactive min-h-[52px] w-full rounded-[9px] bg-[#f35d3f] px-4 text-[13px] font-semibold text-white shadow-[0_8px_20px_-8px_rgb(243_93_63/0.55)] hover:bg-[#d94a30] disabled:cursor-not-allowed disabled:opacity-65"
             >
               {submitting ? "Creating workspace…" : "Create business"}
             </button>

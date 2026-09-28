@@ -63,6 +63,12 @@ import { MetricsMiddleware, httpMetrics } from "./common/metrics.middleware";
 import { MetricsController } from "./common/metrics.controller";
 import { SessionGuard } from "./common/session.guard";
 import { CsrfGuard } from "./common/csrf.guard";
+import {
+  createHumanVerificationFromEnv,
+  DISABLED_HUMAN_VERIFICATION,
+  HUMAN_VERIFICATION_PORT,
+  type HumanVerificationPort,
+} from "./common/human-verification";
 import { AuthErrorFilter } from "./common/auth-error.filter";
 import type { DbPort } from "./common/db.port";
 import { createMemoryDb } from "./common/memory.db";
@@ -88,6 +94,10 @@ function runtimeDatabaseUrl(): string | undefined {
 @Module({
     controllers: [HealthController, AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, MetricsController],
   providers: [
+    {
+      provide: HUMAN_VERIFICATION_PORT,
+      useFactory: () => createHumanVerificationFromEnv(process.env),
+    },
     {
       provide: PAYMONGO_PORT,
       useFactory: () => createPayMongoFromEnv(process.env),
@@ -170,7 +180,7 @@ export class AppModule implements NestModule {
   }
 }
 
-export async function createTestApp(options: { paymongo?: PayMongoPort } = {}): Promise<INestApplication> {
+export async function createTestApp(options: { paymongo?: PayMongoPort; humanVerification?: HumanVerificationPort } = {}): Promise<INestApplication> {
   // Same store contract as boot: memory unless DATABASE_URL opts into
   // PostgreSQL (used by the load cohorts and any pg-backed contract run).
   const databaseUrl = runtimeDatabaseUrl();
@@ -182,6 +192,7 @@ export async function createTestApp(options: { paymongo?: PayMongoPort } = {}): 
     providers: [
       { provide: "DbPort", useValue: db },
       { provide: PAYMONGO_PORT, useValue: options.paymongo ?? createPayMongoFromEnv({}) },
+      { provide: HUMAN_VERIFICATION_PORT, useValue: options.humanVerification ?? DISABLED_HUMAN_VERIFICATION },
       { provide: TRANSACTIONAL_EMAIL_PORT, useValue: NOOP_TRANSACTIONAL_EMAIL },
       {
         provide: AuthService,

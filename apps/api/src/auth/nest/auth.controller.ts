@@ -7,6 +7,7 @@ import {
   passwordResetConfirmSchema,
   passwordResetRequestSchema,
   registerSchema,
+  verificationResendSchema,
   verifyEmailSchema,
 } from "@pos/validation";
 import { hashToken } from "../sessions";
@@ -16,6 +17,10 @@ import { fail, statusFor } from "../../common/http-helpers";
 import { createRateLimiter } from "../../common/rate-limit";
 import { SessionGuard } from "../../common/session.guard";
 import { CsrfGuard } from "../../common/csrf.guard";
+import {
+  HUMAN_VERIFICATION_PORT,
+  type HumanVerificationPort,
+} from "../../common/human-verification";
 import { AuthService } from "./auth.service";
 
 const loginLimiter = createRateLimiter(5, 60_000);
@@ -50,7 +55,10 @@ export function cookieOpts(req: Request): {
 
 @Controller("api/v1/auth")
 export class AuthController {
-  constructor(@Inject(AuthService) private readonly auth: AuthService) {}
+  constructor(
+    @Inject(AuthService) private readonly auth: AuthService,
+    @Inject(HUMAN_VERIFICATION_PORT) private readonly humanVerification: HumanVerificationPort,
+  ) {}
 
   @Post("register")
   async register(@Req() req: Request, @Res() res: Response, @Body() body: unknown): Promise<void> {
@@ -190,10 +198,25 @@ export class AuthController {
       fail(res, 429, "RATE_LIMITED", "Too many attempts", req);
       return;
     }
-    const parsed = passwordResetRequestSchema.safeParse(body);
+    const parsed = verificationResendSchema.safeParse(body);
     if (!parsed.success) {
       fail(res, 400, "VALIDATION", "Invalid payload", req);
       return;
+    }
+    if (this.humanVerification.enabled) {
+      if (!parsed.data.captchaToken) {
+        fail(res, 400, "CAPTCHA_REQUIRED", "Complete the human verification challenge", req);
+        return;
+      }
+      const human = await this.humanVerification.verify({
+        token: parsed.data.captchaToken,
+        ip: req.ip ?? null,
+        action: "verify_email_resend",
+      });
+      if (!human) {
+        fail(res, 400, "CAPTCHA_FAILED", "Human verification failed", req);
+        return;
+      }
     }
     await this.auth.resendVerification(parsed.data.email, {
       requestId: rid(req),
@@ -202,6 +225,14 @@ export class AuthController {
     res.json({
       ok: true,
       message: "If the account exists and still needs verification, a new link was issued.",
+    });
+  }
+
+  @Get("verify-email/challenge")
+  verificationChallenge(@Res() res: Response): void {
+    res.json({
+      enabled: this.humanVerification.enabled,
+      ...(this.humanVerification.siteKey ? { siteKey: this.humanVerification.siteKey } : {}),
     });
   }
 

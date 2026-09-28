@@ -2,7 +2,8 @@
 #
 #   Render dashboard → New → Blueprint → connect this repository, then fill
 #   the sync:false values (DATABASE_URL, BREVO_API_KEY, EMAIL_FROM,
-#   PAYMONGO_SECRET_KEY, PAYMONGO_WEBHOOK_SECRET) in the dashboard when
+#   PAYMONGO_SECRET_KEY, PAYMONGO_WEBHOOK_SECRET, TURNSTILE_SITE_KEY,
+#   TURNSTILE_SECRET_KEY) in the dashboard when
 #   prompted. Secret values are never stored in git.
 #
 # Design constraints this file encodes:
@@ -56,6 +57,13 @@ services:
       - key: PAYMONGO_SECRET_KEY
         sync: false
       - key: PAYMONGO_WEBHOOK_SECRET
+        sync: false
+      # Cloudflare Turnstile protects public resend actions. Both values must
+      # be configured together; the site key is safe to expose through the
+      # API's public challenge-config endpoint, while the secret stays here.
+      - key: TURNSTILE_SITE_KEY
+        sync: false
+      - key: TURNSTILE_SECRET_KEY
         sync: false
 
   - type: web

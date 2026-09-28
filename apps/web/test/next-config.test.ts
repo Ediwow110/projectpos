@@ -72,9 +72,10 @@ describe("Next.js web runtime configuration", () => {
     expect(csp).toContain("base-uri 'self'");
     expect(csp).toContain("form-action 'self'");
     expect(csp).toContain("frame-ancestors 'none'");
-    expect(csp).toContain("frame-src 'none'");
+    expect(csp).toContain("frame-src https://challenges.cloudflare.com");
     expect(csp).toContain("img-src 'self' data: blob:");
     expect(csp).toContain("connect-src 'self' https://nexpos-web.onrender.com");
+    expect(csp).toContain("https://challenges.cloudflare.com");
   });
 
   it("keeps development-only script and HMR allowances out of production CSP", async () => {

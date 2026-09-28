@@ -57,6 +57,16 @@ describe("pre-auth privacy presentation", () => {
     expect(register).not.toContain("Audited operations");
   });
 
+  it("protects verification resends with Turnstile and polished motion states", () => {
+    const verify = readFileSync(resolve(process.cwd(), "src/app/verify-email/page.tsx"), "utf8");
+
+    expect(verify).toContain("TurnstileWidget");
+    expect(verify).toContain("captchaToken");
+    expect(verify).toContain("Resend available in");
+    expect(verify).toContain("animate-auth-card");
+    expect(verify).toContain("Sending…");
+  });
+
   it("redirects an unauthorized dashboard visit to the login page", () => {
     const dashboard = readFileSync(resolve(process.cwd(), "src/app/page.tsx"), "utf8");
 
