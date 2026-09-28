@@ -33,9 +33,22 @@ function psqlStrict(sql) {
 }
 
 function waitForPostgres() {
+  let initComplete = false;
   for (let attempt = 0; attempt < 60; attempt++) {
     try {
-      if (docker(["exec", CONTAINER, "pg_isready", "-U", "pos"]).includes("accepting connections")) return;
+      if (!initComplete) {
+        initComplete = docker(["logs", CONTAINER]).includes(
+          "PostgreSQL init process complete; ready for start up.",
+        );
+      }
+      if (
+        initComplete &&
+        docker(["exec", CONTAINER, "pg_isready", "-U", "pos", "-d", "pos"]).includes(
+          "accepting connections",
+        )
+      ) {
+        return;
+      }
     } catch {
       // Not up yet.
     }
