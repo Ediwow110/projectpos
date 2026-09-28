@@ -41,6 +41,8 @@ export default function SyncPage(): JSX.Element {
   const [resolveReason, setResolveReason] = useState<Record<string, string>>({});
   const [deviceLabel, setDeviceLabel] = useState("");
   const [syncing, setSyncing] = useState(false);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [enrolling, setEnrolling] = useState(false);
 
   const meQuery = useQuery({
     queryKey: ["me"],
@@ -150,13 +152,14 @@ export default function SyncPage(): JSX.Element {
   }
 
   async function resolve(cmd: OutboxCommand): Promise<void> {
-    if (!store) return;
+    if (!store || resolvingId !== null) return;
     const reason = (resolveReason[cmd.localId] ?? "").trim();
     if (reason.length < 3) {
       setStatus("A reason of at least 3 characters is required to resolve.");
       return;
     }
     setStatus("");
+    setResolvingId(cmd.localId);
     try {
       const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
       await apiFetch("/api/v1/sync/resolve", {
@@ -172,12 +175,16 @@ export default function SyncPage(): JSX.Element {
       setStatus("Conflict resolved and recorded.");
     } catch (err) {
       setStatus(err instanceof ApiError ? err.code + ": " + err.message : "Resolve failed");
+    } finally {
+      setResolvingId(null);
     }
   }
 
   async function enrollDevice(event: React.FormEvent): Promise<void> {
     event.preventDefault();
+    if (enrolling) return;
     setStatus("");
+    setEnrolling(true);
     try {
       const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
       const device = await apiFetch<{ id: string }>("/api/v1/devices", {
@@ -189,6 +196,8 @@ export default function SyncPage(): JSX.Element {
       setStatus("This device is registered. Future sign-ins will bind to it.");
     } catch (err) {
       setStatus(err instanceof ApiError ? err.code + ": " + err.message : "Enrollment failed");
+    } finally {
+      setEnrolling(false);
     }
   }
 
@@ -243,7 +252,7 @@ export default function SyncPage(): JSX.Element {
                       </div>
                       <StatusPill tone={presentation.tone}>{presentation.label}{presentation.final ? "" : " · pending"}</StatusPill>
                       {(command.status === "FAILED" || command.status === "CONFLICT") ? (
-                        <GhostButton type="button" className="!min-h-8 !px-3 !py-1.5 text-xs" onClick={() => void retry(command)} disabled={syncing}>Retry</GhostButton>
+                        <GhostButton type="button" className="!min-h-8 !px-3 !py-1.5 text-xs" onClick={() => void retry(command)} disabled={syncing || resolvingId !== null}>Retry</GhostButton>
                       ) : null}
                     </div>
                     {command.status === "CONFLICT" ? (
@@ -263,7 +272,14 @@ export default function SyncPage(): JSX.Element {
                             className="field mt-1.5"
                           />
                         </label>
-                        <PrimaryButton type="submit" className="self-end">Resolve conflict</PrimaryButton>
+                        <PrimaryButton
+                          type="submit"
+                          className="self-end"
+                          disabled={resolvingId !== null}
+                          aria-busy={resolvingId === command.localId}
+                        >
+                          {resolvingId === command.localId ? "Resolving…" : "Resolve conflict"}
+                        </PrimaryButton>
                       </form>
                     ) : null}
                   </article>
@@ -283,7 +299,14 @@ export default function SyncPage(): JSX.Element {
               Device label
               <input value={deviceLabel} onChange={(event) => setDeviceLabel(event.target.value)} placeholder="Till 1" className="field mt-1.5" />
             </label>
-            <PrimaryButton type="submit" disabled={deviceLabel.trim() === ""} className="self-end">Register this device</PrimaryButton>
+            <PrimaryButton
+              type="submit"
+              disabled={deviceLabel.trim() === "" || enrolling}
+              aria-busy={enrolling}
+              className="self-end"
+            >
+              {enrolling ? "Registering…" : "Register this device"}
+            </PrimaryButton>
           </form>
         </Panel>
 

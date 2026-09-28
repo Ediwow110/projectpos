@@ -1,12 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { API, registerBusiness, apiAuthedContext, clickPosPay, seedProduct } from "./helpers";
+import { API, registerOperationalBusiness, apiAuthedContext, clickPosPay, seedProduct } from "./helpers";
 
 test("unknown provider outcome stays visibly unresolved and blocks false success", async ({ page, request }) => {
   const stamp = Date.now();
   const email = "e2e-unknown-" + stamp + "@example.com";
   const password = "correct-horse-12";
 
-  await registerBusiness(page, {
+  await registerOperationalBusiness(page, {
     ownerName: "Unknown Payment Owner",
     email,
     password,

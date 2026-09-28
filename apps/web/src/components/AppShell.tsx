@@ -4,7 +4,7 @@ import React from "react";
 import type { JSX, ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DecorativeBackdrop } from "./premium";
 import { ApiError, apiFetch } from "../lib/api";
 import { clearActiveSyncScope } from "../lib/sync-store";
@@ -95,6 +95,17 @@ export function AppShell({
   const pathname = usePathname();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const shellMe = useQuery({
+    queryKey: ["me"],
+    queryFn: () => apiFetch<{
+      userId: string;
+      businessId: string;
+      businessName: string;
+      role: string;
+      onboardingRequired: boolean;
+    }>("/api/v1/me"),
+    retry: false,
+  });
   const [signingOut, setSigningOut] = React.useState(false);
   const [signOutError, setSignOutError] = React.useState("");
   const [pendingHref, setPendingHref] = React.useState<string | null>(null);
@@ -120,6 +131,12 @@ export function AppShell({
     return () => window.clearTimeout(timer);
   }, [pendingHref]);
 
+  React.useEffect(() => {
+    if (shellMe.data?.onboardingRequired) {
+      router.replace("/onboarding");
+    }
+  }, [router, shellMe.data?.onboardingRequired]);
+
   async function signOut(): Promise<void> {
     if (signingOut) return;
     setSigningOut(true);
@@ -137,6 +154,24 @@ export function AppShell({
     queryClient.clear();
     router.replace("/login");
     router.refresh();
+  }
+
+  if (shellMe.isLoading || shellMe.data?.onboardingRequired) {
+    return (
+      <main
+        data-ui="workspace-access-check"
+        className="grid min-h-screen place-items-center bg-[#fcf8f3] px-6 text-center"
+      >
+        <div>
+          <span aria-hidden className="mx-auto block h-1.5 w-16 overflow-hidden rounded-full bg-[#ffe3d8]">
+            <span className="navigation-progress-bar block h-full w-[42%] bg-[#f35d3f]" />
+          </span>
+          <p role="status" className="mt-4 text-sm font-medium text-[#73685f]">
+            {shellMe.data?.onboardingRequired ? "Returning to business setup…" : "Checking workspace…"}
+          </p>
+        </div>
+      </main>
+    );
   }
 
   return (

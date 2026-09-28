@@ -49,6 +49,35 @@ export async function registerBusiness(
   return email;
 }
 
+export async function registerOperationalBusiness(
+  page: Page,
+  input: { ownerName: string; email: string; password: string; businessName: string },
+): Promise<string> {
+  const email = await registerBusiness(page, input);
+  const result = await page.evaluate(async () => {
+    const csrfResponse = await fetch("/api/v1/auth/csrf", { credentials: "include" });
+    if (!csrfResponse.ok) return { ok: false, status: csrfResponse.status };
+    const csrf = (await csrfResponse.json()) as { csrfToken: string };
+    for (const step of ["taxCurrency", "receiptSetup"] as const) {
+      const response = await fetch("/api/v1/onboarding", {
+        method: "PATCH",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrf.csrfToken,
+        },
+        body: JSON.stringify({ step, state: "done" }),
+      });
+      if (!response.ok) return { ok: false, status: response.status };
+    }
+    return { ok: true, status: 200 };
+  });
+  expect(result.ok, `operational onboarding setup failed with HTTP ${result.status}`).toBe(true);
+  await page.goto("/");
+  await expect(page).toHaveURL(/\/$/, { timeout: 30_000 });
+  return email;
+}
+
 export async function apiAuthedContext(
   request: APIRequestContext,
   email: string,

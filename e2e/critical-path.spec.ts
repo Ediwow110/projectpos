@@ -13,7 +13,7 @@ import {
   apiAuthedContext,
   clickPosPay,
   expectOnePosCartItem,
-  registerBusiness,
+  registerOperationalBusiness,
   seedProduct,
 } from "./helpers";
 
@@ -23,7 +23,7 @@ test("critical path: register to reconciled close", async ({ page, request }) =>
   const email = `e2e-${stamp}@example.com`;
   const password = "correct-horse-12";
 
-  await registerBusiness(page, {
+  await registerOperationalBusiness(page, {
     ownerName: "E2E Owner",
     email,
     password,

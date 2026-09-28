@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { API, apiAuthedContext, registerBusiness, seedProduct } from "./helpers";
+import { API, apiAuthedContext, registerOperationalBusiness, seedProduct } from "./helpers";
 
 const OUT = join(".superpowers", "sdd", "2026-09-25-premium-ui-implementation", "visual-audit");
 
@@ -25,7 +25,7 @@ test("capture Figma-sized POS surfaces", async ({ page, request }, testInfo) => 
   );
 
   const stamp = Date.now();
-  await registerBusiness(page, {
+  await registerOperationalBusiness(page, {
     ownerName: "Visual Audit Owner",
     email: `visual-${testInfo.project.name}-${stamp}@example.com`,
     password: "correct-horse-12",

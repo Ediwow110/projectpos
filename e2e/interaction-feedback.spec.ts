@@ -57,3 +57,42 @@ test("main navigation shows progress while a delayed route is loading", async ({
   await expect(page).toHaveURL("/sales", { timeout: 30_000 });
   await expect(page.locator('[data-ui="navigation-progress"]')).toBeHidden();
 });
+
+test("unfinished owner setup cannot be bypassed by direct workspace navigation", async ({ page }) => {
+  await registerBusiness(page, {
+    ownerName: "Guarded Owner",
+    email: `guarded-owner-${Date.now()}@example.com`,
+    password: "correct-horse-12",
+    businessName: "Guarded Store",
+  });
+
+  await page.goto("/pos");
+  await expect(page).toHaveURL(/\/onboarding/, { timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Set up your business" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Products" })).toHaveCount(0);
+});
+
+test("device enrollment acknowledges slow work immediately", async ({ page }) => {
+  await registerBusiness(page, {
+    ownerName: "Device Feedback Owner",
+    email: `device-feedback-${Date.now()}@example.com`,
+    password: "correct-horse-12",
+    businessName: "Device Feedback Store",
+  });
+  await completeOnboarding(page);
+  await page.goto("/sync");
+
+  await page.route("**/api/v1/devices", async (route) => {
+    if (route.request().method() === "POST") {
+      await new Promise((resolve) => setTimeout(resolve, 700));
+    }
+    await route.continue();
+  });
+
+  await page.getByLabel("Device label").fill("Till QA");
+  await page.getByRole("button", { name: "Register this device" }).click();
+  const busy = page.getByRole("button", { name: "Registering…" });
+  await expect(busy).toBeDisabled();
+  await expect(busy).toHaveAttribute("aria-busy", "true");
+  await expect(page.getByText("This device is registered. Future sign-ins will bind to it.")).toBeVisible({ timeout: 30_000 });
+});

@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { registerBusiness } from "./helpers";
+import { registerOperationalBusiness } from "./helpers";
 
 test("product creation uses an in-workspace modal and deep link stays safe", async ({ page }, testInfo) => {
   const stamp = Date.now();
-  await registerBusiness(page, {
+  await registerOperationalBusiness(page, {
     ownerName: "Catalog Owner",
     email: `product-modal-${testInfo.project.name}-${stamp}@example.com`,
     password: "correct-horse-12",

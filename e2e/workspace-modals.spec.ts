@@ -1,12 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { API, apiAuthedContext, registerBusiness, seedProduct } from "./helpers";
+import { API, apiAuthedContext, registerOperationalBusiness, seedProduct } from "./helpers";
 
 test("workspace create and consequential actions use consistent dialogs", async ({ page, request }, testInfo) => {
   test.setTimeout(180_000);
   const stamp = Date.now();
   const email = `workspace-${testInfo.project.name}-${stamp}@example.com`;
   const password = "correct-horse-12";
-  await registerBusiness(page, {
+  await registerOperationalBusiness(page, {
     ownerName: "Workspace Owner",
     email,
     password,

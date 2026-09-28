@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { registerBusiness } from "./helpers";
+import { registerOperationalBusiness } from "./helpers";
 
 test("workspace modal contains keyboard focus and restores it on close", async ({ page }, testInfo) => {
   const stamp = Date.now();
-  await registerBusiness(page, {
+  await registerOperationalBusiness(page, {
     ownerName: "Modal A11y Owner",
     email: `modal-a11y-${testInfo.project.name}-${stamp}@example.com`,
     password: "correct-horse-12",

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { apiAuthedContext, registerBusiness, seedProduct } from "./helpers";
+import { apiAuthedContext, registerOperationalBusiness, seedProduct } from "./helpers";
 
 test("POS shell and responsive geometry match the current navigation contract", async ({ page, request }, testInfo) => {
   test.setTimeout(120_000);
@@ -15,7 +15,7 @@ test("POS shell and responsive geometry match the current navigation contract", 
 
   const stamp = Date.now();
   const email = `fidelity-${testInfo.project.name}-${stamp}@example.com`;
-  await registerBusiness(page, {
+  await registerOperationalBusiness(page, {
     ownerName: "Fidelity Owner",
     email,
     password: "correct-horse-12",

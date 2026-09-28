@@ -2,12 +2,12 @@
 // surfaces; cashier coverage creates a real membership and signs in as that
 // user so browser tests exercise role-specific UI instead of reusing owner.
 import { expect, test } from "@playwright/test";
-import { API, apiAuthedContext, posCartRegion, registerBusiness } from "./helpers";
+import { API, apiAuthedContext, posCartRegion, registerOperationalBusiness } from "./helpers";
 
 let ownerEmail = "";
 test.beforeEach(async ({ page }) => {
   const stamp = Date.now();
-  ownerEmail = await registerBusiness(page, {
+  ownerEmail = await registerOperationalBusiness(page, {
     ownerName: "Role Owner",
     email: `roles-${stamp}@example.com`,
     password: "correct-horse-12",

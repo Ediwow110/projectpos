@@ -12,7 +12,7 @@ import {
   apiAuthedContext,
   clickPosPay,
   expectOnePosCartItem,
-  registerBusiness,
+  registerOperationalBusiness,
   seedProduct,
 } from "./helpers";
 
@@ -40,7 +40,7 @@ test("offline cash sale syncs on reconnect", async ({ page, context, request }) 
   const email = `e2e-off-${stamp}@example.com`;
   const password = "correct-horse-12";
 
-  await registerBusiness(page, {
+  await registerOperationalBusiness(page, {
     ownerName: "E2E Owner",
     email,
     password,
@@ -94,7 +94,7 @@ test("oversell conflict lands in review and resolves", async ({ page, context, r
   const email = `e2e-conf-${stamp}@example.com`;
   const password = "correct-horse-12";
 
-  await registerBusiness(page, {
+  await registerOperationalBusiness(page, {
     ownerName: "E2E Owner",
     email,
     password,
@@ -134,8 +134,13 @@ test("oversell conflict lands in review and resolves", async ({ page, context, r
   await expect(page.getByText("INSUFFICIENT_STOCK")).toBeVisible();
 
   // Manager resolves with a reason: audited, terminal, never silently dropped.
+  await page.route("**/api/v1/sync/resolve", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    await route.continue();
+  });
   await page.getByLabel("Resolution reason").fill("covered by till count");
   await page.getByRole("button", { name: "Resolve conflict", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Resolving…" })).toBeDisabled();
   await expect(page.getByText("Conflict resolved and recorded.")).toBeVisible();
   await expect(page.getByText("Resolved", { exact: true })).toBeVisible();
 });
@@ -144,7 +149,7 @@ test("offline queue stays private to its account across logout and re-login", as
   test.setTimeout(180_000);
   const stamp = Date.now();
   const password = "correct-horse-12";
-  const emailA = await registerBusiness(page, {
+  const emailA = await registerOperationalBusiness(page, {
     ownerName: "Offline Owner A",
     email: `e2e-isolation-a-${stamp}@example.com`,
     password,
@@ -169,7 +174,7 @@ test("offline queue stays private to its account across logout and re-login", as
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/login/);
 
-  await registerBusiness(page, {
+  await registerOperationalBusiness(page, {
     ownerName: "Offline Owner B",
     email: `e2e-isolation-b-${stamp}@example.com`,
     password,
@@ -184,7 +189,7 @@ test("offline queue stays private to its account across logout and re-login", as
   await page.getByLabel("Email").fill(emailA);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Sign in securely" }).click();
-  await expect(page).toHaveURL(/\/onboarding/);
+  await expect(page).toHaveURL(/\/$/);
   await page.goto("/sync");
   await expect(page.getByText("Queued · pending", { exact: true })).toBeVisible();
 });

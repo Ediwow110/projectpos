@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { API, apiAuthedContext, registerBusiness, seedProduct } from "./helpers";
+import { API, apiAuthedContext, registerOperationalBusiness, seedProduct } from "./helpers";
 
 test("billing and trial UI stay absent while billing is disabled", async ({ page }) => {
   test.setTimeout(120_000);
   const stamp = Date.now();
-  await registerBusiness(page, {
+  await registerOperationalBusiness(page, {
     ownerName: "No Billing Owner",
     email: `no-billing-${stamp}@example.com`,
     password: "correct-horse-12",
@@ -24,7 +24,7 @@ test("billing and trial UI stay absent while billing is disabled", async ({ page
 
 test("billing-disabled businesses are not capped to the old free-plan register limit", async ({ page }) => {
   const stamp = Date.now();
-  await registerBusiness(page, {
+  await registerOperationalBusiness(page, {
     ownerName: "Uncapped Owner",
     email: `uncapped-${stamp}@example.com`,
     password: "correct-horse-12",
@@ -50,7 +50,7 @@ test("the customer display shows the last completed sale", async ({ page, reques
   const stamp = Date.now();
   const email = `e2e-display-${stamp}@example.com`;
   const password = "correct-horse-12";
-  await registerBusiness(page, {
+  await registerOperationalBusiness(page, {
     ownerName: "Display Owner",
     email,
     password,
