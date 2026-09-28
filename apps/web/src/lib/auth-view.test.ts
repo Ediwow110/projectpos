@@ -32,6 +32,31 @@ describe("pre-auth privacy presentation", () => {
     expect(login).toContain("Create account");
   });
 
+  it("keeps login and registration on the same auth layout grid", () => {
+    const login = readFileSync(resolve(process.cwd(), "src/app/login/page.tsx"), "utf8");
+    const register = readFileSync(resolve(process.cwd(), "src/app/register/page.tsx"), "utf8");
+
+    for (const source of [login, register]) {
+      expect(source).toContain("lg:grid-cols-[1.08fr_.92fr]");
+      expect(source).toContain("lg:mt-28");
+      expect(source).toContain("min-h-[720px]");
+      expect(source).toContain("h-[720px] w-[430px]");
+      expect(source).toContain("max-w-[536px]");
+    }
+  });
+
+  it("does not render redundant auth-page badge strips", () => {
+    const login = readFileSync(resolve(process.cwd(), "src/app/login/page.tsx"), "utf8");
+    const register = readFileSync(resolve(process.cwd(), "src/app/register/page.tsx"), "utf8");
+
+    expect(login).not.toContain("Encrypted session");
+    expect(login).not.toContain("Role-based access");
+    expect(login).not.toContain("Device visibility");
+    expect(register).not.toContain("Business-scoped data");
+    expect(register).not.toContain("Role-ready access");
+    expect(register).not.toContain("Audited operations");
+  });
+
   it("redirects an unauthorized dashboard visit to the login page", () => {
     const dashboard = readFileSync(resolve(process.cwd(), "src/app/page.tsx"), "utf8");
 

@@ -105,11 +105,6 @@ export default function LoginPage(): JSX.Element {
           </section>
         </div>
 
-        <div className="relative z-10 mt-8 flex flex-wrap gap-2 lg:mt-7">
-          {["Encrypted session", "Role-based access", "Device visibility"].map((label) => (
-            <span key={label} className="rounded-full bg-[#28231f] px-4 py-2 text-[10px] font-medium text-[#a79e94]">{label}</span>
-          ))}
-        </div>
       </section>
 
       <section className="relative grid min-h-[720px] place-items-center overflow-hidden p-5 sm:p-10 lg:min-h-screen">

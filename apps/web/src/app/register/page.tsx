@@ -57,7 +57,7 @@ export default function RegisterPage(): JSX.Element {
   }
 
   return (
-    <main className="min-h-screen bg-[#fcf8f3] lg:grid lg:grid-cols-[1.02fr_.98fr]">
+    <main className="min-h-screen bg-[#fcf8f3] lg:grid lg:grid-cols-[1.08fr_.92fr]">
       <section className="relative overflow-hidden bg-[#161411] px-6 py-8 text-white sm:px-10 lg:min-h-screen lg:px-14 lg:py-12">
         <span aria-hidden className="absolute inset-y-0 left-0 w-2.5 bg-[#f35d3f]" />
 
@@ -69,7 +69,7 @@ export default function RegisterPage(): JSX.Element {
           </div>
         </div>
 
-        <div className="relative z-10 mx-auto mt-16 max-w-[650px] lg:mt-24">
+        <div className="relative z-10 mx-auto mt-16 max-w-[650px] lg:mt-28">
           <p className="font-data text-[10px] font-medium uppercase tracking-[0.14em] text-[#ff8061]">
             New business workspace
           </p>
@@ -99,20 +99,13 @@ export default function RegisterPage(): JSX.Element {
             </div>
           </div>
 
-          <div className="mt-8 grid gap-3 sm:grid-cols-3">
-            {["Business-scoped data", "Role-ready access", "Audited operations"].map((label) => (
-              <div key={label} className="rounded-xl border border-[#342e29] bg-[#1e1b18] px-4 py-3 text-[10px] font-medium text-[#b4aaa1]">
-                <span className="mr-2 text-[#ff8061]">●</span>{label}
-              </div>
-            ))}
-          </div>
         </div>
       </section>
 
-      <section className="relative grid min-h-[760px] place-items-center overflow-hidden p-5 sm:p-10 lg:min-h-screen">
-        <div aria-hidden className="pointer-events-none absolute left-1/2 top-1/2 h-[760px] w-[470px] -translate-x-1/2 -translate-y-1/2 rounded-[28px] bg-[#f7f1ea]" />
+      <section className="relative grid min-h-[720px] place-items-center overflow-hidden p-5 sm:p-10 lg:min-h-screen">
+        <div aria-hidden className="pointer-events-none absolute left-1/2 top-1/2 h-[720px] w-[430px] -translate-x-1/2 -translate-y-1/2 rounded-[28px] bg-[#f7f1ea]" />
 
-        <div className="relative z-10 w-full max-w-[560px] rounded-[14px] border border-[#eee4db] bg-white p-6 shadow-[0_18px_48px_-14px_rgb(22_18_14/0.14)] sm:p-8">
+        <div className="relative z-10 w-full max-w-[536px] rounded-[14px] border border-[#eee4db] bg-white p-6 shadow-[0_18px_48px_-14px_rgb(22_18_14/0.14)] sm:p-8">
           <p className="font-data text-[9px] font-medium uppercase tracking-[0.14em] text-[#e44e34]">Create secure workspace</p>
           <h2 className="font-display mt-5 text-[30px] font-bold text-[#17130f]">Create your business</h2>
           <p className="mt-2 text-sm leading-5 text-[#73685f]">Set up the owner account and your primary business identity.</p>
@@ -127,7 +120,7 @@ export default function RegisterPage(): JSX.Element {
                   required
                   autoComplete="name"
                   placeholder="Store owner"
-                  className="field mt-2 !min-h-[52px]"
+                  className="field mt-2 !min-h-[54px]"
                 />
               </label>
               <label className="block text-[12px] font-semibold text-[#655b53]">
@@ -138,7 +131,7 @@ export default function RegisterPage(): JSX.Element {
                   required
                   autoComplete="organization"
                   placeholder="NexPOS Local Store"
-                  className="field mt-2 !min-h-[52px]"
+                  className="field mt-2 !min-h-[54px]"
                 />
               </label>
             </div>
@@ -152,7 +145,7 @@ export default function RegisterPage(): JSX.Element {
                 required
                 autoComplete="email"
                 placeholder="owner@company.com"
-                className="field mt-2 !min-h-[52px]"
+                className="field mt-2 !min-h-[54px]"
               />
             </label>
 
@@ -167,7 +160,7 @@ export default function RegisterPage(): JSX.Element {
                   minLength={12}
                   autoComplete="new-password"
                   placeholder="At least 12 characters"
-                  className="field !min-h-[52px] pr-16"
+                  className="field !min-h-[54px] pr-16"
                 />
                 <button
                   type="button"
