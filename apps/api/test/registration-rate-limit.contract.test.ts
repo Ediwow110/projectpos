@@ -11,13 +11,13 @@ describe("registration abuse protection", () => {
     process.env["REGISTRATION_RATE_LIMIT"] = "5";
     const { createTestApp } = await import("../src/app.module");
     app = await createTestApp();
-  });
+  }, 30_000);
 
   afterAll(async () => {
-    await app.close();
+    if (app) await app.close();
     if (previousLimit === undefined) delete process.env["REGISTRATION_RATE_LIMIT"];
     else process.env["REGISTRATION_RATE_LIMIT"] = previousLimit;
-  });
+  }, 30_000);
 
   it("keeps forwarded client IPs in separate registration buckets behind the trusted proxy", async () => {
     const agent = request(app.getHttpServer());
