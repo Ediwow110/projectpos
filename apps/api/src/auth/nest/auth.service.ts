@@ -7,6 +7,7 @@ import { issueCsrfToken } from "../csrf";
 import { incrementMetric } from "../../common/metrics";
 import { billingEnabled } from "../../billing/entitlements";
 import { buildRegistrationSeed, resolveActiveBusiness, ROLE_SEED } from "../../tenant/seed";
+import { defaultOnboardingState, isOnboardingComplete, type OnboardingState } from "../../business/onboarding";
 import type { DbPort } from "../../common/db.port";
 import {
   NOOP_TRANSACTIONAL_EMAIL,
@@ -137,6 +138,11 @@ export class AuthService {
       }
       await this.db.markEmailVerificationTokenUsed(stored.id);
       await this.db.setUserEmailVerified(stored.userId, true);
+      // Registration creates a provisional session so the verification gate
+      // can be exercised consistently. Do not silently promote that session
+      // into an authenticated one after email redemption; require a fresh
+      // credentialed login instead.
+      await this.db.revokeAllUserSessions(stored.userId);
       await this.db.appendAudit({
         businessId: null, actorId: stored.userId, action: "email.verified",
         entityType: "User", entityId: stored.userId, requestId: "verify-email",
@@ -145,7 +151,7 @@ export class AuthService {
     });
   }
 
-  async login(input: { email: string; password: string }, meta: { requestId: string; ip: string | null; userAgent: string | null }, deviceId?: string): Promise<{ token: string; csrfToken: string; userId: string; businessId: string }> {
+  async login(input: { email: string; password: string }, meta: { requestId: string; ip: string | null; userAgent: string | null }, deviceId?: string): Promise<{ token: string; csrfToken: string; userId: string; businessId: string; onboardingRequired: boolean }> {
     const user = await this.db.findUserByEmail(input.email);
     if (!user || !(await verifyPassword(user.passwordHash, input.password))) {
       incrementMetric("pos_auth_failures_total");
@@ -163,6 +169,8 @@ export class AuthService {
         throw new Error("FORBIDDEN");
       }
     }
+    const settings = await this.db.getSettings(businessId);
+    const onboarding = (settings["onboarding"] as OnboardingState | undefined) ?? defaultOnboardingState();
     const rec = buildSessionRecord({ userId: user.id, businessId, ip: meta.ip, userAgent: meta.userAgent });
     await this.db.createSession({
       userId: rec.userId,
@@ -176,7 +184,13 @@ export class AuthService {
       deviceId: deviceId ?? null,
     });
     await this.db.appendAudit({ businessId, actorId: user.id, action: "auth.login", entityType: "User", entityId: user.id, requestId: meta.requestId });
-    return { token: rec.token, csrfToken: issueCsrfToken(), userId: user.id, businessId };
+    return {
+      token: rec.token,
+      csrfToken: issueCsrfToken(),
+      userId: user.id,
+      businessId,
+      onboardingRequired: !isOnboardingComplete(onboarding),
+    };
   }
 
   async logout(tokenHash: string, requestId: string): Promise<void> {

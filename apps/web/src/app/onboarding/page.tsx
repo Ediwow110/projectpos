@@ -71,7 +71,9 @@ export default function OnboardingPage(): JSX.Element {
   async function patchStep(step: Step, state: "done" | "skipped"): Promise<void> {
     setError("");
     try {
+      const csrf = await apiFetch<{ csrfToken: string }>("/api/v1/auth/csrf");
       await apiFetch("/api/v1/onboarding", {
+        csrfToken: csrf.csrfToken,
         init: { method: "PATCH", body: JSON.stringify({ step, state }) },
       });
       await query.refetch();

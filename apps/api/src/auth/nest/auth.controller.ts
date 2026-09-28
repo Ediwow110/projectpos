@@ -80,12 +80,14 @@ export class AuthController {
         ip: req.ip ?? null,
         userAgent: req.headers["user-agent"]?.toString() ?? null,
       });
-      res.cookie("pos_session", out.token, cookieOpts(req));
-      res.cookie("pos_csrf", out.csrfToken, { ...cookieOpts(req), httpOnly: false });
+      if (!out.verificationRequired) {
+        res.cookie("pos_session", out.token, cookieOpts(req));
+        res.cookie("pos_csrf", out.csrfToken, { ...cookieOpts(req), httpOnly: false });
+      }
       res.status(201).json({
         user: out.user,
         business: out.business,
-        csrfToken: out.csrfToken,
+        ...(!out.verificationRequired ? { csrfToken: out.csrfToken } : {}),
         verificationRequired: out.verificationRequired,
       });
     } catch (e) {
@@ -119,7 +121,12 @@ export class AuthController {
       }, parsed.data.deviceId);
       res.cookie("pos_session", out.token, cookieOpts(req));
       res.cookie("pos_csrf", out.csrfToken, { ...cookieOpts(req), httpOnly: false });
-      res.json({ userId: out.userId, businessId: out.businessId, csrfToken: out.csrfToken });
+      res.json({
+        userId: out.userId,
+        businessId: out.businessId,
+        csrfToken: out.csrfToken,
+        onboardingRequired: out.onboardingRequired,
+      });
     } catch (e) {
       const code = e instanceof Error ? e.message : "AUTH_INVALID_CREDENTIALS";
       fail(res, statusFor(code, 401), code, "Invalid email or password", req);

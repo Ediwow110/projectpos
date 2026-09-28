@@ -67,6 +67,26 @@ describe("pre-auth privacy presentation", () => {
     expect(verify).toContain("Sending…");
   });
 
+  it("requires a fresh login after email verification before onboarding", () => {
+    const verify = readFileSync(resolve(process.cwd(), "src/app/verify-email/page.tsx"), "utf8");
+    const login = readFileSync(resolve(process.cwd(), "src/app/login/page.tsx"), "utf8");
+    const register = readFileSync(resolve(process.cwd(), "src/app/register/page.tsx"), "utf8");
+
+    expect(verify).toContain('router.replace("/login?verified=1")');
+    expect(verify).not.toContain("Continue to onboarding");
+    expect(login).toContain("onboardingRequired");
+    expect(login).toContain('router.push(result.onboardingRequired ? "/onboarding" : "/")');
+    expect(login).toContain("Email verified");
+    expect(register).toContain("clearActiveSyncScope");
+  });
+
+  it("sends a CSRF token with onboarding mutations", () => {
+    const onboarding = readFileSync(resolve(process.cwd(), "src/app/onboarding/page.tsx"), "utf8");
+
+    expect(onboarding).toContain('apiFetch<{ csrfToken: string }>("/api/v1/auth/csrf")');
+    expect(onboarding).toContain("csrfToken: csrf.csrfToken");
+  });
+
   it("redirects an unauthorized dashboard visit to the login page", () => {
     const dashboard = readFileSync(resolve(process.cwd(), "src/app/page.tsx"), "utf8");
 

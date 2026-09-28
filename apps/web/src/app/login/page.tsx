@@ -1,7 +1,7 @@
 "use client";
 
 import type { JSX } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
@@ -28,13 +28,18 @@ export default function LoginPage(): JSX.Element {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [verifiedNotice, setVerifiedNotice] = useState(false);
+
+  useEffect(() => {
+    setVerifiedNotice(new URLSearchParams(window.location.search).get("verified") === "1");
+  }, []);
 
   async function submit(event: React.FormEvent): Promise<void> {
     event.preventDefault();
     setError("");
     try {
       const deviceId = window.localStorage.getItem("pos-device-id");
-      const result = await apiFetch<{ userId: string; businessId: string }>("/api/v1/auth/login", {
+      const result = await apiFetch<{ userId: string; businessId: string; onboardingRequired: boolean }>("/api/v1/auth/login", {
         init: {
           method: "POST",
           body: JSON.stringify({ email, password, ...(deviceId ? { deviceId } : {}) }),
@@ -42,7 +47,7 @@ export default function LoginPage(): JSX.Element {
       });
       persistActiveSyncScope({ userId: result.userId, businessId: result.businessId });
       queryClient.clear();
-      router.push("/");
+      router.push(result.onboardingRequired ? "/onboarding" : "/");
     } catch (err) {
       setError(err instanceof ApiError ? err.code + ": " + err.message : "Login failed");
     }
@@ -114,6 +119,12 @@ export default function LoginPage(): JSX.Element {
           <p className="font-data text-[9px] font-medium uppercase tracking-[0.14em] text-[#e44e34]">Secure business access</p>
           <h2 className="font-display mt-5 text-[30px] font-bold text-[#17130f]">Welcome back</h2>
           <p className="mt-2 text-sm text-[#73685f]">Sign in to open your secure workspace.</p>
+
+          {verifiedNotice ? (
+            <div className="animate-auth-status mt-5 rounded-xl border border-[#cde8da] bg-[#eaf7f0] px-4 py-3 text-[12px] font-medium text-[#1f6f4a]" role="status">
+              Email verified. Sign in to continue setting up your business.
+            </div>
+          ) : null}
 
           <div className="mt-6 flex items-center gap-3 rounded-lg bg-[#fff0ea] p-3">
             <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#f35d3f] font-data text-xs text-white">◆</div>

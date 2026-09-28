@@ -22,7 +22,7 @@ describe("email-verification session gate", () => {
     else process.env["AUTH_REQUIRE_EMAIL_VERIFICATION"] = previousFlag;
   });
 
-  it("blocks the registration session until the email token is redeemed", async () => {
+  it("revokes the provisional registration session when the email token is redeemed", async () => {
     const auth = app.get(AuthService);
     const email = `verify-session-${Date.now()}@example.com`;
     const registration = await auth.register(
@@ -46,8 +46,7 @@ describe("email-verification session gate", () => {
     const after = await request(app.getHttpServer())
       .get("/api/v1/me")
       .set("Cookie", `pos_session=${registration.token}`);
-    expect(after.status).toBe(200);
-    expect(after.body.email).toBe(email);
+    expect(after.status).not.toBe(200);
   });
 
   it("tells the registration UI verification is required without exposing the token", async () => {
@@ -64,6 +63,12 @@ describe("email-verification session gate", () => {
     expect(response.status).toBe(201);
     expect(response.body.verificationRequired).toBe(true);
     expect(response.body).not.toHaveProperty("verificationToken");
+    expect(response.headers["set-cookie"] ?? []).not.toEqual(
+      expect.arrayContaining([expect.stringContaining("pos_session=")]),
+    );
+    expect(response.headers["set-cookie"] ?? []).not.toEqual(
+      expect.arrayContaining([expect.stringContaining("pos_csrf=")]),
+    );
   });
 
   it("resend stays generic for both existing and missing accounts", async () => {

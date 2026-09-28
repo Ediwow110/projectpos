@@ -42,14 +42,15 @@ export default function VerifyEmailPage(): JSX.Element {
       .then(() => {
         window.sessionStorage.removeItem("nexpos-verification-email");
         setVerified(true);
-        setMessage("Email verified. Your NexPOS workspace is ready.");
+        setMessage("Email verified. Redirecting you to secure sign in…");
+        window.setTimeout(() => router.replace("/login?verified=1"), 900);
       })
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? `${err.code}: ${err.message}` : "Verification failed");
         setMessage("");
       })
       .finally(() => setVerifying(false));
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -159,11 +160,11 @@ export default function VerifyEmailPage(): JSX.Element {
             <div className="mt-7 space-y-3">
               <button
                 className="auth-interactive min-h-[52px] w-full rounded-[9px] bg-[#f35d3f] px-5 py-3 font-semibold text-white shadow-[0_8px_20px_-8px_rgb(243_93_63/0.55)] hover:bg-[#d94a30]"
-                onClick={() => router.push("/onboarding")}
+                onClick={() => router.replace("/login?verified=1")}
               >
-                Continue to onboarding
+                Continue to sign in
               </button>
-              <p className="text-center text-[11px] text-[#73685f]">Verification complete. You can safely continue setup.</p>
+              <p className="text-center text-[11px] text-[#73685f]">Verification complete. Sign in again to continue securely.</p>
             </div>
           ) : (
             <form onSubmit={resend} className="mt-7 space-y-4">

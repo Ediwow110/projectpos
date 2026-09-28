@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiFetch } from "../../lib/api";
-import { persistActiveSyncScope } from "../../lib/sync-store";
+import { clearActiveSyncScope, persistActiveSyncScope } from "../../lib/sync-store";
 
 const SETUP_STEPS = [
   ["01", "Create the workspace", "Owner + business identity"],
@@ -41,13 +41,14 @@ export default function RegisterPage(): JSX.Element {
           body: JSON.stringify({ ownerName, email, password, businessName }),
         },
       });
-      persistActiveSyncScope({ userId: result.user.id, businessId: result.business.id });
       queryClient.clear();
       if (result.verificationRequired) {
+        clearActiveSyncScope();
         window.sessionStorage.setItem("nexpos-verification-email", email);
         router.push("/verify-email");
         return;
       }
+      persistActiveSyncScope({ userId: result.user.id, businessId: result.business.id });
       router.push("/onboarding");
     } catch (err) {
       setError(err instanceof ApiError ? `${err.code}: ${err.message}` : "Registration failed");
