@@ -24,4 +24,12 @@ describe("pre-auth privacy presentation", () => {
     expect(reset).toContain('href="/login"');
     expect(reset).toContain("Back to sign in");
   });
+
+  it("redirects an unauthorized dashboard visit to the login page", () => {
+    const dashboard = readFileSync(resolve(process.cwd(), "src/app/page.tsx"), "utf8");
+
+    expect(dashboard).toContain('router.replace("/login")');
+    expect(dashboard).toMatch(/status === 401[\s\S]*status === 403/);
+    expect(dashboard).not.toContain("Sign in required");
+  });
 });

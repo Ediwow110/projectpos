@@ -2,6 +2,7 @@
 
 import type { JSX } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
@@ -91,6 +92,7 @@ function daypart(): string {
 }
 
 export default function DashboardPage(): JSX.Element {
+  const router = useRouter();
   const [preset, setPreset] = useState(30);
   const [compare, setCompare] = useState("previous_period");
   const [metric, setMetric] = useState<"revenue" | "orders">("revenue");
@@ -102,6 +104,7 @@ export default function DashboardPage(): JSX.Element {
     queryFn: () => apiFetch<Me>("/api/v1/me"),
     retry: false,
   });
+  const unauthorized = meQuery.error instanceof ApiError && (meQuery.error.status === 401 || meQuery.error.status === 403);
 
   useEffect(() => {
     if (meQuery.data) {
@@ -112,11 +115,12 @@ export default function DashboardPage(): JSX.Element {
         : new IndexedDbSyncStore(scope));
       return;
     }
-    if (meQuery.error instanceof ApiError && (meQuery.error.status === 401 || meQuery.error.status === 403)) {
+    if (unauthorized) {
       clearActiveSyncScope();
       setSyncStore(null);
+      router.replace("/login");
     }
-  }, [meQuery.data, meQuery.error]);
+  }, [meQuery.data, router, unauthorized]);
   const branchesQuery = useQuery({
     queryKey: ["branches"],
     queryFn: () => apiFetch<{ items: BranchRow[] }>("/api/v1/branches"),
@@ -131,33 +135,29 @@ export default function DashboardPage(): JSX.Element {
     enabled: !meQuery.isError,
   });
 
-  if (meQuery.isLoading) {
+  if (meQuery.isLoading || unauthorized) {
     return (
-      <AppShell>
-        <main className="grid min-h-[70vh] place-items-center p-8">
-          <div className="flex items-center gap-3 text-sm text-[#73685f]">
-            <span className="h-8 w-8 animate-spin rounded-full border-2 border-[#f35d3f] border-t-transparent" aria-hidden />
-            Loading your business…
-          </div>
-        </main>
-      </AppShell>
+      <main className="grid min-h-screen place-items-center bg-[#fcf8f3] p-8">
+        <div className="flex items-center gap-3 text-sm text-[#73685f]">
+          <span className="h-8 w-8 animate-spin rounded-full border-2 border-[#f35d3f] border-t-transparent" aria-hidden />
+          {unauthorized ? "Redirecting to sign in…" : "Loading your business…"}
+        </div>
+      </main>
     );
   }
 
   if (meQuery.isError) {
     return (
-      <AppShell>
-        <main className="mx-auto grid min-h-[70vh] max-w-md place-items-center p-8">
-          <Card className="w-full p-8 text-center">
-            <div className="font-display mx-auto grid h-12 w-12 place-items-center rounded-xl bg-[#f35d3f] text-xl font-bold text-white">N</div>
-            <h1 className="font-display mt-4 text-xl font-bold">Sign in required</h1>
-            <p className="mt-1 text-sm text-[#73685f]">Your session ended. Sign back in to continue.</p>
-            <Link href="/login" className="mt-5 inline-flex w-full items-center justify-center rounded-[10px] bg-[#f35d3f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#d94a30]">
-              Go to sign in
-            </Link>
-          </Card>
-        </main>
-      </AppShell>
+      <main className="grid min-h-screen place-items-center bg-[#fcf8f3] p-8">
+        <Card className="w-full max-w-md p-8 text-center">
+          <div className="font-display mx-auto grid h-12 w-12 place-items-center rounded-xl bg-[#f35d3f] text-xl font-bold text-white">N</div>
+          <h1 className="font-display mt-4 text-xl font-bold">Could not load your workspace</h1>
+          <p className="mt-1 text-sm text-[#73685f]">Check your connection and try again.</p>
+          <button type="button" onClick={() => void meQuery.refetch()} className="mt-5 inline-flex w-full items-center justify-center rounded-[10px] bg-[#f35d3f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#d94a30]">
+            Try again
+          </button>
+        </Card>
+      </main>
     );
   }
 
