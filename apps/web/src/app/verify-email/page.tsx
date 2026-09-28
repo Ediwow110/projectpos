@@ -121,7 +121,7 @@ export default function VerifyEmailPage(): JSX.Element {
             {[
               ["01", "Check your inbox", "Open the latest NexPOS verification email"],
               ["02", "Verify securely", "The verification link is single-use and time-limited"],
-              ["03", "Continue setup", "Return to onboarding after confirmation"],
+              ["03", "Continue setup", "Sign in to continue setup"],
             ].map(([step, title, detail]) => (
               <div key={step} className="grid grid-cols-[38px_minmax(0,1fr)] items-center gap-3 border-b border-[#302b27] px-5 py-4 last:border-b-0">
                 <span className="font-data grid h-8 w-8 place-items-center rounded-[8px] bg-[#4a2118] text-[9px] font-semibold text-[#ff8061]">{step}</span>
@@ -167,7 +167,7 @@ export default function VerifyEmailPage(): JSX.Element {
               <p className="text-center text-[11px] text-[#73685f]">Verification complete. Sign in again to continue securely.</p>
             </div>
           ) : (
-            <form onSubmit={resend} className="mt-7 space-y-4">
+            <form onSubmit={resend} noValidate className="mt-7 space-y-4">
               <label className="block text-[12px] font-semibold text-[#655b53]">
                 Email
                 <input

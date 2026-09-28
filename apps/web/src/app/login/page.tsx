@@ -29,6 +29,7 @@ export default function LoginPage(): JSX.Element {
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [verifiedNotice, setVerifiedNotice] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     setVerifiedNotice(new URLSearchParams(window.location.search).get("verified") === "1");
@@ -36,7 +37,9 @@ export default function LoginPage(): JSX.Element {
 
   async function submit(event: React.FormEvent): Promise<void> {
     event.preventDefault();
+    if (submitting) return;
     setError("");
+    setSubmitting(true);
     try {
       const deviceId = window.localStorage.getItem("pos-device-id");
       const result = await apiFetch<{ userId: string; businessId: string; onboardingRequired: boolean }>("/api/v1/auth/login", {
@@ -50,6 +53,8 @@ export default function LoginPage(): JSX.Element {
       router.push(result.onboardingRequired ? "/onboarding" : "/");
     } catch (err) {
       setError(err instanceof ApiError ? err.code + ": " + err.message : "Login failed");
+      setPassword("");
+      setSubmitting(false);
     }
   }
 
@@ -134,7 +139,7 @@ export default function LoginPage(): JSX.Element {
             </div>
           </div>
 
-          <form onSubmit={submit} className="mt-6 space-y-4">
+          <form onSubmit={submit} noValidate className="mt-6 space-y-4">
             <label className="block text-[12px] font-semibold text-[#655b53]">
               Email
               <input
@@ -183,9 +188,11 @@ export default function LoginPage(): JSX.Element {
 
             <button
               type="submit"
-              className="auth-interactive min-h-[52px] w-full rounded-[9px] bg-[#f35d3f] px-4 text-[13px] font-semibold text-white shadow-[0_8px_20px_-8px_rgb(243_93_63/0.55)] hover:bg-[#d94a30]"
+              disabled={submitting}
+              aria-busy={submitting}
+              className="auth-interactive min-h-[52px] w-full rounded-[9px] bg-[#f35d3f] px-4 text-[13px] font-semibold text-white shadow-[0_8px_20px_-8px_rgb(243_93_63/0.55)] hover:bg-[#d94a30] disabled:cursor-not-allowed disabled:opacity-65"
             >
-              Sign in securely
+              {submitting ? "Signing in…" : "Sign in securely"}
             </button>
             <div className="flex items-center gap-3 py-1" aria-hidden>
               <span className="h-px flex-1 bg-[#eee4db]" />

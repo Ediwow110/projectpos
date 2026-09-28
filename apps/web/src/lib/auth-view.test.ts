@@ -74,10 +74,45 @@ describe("pre-auth privacy presentation", () => {
 
     expect(verify).toContain('router.replace("/login?verified=1")');
     expect(verify).not.toContain("Continue to onboarding");
+    expect(verify).toContain("Sign in to continue setup");
+    expect(verify).not.toContain("Return to onboarding after confirmation");
     expect(login).toContain("onboardingRequired");
     expect(login).toContain('router.push(result.onboardingRequired ? "/onboarding" : "/")');
     expect(login).toContain("Email verified");
     expect(register).toContain("clearActiveSyncScope");
+  });
+
+  it("prevents duplicate login submissions and keeps the submit geometry stable", () => {
+    const login = readFileSync(resolve(process.cwd(), "src/app/login/page.tsx"), "utf8");
+
+    expect(login).toContain("const [submitting, setSubmitting] = useState(false)");
+    expect(login).toContain("if (submitting) return");
+    expect(login).toContain("disabled={submitting}");
+    expect(login).toContain('aria-busy={submitting}');
+    expect(login).toContain('submitting ? "Signing in…" : "Sign in securely"');
+  });
+
+  it("keeps password recovery on the canonical auth layout with explicit busy states", () => {
+    const reset = readFileSync(resolve(process.cwd(), "src/app/password-reset/page.tsx"), "utf8");
+
+    expect(reset).toContain("lg:grid-cols-[1.08fr_.92fr]");
+    expect(reset).toContain("animate-auth-copy");
+    expect(reset).toContain("animate-auth-card");
+    expect(reset).toContain("const [requesting, setRequesting] = useState(false)");
+    expect(reset).toContain("const [confirming, setConfirming] = useState(false)");
+    expect(reset).toContain("Sending reset link…");
+    expect(reset).toContain("Updating password…");
+  });
+
+  it("uses app-owned validation feedback across the touched auth forms", () => {
+    const login = readFileSync(resolve(process.cwd(), "src/app/login/page.tsx"), "utf8");
+    const verify = readFileSync(resolve(process.cwd(), "src/app/verify-email/page.tsx"), "utf8");
+    const reset = readFileSync(resolve(process.cwd(), "src/app/password-reset/page.tsx"), "utf8");
+
+    expect(login).toContain("<form onSubmit={submit} noValidate");
+    expect(verify).toContain("<form onSubmit={resend} noValidate");
+    expect(reset).toContain("<form onSubmit={requestReset} noValidate");
+    expect(reset).toContain("<form onSubmit={confirmReset} noValidate");
   });
 
   it("sends a CSRF token with onboarding mutations", () => {

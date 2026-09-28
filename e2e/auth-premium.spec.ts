@@ -13,7 +13,7 @@ test("password recovery is discoverable from login", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Back to sign in" })).toBeVisible();
 });
 
-test("privacy-first login signs into the real business without exposing metrics before auth", async ({ page, request }, testInfo) => {
+test("privacy-first login routes a new business into onboarding without exposing metrics before auth", async ({ page, request }, testInfo) => {
   const stamp = Date.now();
   const email = `e2e-login-${testInfo.project.name}-${stamp}@example.com`;
   const password = "correct-horse-12";
@@ -39,11 +39,24 @@ test("privacy-first login signs into the real business without exposing metrics 
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Sign in securely" }).click();
 
-  await expect(page).toHaveURL("/", { timeout: 30_000 });
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
-  if ((page.viewportSize()?.width ?? 1440) >= 1280) {
-    await expect(page.getByRole("banner").getByText(businessName)).toBeVisible();
-  } else {
-    await expect(page.getByRole("navigation", { name: "Primary navigation" }).getByRole("link", { name: "Dashboard" })).toBeVisible();
-  }
+  await expect(page).toHaveURL("/onboarding", { timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Set up your business" })).toBeVisible();
+});
+
+test("successful email verification returns to a fresh sign-in state", async ({ page }) => {
+  await page.route("**/api/v1/auth/verify-email/challenge", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ enabled: false }) });
+  });
+  await page.route("**/api/v1/auth/verify-email", async (route) => {
+    if (route.request().method() === "POST") {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ verified: true }) });
+      return;
+    }
+    await route.continue();
+  });
+
+  await page.goto("/verify-email?token=test-verification-token");
+  await expect(page.getByText("Email verified. Redirecting you to secure sign in…")).toBeVisible();
+  await expect(page).toHaveURL("/login?verified=1", { timeout: 10_000 });
+  await expect(page.getByRole("status")).toContainText("Email verified");
 });
