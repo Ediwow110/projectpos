@@ -75,10 +75,11 @@ services:
           type: web
           name: nexpos-api
           envVarKey: WEB_URL
-      # hostport is the API's stable private-network address. next.config.js
-      # normalizes the bare host:port to http:// for the server-side rewrite.
+      # Free Render web services cannot receive private-network traffic, so
+      # proxy through the API's public Render URL. The browser still talks to
+      # /api/* on the web origin, keeping session/CSRF cookies first-party.
       - key: API_PROXY_TARGET
         fromService:
           type: web
           name: nexpos-api
-          property: hostport
+          envVarKey: RENDER_EXTERNAL_URL

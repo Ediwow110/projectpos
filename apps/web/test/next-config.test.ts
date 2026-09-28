@@ -104,7 +104,7 @@ describe("Next.js web runtime configuration", () => {
     expect(blueprint).not.toContain("web.render.Dockerfile");
     expect(apiService).toContain("healthCheckPath: /readyz");
     expect(blueprint).toMatch(/key: NEXT_PUBLIC_API_BASE[\s\S]*?fromService:[\s\S]*?envVarKey: WEB_URL/);
-    expect(blueprint).toMatch(/key: API_PROXY_TARGET[\s\S]*?fromService:[\s\S]*?property: hostport/);
+    expect(blueprint).toMatch(/key: API_PROXY_TARGET[\s\S]*?fromService:[\s\S]*?envVarKey: RENDER_EXTERNAL_URL/);
     expect(apiService).toContain("key: PAYMONGO_SECRET_KEY");
     expect(apiService).toContain("key: PAYMONGO_WEBHOOK_SECRET");
     expect(dockerfile).toContain("ARG API_PROXY_TARGET");
