@@ -20,31 +20,44 @@ const MIGRATIONS_DIR = join(__dirname, "../../../../packages/database/prisma/mig
 
 let bootstrapped: Promise<Client> | null = null;
 
-async function bootstrapDatabase(): Promise<Client> {
+export async function ensurePgTestDatabase(): Promise<void> {
   const admin = new Client({ connectionString: ADMIN_URL });
   await admin.connect();
-  const exists = await admin.query("SELECT 1 FROM pg_database WHERE datname = $1", [TEST_DB]);
-  if (exists.rowCount === 0) {
-    await admin.query(`CREATE DATABASE ${TEST_DB} OWNER pos`);
+  try {
+    const exists = await admin.query("SELECT 1 FROM pg_database WHERE datname = $1", [TEST_DB]);
+    if (exists.rowCount === 0) {
+      await admin.query(`CREATE DATABASE ${TEST_DB} OWNER pos`);
+    }
+  } finally {
+    await admin.end();
   }
-  await admin.end();
 
   const client = new Client({ connectionString: TEST_URL });
   await client.connect();
-  await client.query('CREATE TABLE IF NOT EXISTS "_migrations" ("name" TEXT PRIMARY KEY)');
-  const applied = new Set(
-    (await client.query('SELECT "name" FROM "_migrations"')).rows.map((r) => r.name as string),
-  );
-  const dirs = readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
-    .filter((d) => d.isDirectory())
-    .map((d) => d.name)
-    .sort();
-  for (const dir of dirs) {
-    if (applied.has(dir)) continue;
-    const sql = readFileSync(join(MIGRATIONS_DIR, dir, "migration.sql"), "utf8");
-    await client.query(sql);
-    await client.query('INSERT INTO "_migrations" ("name") VALUES ($1)', [dir]);
+  try {
+    await client.query('CREATE TABLE IF NOT EXISTS "_migrations" ("name" TEXT PRIMARY KEY)');
+    const applied = new Set(
+      (await client.query('SELECT "name" FROM "_migrations"')).rows.map((r) => r.name as string),
+    );
+    const dirs = readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name)
+      .sort();
+    for (const dir of dirs) {
+      if (applied.has(dir)) continue;
+      const sql = readFileSync(join(MIGRATIONS_DIR, dir, "migration.sql"), "utf8");
+      await client.query(sql);
+      await client.query('INSERT INTO "_migrations" ("name") VALUES ($1)', [dir]);
+    }
+  } finally {
+    await client.end();
   }
+}
+
+async function bootstrapDatabase(): Promise<Client> {
+  await ensurePgTestDatabase();
+  const client = new Client({ connectionString: TEST_URL });
+  await client.connect();
   return client;
 }
 

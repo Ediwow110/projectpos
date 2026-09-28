@@ -24,7 +24,9 @@ const checks = [
   existsSync("apps/api/test/apitoken.contract.test.ts"),
   existsSync("apps/web/src/lib/billing.ts"),
   existsSync("apps/web/test/billing.test.ts"),
-  existsSync("apps/web/src/app/billing/page.tsx"),
+  // Billing is intentionally disabled in the product UI. Keep checking the
+  // shared billing error surface instead of the removed /billing page.
+  existsSync("apps/web/src/lib/billing-ui.tsx"),
   existsSync("apps/web/src/app/platform/page.tsx"),
   existsSync("apps/web/src/app/display/page.tsx"),
   existsSync("e2e/offline.spec.ts"),

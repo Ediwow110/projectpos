@@ -61,8 +61,12 @@ try {
     .sort();
   const phase10 = dirs.find((d) => d.startsWith("0011_"));
   if (!phase10) throw new Error("0011 migration directory missing");
+  const phase10Index = dirs.indexOf(phase10);
 
-  for (const dir of dirs.filter((d) => d !== phase10)) {
+  // This gate intentionally proves the historical 0001 -> 0011 upgrade.
+  // Later migrations may depend on tables introduced by 0011, so applying
+  // them before the Phase 10 migration would test an impossible ordering.
+  for (const dir of dirs.slice(0, phase10Index)) {
     psqlStrict(readFileSync(join(MIGRATIONS_DIR, dir, "migration.sql"), "utf8"));
   }
 
