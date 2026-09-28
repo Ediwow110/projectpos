@@ -54,8 +54,10 @@ export class SalesPaymentProviderService {
       if (items.length === 0) throw new Error("VALIDATION");
       await this.ops.assertStockAvailable(businessId, items, sale.branchId ?? null);
 
+      const fingerprint = fingerprintPayload({ saleId, method });
       const existingKey = await this.db.findIdempotency(businessId, key, "paymongo.checkout");
       if (existingKey) {
+        if (existingKey.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
         const payment = await this.db.findPaymentById(existingKey.resultId, businessId);
         if (!payment || !payment.providerRef) throw new Error("PAYMENT_PROVIDER_INVALID_RESPONSE");
         const snapshot = await this.paymongo.retrieveCheckout(payment.providerRef);
@@ -99,6 +101,11 @@ export class SalesPaymentProviderService {
               status: transitionSale(sale.status, "PAYMENT_FAILED"),
             })) ?? sale;
           }
+        } else {
+          // A pending provider attempt with an unknown/non-resumable state is
+          // financially uncertain. Do not create a second checkout until the
+          // existing attempt is definitively active, expired, or paid.
+          throw new Error("PAYMENT_PROVIDER_UNAVAILABLE");
         }
       }
 
@@ -132,7 +139,7 @@ export class SalesPaymentProviderService {
         businessId,
         key,
         commandType: "paymongo.checkout",
-        fingerprint: fingerprintPayload({ saleId, method }),
+        fingerprint,
         resultId: payment.id,
       });
       await this.db.appendAudit({

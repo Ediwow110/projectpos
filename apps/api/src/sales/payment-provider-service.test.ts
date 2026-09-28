@@ -128,6 +128,63 @@ describe("sales payment provider service", () => {
     expect((await db.listPaymentsBySale(sale.id, "b1"))).toHaveLength(1);
   });
 
+  it("rejects an idempotency key reused with different checkout parameters", async () => {
+    const { sale, service } = await setup();
+
+    await service.startPayMongoCheckout(
+      "b1",
+      "u1",
+      "req-1",
+      sale.id,
+      "qrph",
+      "checkout-key-conflict",
+      "https://nexpos.example",
+    );
+
+    await expect(
+      service.startPayMongoCheckout(
+        "b1",
+        "u1",
+        "req-2",
+        sale.id,
+        "card",
+        "checkout-key-conflict",
+        "https://nexpos.example",
+      ),
+    ).rejects.toThrow("IDEMPOTENCY_MISMATCH");
+  });
+
+  it("does not create a second checkout while an existing PayMongo session is uncertain", async () => {
+    const { db, sale, paymongo, service } = await setup();
+
+    await service.startPayMongoCheckout(
+      "b1",
+      "u1",
+      "req-1",
+      sale.id,
+      "gcash",
+      "checkout-key-uncertain-1",
+      "https://nexpos.example",
+    );
+    paymongo.status = "unknown";
+
+    await expect(
+      service.startPayMongoCheckout(
+        "b1",
+        "u1",
+        "req-2",
+        sale.id,
+        "gcash",
+        "checkout-key-uncertain-2",
+        "https://nexpos.example",
+      ),
+    ).rejects.toThrow("PAYMENT_PROVIDER_UNAVAILABLE");
+
+    const payments = await db.listPaymentsBySale(sale.id, "b1");
+    expect(payments).toHaveLength(1);
+    expect(payments[0]).toMatchObject({ method: "gcash", status: "PENDING" });
+  });
+
   it("maps PayMongo provider snapshots to reconciliation verdicts", async () => {
     const { sale, paymongo, service } = await setup();
     const checkout = await service.startPayMongoCheckout(

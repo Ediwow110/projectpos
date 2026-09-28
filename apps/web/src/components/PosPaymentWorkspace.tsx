@@ -52,6 +52,9 @@ export function PosPaymentWorkspace({
   onPay,
 }: PosPaymentWorkspaceProps) {
   const availableTiles = paymentTiles.filter((method) => !offline || method.key === "cash");
+  const cashTender = effectiveMethod === "cash";
+  const payMongoTender = ["card", "gcash", "maya", "qrph"].includes(effectiveMethod);
+  const selectedMethodLabel = paymentTiles.find((method) => method.key === effectiveMethod)?.label ?? effectiveMethod;
   const title = (key: string) =>
     !methodAvailable(key) && ["card", "gcash", "maya", "qrph"].includes(key)
       ? "Configure PayMongo to enable this method"
@@ -85,26 +88,33 @@ export function PosPaymentWorkspace({
             ))}
           </div>
           {offline ? <p className="px-5 pt-2 text-[11.5px] text-amber-300">Offline sales accept cash only.</p> : null}
-          <div className="grid grid-cols-2 gap-2 px-5 pt-3">
-            <label className="block text-[11px] font-semibold uppercase tracking-wider text-white/40">
-              Amount Received
-              <input
-                value={received}
-                onChange={(event) => onReceivedChange(event.target.value)}
-                placeholder={money(due)}
-                inputMode="decimal"
-                className="field-dark money mt-1.5"
-              />
-            </label>
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-white/40">
-              Change
-              <p className="money mt-1.5 rounded-[10px] border border-green-500/30 bg-green-500/10 px-3 py-[9px] text-[15px] font-bold text-green-300">₱{money(changeMinor)}</p>
+          {cashTender ? (
+            <div className="grid grid-cols-2 gap-2 px-5 pt-3">
+              <label className="block text-[11px] font-semibold uppercase tracking-wider text-white/40">
+                Amount Received
+                <input
+                  value={received}
+                  onChange={(event) => onReceivedChange(event.target.value)}
+                  placeholder={money(due)}
+                  inputMode="decimal"
+                  className="field-dark money mt-1.5"
+                />
+              </label>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-white/40">
+                Change
+                <p className="money mt-1.5 rounded-[10px] border border-green-500/30 bg-green-500/10 px-3 py-[9px] text-[15px] font-bold text-green-300">₱{money(changeMinor)}</p>
+              </div>
             </div>
-          </div>
+          ) : payMongoTender ? (
+            <div className="mx-5 mt-3 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3">
+              <p className="text-[12px] font-semibold text-white">Continue in PayMongo secure checkout</p>
+              <p className="mt-1 text-[11px] leading-4 text-white/45">{selectedMethodLabel} payment is completed on PayMongo. NexPOS waits for the signed payment confirmation before finalizing the sale.</p>
+            </div>
+          ) : null}
           <div className="grid grid-cols-2 gap-2 p-5">
             <button onClick={onClose} className="rounded-xl border border-white/15 py-2.5 text-sm font-semibold text-white/70 hover:text-white">Cancel</button>
             <button onClick={onPay} disabled={paying || !canPay} className="rounded-xl bg-[#f35d3f] py-2.5 text-sm font-bold shadow-[0_8px_20px_-8px_rgb(243_93_63/0.55)] hover:bg-[#d94a30] disabled:opacity-50">
-              {paying ? "Processing…" : "Complete Payment"}
+              {paying ? "Processing…" : payMongoTender ? "Continue to PayMongo" : "Complete Payment"}
             </button>
           </div>
         </div>
@@ -146,21 +156,30 @@ export function PosPaymentWorkspace({
 
           {offline ? <p className="mt-3 text-[11px] font-medium text-amber-300">Offline sales accept cash only.</p> : null}
 
-          <label className="mt-[46px] block w-[556px] text-[10px] font-semibold text-[#b7ada5]">
-            Cash received
-            <input
-              value={received}
-              onChange={(event) => onReceivedChange(event.target.value)}
-              placeholder={money(due)}
-              inputMode="decimal"
-              className="field-dark money mt-[11px] !h-[66px] !rounded-[10px] !px-4 !text-[25px] !font-semibold"
-            />
-          </label>
+          {cashTender ? (
+            <>
+              <label className="mt-[46px] block w-[556px] text-[10px] font-semibold text-[#b7ada5]">
+                Cash received
+                <input
+                  value={received}
+                  onChange={(event) => onReceivedChange(event.target.value)}
+                  placeholder={money(due)}
+                  inputMode="decimal"
+                  className="field-dark money mt-[11px] !h-[66px] !rounded-[10px] !px-4 !text-[25px] !font-semibold"
+                />
+              </label>
 
-          <div className="mt-6 h-[92px] w-[556px] rounded-xl bg-[#fff0ea] px-4 py-4 text-[#17130f]">
-            <p className="font-data text-[9px] font-medium uppercase text-[#e44e34]">Change</p>
-            <p className="money mt-2 text-[28px] font-bold">₱{money(changeMinor)}</p>
-          </div>
+              <div className="mt-6 h-[92px] w-[556px] rounded-xl bg-[#fff0ea] px-4 py-4 text-[#17130f]">
+                <p className="font-data text-[9px] font-medium uppercase text-[#e44e34]">Change</p>
+                <p className="money mt-2 text-[28px] font-bold">₱{money(changeMinor)}</p>
+              </div>
+            </>
+          ) : payMongoTender ? (
+            <div className="mt-[46px] w-[556px] rounded-xl border border-[#3b3732] bg-[#252422] px-5 py-5">
+              <p className="text-[12px] font-semibold text-white">Continue in PayMongo secure checkout</p>
+              <p className="mt-2 max-w-[500px] text-[10px] leading-5 text-[#a79e94]">{selectedMethodLabel} payment is completed on PayMongo. NexPOS will finalize the sale only after a signed payment confirmation is received.</p>
+            </div>
+          ) : null}
 
           <button
             type="button"
@@ -168,7 +187,7 @@ export function PosPaymentWorkspace({
             disabled={paying || !canPay}
             className="mt-[30px] h-16 w-[556px] rounded-xl bg-[#f35d3f] font-display text-[13px] font-semibold text-white shadow-[0_8px_20px_-8px_rgb(243_93_63/0.55)] hover:bg-[#d94a30] disabled:opacity-50"
           >
-            {paying ? "Processing…" : "Complete payment   ENTER"}
+            {paying ? "Processing…" : payMongoTender ? "Continue to PayMongo   ENTER" : "Complete payment   ENTER"}
           </button>
         </div>
 

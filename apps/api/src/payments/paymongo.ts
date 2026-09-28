@@ -174,7 +174,14 @@ export class PayMongoHttpClient implements PayMongoPort {
     const expected = createHmac("sha256", this.config.webhookSecret)
       .update(`${timestamp}.${rawBody}`)
       .digest("hex");
-    return [parts["te"], parts["li"]].some((candidate) => typeof candidate === "string" && safeHexEqual(expected, candidate));
+    const signatureField = this.config.secretKey.startsWith("sk_live_")
+      ? "li"
+      : this.config.secretKey.startsWith("sk_test_")
+        ? "te"
+        : null;
+    if (!signatureField) return false;
+    const candidate = parts[signatureField];
+    return typeof candidate === "string" && safeHexEqual(expected, candidate);
   }
 }
 

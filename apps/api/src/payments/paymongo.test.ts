@@ -106,4 +106,22 @@ describe("PayMongo adapter", () => {
     expect(client().verifyWebhook(raw, `t=${timestamp},te=${signature},li=`)).toBe(true);
     expect(client().verifyWebhook(raw, `t=${timestamp},te=deadbeef,li=`)).toBe(false);
   });
+
+  it("accepts only the signature slot matching the configured test or live API key", () => {
+    const raw = '{"data":{"id":"evt_mode"}}';
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = createHmac("sha256", "whsec_test").update(`${timestamp}.${raw}`).digest("hex");
+    const testClient = client();
+    const liveClient = new PayMongoHttpClient({
+      secretKey: "sk_live_secret",
+      webhookSecret: "whsec_test",
+      apiBase: "https://api.paymongo.test",
+      webhookToleranceSeconds: 300,
+    });
+
+    expect(testClient.verifyWebhook(raw, `t=${timestamp},te=${signature},li=`)).toBe(true);
+    expect(testClient.verifyWebhook(raw, `t=${timestamp},te=,li=${signature}`)).toBe(false);
+    expect(liveClient.verifyWebhook(raw, `t=${timestamp},te=,li=${signature}`)).toBe(true);
+    expect(liveClient.verifyWebhook(raw, `t=${timestamp},te=${signature},li=`)).toBe(false);
+  });
 });
