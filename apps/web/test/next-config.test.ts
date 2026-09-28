@@ -18,6 +18,13 @@ afterEach(() => {
 });
 
 describe("Next.js web runtime configuration", () => {
+  it("keeps production builds independent from remote Google font fetches", () => {
+    const root = resolve(process.cwd(), "../..");
+    const layout = readFileSync(resolve(root, "apps/web/src/app/layout.tsx"), "utf8");
+
+    expect(layout).not.toContain("next/font/google");
+  });
+
   it("proxies /api requests through the web origin when a backend target is configured", async () => {
     process.env["API_PROXY_TARGET"] = "https://nexpos-api.onrender.com";
     const { default: nextConfig } = await import("../next.config.js");
