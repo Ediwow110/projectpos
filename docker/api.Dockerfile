@@ -35,6 +35,6 @@ ENV NODE_ENV=production
 EXPOSE 3001
 USER node
 WORKDIR /app/apps/api
-# node is PID 1 so SIGTERM reaches the process that owns the shutdown hooks
-# (nest closes the pool); a pnpm wrapper would swallow the signal.
-CMD ["node", "--import", "tsx", "src/main.ts"]
+# Apply pending migrations before boot. The final `exec` replaces the shell
+# with Node so SIGTERM reaches the process that owns Nest's shutdown hooks.
+CMD ["/bin/sh", "-c", "cd /app && node scripts/apply-migrations.mjs && cd apps/api && exec node --import tsx src/main.ts"]

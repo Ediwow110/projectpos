@@ -34,7 +34,6 @@ services:
     plan: free
     healthCheckPath: /readyz
     autoDeploy: true
-    dockerCommand: sh -c "cd /app && node scripts/apply-migrations.mjs && cd apps/api && exec node --import tsx src/main.ts"
     envVars:
       - key: NODE_ENV
         value: production
