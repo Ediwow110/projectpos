@@ -36,6 +36,34 @@ beforeAll(async () => {
 afterAll(async () => { await app.close(); });
 
 describe("phase4 sales HTTP contract", () => {
+  it("preserves the cashier's add-to-cart order through draft and receipt retrieval", async () => {
+    const created: Array<{ id: string; name: string }> = [];
+    for (const name of ["Zebra Water", "Apple Juice", "Mango Soda"]) {
+      const product = await request(app.getHttpServer()).post("/api/v1/products")
+        .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+        .send({ name, priceMinor: 1000, costMinor: 400 });
+      expect(product.status).toBe(201);
+      created.push({ id: product.body.id as string, name });
+      const stock = await request(app.getHttpServer()).post("/api/v1/inventory/movements")
+        .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+        .send({ productId: product.body.id, type: "opening_stock", qtyDelta: 10 });
+      expect(stock.status).toBe(201);
+    }
+
+    const draft = await request(app.getHttpServer()).post("/api/v1/sales/drafts")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ lines: created.map((product) => ({ productId: product.id, qty: 1 })) });
+    expect(draft.status).toBe(201);
+
+    const receipt = await request(app.getHttpServer()).get(`/api/v1/receipts/${draft.body.id}`)
+      .set("Cookie", cookie);
+    expect(receipt.status).toBe(200);
+    expect(receipt.body.items.map((item: { name: string }) => item.name)).toEqual(
+      created.map((product) => product.name),
+    );
+    expect(receipt.body.items.map((item: { position: number }) => item.position)).toEqual([0, 1, 2]);
+  });
+
   it("drafts and completes a cash sale end-to-end with receipt", async () => {
     const draft = await request(app.getHttpServer()).post("/api/v1/sales/drafts")
       .set("Cookie", cookie).set("X-CSRF-Token", csrf)

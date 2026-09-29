@@ -262,6 +262,7 @@ export interface DbSaleItem {
   id: string;
   businessId: string;
   saleId: string;
+  position: number;
   productId: string;
   name: string;
   unit: string;
@@ -502,7 +503,9 @@ export interface DbPort {
   listSalesByBusiness(businessId: string): Promise<DbSale[]>;
   listSalesPage(businessId: string, afterId: string | null, limit: number): Promise<DbSale[]>;
   updateSale(id: string, businessId: string, patch: Partial<Omit<DbSale, "id" | "businessId">>): Promise<DbSale | null>;
-  createSaleItem(i: Omit<DbSaleItem, "id">): Promise<DbSaleItem>;
+  createSaleItem(
+    i: Omit<DbSaleItem, "id" | "position"> & { position?: number },
+  ): Promise<DbSaleItem>;
   listSaleItems(saleId: string, businessId: string): Promise<DbSaleItem[]>;
   // Phase 12 bulk read: reporting groups these by saleId in one round-trip
   // instead of two queries per sale (PLAN §12 forbids N+1 patterns).

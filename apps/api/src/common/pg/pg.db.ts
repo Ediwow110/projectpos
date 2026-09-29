@@ -427,7 +427,9 @@ export class PgDbPort implements DbPort {
   updateSale(id: string, businessId: string, patch: Partial<Omit<DbSale, "id" | "businessId">>): Promise<DbSale | null> {
     return this.sales.updateSale(id, businessId, patch);
   }
-  createSaleItem(i: Omit<DbSaleItem, "id">): Promise<DbSaleItem> {
+  createSaleItem(
+    i: Omit<DbSaleItem, "id" | "position"> & { position?: number },
+  ): Promise<DbSaleItem> {
     return this.sales.createSaleItem(i);
   }
   listSaleItems(saleId: string, businessId: string): Promise<DbSaleItem[]> {

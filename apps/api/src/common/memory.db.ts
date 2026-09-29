@@ -350,14 +350,19 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       return next;
     },
     async createSaleItem(i) {
-      const row = { ...i, id: nid("sitem") };
+      const nextPosition =
+        i.position ??
+        [...saleItems.values()].filter(
+          (item) => item.saleId === i.saleId && item.businessId === i.businessId,
+        ).length;
+      const row = { ...i, position: nextPosition, id: nid("sitem") };
       saleItems.set(row.id, row);
       return row;
     },
     async listSaleItems(saleId, businessId) {
-      return [...saleItems.values()].filter(
-        (i) => i.saleId === saleId && i.businessId === businessId,
-      );
+      return [...saleItems.values()]
+        .filter((i) => i.saleId === saleId && i.businessId === businessId)
+        .sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
     },
     async listSaleItemsByBusiness(businessId) {
       return [...saleItems.values()].filter((i) => i.businessId === businessId);

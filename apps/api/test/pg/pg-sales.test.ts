@@ -201,6 +201,46 @@ describe("phase12 pg sales: sales", () => {
 });
 
 describe("phase12 pg sales: sale items", () => {
+  it("lists sale items by explicit cashier position instead of generated id order", async () => {
+    const b = await seedBusiness();
+    const p = await seedProduct(b.id, "Ordering product");
+    const sale = await sales.createSale(fullSale(b.id, uniq("rcpt")));
+
+    const later = await sales.createSaleItem({
+      businessId: b.id,
+      saleId: sale.id,
+      position: 1,
+      productId: p.id,
+      name: "Apple Juice",
+      unit: "pcs",
+      qty: 1,
+      priceMinor: 1000,
+      costMinor: 500,
+      taxRateBps: null,
+      lineDiscountMinor: 0,
+      lineTotalMinor: 1000,
+    });
+    const earlier = await sales.createSaleItem({
+      businessId: b.id,
+      saleId: sale.id,
+      position: 0,
+      productId: p.id,
+      name: "Zebra Water",
+      unit: "pcs",
+      qty: 1,
+      priceMinor: 1000,
+      costMinor: 500,
+      taxRateBps: null,
+      lineDiscountMinor: 0,
+      lineTotalMinor: 1000,
+    });
+
+    expect((await sales.listSaleItems(sale.id, b.id)).map((item) => item.id)).toEqual([
+      earlier.id,
+      later.id,
+    ]);
+  });
+
   it("creates sale items and lists them for their sale only", async () => {
     const b = await seedBusiness();
     const p = await seedProduct(b.id, "Cola");

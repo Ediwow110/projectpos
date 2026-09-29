@@ -299,6 +299,7 @@ model SaleItem {
   id                String @id @default(cuid())
   businessId        String
   saleId            String
+  position          Int    @default(0)
   productId         String
   name              String
   unit              String @default("pc")
@@ -310,6 +311,7 @@ model SaleItem {
   lineTotalMinor    Int
   sale              Sale   @relation(fields: [saleId], references: [id])
   @@index([businessId, saleId])
+  @@index([businessId, saleId, position])
 }
 
 model Payment {

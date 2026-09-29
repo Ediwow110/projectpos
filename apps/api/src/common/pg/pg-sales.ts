@@ -8,10 +8,8 @@ import type { PgContext } from "./context";
 //   it explicitly; it is never exposed (memory rows carry no timestamps).
 // - createSale keeps the caller-provided createdAt/completedAt exactly like the
 //   memory store does; completedAt defaults to null on a draft.
-// - listSaleItems uses "id" ASC as the insertion-order proxy: SaleItem has no
-//   createdAt column and nid() ids increase with insertion (same proxy the
-//   inventory family uses for balances). Timestamped tables order by
-//   "createdAt" ASC, "id" ASC like every other family.
+// - SaleItem.position is the durable cashier/cart line order. Generated ids
+//   are identifiers only and must never be used as an ordering proxy.
 // - claimIdempotency mirrors the memory store byte-for-byte: the first claim
 //   for (businessId, key, commandType) stores the row, any later claim throws
 //   "IDEMPOTENCY_REPLAY". The arbiter is the unique index
@@ -23,7 +21,7 @@ const SALE_SELECT =
   '"paidMinor", "changeMinor", "currency", "customerId", "customerName", "notes", "actorId", "requestId", ' +
   '"idempotencyKey", "registerId", "branchId", "completedAt", "createdAt"';
 const ITEM_SELECT =
-  '"id", "businessId", "saleId", "productId", "name", "unit", "qty", "priceMinor", "costMinor", ' +
+  '"id", "businessId", "saleId", "position", "productId", "name", "unit", "qty", "priceMinor", "costMinor", ' +
   '"taxRateBps", "lineDiscountMinor", "lineTotalMinor"';
 const PAYMENT_SELECT = '"id", "businessId", "saleId", "method", "amountMinor", "status", "providerRef", "idempotencyKey"';
 const HELD_SELECT = '"id", "businessId", "actorId", "payload", "resumedAt"';
@@ -132,17 +130,27 @@ export function salesFamily(ctx: PgContext) {
       }
     },
 
-    async createSaleItem(i: Omit<DbSaleItem, "id">): Promise<DbSaleItem> {
+    async createSaleItem(
+      i: Omit<DbSaleItem, "id" | "position"> & { position?: number },
+    ): Promise<DbSaleItem> {
       const c = await ctx.client();
       try {
-        const row = { ...i, id: nid("sitem") };
+        let position = i.position;
+        if (position === undefined) {
+          const fallback = await c.query(
+            'SELECT COALESCE(MAX("position"), -1) + 1 AS "position" FROM "SaleItem" WHERE "businessId" = $1 AND "saleId" = $2',
+            [i.businessId, i.saleId],
+          );
+          position = Number(fallback.rows[0]?.position ?? 0);
+        }
+        const row = { ...i, position, id: nid("sitem") };
         await c.query(
-          'INSERT INTO "SaleItem" ("id", "businessId", "saleId", "productId", "name", "unit", "qty", "priceMinor", "costMinor", "taxRateBps", "lineDiscountMinor", "lineTotalMinor")' +
-            ' VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)',
+          'INSERT INTO "SaleItem" ("id", "businessId", "saleId", "position", "productId", "name", "unit", "qty", "priceMinor", "costMinor", "taxRateBps", "lineDiscountMinor", "lineTotalMinor")' +
+            ' VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)',
           [
-            row.id, row.businessId, row.saleId, row.productId, row.name, row.unit, row.qty,
-            row.priceMinor, row.costMinor, row.taxRateBps ?? null, row.lineDiscountMinor,
-            row.lineTotalMinor,
+            row.id, row.businessId, row.saleId, row.position, row.productId, row.name, row.unit,
+            row.qty, row.priceMinor, row.costMinor, row.taxRateBps ?? null,
+            row.lineDiscountMinor, row.lineTotalMinor,
           ],
         );
         return row;
@@ -155,7 +163,7 @@ export function salesFamily(ctx: PgContext) {
       const c = await ctx.client();
       try {
         const r = await c.query(
-          `SELECT ${ITEM_SELECT} FROM "SaleItem" WHERE "saleId" = $1 AND "businessId" = $2 ORDER BY "id" ASC`,
+          `SELECT ${ITEM_SELECT} FROM "SaleItem" WHERE "saleId" = $1 AND "businessId" = $2 ORDER BY "position" ASC, "id" ASC`,
           [saleId, businessId],
         );
         return r.rows as DbSaleItem[];

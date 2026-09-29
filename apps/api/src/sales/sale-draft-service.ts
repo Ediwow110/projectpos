@@ -104,10 +104,11 @@ export class SalesDraftService {
       branchId,
       createdAt: new Date(),
     });
-    for (const line of lines) {
+    for (const [position, line] of lines.entries()) {
       await this.db.createSaleItem({
         businessId,
         saleId: sale.id,
+        position,
         productId: line.product.id,
         name: line.product.name,
         unit: line.product.unit,

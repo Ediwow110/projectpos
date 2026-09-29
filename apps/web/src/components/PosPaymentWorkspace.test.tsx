@@ -5,6 +5,37 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { PosPaymentWorkspace } from "./PosPaymentWorkspace";
 
 describe("POS payment workspace", () => {
+  it("keeps the cashier's add-to-cart order in the checkout sale summary", () => {
+    const html = renderToStaticMarkup(
+      <PosPaymentWorkspace
+        count={3}
+        due={3000}
+        changeMinor={0}
+        registerSelected
+        now="10:30 AM"
+        cart={[
+          { productId: "p-z", name: "Zebra Water", priceMinor: 1000, qty: 1 },
+          { productId: "p-a", name: "Apple Juice", priceMinor: 1000, qty: 1 },
+          { productId: "p-m", name: "Mango Soda", priceMinor: 1000, qty: 1 },
+        ]}
+        paymentTiles={[{ key: "cash", label: "Cash", tile: "bg-[#f35d3f]" }]}
+        offline={false}
+        effectiveMethod="cash"
+        received=""
+        paying={false}
+        canPay
+        methodAvailable={() => true}
+        onMethodChange={() => undefined}
+        onReceivedChange={() => undefined}
+        onClose={() => undefined}
+        onPay={() => undefined}
+      />,
+    );
+
+    expect(html.indexOf("Zebra Water")).toBeLessThan(html.indexOf("Apple Juice"));
+    expect(html.indexOf("Apple Juice")).toBeLessThan(html.indexOf("Mango Soda"));
+  });
+
   it("renders mobile and desktop payment surfaces from the same sale state", () => {
     const html = renderToStaticMarkup(
       <PosPaymentWorkspace
