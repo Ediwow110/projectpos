@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   PayMongoHttpClient,
   createPayMongoFromEnv,
+  listPayMongoWebhookDiagnosticsFromEnv,
   payMongoModeFromEnv,
   payMongoMethodType,
 } from "./paymongo";
@@ -76,6 +77,40 @@ describe("PayMongo adapter", () => {
       PAYMONGO_SECRET_KEY: "unexpected_key",
       PAYMONGO_WEBHOOK_SECRET: "whsec_ready",
     })).toBe("unknown");
+  });
+
+  it("lists webhook diagnostics without returning provider secrets", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      data: [
+        {
+          id: "hook_test",
+          type: "webhook",
+          attributes: {
+            events: ["checkout_session.payment.paid"],
+            livemode: false,
+            secret_key: "whsk_must_not_escape",
+            status: "enabled",
+            url: "https://example.test/api/v1/payments/paymongo/webhook",
+          },
+        },
+      ],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const diagnostics = await listPayMongoWebhookDiagnosticsFromEnv({
+      PAYMONGO_SECRET_KEY: "sk_test_ready",
+      PAYMONGO_WEBHOOK_SECRET: "whsec_ready",
+      PAYMONGO_API_BASE: "https://api.paymongo.test",
+    });
+
+    expect(diagnostics).toEqual([{
+      id: "hook_test",
+      url: "https://example.test/api/v1/payments/paymongo/webhook",
+      status: "enabled",
+      livemode: false,
+      events: ["checkout_session.payment.paid"],
+    }]);
+    expect(JSON.stringify(diagnostics)).not.toContain("whsk_must_not_escape");
   });
 
   it("creates hosted checkout v2 server-side with PayMongo idempotency", async () => {

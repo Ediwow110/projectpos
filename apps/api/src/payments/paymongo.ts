@@ -208,3 +208,55 @@ export function payMongoModeFromEnv(
   if (secretKey.startsWith("sk_live_")) return "live";
   return "unknown";
 }
+
+export async function listPayMongoWebhookDiagnosticsFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<Array<{
+  id: string;
+  url: string;
+  status: string;
+  livemode: boolean;
+  events: string[];
+}>> {
+  const secretKey = env["PAYMONGO_SECRET_KEY"]?.trim() ?? "";
+  if (!secretKey) return [];
+  const apiBase = (env["PAYMONGO_API_BASE"]?.trim() || "https://api.paymongo.com").replace(/\/$/, "");
+  const response = await fetch(`${apiBase}/v1/webhooks`, {
+    method: "GET",
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${secretKey}:`).toString("base64")}`,
+      "Content-Type": "application/json",
+    },
+  });
+  if (!response.ok) throw new Error("PAYMONGO_WEBHOOK_DIAGNOSTIC_FAILED");
+  const body = await response.json() as {
+    data?: Array<{
+      id?: unknown;
+      attributes?: {
+        url?: unknown;
+        status?: unknown;
+        livemode?: unknown;
+        events?: unknown;
+      };
+    }>;
+  };
+  return (body.data ?? []).flatMap((entry) => {
+    const attrs = entry.attributes;
+    if (
+      typeof entry.id !== "string" ||
+      typeof attrs?.url !== "string" ||
+      typeof attrs.status !== "string" ||
+      typeof attrs.livemode !== "boolean" ||
+      !Array.isArray(attrs.events)
+    ) {
+      return [];
+    }
+    return [{
+      id: entry.id,
+      url: attrs.url,
+      status: attrs.status,
+      livemode: attrs.livemode,
+      events: attrs.events.filter((event): event is string => typeof event === "string"),
+    }];
+  });
+}
