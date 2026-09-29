@@ -15,6 +15,19 @@ describe("phase9b device port", () => {
 });
 
 describe("phase9b device service", () => {
+  it("shows owners and managers the business device fleet while staff see only their own devices", async () => {
+    const db = createMemoryDb();
+    const svc = new DeviceService(db);
+    const mine = await svc.enrollDevice("b1", "u1", "r1", { label: "Front till" });
+    const theirs = await svc.enrollDevice("b1", "u2", "r2", { label: "Back till" });
+    await svc.enrollDevice("b2", "u3", "r3", { label: "Other tenant" });
+
+    await expect(svc.listDevices("b1", "u1", "owner")).resolves.toEqual([mine, theirs]);
+    await expect(svc.listDevices("b1", "u1", "manager")).resolves.toEqual([mine, theirs]);
+    await expect(svc.listDevices("b1", "u1", "cashier")).resolves.toEqual([mine]);
+    await expect(svc.listDevices("b1", "u1", "inventory")).resolves.toEqual([mine]);
+  });
+
   it("enrolls devices with audit", async () => {
     const db = createMemoryDb();
     const svc = new DeviceService(db);

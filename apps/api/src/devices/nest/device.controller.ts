@@ -35,7 +35,7 @@ export class DeviceController {
   async listDevices(@Req() req: Request, @Res() res: Response): Promise<void> {
     try {
       const auth = req.auth!;
-      res.status(200).json({ items: await this.devices.listDevices(auth.businessId, auth.userId) });
+      res.status(200).json({ items: await this.devices.listDevices(auth.businessId, auth.userId, auth.role) });
     } catch (e) {
       const code = e instanceof Error ? e.message : "VALIDATION";
       fail(res, statusFor(code), code, "Device fetch failed", req);

@@ -16,6 +16,16 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("owner surfaces: registers, cashiers report, export buttons", async ({ page }) => {
+  await page.goto("/team");
+  await expect(page.getByRole("heading", { name: "Team", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "+ Add team member", exact: true }).click();
+  await page.getByLabel("Name").fill("Counter Cashier");
+  await page.getByLabel("Email").fill(`counter-${Date.now()}@example.com`);
+  await page.getByLabel("Role").selectOption("cashier");
+  await page.getByRole("button", { name: "Create team member", exact: true }).click();
+  await expect(page.getByText("Temporary password", { exact: true })).toBeVisible();
+  await expect(page.getByText("Counter Cashier", { exact: true })).toBeVisible();
+
   await page.goto("/registers");
   await expect(page.getByRole("heading", { name: "Registers", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "+ Create register", exact: true })).toBeVisible();

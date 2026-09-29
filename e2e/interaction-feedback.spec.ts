@@ -129,4 +129,11 @@ test("device enrollment acknowledges slow work immediately", async ({ page }) =>
   await expect(busy).toBeDisabled();
   await expect(busy).toHaveAttribute("aria-busy", "true");
   await expect(page.getByText("This device is registered. Future sign-ins will bind to it.")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Registered devices" })).toBeVisible();
+  await expect(page.getByText("Till QA", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Revoke Till QA" }).click();
+  const revokeDialog = page.getByRole("dialog", { name: "Revoke device?" });
+  await expect(revokeDialog).toBeVisible();
+  await revokeDialog.getByRole("button", { name: "Revoke device", exact: true }).click();
+  await expect(page.getByText("Device revoked. Existing sessions bound to it were ended.")).toBeVisible();
 });

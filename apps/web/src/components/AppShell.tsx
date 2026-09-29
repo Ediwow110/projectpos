@@ -8,20 +8,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DecorativeBackdrop } from "./premium";
 import { ApiError, apiFetch } from "../lib/api";
 import { clearActiveSyncScope } from "../lib/sync-store";
+import {
+  flattenedWorkspaceNavigation,
+  workspaceNavigationForRole,
+  type WorkspaceNavigationItem,
+} from "../lib/workspace-navigation";
 import { GuidedTour } from "./GuidedTour";
-
-const NAV: Array<{ href: string; label: string; icon: string; tour: string }> = [
-  { href: "/", label: "Dashboard", icon: "⌂", tour: "dashboard" },
-  { href: "/pos", label: "POS", icon: "▣", tour: "pos" },
-  { href: "/sales", label: "Sales", icon: "↗", tour: "sales" },
-  { href: "/products", label: "Products", icon: "◇", tour: "products" },
-  { href: "/inventory", label: "Inventory", icon: "□", tour: "inventory" },
-  { href: "/customers", label: "Customers", icon: "○", tour: "customers" },
-  { href: "/shifts", label: "Shifts", icon: "▤", tour: "shifts" },
-  { href: "/reports/sales", label: "Reports", icon: "▥", tour: "reports" },
-  { href: "/branches", label: "Branches", icon: "⌘", tour: "branches" },
-  { href: "/sync", label: "Sync", icon: "↻", tour: "sync" },
-];
 
 function isActive(pathname: string, href: string): boolean {
   return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
@@ -33,7 +25,7 @@ function NavLink({
   compact = false,
   onNavigateStart,
 }: {
-  item: (typeof NAV)[number];
+  item: WorkspaceNavigationItem;
   pathname: string;
   compact?: boolean;
   onNavigateStart: (href: string) => void;
@@ -117,6 +109,9 @@ export function AppShell({
   const today = new Date().toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
   const year = new Date().getFullYear();
   const name = businessName ?? "NexPOS";
+  const currentRole = shellMe.data?.role ?? role ?? "owner";
+  const navigationGroups = workspaceNavigationForRole(currentRole);
+  const mobileNavigation = flattenedWorkspaceNavigation(currentRole);
   const initial = name.slice(0, 1).toUpperCase();
   const mobileHeaderHeight = posMode ? "min-h-[62px]" : "min-h-[60px]";
   const showSessionControls = businessName !== undefined || role !== undefined;
@@ -282,7 +277,7 @@ export function AppShell({
               </div>
               <div className="hidden max-w-40 min-w-0 lg:block">
                 <p className="truncate text-[9px] font-semibold text-[#2a241f]">{name}</p>
-                <p className="truncate text-[8px] capitalize text-[#84786e]">{role ?? "owner"} · Main branch</p>
+                <p className="truncate text-[8px] capitalize text-[#84786e]">{currentRole} · Main branch</p>
               </div>
               {showSessionControls ? (
                 <button
@@ -304,7 +299,7 @@ export function AppShell({
           className="border-b border-[#eadfd6] bg-white/95 px-3 shadow-[0_4px_14px_-10px_rgb(28_20_15/0.12)] backdrop-blur xl:hidden"
         >
           <div className="mx-auto flex w-full items-center overflow-x-auto">
-            {NAV.map((item) => <NavLink key={item.href} item={item} pathname={pathname} onNavigateStart={setPendingHref} />)}
+            {mobileNavigation.map((item) => <NavLink key={item.href} item={item} pathname={pathname} onNavigateStart={setPendingHref} />)}
           </div>
         </nav>
         {showNavigationProgress ? (
@@ -334,8 +329,19 @@ export function AppShell({
               <p className="mt-1 text-[11px] leading-4 text-[#746960]">Store operations and administration.</p>
             </div>
 
-            <nav className="space-y-1" aria-label="Primary navigation">
-              {NAV.map((item) => <NavLink key={item.href} item={item} pathname={pathname} compact onNavigateStart={setPendingHref} />)}
+            <nav className="space-y-4" aria-label="Primary navigation">
+              {navigationGroups.map((group) => (
+                <div key={group.label}>
+                  <p className="px-2 pb-1.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-[#a0948b]">
+                    {group.label}
+                  </p>
+                  <div className="space-y-1">
+                    {group.items.map((item) => (
+                      <NavLink key={item.href} item={item} pathname={pathname} compact onNavigateStart={setPendingHref} />
+                    ))}
+                  </div>
+                </div>
+              ))}
             </nav>
 
             <div className="mt-auto pt-6">
@@ -354,7 +360,7 @@ export function AppShell({
                   </div>
                   <div className="min-w-0">
                     <p className="truncate text-[10px] font-semibold text-[#2a241f]">{name}</p>
-                    <p className="truncate text-[8px] capitalize text-[#84786e]">{role ?? "owner"} · Main branch</p>
+                    <p className="truncate text-[8px] capitalize text-[#84786e]">{currentRole} · Main branch</p>
                   </div>
                 </div>
               </div>
@@ -378,7 +384,7 @@ export function AppShell({
       </footer>
       <GuidedTour
         open={showTour}
-        role={shellMe.data?.role ?? role}
+        role={currentRole}
         onDismiss={() => void dismissTour()}
       />
     </div>

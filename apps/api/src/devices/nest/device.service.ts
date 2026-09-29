@@ -29,9 +29,10 @@ export class DeviceService {
     return row;
   }
 
-  async listDevices(businessId: string, userId: string): Promise<DbDevice[]> {
+  async listDevices(businessId: string, userId: string, role: string): Promise<DbDevice[]> {
     withScope(businessId, {});
     const all = await this.db.listDevicesByBusiness(businessId);
+    if (DEVICE_MANAGERS.has(role)) return all;
     return all.filter((d) => d.userId === userId);
   }
 

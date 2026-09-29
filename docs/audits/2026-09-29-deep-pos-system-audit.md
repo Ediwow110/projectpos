@@ -54,11 +54,11 @@ POS can hold a sale, but the cashier is only told a draft identifier. There is n
 
 Required flow: Hold → optional label/customer → Held sales list → resume on any permitted register/device → expire/cancel with audit trail.
 
-### 3. Staff/team management UI
+### 3. Staff/team management UI — implemented in Phase A2
 
-Membership list/create/deactivate APIs already exist, but there is no owner-facing Team screen. The onboarding Employees step explicitly acknowledges this gap.
+At audit start, membership list/create/deactivate APIs already existed without an owner-facing Team screen, and the onboarding Employees step explicitly acknowledged the gap.
 
-Required UI: invite/add staff, role, assigned locations/branches, active/deactivated state, temporary credential handoff or secure invite/reset, and permission explanation.
+Implemented baseline: owner-facing Team screen with active memberships, role assignment, temporary credential handoff for new users, deactivation confirmation, and permission explanation. Branch assignment and secure invite/reset remain future work.
 
 ### 4. Fast manager approval at POS
 
@@ -76,15 +76,17 @@ The shared shell still displays a hard-coded `Main branch` while branches are re
 
 Required flow: authenticated active location → visible shell context → scoped registers/inventory/reports/POS → explicit switch with permission checks → device/register association retained where appropriate.
 
-### 7. Device fleet UI should use the API that already exists
+### 7. Device fleet UI should use the API that already exists — implemented in Phase A2
 
-`GET /devices` and revoke APIs exist, but the Sync page says a device fleet list is unavailable and only exposes enrollment. Replace that copy with a real fleet table: label, current/revoked state, current device marker, last activity if available, revoke action, and session impact.
+At audit start, GET /devices and revoke APIs existed while the Sync page said a device fleet list was unavailable and only exposed enrollment.
 
-### 8. Navigation / information architecture
+Implemented baseline: owners/managers can view the business device fleet; other staff see their own devices. Sync now shows active/revoked state, current-browser marker, revoke confirmation, and session-impact messaging. Last-activity telemetry is not yet modeled.
 
-Categories, Registers, Expenses, and Transfers are implemented routes but are not first-class shell navigation. Add grouped navigation or a More/Operations section so important functionality is discoverable without knowing URLs.
+### 8. Navigation / information architecture — implemented baseline in Phase A2
 
-Also add a durable Settings / Administration area for Team, business settings, payment methods, printers, API tokens, billing, sessions/devices, and Help.
+At audit start, Categories, Registers, Expenses, and Transfers were implemented routes but were not first-class shell navigation.
+
+Implemented baseline: role-aware grouped navigation now exposes Categories, Registers, Expenses, Transfers, Team, Branches, Sync & devices, and existing primary workflows. A dedicated Settings / Administration hub for business settings, payments, printers, API tokens, billing, and security sessions remains future work.
 
 ### 9. Purchasing and replenishment
 
@@ -145,7 +147,7 @@ Implemented during this audit:
 
 ### Discoverability
 
-The dashboard has useful Quick Actions and Getting Started links, but important routes remain hidden from global navigation. First-run tours reduce initial confusion; they do not replace sound information architecture.
+Phase A2 closes the hidden-route gap with role-aware grouped navigation. The remaining discoverability work is a dedicated Settings / Administration hub, richer in-product help, and completion of workflows such as held sales and purchasing.
 
 ### Validation consistency
 

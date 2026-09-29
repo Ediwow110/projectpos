@@ -78,7 +78,7 @@ No global toast provider is currently canonical. Status, warnings, errors, payme
 
 - Route document title policy: root metadata identifies NexPOS; route-specific title expansion may be added later.
 - Route error / 403 behavior: existing API error/permission handling remains authoritative.
-- Breadcrumb/tab/route-state policy: main shell navigation owns top-level routes; report tabs own report subroutes.
+- Breadcrumb/tab/route-state policy: role-aware grouped shell navigation owns top-level routes; report tabs own report subroutes. Owner-only Team management is not shown to roles that cannot use user.manage.
 - Sidebar/drawer/bottom-sheet transformation: persistent sidebar at xl; compact top navigation below xl; POS tablet remains full-width with bottom cart tray.
 - Responsive table strategy: horizontal scroll before destructive column compression.
 - Truncation/full-value access: IDs/data use mono; interactive links expose full authoritative record on detail routes.
