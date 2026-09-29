@@ -27,6 +27,15 @@ export interface PayMongoCheckoutSnapshot {
   paid: boolean;
 }
 
+export interface PayMongoWebhookState {
+  id: string;
+  url: string;
+  status: string;
+  livemode: boolean;
+  events: string[];
+  created: boolean;
+}
+
 export interface PayMongoPort {
   configured(): boolean;
   createCheckout(input: PayMongoCheckoutInput): Promise<PayMongoCheckoutResult>;
@@ -159,8 +168,121 @@ export class PayMongoHttpClient implements PayMongoPort {
     };
   }
 
+  async ensureWebhook(url: string): Promise<PayMongoWebhookState> {
+    let listResponse: Response;
+    try {
+      listResponse = await fetch(`${this.config.apiBase}/v1/webhooks`, {
+        method: "GET",
+        headers: this.authHeaders(),
+      });
+    } catch {
+      throw new Error("PAYMENT_PROVIDER_UNAVAILABLE");
+    }
+    if (!listResponse.ok) {
+      throw new Error(listResponse.status >= 500 ? "PAYMENT_PROVIDER_UNAVAILABLE" : "PAYMENT_PROVIDER_REJECTED");
+    }
+    const listBody = await listResponse.json() as {
+      data?: Array<{
+        id?: unknown;
+        attributes?: {
+          url?: unknown;
+          status?: unknown;
+          livemode?: unknown;
+          events?: unknown;
+          secret_key?: unknown;
+        };
+      }>;
+    };
+    const existing = (listBody.data ?? []).find((entry) => {
+      const attrs = entry.attributes;
+      return attrs?.url === url
+        && Array.isArray(attrs.events)
+        && attrs.events.includes("checkout_session.payment.paid");
+    });
+    if (existing) {
+      const attrs = existing.attributes;
+      if (
+        typeof existing.id !== "string" ||
+        typeof attrs?.url !== "string" ||
+        typeof attrs.status !== "string" ||
+        typeof attrs.livemode !== "boolean" ||
+        !Array.isArray(attrs.events)
+      ) {
+        throw new Error("PAYMENT_PROVIDER_INVALID_RESPONSE");
+      }
+      if (typeof attrs.secret_key === "string" && attrs.secret_key.trim() !== "") {
+        this.config.webhookSecret = attrs.secret_key.trim();
+      } else if (this.config.webhookSecret.trim() === "") {
+        throw new Error("PAYMONGO_WEBHOOK_SECRET_UNAVAILABLE");
+      }
+      return {
+        id: existing.id,
+        url: attrs.url,
+        status: attrs.status,
+        livemode: attrs.livemode,
+        events: attrs.events.filter((event): event is string => typeof event === "string"),
+        created: false,
+      };
+    }
+
+    let createResponse: Response;
+    try {
+      createResponse = await fetch(`${this.config.apiBase}/v1/webhooks`, {
+        method: "POST",
+        headers: this.authHeaders(),
+        body: JSON.stringify({
+          data: {
+            attributes: {
+              url,
+              events: ["checkout_session.payment.paid"],
+            },
+          },
+        }),
+      });
+    } catch {
+      throw new Error("PAYMENT_PROVIDER_UNAVAILABLE");
+    }
+    if (!createResponse.ok) {
+      throw new Error(createResponse.status >= 500 ? "PAYMENT_PROVIDER_UNAVAILABLE" : "PAYMENT_PROVIDER_REJECTED");
+    }
+    const createdBody = await createResponse.json() as {
+      data?: {
+        id?: unknown;
+        attributes?: {
+          url?: unknown;
+          status?: unknown;
+          livemode?: unknown;
+          events?: unknown;
+          secret_key?: unknown;
+        };
+      };
+    };
+    const created = createdBody.data;
+    const attrs = created?.attributes;
+    if (
+      typeof created?.id !== "string" ||
+      typeof attrs?.url !== "string" ||
+      typeof attrs.status !== "string" ||
+      typeof attrs.livemode !== "boolean" ||
+      !Array.isArray(attrs.events) ||
+      typeof attrs.secret_key !== "string" ||
+      attrs.secret_key.trim() === ""
+    ) {
+      throw new Error("PAYMENT_PROVIDER_INVALID_RESPONSE");
+    }
+    this.config.webhookSecret = attrs.secret_key.trim();
+    return {
+      id: created.id,
+      url: attrs.url,
+      status: attrs.status,
+      livemode: attrs.livemode,
+      events: attrs.events.filter((event): event is string => typeof event === "string"),
+      created: true,
+    };
+  }
+
   verifyWebhook(rawBody: string, signatureHeader: string | undefined): boolean {
-    if (!signatureHeader) return false;
+    if (!signatureHeader || this.config.webhookSecret.trim() === "") return false;
     const parts = Object.fromEntries(
       signatureHeader.split(",").map((part) => {
         const [key, ...rest] = part.trim().split("=");
@@ -188,7 +310,7 @@ export class PayMongoHttpClient implements PayMongoPort {
 export function createPayMongoFromEnv(env: NodeJS.ProcessEnv = process.env): PayMongoPort {
   const secretKey = env["PAYMONGO_SECRET_KEY"]?.trim() ?? "";
   const webhookSecret = env["PAYMONGO_WEBHOOK_SECRET"]?.trim() ?? "";
-  if (!secretKey || !webhookSecret) return new DisabledPayMongo();
+  if (!secretKey) return new DisabledPayMongo();
   const tolerance = Number(env["PAYMONGO_WEBHOOK_TOLERANCE_SECONDS"] ?? 300);
   return new PayMongoHttpClient({
     secretKey,
@@ -198,12 +320,31 @@ export function createPayMongoFromEnv(env: NodeJS.ProcessEnv = process.env): Pay
   });
 }
 
+export async function createManagedPayMongoFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<PayMongoPort> {
+  const client = createPayMongoFromEnv(env);
+  if (env["PAYMONGO_MANAGED_WEBHOOK"] !== "1" || !(client instanceof PayMongoHttpClient)) {
+    return client;
+  }
+  const baseUrl = (
+    env["PAYMONGO_WEBHOOK_URL"]?.trim()
+    || env["RENDER_EXTERNAL_URL"]?.trim()
+    || ""
+  ).replace(/\/$/, "");
+  if (!baseUrl) throw new Error("PAYMONGO_WEBHOOK_URL_REQUIRED");
+  const webhookUrl = baseUrl.endsWith("/api/v1/payments/paymongo/webhook")
+    ? baseUrl
+    : `${baseUrl}/api/v1/payments/paymongo/webhook`;
+  await client.ensureWebhook(webhookUrl);
+  return client;
+}
+
 export function payMongoModeFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): "test" | "live" | "disabled" | "unknown" {
   const secretKey = env["PAYMONGO_SECRET_KEY"]?.trim() ?? "";
-  const webhookSecret = env["PAYMONGO_WEBHOOK_SECRET"]?.trim() ?? "";
-  if (!secretKey || !webhookSecret) return "disabled";
+  if (!secretKey) return "disabled";
   if (secretKey.startsWith("sk_test_")) return "test";
   if (secretKey.startsWith("sk_live_")) return "live";
   return "unknown";

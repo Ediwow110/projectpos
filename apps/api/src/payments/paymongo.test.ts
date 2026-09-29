@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   PayMongoHttpClient,
+  createManagedPayMongoFromEnv,
   createPayMongoFromEnv,
   listPayMongoWebhookDiagnosticsFromEnv,
   payMongoModeFromEnv,
@@ -54,9 +55,9 @@ describe("PayMongo adapter", () => {
     expect(body.data.attributes["payment_method_types"]).toEqual(["qrph"]);
   });
 
-  it("stays disabled until both the API key and webhook secret exist", () => {
+  it("can configure PayMongo from the API key before managed webhook bootstrap", () => {
     expect(createPayMongoFromEnv({}).configured()).toBe(false);
-    expect(createPayMongoFromEnv({ PAYMONGO_SECRET_KEY: "sk_test_only" }).configured()).toBe(false);
+    expect(createPayMongoFromEnv({ PAYMONGO_SECRET_KEY: "sk_test_only" }).configured()).toBe(true);
     expect(createPayMongoFromEnv({
       PAYMONGO_SECRET_KEY: "sk_test_ready",
       PAYMONGO_WEBHOOK_SECRET: "whsec_ready",
@@ -111,6 +112,149 @@ describe("PayMongo adapter", () => {
       events: ["checkout_session.payment.paid"],
     }]);
     expect(JSON.stringify(diagnostics)).not.toContain("whsk_must_not_escape");
+  });
+
+  it("creates the managed checkout webhook and immediately uses its signing secret", async () => {
+    const fetchMock = vi.fn(async (
+      input: Parameters<typeof fetch>[0],
+      init?: Parameters<typeof fetch>[1],
+    ) => {
+      const url = String(input);
+      if (url.endsWith("/v1/webhooks") && (init?.method ?? "GET") === "GET") {
+        return new Response(JSON.stringify({ data: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.endsWith("/v1/webhooks") && init?.method === "POST") {
+        return new Response(JSON.stringify({
+          data: {
+            id: "hook_managed",
+            type: "webhook",
+            attributes: {
+              events: ["checkout_session.payment.paid"],
+              livemode: false,
+              secret_key: "whsk_managed",
+              status: "enabled",
+              url: "https://api.example.test/api/v1/payments/paymongo/webhook",
+            },
+          },
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      throw new Error(`unexpected fetch ${url} ${init?.method ?? "GET"}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const managed = new PayMongoHttpClient({
+      secretKey: "sk_test_secret",
+      webhookSecret: "",
+      apiBase: "https://api.paymongo.test",
+      webhookToleranceSeconds: 300,
+    });
+
+    await expect(managed.ensureWebhook(
+      "https://api.example.test/api/v1/payments/paymongo/webhook",
+    )).resolves.toEqual({
+      id: "hook_managed",
+      url: "https://api.example.test/api/v1/payments/paymongo/webhook",
+      status: "enabled",
+      livemode: false,
+      events: ["checkout_session.payment.paid"],
+      created: true,
+    });
+
+    const raw = '{"data":{"id":"evt_managed"}}';
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = createHmac("sha256", "whsk_managed")
+      .update(`${timestamp}.${raw}`)
+      .digest("hex");
+    expect(managed.verifyWebhook(raw, `t=${timestamp},te=${signature},li=`)).toBe(true);
+  });
+
+  it("reuses an existing managed webhook on restart without creating a duplicate", async () => {
+    const fetchMock = vi.fn(async (
+      input: Parameters<typeof fetch>[0],
+      init?: Parameters<typeof fetch>[1],
+    ) => {
+      const url = String(input);
+      if (url.endsWith("/v1/webhooks") && (init?.method ?? "GET") === "GET") {
+        return new Response(JSON.stringify({
+          data: [{
+            id: "hook_existing",
+            type: "webhook",
+            attributes: {
+              events: ["checkout_session.payment.paid"],
+              livemode: false,
+              secret_key: "whsk_existing",
+              status: "enabled",
+              url: "https://api.example.test/api/v1/payments/paymongo/webhook",
+            },
+          }],
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      throw new Error(`unexpected fetch ${url} ${init?.method ?? "GET"}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const managed = new PayMongoHttpClient({
+      secretKey: "sk_test_secret",
+      webhookSecret: "",
+      apiBase: "https://api.paymongo.test",
+      webhookToleranceSeconds: 300,
+    });
+
+    await expect(managed.ensureWebhook(
+      "https://api.example.test/api/v1/payments/paymongo/webhook",
+    )).resolves.toMatchObject({ id: "hook_existing", created: false });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const raw = '{"data":{"id":"evt_existing"}}';
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = createHmac("sha256", "whsk_existing")
+      .update(`${timestamp}.${raw}`)
+      .digest("hex");
+    expect(managed.verifyWebhook(raw, `t=${timestamp},te=${signature},li=`)).toBe(true);
+  });
+
+  it("bootstraps the managed Render webhook only when explicitly enabled", async () => {
+    const fetchMock = vi.fn(async (
+      input: Parameters<typeof fetch>[0],
+      init?: Parameters<typeof fetch>[1],
+    ) => {
+      const url = String(input);
+      if (url.endsWith("/v1/webhooks") && (init?.method ?? "GET") === "GET") {
+        return new Response(JSON.stringify({ data: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.endsWith("/v1/webhooks") && init?.method === "POST") {
+        return new Response(JSON.stringify({
+          data: {
+            id: "hook_runtime",
+            type: "webhook",
+            attributes: {
+              events: ["checkout_session.payment.paid"],
+              livemode: false,
+              secret_key: "whsk_runtime",
+              status: "enabled",
+              url: "https://nexpos-api.example/api/v1/payments/paymongo/webhook",
+            },
+          },
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      throw new Error(`unexpected fetch ${url} ${init?.method ?? "GET"}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const runtime = await createManagedPayMongoFromEnv({
+      PAYMONGO_SECRET_KEY: "sk_test_runtime",
+      PAYMONGO_MANAGED_WEBHOOK: "1",
+      RENDER_EXTERNAL_URL: "https://nexpos-api.example",
+      PAYMONGO_API_BASE: "https://api.paymongo.test",
+    });
+
+    expect(runtime.configured()).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1]![0])).toBe("https://api.paymongo.test/v1/webhooks");
   });
 
   it("creates hosted checkout v2 server-side with PayMongo idempotency", async () => {

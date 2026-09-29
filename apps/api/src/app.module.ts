@@ -52,6 +52,7 @@ import { ExportService } from "./exports/nest/export.service";
 import { PrintService } from "./print/nest/print.service";
 import { DisplayService } from "./display/nest/display.service";
 import {
+  createManagedPayMongoFromEnv,
   createPayMongoFromEnv,
   PAYMONGO_PORT,
   type PayMongoPort,
@@ -100,7 +101,7 @@ function runtimeDatabaseUrl(): string | undefined {
     },
     {
       provide: PAYMONGO_PORT,
-      useFactory: () => createPayMongoFromEnv(process.env),
+      useFactory: () => createManagedPayMongoFromEnv(process.env),
     },
     {
       provide: TRANSACTIONAL_EMAIL_PORT,
