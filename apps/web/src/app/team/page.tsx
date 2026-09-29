@@ -11,19 +11,12 @@ import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "..
 import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { apiFetch } from "../../lib/api";
 import { errorText } from "../../lib/billing";
+import { canDeactivateMember, teamRoleLabel, type TeamMemberRow } from "../../lib/team-view";
 
 interface Me {
+  userId: string;
   role: string;
   businessName?: string;
-}
-
-interface Member {
-  id: string;
-  userId: string;
-  name: string;
-  email: string;
-  role: string;
-  deactivatedAt: string | null;
 }
 
 interface Csrf {
@@ -36,6 +29,12 @@ const ROLES = [
   { value: "inventory", label: "Inventory" },
 ] as const;
 
+interface TemporaryCredential {
+  name: string;
+  email: string;
+  password: string;
+}
+
 export default function TeamPage(): JSX.Element {
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState("");
@@ -44,8 +43,9 @@ export default function TeamPage(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
-  const [deactivateTarget, setDeactivateTarget] = useState<Member | null>(null);
+  const [temporaryCredential, setTemporaryCredential] = useState<TemporaryCredential | null>(null);
+  const [copyStatus, setCopyStatus] = useState("");
+  const [deactivateTarget, setDeactivateTarget] = useState<TeamMemberRow | null>(null);
 
   const meQuery = useQuery({
     queryKey: ["me"],
@@ -55,7 +55,7 @@ export default function TeamPage(): JSX.Element {
   const isOwner = meQuery.data?.role === "owner";
   const membersQuery = useQuery({
     queryKey: ["memberships"],
-    queryFn: () => apiFetch<{ items: Member[] }>("/api/v1/memberships"),
+    queryFn: () => apiFetch<{ items: TeamMemberRow[] }>("/api/v1/memberships"),
     retry: false,
     enabled: isOwner,
   });
@@ -86,7 +86,8 @@ export default function TeamPage(): JSX.Element {
     setBusy(true);
     setError("");
     setSuccess("");
-    setTemporaryPassword(null);
+    setTemporaryCredential(null);
+    setCopyStatus("");
     try {
       const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
       const created = await apiFetch<{ membershipId: string; userId: string; tempPassword?: string }>(
@@ -100,7 +101,11 @@ export default function TeamPage(): JSX.Element {
         },
       );
       await membersQuery.refetch();
-      setTemporaryPassword(created.tempPassword ?? null);
+      setTemporaryCredential(
+        created.tempPassword
+          ? { name: cleanName, email: cleanEmail, password: created.tempPassword }
+          : null,
+      );
       setSuccess(
         created.tempPassword
           ? "Team member created. Share the temporary password securely and have them sign in."
@@ -113,6 +118,21 @@ export default function TeamPage(): JSX.Element {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function copyTemporaryPassword(): Promise<void> {
+    if (!temporaryCredential) return;
+    try {
+      await navigator.clipboard.writeText(temporaryCredential.password);
+      setCopyStatus("Temporary password copied.");
+    } catch {
+      setCopyStatus("Copy failed. Select the password and copy it manually.");
+    }
+  }
+
+  function closeTemporaryCredential(): void {
+    setTemporaryCredential(null);
+    setCopyStatus("");
   }
 
   async function deactivateMember(): Promise<void> {
@@ -169,16 +189,6 @@ export default function TeamPage(): JSX.Element {
               <MetricCard label="Owner seats" value={members.filter((member) => member.role === "owner").length} icon="◆" tone="success" meta="Protected role" />
             </section>
 
-            {temporaryPassword ? (
-              <Panel className="border-[#b9dfca] bg-[#f0faf5] p-5">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#1f8a5b]">Temporary password</p>
-                <p className="font-data mt-2 break-all text-sm font-semibold text-[#17130f]">{temporaryPassword}</p>
-                <p className="mt-2 text-[11px] leading-5 text-[#655b53]">
-                  This is shown only after creating a new user. Share it through a secure channel.
-                </p>
-              </Panel>
-            ) : null}
-
             {success ? <p role="status" className="rounded-xl border border-[#b9dfca] bg-[#f0faf5] px-4 py-3 text-sm font-medium text-[#1f6f4b]">{success}</p> : null}
             {error ? <p role="alert" className="rounded-xl border border-[#efb9b9] bg-[#fff0f0] px-4 py-3 text-sm font-medium text-[#c43e3e]">{error}</p> : null}
 
@@ -207,14 +217,16 @@ export default function TeamPage(): JSX.Element {
                         <tr key={member.id}>
                           <td className="px-5 py-3 font-semibold text-[#2a241f]">{member.name}</td>
                           <td className="px-5 py-3 text-[#655b53]">{member.email}</td>
-                          <td className="px-5 py-3"><StatusPill tone={member.role === "owner" ? "ok" : "info"}>{member.role}</StatusPill></td>
+                          <td className="px-5 py-3"><StatusPill tone={member.role === "owner" ? "ok" : "info"}>{teamRoleLabel(member.role)}</StatusPill></td>
                           <td className="px-5 py-3 text-right">
-                            {member.role === "owner" ? (
-                              <span className="text-[10px] font-medium text-[#9a8d83]">Protected</span>
-                            ) : (
+                            {canDeactivateMember(meQuery.data?.userId ?? "", member) ? (
                               <GhostButton type="button" className="!min-h-8 !px-3 !py-1.5 text-xs" onClick={() => setDeactivateTarget(member)}>
                                 Deactivate
                               </GhostButton>
+                            ) : (
+                              <span className="text-[10px] font-medium text-[#9a8d83]">
+                                {member.userId === meQuery.data?.userId ? "Current user" : "Protected"}
+                              </span>
                             )}
                           </td>
                         </tr>
@@ -259,6 +271,42 @@ export default function TeamPage(): JSX.Element {
           </label>
           {error ? <p role="alert" className="rounded-xl bg-[#fff0f0] px-3 py-2 text-[12px] font-medium text-[#c43e3e]">{error}</p> : null}
         </form>
+      </Modal>
+
+      <Modal
+        open={temporaryCredential !== null}
+        onClose={closeTemporaryCredential}
+        title="Temporary password"
+        description={
+          temporaryCredential
+            ? `Share this password securely with ${temporaryCredential.name} (${temporaryCredential.email}). It will not be shown again after you close this dialog.`
+            : undefined
+        }
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <GhostButton type="button" onClick={() => void copyTemporaryPassword()}>
+              Copy temporary password
+            </GhostButton>
+            <PrimaryButton type="button" onClick={closeTemporaryCredential}>
+              Close temporary password
+            </PrimaryButton>
+          </div>
+        }
+      >
+        {temporaryCredential ? (
+          <div className="space-y-3">
+            <div className="rounded-xl border border-[#b9dfca] bg-[#f0faf5] px-4 py-4">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#1f8a5b]">Display once</p>
+              <p data-ui="temporary-password-value" className="font-data mt-2 break-all text-sm font-semibold text-[#17130f]">
+                {temporaryCredential.password}
+              </p>
+            </div>
+            <p className="text-[11px] leading-5 text-[#655b53]">
+              Closing this dialog clears the password from this page. NexPOS does not store it in browser storage or the URL.
+            </p>
+            {copyStatus ? <p role="status" className="text-[11px] font-medium text-[#655b53]">{copyStatus}</p> : null}
+          </div>
+        ) : null}
       </Modal>
 
       <ConfirmDialog
