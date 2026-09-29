@@ -78,9 +78,13 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
 
   async function saveCustomer(event: React.FormEvent): Promise<void> {
     event.preventDefault();
-    setBusy(true);
     setError("");
     setSuccess("");
+    if (!name.trim()) {
+      setError("VALIDATION: Customer name is required.");
+      return;
+    }
+    setBusy(true);
     try {
       await patchCustomer({
         name: name.trim(),
@@ -205,7 +209,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         description="Update the customer profile. Historical sales remain linked to the same customer record."
         footer={<div className="flex justify-end gap-2"><GhostButton type="button" onClick={() => setEditOpen(false)} disabled={busy}>Cancel</GhostButton><PrimaryButton type="submit" form="customer-edit-form" disabled={busy || !name.trim()}>{busy ? "Saving…" : "Save profile"}</PrimaryButton></div>}
       >
-        <form id="customer-edit-form" onSubmit={(event) => void saveCustomer(event)} className="space-y-4">
+        <form id="customer-edit-form" noValidate onSubmit={(event) => void saveCustomer(event)} className="space-y-4">
           <label className="block text-[11px] font-semibold text-[#655b53]">Name<input autoFocus value={name} onChange={(event) => setName(event.target.value)} required maxLength={120} className="field mt-1.5" /></label>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="text-[11px] font-semibold text-[#655b53]">Phone<input value={phone} onChange={(event) => setPhone(event.target.value)} maxLength={32} inputMode="tel" className="field mt-1.5" /></label>

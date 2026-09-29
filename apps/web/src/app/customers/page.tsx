@@ -108,6 +108,7 @@ export default function CustomersPage(): JSX.Element {
         <Panel className="p-5">
           <SectionHeader title="Find a customer" description="Search by the customer information supported by the current customer endpoint." />
           <form
+            noValidate
             onSubmit={(event) => {
               event.preventDefault();
               void listQuery.refetch();

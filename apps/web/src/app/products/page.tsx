@@ -107,6 +107,14 @@ export default function ProductsPage(): JSX.Element {
   async function createProduct(event: React.FormEvent): Promise<void> {
     event.preventDefault();
     setCreateError("");
+    if (!name.trim()) {
+      setCreateError("VALIDATION: Product name is required.");
+      return;
+    }
+    if (!unit.trim()) {
+      setCreateError("VALIDATION: Unit is required.");
+      return;
+    }
     const priceMinor = toMinor(price);
     const costMinor = cost.trim() === "" ? 0 : toMinor(cost);
     const reorder = Number(reorderLevel);
@@ -288,6 +296,7 @@ export default function ProductsPage(): JSX.Element {
         <Panel className="p-5">
           <SectionHeader title="Catalog controls" description="Search by product name, SKU, or barcode and narrow the catalog by status." />
           <form
+            noValidate
             className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_auto]"
             onSubmit={(event) => {
               event.preventDefault();
@@ -377,7 +386,7 @@ export default function ProductsPage(): JSX.Element {
           </div>
         }
       >
-        <form id="create-product-form" onSubmit={(event) => void createProduct(event)} className="space-y-5">
+        <form id="create-product-form" noValidate onSubmit={(event) => void createProduct(event)} className="space-y-5">
           <section>
             <SectionHeader title="Product identity" description="Name is required. SKU and barcode are optional but must remain unique within the business." />
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -451,14 +460,14 @@ export default function ProductsPage(): JSX.Element {
         description="Import up to 200 products in one batch. Required columns are name and price. Optional columns: sku, barcode, unit, cost, reorder_level, track_inventory."
         footer={<div className="flex justify-end gap-2"><GhostButton type="button" onClick={() => setImportOpen(false)} disabled={importing}>Cancel</GhostButton><PrimaryButton type="submit" form="product-import-form" disabled={importing || !importText.trim()}>{importing ? "Importing…" : "Import products"}</PrimaryButton></div>}
       >
-        <form id="product-import-form" onSubmit={(event) => void importProducts(event)} className="space-y-4">
+        <form id="product-import-form" noValidate onSubmit={(event) => void importProducts(event)} className="space-y-4">
           <div className="rounded-xl bg-[#f7f1ea] p-3 text-[11px] leading-5 text-[#73685f]">
             <p className="font-semibold text-[#2a241f]">Example</p>
             <code className="font-data mt-2 block whitespace-pre-wrap text-[10px]">name,sku,price,cost,reorder_level,track_inventory{"\n"}Iced Latte,LAT-1,149.50,70.25,5,true</code>
           </div>
           <label className="block text-[11px] font-semibold text-[#655b53]">
             CSV content
-            <textarea autoFocus value={importText} onChange={(event) => setImportText(event.target.value)} rows={11} className="field font-data mt-1.5 resize-y text-[11px]" placeholder="Paste CSV here…" />
+            <textarea autoFocus value={importText} onChange={(event) => setImportText(event.target.value)} rows={11} className="field font-data mt-1.5 resize-none text-[11px]" placeholder="Paste CSV here…" />
           </label>
           <p className="text-[10px] leading-4 text-[#8b8077]">Import creates catalog records only. It does not fabricate opening stock; record actual quantities through Inventory movements afterward.</p>
           {importError ? <p role="alert" className="rounded-xl bg-[#fff0f0] px-3 py-2.5 text-[12px] font-medium text-[#c43e3e]">{importError}</p> : null}

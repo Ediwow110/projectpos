@@ -57,6 +57,10 @@ export default function CategoriesPage(): JSX.Element {
   async function createCategory(event: React.FormEvent): Promise<void> {
     event.preventDefault();
     setError("");
+    if (!name.trim()) {
+      setError("VALIDATION: Category name is required.");
+      return;
+    }
     setBusy(true);
     try {
       const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
@@ -178,7 +182,7 @@ export default function CategoriesPage(): JSX.Element {
           </div>
         }
       >
-        <form id="create-category-form" onSubmit={(event) => void createCategory(event)} className="space-y-4">
+        <form id="create-category-form" noValidate onSubmit={(event) => void createCategory(event)} className="space-y-4">
           <label className="block text-[11px] font-semibold text-[#655b53]">
             Category name
             <input autoFocus value={name} onChange={(event) => setName(event.target.value)} required maxLength={80} className="field mt-1.5" placeholder="Beverages" />

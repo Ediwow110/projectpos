@@ -78,6 +78,10 @@ export default function RegistersPage(): JSX.Element {
 
   async function createRegister(event: React.FormEvent): Promise<void> {
     event.preventDefault();
+    if (!name.trim()) {
+      setError("VALIDATION: Register name is required.");
+      return;
+    }
     try {
       await mutate("/api/v1/registers", {
         method: "POST",
@@ -173,7 +177,7 @@ export default function RegistersPage(): JSX.Element {
           </div>
         }
       >
-        <form id="create-register-form" onSubmit={(event) => void createRegister(event)} className="space-y-4">
+        <form id="create-register-form" noValidate onSubmit={(event) => void createRegister(event)} className="space-y-4">
           <label className="block text-[11px] font-semibold text-[#655b53]">
             Register name
             <input autoFocus value={name} onChange={(event) => setName(event.target.value)} required placeholder="Counter 1" className="field mt-1.5" />

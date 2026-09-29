@@ -29,6 +29,18 @@ export default function RegisterPage(): JSX.Element {
   async function submit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     setError("");
+    if (!ownerName.trim() || !businessName.trim() || !email.trim()) {
+      setError("VALIDATION: Name, business name, and email are required.");
+      return;
+    }
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
+      setError("VALIDATION: Enter a valid email address.");
+      return;
+    }
+    if (password.length < 12) {
+      setError("VALIDATION: Password must be at least 12 characters.");
+      return;
+    }
     setSubmitting(true);
     try {
       const result = await apiFetch<{
@@ -111,7 +123,7 @@ export default function RegisterPage(): JSX.Element {
           <h2 className="font-display mt-5 text-[30px] font-bold text-[#17130f]">Create your business</h2>
           <p className="mt-2 text-sm leading-5 text-[#73685f]">Set up the owner account and your primary business identity.</p>
 
-          <form onSubmit={submit} className="mt-6 space-y-4">
+          <form noValidate onSubmit={submit} className="mt-6 space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block text-[12px] font-semibold text-[#655b53]">
                 Your name

@@ -85,6 +85,7 @@ export default function PlatformPage(): JSX.Element {
           <Panel className="p-5">
             <SectionHeader title="Feature flag override" description="Target one business and one flag explicitly. The change is confirmed before it is sent." />
             <form
+              noValidate
               onSubmit={(event) => {
                 event.preventDefault();
                 setError("");

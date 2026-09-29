@@ -78,6 +78,10 @@ export default function BranchesPage(): JSX.Element {
   async function createBranch(event: React.FormEvent): Promise<void> {
     event.preventDefault();
     setSuccess("");
+    if (!name.trim()) {
+      setError("VALIDATION: Branch name is required.");
+      return;
+    }
     try {
       await mutate("/api/v1/branches", { method: "POST", body: JSON.stringify({ name: name.trim(), type }) });
       setName("");
@@ -210,7 +214,7 @@ export default function BranchesPage(): JSX.Element {
         description="Create a store or warehouse location. Inventory remains branch-scoped only when movements and registers explicitly reference it."
         footer={<div className="flex justify-end gap-2"><GhostButton type="button" onClick={() => setCreateOpen(false)} disabled={busy}>Cancel</GhostButton><PrimaryButton type="submit" form="branch-create-form" disabled={busy || !name.trim()}>{busy ? "Creating…" : "Create branch"}</PrimaryButton></div>}
       >
-        <form id="branch-create-form" onSubmit={(event) => void createBranch(event)} className="space-y-4">
+        <form id="branch-create-form" noValidate onSubmit={(event) => void createBranch(event)} className="space-y-4">
           <label className="block text-[11px] font-semibold text-[#655b53]">Branch name<input autoFocus value={name} onChange={(event) => setName(event.target.value)} required placeholder="North store" className="field mt-1.5" /></label>
           <label className="block text-[11px] font-semibold text-[#655b53]">Type<select value={type} onChange={(event) => setType(event.target.value)} className="field mt-1.5"><option value="store">Store</option><option value="warehouse">Warehouse</option></select></label>
           {error ? <p role="alert" className="rounded-xl bg-[#fff0f0] px-3 py-2.5 text-[12px] font-medium text-[#c43e3e]">{error}</p> : null}

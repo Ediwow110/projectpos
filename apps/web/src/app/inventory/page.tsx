@@ -216,7 +216,7 @@ export default function InventoryPage(): JSX.Element {
         {adjustable ? (
           <Panel className="p-5">
             <SectionHeader title="Record movement" description="Receipts, damage, adjustments, returns, counts, and transfers remain explicit audited movements." />
-            <form onSubmit={(event) => void recordMovement(event)} className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[1.2fr_1fr_.8fr_1.4fr_auto]">
+            <form noValidate onSubmit={(event) => void recordMovement(event)} className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[1.2fr_1fr_.8fr_1.4fr_auto]">
               <label className="text-[11px] font-semibold text-[#655b53]">
                 Product ID
                 <input value={productId} onChange={(event) => setProductId(event.target.value)} placeholder="Product ID" className="field mt-1.5" />

@@ -40,15 +40,24 @@ export function StatusPill({ tone, children }: { tone: "ok" | "warn" | "bad" | "
 
 export function PrimaryButton(props: React.ButtonHTMLAttributes<HTMLButtonElement>): JSX.Element {
   const { className = "", ...rest } = props;
-  return <button {...rest} className={"inline-flex min-h-10 items-center justify-center gap-2 rounded-[10px] bg-[#f35d3f] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_-8px_rgb(243_93_63/0.55)] transition-[transform,background-color,box-shadow,opacity] duration-150 hover:bg-[#d94a30] active:scale-[0.98] motion-reduce:transform-none disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 " + className} />;
+  return React.createElement("button", {
+    ...rest,
+    className: "inline-flex min-h-10 items-center justify-center gap-2 rounded-[10px] bg-[#f35d3f] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_-8px_rgb(243_93_63/0.55)] transition-[transform,background-color,box-shadow,opacity] duration-150 hover:bg-[#d94a30] active:scale-[0.98] motion-reduce:transform-none disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 " + className,
+  });
 }
 
 export function GhostButton(props: React.ButtonHTMLAttributes<HTMLButtonElement>): JSX.Element {
   const { className = "", ...rest } = props;
-  return <button {...rest} className={"inline-flex min-h-10 items-center justify-center gap-2 rounded-[10px] border border-[#e4d9d0] bg-white px-4 py-2.5 text-sm font-semibold text-[#2a241f] transition-[transform,border-color,background-color,color,opacity] duration-150 hover:border-[#f35d3f] hover:text-[#d94a30] active:scale-[0.98] active:bg-[#fff8f5] motion-reduce:transform-none disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 " + className} />;
+  return React.createElement("button", {
+    ...rest,
+    className: "inline-flex min-h-10 items-center justify-center gap-2 rounded-[10px] border border-[#e4d9d0] bg-white px-4 py-2.5 text-sm font-semibold text-[#2a241f] transition-[transform,border-color,background-color,color,opacity] duration-150 hover:border-[#f35d3f] hover:text-[#d94a30] active:scale-[0.98] active:bg-[#fff8f5] motion-reduce:transform-none disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 " + className,
+  });
 }
 
 export function DangerButton(props: React.ButtonHTMLAttributes<HTMLButtonElement>): JSX.Element {
   const { className = "", ...rest } = props;
-  return <button {...rest} className={"inline-flex min-h-10 items-center justify-center gap-2 rounded-[10px] border border-[#efb9b9] bg-[#fff0f0] px-4 py-2.5 text-sm font-semibold text-[#c43e3e] transition-[transform,border-color,background-color,opacity] duration-150 hover:border-[#c43e3e] active:scale-[0.98] active:bg-[#ffe8e8] motion-reduce:transform-none disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 " + className} />;
+  return React.createElement("button", {
+    ...rest,
+    className: "inline-flex min-h-10 items-center justify-center gap-2 rounded-[10px] border border-[#efb9b9] bg-[#fff0f0] px-4 py-2.5 text-sm font-semibold text-[#c43e3e] transition-[transform,border-color,background-color,opacity] duration-150 hover:border-[#c43e3e] active:scale-[0.98] active:bg-[#ffe8e8] motion-reduce:transform-none disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 " + className,
+  });
 }

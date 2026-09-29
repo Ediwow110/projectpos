@@ -176,7 +176,7 @@ export default function TransfersPage(): JSX.Element {
         description="Create a draft first. Stock does not leave the source branch until the transfer is explicitly dispatched."
         footer={<div className="flex justify-end gap-2"><GhostButton type="button" onClick={() => setCreateOpen(false)} disabled={busy}>Cancel</GhostButton><PrimaryButton type="submit" form="transfer-create-form" disabled={busy}>{busy ? "Creating…" : "Create draft"}</PrimaryButton></div>}
       >
-        <form id="transfer-create-form" onSubmit={(event) => void createTransfer(event)} className="space-y-5">
+        <form id="transfer-create-form" noValidate onSubmit={(event) => void createTransfer(event)} className="space-y-5">
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="text-[11px] font-semibold text-[#655b53]">From branch<select value={fromBranchId} onChange={(event) => setFromBranchId(event.target.value)} required className="field mt-1.5"><option value="">Select source</option>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label>
             <label className="text-[11px] font-semibold text-[#655b53]">To branch<select value={toBranchId} onChange={(event) => setToBranchId(event.target.value)} required className="field mt-1.5"><option value="">Select destination</option>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label>

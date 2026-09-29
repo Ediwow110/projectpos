@@ -77,6 +77,10 @@ export default function ExpensesPage(): JSX.Element {
     event.preventDefault();
     setError(null);
     setSuccess("");
+    if (!category.trim()) {
+      setError(new Error("VALIDATION: Expense category is required."));
+      return;
+    }
     const amountMinor = Math.round(Number(amount) * 100);
     if (!Number.isInteger(amountMinor) || amountMinor <= 0) {
       setError(new Error("VALIDATION: Enter an amount greater than zero."));
@@ -202,7 +206,7 @@ export default function ExpensesPage(): JSX.Element {
         description="Record actual operating spend. Cash expenses participate in shift cash accounting when applicable."
         footer={<div className="flex justify-end gap-2"><GhostButton type="button" onClick={() => setCreateOpen(false)} disabled={busy}>Cancel</GhostButton><PrimaryButton type="submit" form="expense-create-form" disabled={busy || !category.trim() || !amount.trim()}>{busy ? "Recording…" : "Record expense"}</PrimaryButton></div>}
       >
-        <form id="expense-create-form" onSubmit={(event) => void createExpense(event)} className="grid gap-4 sm:grid-cols-2">
+        <form id="expense-create-form" noValidate onSubmit={(event) => void createExpense(event)} className="grid gap-4 sm:grid-cols-2">
           <label className="text-[11px] font-semibold text-[#655b53]">Category<input autoFocus value={category} onChange={(event) => setCategory(event.target.value)} required placeholder="Transport" className="field mt-1.5" /></label>
           <label className="text-[11px] font-semibold text-[#655b53]">Amount (PHP)<input value={amount} onChange={(event) => setAmount(event.target.value)} required inputMode="decimal" placeholder="0.00" className="field mt-1.5" /></label>
           <label className="text-[11px] font-semibold text-[#655b53]">Method<select value={method} onChange={(event) => setMethod(event.target.value)} className="field mt-1.5">{METHODS.map((value) => <option key={value} value={value}>{methodLabel(value)}</option>)}</select></label>

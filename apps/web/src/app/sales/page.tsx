@@ -273,6 +273,7 @@ export default function SalesHistoryPage(): JSX.Element {
         <Panel className="p-5">
           <SectionHeader title="Transaction filters" description="Filter the source records without changing the summary graphs above." />
           <form
+            noValidate
             onSubmit={(event) => {
               event.preventDefault();
               setCursor(undefined);

@@ -76,6 +76,7 @@ export function PosProductCatalog({
       </label>
 
       <form
+        noValidate
         onSubmit={(event) => {
           event.preventDefault();
           onSearch();
