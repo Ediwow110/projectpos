@@ -65,7 +65,7 @@ export class InventoryController {
         reason: parsed.data.reason,
         referenceType: parsed.data.referenceType,
         referenceId: parsed.data.referenceId,
-        branchId: parsed.data.branchId,
+        branchId: parsed.data.branchId ?? auth.activeBranchId ?? undefined,
       });
       res.status(201).json(row);
     } catch (e) {
@@ -91,6 +91,7 @@ export class InventoryController {
         page: parsed.data.page,
         pageSize: parsed.data.pageSize,
         view: parsed.data.view,
+        branchId: parsed.data.branchId ?? req.auth!.activeBranchId ?? undefined,
       });
       res.json(page);
     } catch (e) {
@@ -115,6 +116,7 @@ export class InventoryController {
       const page = await this.inventory.getMovementHistory(req.auth!.businessId, id, {
         page: parsed.data.page,
         pageSize: parsed.data.pageSize,
+        branchId: parsed.data.branchId ?? req.auth!.activeBranchId ?? undefined,
       });
       res.json(page);
     } catch (e) {

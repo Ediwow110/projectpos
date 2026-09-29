@@ -36,6 +36,10 @@ export const activeBusinessSchema = z.object({
   businessId: z.string().min(1),
 });
 
+export const activeBranchSchema = z.object({
+  branchId: z.string().min(1).nullable(),
+});
+
 export const confirmPasswordSchema = z.object({
   password: z.string().min(1),
 });

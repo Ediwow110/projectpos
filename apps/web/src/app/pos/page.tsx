@@ -2,7 +2,7 @@
 
 import type { JSX } from "react";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ApiError } from "../../lib/api";
 import { cartTotal } from "../../lib/sales";
 import { ConnectivityBanner } from "../../lib/sync-ui";
@@ -22,6 +22,7 @@ import {
 import { completePosSale, holdPosSale, queueOfflinePosSale } from "../../lib/pos-operations";
 import { usePosData } from "../../lib/use-pos-data";
 import { usePosOffline } from "../../lib/use-pos-offline";
+import { registersForBranch } from "../../lib/workspace-branch";
 import { AppShell } from "../../components/AppShell";
 import { PosCartPanel } from "../../components/PosCartPanel";
 import { PosCustomerDialog } from "../../components/PosCustomerDialog";
@@ -75,6 +76,15 @@ export default function PosPage(): JSX.Element {
   );
 
   const role = meQuery.data?.role ?? "cashier";
+  const scopedRegisters = registersForBranch(
+    registersQuery.data?.items ?? [],
+    meQuery.data?.activeBranchId,
+  );
+  useEffect(() => {
+    if (registerId !== "" && !scopedRegisters.some((register) => register.id === registerId)) {
+      setRegisterId("");
+    }
+  }, [registerId, scopedRegisters]);
   const canSell = role === "owner" || role === "manager" || role === "cashier";
   const due = cartTotal(cart.map((c) => ({ qty: c.qty, priceMinor: c.priceMinor, lineDiscountMinor: 0 })));
   const effectiveMethod = offline ? "cash" : method;
@@ -215,7 +225,7 @@ export default function PosPage(): JSX.Element {
   const statusView = paymentPresentation(status);
   const canPay = canPresentPayAction(cart.length, canSell) && reconcileId === null;
   const selectedRegisterName =
-    registersQuery.data?.items.find((register) => register.id === registerId)?.name ?? "—";
+    scopedRegisters.find((register) => register.id === registerId)?.name ?? "—";
 
   return (
     <AppShell
@@ -233,9 +243,7 @@ export default function PosPage(): JSX.Element {
             className="max-w-28 bg-transparent font-data text-[8px] font-medium text-[#746960] outline-none"
           >
             <option value="">—</option>
-            {(registersQuery.data?.items ?? [])
-              .filter((register) => register.isActive)
-              .map((register) => (
+            {scopedRegisters.map((register) => (
                 <option key={register.id} value={register.id}>{register.name}</option>
               ))}
           </select>
@@ -255,7 +263,7 @@ export default function PosPage(): JSX.Element {
         >
         <PosProductCatalog
           registerId={registerId}
-          registers={registersQuery.data?.items ?? []}
+          registers={scopedRegisters}
           query={q}
           activeCategoryId={activeCategoryId}
           categories={categoriesQuery.data?.items ?? []}

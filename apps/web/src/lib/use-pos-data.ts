@@ -11,6 +11,8 @@ export interface PosMe {
   businessId: string;
   role: string;
   businessName?: string;
+  activeBranchId: string | null;
+  activeBranchName: string | null;
 }
 
 export interface PosPaymentMethodConfig {
@@ -35,7 +37,7 @@ export function usePosData(query: string, activeCategoryId: string, customerQuer
   });
   const registersQuery = useQuery({
     queryKey: ["pos-registers"],
-    queryFn: () => apiFetch<{ items: Array<{ id: string; name: string; isActive: boolean }> }>("/api/v1/registers"),
+    queryFn: () => apiFetch<{ items: Array<{ id: string; name: string; isActive: boolean; branchId: string | null; branchName: string | null }> }>("/api/v1/registers"),
     retry: false,
   });
   const paymentMethodsQuery = useQuery({

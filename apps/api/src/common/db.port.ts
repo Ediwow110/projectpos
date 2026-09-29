@@ -136,6 +136,8 @@ export interface DbSession {
   // Phase 11: explicit active business chosen via POST /auth/active-business;
   // null/undefined = home business from login.
   activeBusinessId?: string | null;
+  // Workspace branch scope; null/undefined means "All branches".
+  activeBranchId?: string | null;
   tokenHash: string;
   expiresAt: Date;
   revokedAt: Date | null;
@@ -466,7 +468,7 @@ export interface DbPort {
   listSessionsByUser(userId: string): Promise<DbSession[]>;
   updateSession(
     id: string,
-    patch: { activeBusinessId?: string | null; authenticatedAt?: Date },
+    patch: { activeBusinessId?: string | null; activeBranchId?: string | null; authenticatedAt?: Date },
   ): Promise<void>;
   revokeSession(id: string): Promise<void>;
   revokeAllUserSessions(userId: string, exceptId?: string): Promise<void>;

@@ -1,10 +1,12 @@
-import { Controller, Get, Inject, Post, Req, Res, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Post, Req, Res, UseGuards } from "@nestjs/common";
 import type { Request, Response } from "express";
+import { activeBranchSchema } from "@pos/validation";
 import { SessionGuard } from "../../common/session.guard";
 import { CsrfGuard } from "../../common/csrf.guard";
 import { me } from "../../routes/me";
 import { health } from "../../routes/health";
 import { getCorrelationId } from "../../correlation";
+import { fail, failFromError } from "../../common/http-helpers";
 import { TenantService } from "./tenant.service";
 
 function rid(req: Request): string {
@@ -23,9 +25,37 @@ export class TenantController {
   @Get("me")
   async me(@Req() req: Request, @Res() res: Response): Promise<void> {
     const auth = req.auth!;
-    const profile = await this.tenant.me(auth.userId, auth.businessId);
+    const profile = await this.tenant.me(auth.userId, auth.businessId, auth.activeBranchId);
     const requestId = rid(req);
     res.json({ ...me({ businessId: profile.businessId, userId: profile.userId }, requestId), ...profile });
+  }
+
+  @Post("me/active-branch")
+  @UseGuards(CsrfGuard)
+  async setActiveBranch(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Body() body: unknown,
+  ): Promise<void> {
+    const parsed = activeBranchSchema.safeParse(body);
+    if (!parsed.success) {
+      fail(res, 400, "VALIDATION", "Invalid branch scope", req);
+      return;
+    }
+    try {
+      const auth = req.auth!;
+      res.status(200).json(
+        await this.tenant.setActiveBranch(
+          auth.userId,
+          auth.businessId,
+          auth.sessionId,
+          parsed.data.branchId,
+          rid(req),
+        ),
+      );
+    } catch (error) {
+      failFromError(res, error, "Cannot switch branch", req);
+    }
   }
 
   @Get("health")

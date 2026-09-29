@@ -3,6 +3,7 @@ export interface RequestAuth {
   businessId: string;
   role: string;
   sessionId: string;
+  activeBranchId: string | null;
   authenticatedAt: Date;
 }
 

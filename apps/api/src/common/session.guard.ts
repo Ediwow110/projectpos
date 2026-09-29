@@ -46,11 +46,20 @@ export class SessionGuard implements CanActivate {
       req.authError = "TENANT_MISMATCH";
       return false;
     }
+    let activeBranchId = session.activeBranchId ?? null;
+    if (activeBranchId !== null) {
+      const branch = await this.db.findBranchById(activeBranchId, targetBusinessId);
+      if (!branch || !branch.isActive) {
+        activeBranchId = null;
+        await this.db.updateSession(session.id, { activeBranchId: null });
+      }
+    }
     req.auth = {
       userId: session.userId,
       businessId: targetBusinessId,
       role: membership.role,
       sessionId: session.id,
+      activeBranchId,
       authenticatedAt: session.authenticatedAt,
     };
     return true;

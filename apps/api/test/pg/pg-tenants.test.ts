@@ -162,12 +162,12 @@ describe("phase12 pg tenants: sessions", () => {
       const expiresAt = new Date(Date.now() + 60_000);
       const authenticatedAt = new Date(Date.now() - 5_000);
       const s = await db.createSession({
-        userId: u.id, businessId: b.id, activeBusinessId: null, tokenHash: "tok-1",
+        userId: u.id, businessId: b.id, activeBusinessId: null, activeBranchId: null, tokenHash: "tok-1",
         expiresAt, revokedAt: null, authenticatedAt, ip: "127.0.0.1", userAgent: "vitest", deviceId: null,
       });
       expect(s.id).toBeTruthy();
       expect(await db.findSessionByTokenHash("tok-1")).toEqual({
-        id: s.id, userId: u.id, businessId: b.id, activeBusinessId: null, tokenHash: "tok-1",
+        id: s.id, userId: u.id, businessId: b.id, activeBusinessId: null, activeBranchId: null, tokenHash: "tok-1",
         expiresAt, revokedAt: null, authenticatedAt, ip: "127.0.0.1", userAgent: "vitest", deviceId: null,
       });
       expect(await db.findSessionByTokenHash("tok-missing")).toBeNull();
@@ -180,12 +180,29 @@ describe("phase12 pg tenants: sessions", () => {
       const b1 = await seedBusiness(db);
       const b2 = await seedBusiness(db);
       const s = await db.createSession({
-        userId: u.id, businessId: b1.id, activeBusinessId: null, tokenHash: uniq("tok"),
+        userId: u.id, businessId: b1.id, activeBusinessId: null, activeBranchId: null, tokenHash: uniq("tok"),
         expiresAt: new Date(Date.now() + 60_000), revokedAt: null, authenticatedAt: new Date(),
         ip: null, userAgent: null, deviceId: null,
       });
       await db.updateSession(s.id, { activeBusinessId: b2.id });
       expect((await db.findSessionByTokenHash(s.tokenHash))!.activeBusinessId).toBe(b2.id);
+    });
+  });
+
+  it("updates and clears the active branch on a session", async () => {
+    await withPg(async (db) => {
+      const u = await seedUser(db);
+      const b = await seedBusiness(db);
+      const branch = await db.createBranch({ businessId: b.id, name: uniq("Branch"), type: "store", isActive: true });
+      const s = await db.createSession({
+        userId: u.id, businessId: b.id, activeBusinessId: null, activeBranchId: null, tokenHash: uniq("tok"),
+        expiresAt: new Date(Date.now() + 60_000), revokedAt: null, authenticatedAt: new Date(),
+        ip: null, userAgent: null, deviceId: null,
+      });
+      await db.updateSession(s.id, { activeBranchId: branch.id });
+      expect((await db.findSessionByTokenHash(s.tokenHash))!.activeBranchId).toBe(branch.id);
+      await db.updateSession(s.id, { activeBranchId: null });
+      expect((await db.findSessionByTokenHash(s.tokenHash))!.activeBranchId).toBeNull();
     });
   });
 
@@ -196,7 +213,7 @@ describe("phase12 pg tenants: sessions", () => {
       const b = await seedBusiness(db);
       const mk = async (tokenHash: string, owner = u) =>
         db.createSession({
-          userId: owner.id, businessId: b.id, activeBusinessId: null, tokenHash,
+          userId: owner.id, businessId: b.id, activeBusinessId: null, activeBranchId: null, tokenHash,
           expiresAt: new Date(Date.now() + 60_000), revokedAt: null, authenticatedAt: new Date(),
           ip: null, userAgent: null, deviceId: null,
         });
@@ -215,7 +232,7 @@ describe("phase12 pg tenants: sessions", () => {
       const b = await seedBusiness(db);
       const mk = async (tokenHash: string) =>
         db.createSession({
-          userId: u.id, businessId: b.id, activeBusinessId: null, tokenHash,
+          userId: u.id, businessId: b.id, activeBusinessId: null, activeBranchId: null, tokenHash,
           expiresAt: new Date(Date.now() + 60_000), revokedAt: null, authenticatedAt: new Date(),
           ip: null, userAgent: null, deviceId: null,
         });

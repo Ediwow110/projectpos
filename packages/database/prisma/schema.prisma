@@ -137,6 +137,8 @@ model Session {
   // Phase 11: explicit active business chosen via POST /auth/active-business;
   // null = home business from login.
   activeBusinessId String?
+  // Workspace branch scope; null means "All branches".
+  activeBranchId String?
   authenticatedAt DateTime @default(now())
   tokenHash  String    @unique
   expiresAt  DateTime
@@ -149,6 +151,7 @@ model Session {
   user       User      @relation(fields: [userId], references: [id])
   business   Business  @relation(fields: [businessId], references: [id])
   activeBusiness Business? @relation("SessionActiveBusiness", fields: [activeBusinessId], references: [id], onDelete: SetNull)
+  activeBranch Branch? @relation("SessionActiveBranch", fields: [activeBranchId], references: [id], onDelete: SetNull)
   @@index([businessId])
   @@index([userId])
 }
@@ -506,6 +509,7 @@ model Branch {
   updatedAt  DateTime   @updatedAt
   business   Business   @relation(fields: [businessId], references: [id])
   registers  Register[]
+  activeSessions Session[] @relation("SessionActiveBranch")
   @@unique([businessId, name])
   @@index([businessId])
 }

@@ -7,14 +7,14 @@ import type { PgContext } from "./context";
 // - Runtime `membership.role` is a string; the DDL normalizes roles into the
 //   Role table, so createMembership upserts Role(businessId, name) and links
 //   the membership to its id; every read joins Role back to the string.
-// - Session reads always return the full DbSession shape (activeBusinessId as
-//   null when unset — Phase 11 semantics are identical for null/undefined).
+// - Session reads always return the full DbSession shape. activeBusinessId
+//   and activeBranchId are null when unset.
 export function tenantsFamily(ctx: PgContext) {
   const MEMBERSHIP_SELECT =
     'SELECT m."id", m."businessId", m."userId", r."name" AS "role", m."deactivatedAt"' +
     ' FROM "BusinessMembership" m JOIN "Role" r ON r."id" = m."roleId"';
   const SESSION_SELECT =
-    'SELECT "id", "userId", "businessId", "activeBusinessId", "tokenHash", "expiresAt", "revokedAt",' +
+    'SELECT "id", "userId", "businessId", "activeBusinessId", "activeBranchId", "tokenHash", "expiresAt", "revokedAt",' +
     ' "authenticatedAt", "ip", "userAgent", "deviceId" FROM "Session"';
 
   return {
@@ -199,11 +199,11 @@ export function tenantsFamily(ctx: PgContext) {
       try {
         const row = { ...s, id: nid("sess") };
         await c.query(
-          'INSERT INTO "Session" ("id", "userId", "businessId", "activeBusinessId", "tokenHash", "expiresAt", "revokedAt", "authenticatedAt", "ip", "userAgent", "deviceId")' +
-            ' VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)',
+          'INSERT INTO "Session" ("id", "userId", "businessId", "activeBusinessId", "activeBranchId", "tokenHash", "expiresAt", "revokedAt", "authenticatedAt", "ip", "userAgent", "deviceId")' +
+            ' VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)',
           [
-            row.id, s.userId, s.businessId, s.activeBusinessId ?? null, s.tokenHash, s.expiresAt,
-            s.revokedAt, s.authenticatedAt, s.ip, s.userAgent, s.deviceId ?? null,
+            row.id, s.userId, s.businessId, s.activeBusinessId ?? null, s.activeBranchId ?? null,
+            s.tokenHash, s.expiresAt, s.revokedAt, s.authenticatedAt, s.ip, s.userAgent, s.deviceId ?? null,
           ],
         );
         return row;
@@ -238,7 +238,7 @@ export function tenantsFamily(ctx: PgContext) {
 
     async updateSession(
       id: string,
-      patch: { activeBusinessId?: string | null; authenticatedAt?: Date },
+      patch: { activeBusinessId?: string | null; activeBranchId?: string | null; authenticatedAt?: Date },
     ): Promise<void> {
       const c = await ctx.client();
       try {
@@ -247,6 +247,10 @@ export function tenantsFamily(ctx: PgContext) {
         if (patch.activeBusinessId !== undefined) {
           values.push(patch.activeBusinessId);
           sets.push(`"activeBusinessId" = $${values.length}`);
+        }
+        if (patch.activeBranchId !== undefined) {
+          values.push(patch.activeBranchId);
+          sets.push(`"activeBranchId" = $${values.length}`);
         }
         if (patch.authenticatedAt !== undefined) {
           values.push(patch.authenticatedAt);

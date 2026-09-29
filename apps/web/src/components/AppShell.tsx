@@ -13,6 +13,7 @@ import {
   workspaceNavigationForRole,
   type WorkspaceNavigationItem,
 } from "../lib/workspace-navigation";
+import { branchScopeLabel } from "../lib/workspace-branch";
 import { GuidedTour } from "./GuidedTour";
 
 function isActive(pathname: string, href: string): boolean {
@@ -98,11 +99,21 @@ export function AppShell({
       role: string;
       onboardingRequired: boolean;
       workspaceTourSeen: boolean;
+      activeBranchId: string | null;
+      activeBranchName: string | null;
     }>("/api/v1/me"),
     retry: false,
   });
+  const branchesQuery = useQuery({
+    queryKey: ["branches"],
+    queryFn: () => apiFetch<{ items: Array<{ id: string; name: string; isActive: boolean }> }>("/api/v1/branches"),
+    retry: false,
+    enabled: shellMe.data !== undefined && !shellMe.data.onboardingRequired,
+  });
   const [signingOut, setSigningOut] = React.useState(false);
   const [signOutError, setSignOutError] = React.useState("");
+  const [branchError, setBranchError] = React.useState("");
+  const [switchingBranch, setSwitchingBranch] = React.useState(false);
   const [pendingHref, setPendingHref] = React.useState<string | null>(null);
   const [showNavigationProgress, setShowNavigationProgress] = React.useState(false);
   const [showTour, setShowTour] = React.useState(false);
@@ -110,6 +121,9 @@ export function AppShell({
   const year = new Date().getFullYear();
   const name = businessName ?? "NexPOS";
   const currentRole = shellMe.data?.role ?? role ?? "owner";
+  const activeBranchId = shellMe.data?.activeBranchId ?? null;
+  const activeBranchName = shellMe.data?.activeBranchName ?? null;
+  const activeBranches = (branchesQuery.data?.items ?? []).filter((branch) => branch.isActive);
   const navigationGroups = workspaceNavigationForRole(currentRole);
   const mobileNavigation = flattenedWorkspaceNavigation(currentRole);
   const initial = name.slice(0, 1).toUpperCase();
@@ -181,6 +195,38 @@ export function AppShell({
     router.refresh();
   }
 
+  async function switchBranch(branchId: string): Promise<void> {
+    const profile = shellMe.data;
+    if (!profile || switchingBranch) return;
+    setSwitchingBranch(true);
+    setBranchError("");
+    try {
+      const csrf = await apiFetch<{ csrfToken: string }>("/api/v1/auth/csrf");
+      const result = await apiFetch<{ activeBranchId: string | null; activeBranchName: string | null }>(
+        "/api/v1/me/active-branch",
+        {
+          csrfToken: csrf.csrfToken,
+          init: {
+            method: "POST",
+            body: JSON.stringify({ branchId: branchId || null }),
+          },
+        },
+      );
+      queryClient.setQueryData(["me"], {
+        ...profile,
+        activeBranchId: result.activeBranchId,
+        activeBranchName: result.activeBranchName,
+      });
+      await queryClient.invalidateQueries({
+        predicate: (query) => query.queryKey[0] !== "me" && query.queryKey[0] !== "branches",
+      });
+    } catch (error) {
+      setBranchError(error instanceof ApiError ? error.message : "Could not switch branch.");
+    } finally {
+      setSwitchingBranch(false);
+    }
+  }
+
   if (shellMe.isLoading || shellMe.data?.onboardingRequired) {
     return (
       <main
@@ -223,7 +269,19 @@ export function AppShell({
             </Link>
 
             <div className={posMode ? "hidden items-center gap-2 lg:flex" : "hidden items-center gap-2 md:flex"}>
-              <span className="rounded-[10px] border border-[#eee4db] bg-white px-3 py-2 text-[10px] font-semibold text-[#2a241f]">Main branch</span>
+              <label className="rounded-[10px] border border-[#eee4db] bg-white px-2.5 py-1.5 text-[9px] font-semibold text-[#2a241f]">
+                <span className="sr-only">Active branch</span>
+                <select
+                  aria-label="Active branch"
+                  value={activeBranchId ?? ""}
+                  onChange={(event) => void switchBranch(event.target.value)}
+                  disabled={switchingBranch}
+                  className="max-w-36 bg-transparent text-[10px] font-semibold outline-none disabled:cursor-wait"
+                >
+                  <option value="">All branches</option>
+                  {activeBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                </select>
+              </label>
               {offline !== undefined ? (
                 <span
                   className={
@@ -257,7 +315,20 @@ export function AppShell({
 
             <div className="ml-auto flex min-w-0 items-center gap-2">
               {topbar ? <div className="hidden min-w-0 md:block">{topbar}</div> : null}
-              {signOutError ? <span role="alert" className="max-w-28 text-right text-[8px] font-medium text-[#c43e3e]">{signOutError}</span> : null}
+              <label className="md:hidden">
+                <span className="sr-only">Active branch</span>
+                <select
+                  aria-label="Active branch"
+                  value={activeBranchId ?? ""}
+                  onChange={(event) => void switchBranch(event.target.value)}
+                  disabled={switchingBranch}
+                  className="max-w-24 rounded-lg border border-[#eadfd6] bg-white px-2 py-1.5 text-[8px] font-semibold text-[#665b53]"
+                >
+                  <option value="">All branches</option>
+                  {activeBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                </select>
+              </label>
+              {branchError || signOutError ? <span role="alert" className="max-w-28 text-right text-[8px] font-medium text-[#c43e3e]">{branchError || signOutError}</span> : null}
               <span aria-hidden className="hidden text-sm text-[#2a241f] sm:inline">⌕</span>
               <span aria-hidden className="hidden text-sm text-[#2a241f] sm:inline">♢</span>
               {showSessionControls ? (
@@ -277,7 +348,7 @@ export function AppShell({
               </div>
               <div className="hidden max-w-40 min-w-0 lg:block">
                 <p className="truncate text-[9px] font-semibold text-[#2a241f]">{name}</p>
-                <p className="truncate text-[8px] capitalize text-[#84786e]">{currentRole} · Main branch</p>
+                <p className="truncate text-[8px] capitalize text-[#84786e]">{currentRole} · {branchScopeLabel(activeBranchName)}</p>
               </div>
               {showSessionControls ? (
                 <button
@@ -360,7 +431,7 @@ export function AppShell({
                   </div>
                   <div className="min-w-0">
                     <p className="truncate text-[10px] font-semibold text-[#2a241f]">{name}</p>
-                    <p className="truncate text-[8px] capitalize text-[#84786e]">{currentRole} · Main branch</p>
+                    <p className="truncate text-[8px] capitalize text-[#84786e]">{currentRole} · {branchScopeLabel(activeBranchName)}</p>
                   </div>
                 </div>
               </div>

@@ -12,10 +12,12 @@ export function buildBalancesSearch(params: {
   view?: string;
   page?: number;
   pageSize?: number;
+  branchId?: string;
 }): string {
   const sp = new URLSearchParams();
   sp.set("view", params.view ?? "all");
   sp.set("page", String(params.page ?? 1));
   sp.set("pageSize", String(params.pageSize ?? 20));
+  if (params.branchId) sp.set("branchId", params.branchId);
   return `/api/v1/inventory/balances?${sp.toString()}`;
 }

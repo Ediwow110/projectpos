@@ -3,8 +3,19 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { canPresentPayAction, paymentPresentation, productInitials, productTileClass, saleFromCompleteResponse } from "./pos-view";
+import { registersForBranch } from "./workspace-branch";
 
 describe("POS presentation safety", () => {
+  it("limits register choices to the active branch while All branches shows every register", () => {
+    const registers = [
+      { id: "r1", name: "North till", isActive: true, branchId: "north" },
+      { id: "r2", name: "South till", isActive: true, branchId: "south" },
+      { id: "r3", name: "Unassigned", isActive: true, branchId: null },
+    ];
+    expect(registersForBranch(registers, "north").map((item) => item.id)).toEqual(["r1"]);
+    expect(registersForBranch(registers, null).map((item) => item.id)).toEqual(["r1", "r2", "r3"]);
+  });
+
   it("never presents PAYMENT_UNKNOWN as success", () => {
     expect(paymentPresentation("Payment status unknown. Do not retry blindly.")).toEqual({
       tone: "warn",

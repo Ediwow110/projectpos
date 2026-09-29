@@ -180,6 +180,7 @@ export class AuthService {
       expiresAt: rec.expiresAt,
       revokedAt: null,
       authenticatedAt: rec.createdAt,
+      activeBranchId: null,
       ip: rec.ip,
       userAgent: rec.userAgent,
       deviceId: deviceId ?? null,
@@ -282,7 +283,7 @@ export class AuthService {
     resolveActiveBusiness(memberships.map((m) => m.businessId), businessId);
     // FR-TENANT-02: the active business is explicit in session context, so
     // the choice is persisted on the session, not merely audited.
-    await this.db.updateSession(sessionId, { activeBusinessId: businessId });
+    await this.db.updateSession(sessionId, { activeBusinessId: businessId, activeBranchId: null });
     await this.db.appendAudit({ businessId, actorId: userId, action: "auth.switch-business", entityType: "Session", entityId: sessionId, requestId });
   }
 

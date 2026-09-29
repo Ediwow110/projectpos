@@ -21,13 +21,14 @@ import {
   persistActiveSyncScope,
 } from "../lib/sync-store";
 import { ConnectivityBanner, SyncAttentionItems } from "../lib/sync-ui";
-import type { BranchRow } from "./branches/page";
 
 interface Me {
   userId: string;
   businessId: string;
   businessName: string;
   role: string;
+  activeBranchId: string | null;
+  activeBranchName: string | null;
 }
 
 interface Kpi {
@@ -96,7 +97,6 @@ export default function DashboardPage(): JSX.Element {
   const [preset, setPreset] = useState(30);
   const [compare, setCompare] = useState("previous_period");
   const [metric, setMetric] = useState<"revenue" | "orders">("revenue");
-  const [branchId, setBranchId] = useState("");
   const [syncStore, setSyncStore] = useState<IndexedDbSyncStore | null>(() => createActiveSyncStore());
 
   const meQuery = useQuery({
@@ -121,12 +121,7 @@ export default function DashboardPage(): JSX.Element {
       router.replace("/login");
     }
   }, [meQuery.data, router, unauthorized]);
-  const branchesQuery = useQuery({
-    queryKey: ["branches"],
-    queryFn: () => apiFetch<{ items: BranchRow[] }>("/api/v1/branches"),
-    retry: false,
-    enabled: !meQuery.isError,
-  });
+  const branchId = meQuery.data?.activeBranchId ?? "";
   const range = presetRange(preset);
   const overviewQuery = useQuery({
     queryKey: ["overview", preset, compare, branchId],
@@ -184,10 +179,6 @@ export default function DashboardPage(): JSX.Element {
                 <option value="previous_period">Previous period</option>
                 <option value="previous_year">Previous year</option>
                 <option value="none">No comparison</option>
-              </select>
-              <select value={branchId} onChange={(event) => setBranchId(event.target.value)} className="field !w-auto !py-2 text-xs font-semibold" aria-label="Branch">
-                <option value="">All branches</option>
-                {(branchesQuery.data?.items ?? []).map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
               </select>
             </>
           }

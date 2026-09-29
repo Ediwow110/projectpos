@@ -31,6 +31,9 @@ const pageQuery = z.object({
 
 export const balancesQuerySchema = pageQuery.extend({
   view: z.enum(["all", "low", "out"]).default("all"),
+  branchId: z.string().min(1, "VALIDATION").optional(),
 });
 
-export const movementHistoryQuerySchema = pageQuery;
+export const movementHistoryQuerySchema = pageQuery.extend({
+  branchId: z.string().min(1, "VALIDATION").optional(),
+});

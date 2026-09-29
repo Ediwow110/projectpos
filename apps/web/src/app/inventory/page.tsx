@@ -31,6 +31,8 @@ interface BalancesResult {
 interface Me {
   role: string;
   businessName?: string;
+  activeBranchId: string | null;
+  activeBranchName: string | null;
 }
 
 interface Csrf {
@@ -47,9 +49,15 @@ export default function InventoryPage(): JSX.Element {
   const [error, setError] = useState("");
   const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<Me>("/api/v1/me"), retry: false });
   const balancesQuery = useQuery({
-    queryKey: ["balances", view, page],
-    queryFn: () => apiFetch<BalancesResult>(buildBalancesSearch({ view, page, pageSize: 20 })),
+    queryKey: ["balances", view, page, meQuery.data?.activeBranchId ?? null],
+    queryFn: () => apiFetch<BalancesResult>(buildBalancesSearch({
+      view,
+      page,
+      pageSize: 20,
+      branchId: meQuery.data?.activeBranchId ?? undefined,
+    })),
     retry: false,
+    enabled: meQuery.data !== undefined,
   });
 
   async function recordMovement(event: React.FormEvent): Promise<void> {
@@ -75,6 +83,7 @@ export default function InventoryPage(): JSX.Element {
             type,
             qtyDelta: delta,
             reason: reason.trim() ? reason.trim() : undefined,
+            branchId: meQuery.data?.activeBranchId ?? undefined,
           }),
         },
       });
@@ -87,7 +96,7 @@ export default function InventoryPage(): JSX.Element {
     }
   }
 
-  if (balancesQuery.isLoading) {
+  if (meQuery.isLoading || balancesQuery.isPending) {
     return (
       <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role}>
         <main className="mx-auto max-w-[1240px] p-6"><Panel className="p-6 text-sm text-[#73685f]">Loading inventory…</Panel></main>
@@ -95,13 +104,17 @@ export default function InventoryPage(): JSX.Element {
     );
   }
 
-  if (balancesQuery.isError) {
+  if (meQuery.isError || balancesQuery.isError) {
     return (
       <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role}>
         <main className="mx-auto max-w-[1240px] p-6">
           <Panel className="border-[#efb9b9] bg-[#fff0f0] p-6">
             <p role="alert" className="text-sm font-medium text-[#9d3030]">
-              {balancesQuery.error instanceof ApiError ? balancesQuery.error.code + ": " + balancesQuery.error.message : "Could not load inventory."}
+              {balancesQuery.error instanceof ApiError
+                ? balancesQuery.error.code + ": " + balancesQuery.error.message
+                : meQuery.error instanceof ApiError
+                  ? meQuery.error.code + ": " + meQuery.error.message
+                  : "Could not load inventory."}
             </p>
           </Panel>
         </main>
@@ -124,7 +137,11 @@ export default function InventoryPage(): JSX.Element {
         <PageHeader
           eyebrow="Inventory / Stock control"
           title="Inventory"
-          description="Track exact on-hand stock, spot risk early, and record audited stock movement without leaving the workspace."
+          description={
+            meQuery.data?.activeBranchName
+              ? "Viewing stock for " + meQuery.data.activeBranchName + ". Track on-hand inventory and audited movement within this branch."
+              : "Viewing all branch scopes. Select an active branch in the workspace header when you need location-specific stock."
+          }
           actions={<Link href="/transfers" className="inline-flex min-h-10 items-center rounded-[10px] border border-[#e4d9d0] bg-white px-4 text-sm font-semibold text-[#2a241f] hover:border-[#f35d3f]">View transfers</Link>}
         />
 

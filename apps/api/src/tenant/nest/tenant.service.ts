@@ -6,13 +6,15 @@ import type { DbPort } from "../../common/db.port";
 export class TenantService {
   constructor(@Inject("DbPort") private readonly db: DbPort) {}
 
-  async me(userId: string, businessId: string): Promise<{
+  async me(userId: string, businessId: string, activeBranchId: string | null = null): Promise<{
     userId: string;
     email: string;
     name: string;
     businessId: string;
     businessName: string;
     role: string;
+    activeBranchId: string | null;
+    activeBranchName: string | null;
     onboardingRequired: boolean;
     workspaceTourSeen: boolean;
   }> {
@@ -22,6 +24,7 @@ export class TenantService {
     if (!user || !business || !membership) throw new Error("TENANT_REQUIRED");
     const settings = await this.db.getSettings(businessId);
     const onboarding = (settings["onboarding"] as OnboardingState | undefined) ?? defaultOnboardingState();
+    const activeBranch = activeBranchId ? await this.db.findBranchById(activeBranchId, businessId) : null;
     return {
       userId: user.id,
       email: user.email,
@@ -29,9 +32,47 @@ export class TenantService {
       businessId: business.id,
       businessName: business.name,
       role: membership.role,
+      activeBranchId: activeBranch?.isActive ? activeBranch.id : null,
+      activeBranchName: activeBranch?.isActive ? activeBranch.name : null,
       onboardingRequired: membership.role === "owner" && !isOnboardingComplete(onboarding),
       workspaceTourSeen: user.workspaceTourSeen === true,
     };
+  }
+
+  async setActiveBranch(
+    userId: string,
+    businessId: string,
+    sessionId: string,
+    branchId: string | null,
+    requestId: string,
+  ): Promise<{ activeBranchId: string | null; activeBranchName: string | null }> {
+    if (branchId === null) {
+      await this.db.updateSession(sessionId, { activeBranchId: null });
+      await this.db.appendAudit({
+        businessId,
+        actorId: userId,
+        action: "auth.switch-branch",
+        entityType: "Session",
+        entityId: sessionId,
+        requestId,
+        reason: "all branches",
+      });
+      return { activeBranchId: null, activeBranchName: null };
+    }
+    const branch = await this.db.findBranchById(branchId, businessId);
+    if (!branch) throw new Error("NOT_FOUND");
+    if (!branch.isActive) throw new Error("VALIDATION");
+    await this.db.updateSession(sessionId, { activeBranchId: branch.id });
+    await this.db.appendAudit({
+      businessId,
+      actorId: userId,
+      action: "auth.switch-branch",
+      entityType: "Session",
+      entityId: sessionId,
+      requestId,
+      reason: branch.name,
+    });
+    return { activeBranchId: branch.id, activeBranchName: branch.name };
   }
 
   async markWorkspaceTourSeen(userId: string): Promise<{ workspaceTourSeen: true }> {
