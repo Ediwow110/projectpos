@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   PayMongoHttpClient,
   createPayMongoFromEnv,
+  payMongoModeFromEnv,
   payMongoMethodType,
 } from "./paymongo";
 
@@ -59,6 +60,22 @@ describe("PayMongo adapter", () => {
       PAYMONGO_SECRET_KEY: "sk_test_ready",
       PAYMONGO_WEBHOOK_SECRET: "whsec_ready",
     }).configured()).toBe(true);
+  });
+
+  it("reports only the non-secret PayMongo runtime mode", () => {
+    expect(payMongoModeFromEnv({})).toBe("disabled");
+    expect(payMongoModeFromEnv({
+      PAYMONGO_SECRET_KEY: "sk_test_ready",
+      PAYMONGO_WEBHOOK_SECRET: "whsec_ready",
+    })).toBe("test");
+    expect(payMongoModeFromEnv({
+      PAYMONGO_SECRET_KEY: "sk_live_ready",
+      PAYMONGO_WEBHOOK_SECRET: "whsec_ready",
+    })).toBe("live");
+    expect(payMongoModeFromEnv({
+      PAYMONGO_SECRET_KEY: "unexpected_key",
+      PAYMONGO_WEBHOOK_SECRET: "whsec_ready",
+    })).toBe("unknown");
   });
 
   it("creates hosted checkout v2 server-side with PayMongo idempotency", async () => {

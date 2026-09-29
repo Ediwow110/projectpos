@@ -197,3 +197,14 @@ export function createPayMongoFromEnv(env: NodeJS.ProcessEnv = process.env): Pay
     webhookToleranceSeconds: Number.isFinite(tolerance) && tolerance >= 0 ? tolerance : 300,
   });
 }
+
+export function payMongoModeFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): "test" | "live" | "disabled" | "unknown" {
+  const secretKey = env["PAYMONGO_SECRET_KEY"]?.trim() ?? "";
+  const webhookSecret = env["PAYMONGO_WEBHOOK_SECRET"]?.trim() ?? "";
+  if (!secretKey || !webhookSecret) return "disabled";
+  if (secretKey.startsWith("sk_test_")) return "test";
+  if (secretKey.startsWith("sk_live_")) return "live";
+  return "unknown";
+}

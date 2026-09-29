@@ -4,6 +4,7 @@ import type { NestExpressApplication } from "@nestjs/platform-express";
 import type { RequestHandler } from "express";
 import cookieParser from "cookie-parser";
 import { AppModule } from "./app.module";
+import { payMongoModeFromEnv } from "./payments/paymongo";
 
 async function bootstrap(): Promise<void> {
   // rawBody preserves the exact request bytes so billing webhooks can verify a
@@ -27,6 +28,7 @@ async function bootstrap(): Promise<void> {
   });
   const port = Number(process.env["API_PORT"] ?? 3001);
   await app.listen(port);
+  console.info(`PayMongo mode: ${payMongoModeFromEnv(process.env)}`);
   // SIGTERM/SIGINT end the PostgreSQL pool via AppModule's shutdown hook, so
   // platform rollouts drain in-flight requests instead of dropping them.
   app.enableShutdownHooks();
