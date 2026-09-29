@@ -1,8 +1,8 @@
 # Phase A — Usability Completion Design
 
-**Date:** 2026-09-30  
-**Product:** NexPOS retail operations platform  
-**Status:** Design for review  
+**Date:** 2026-09-30
+**Product:** NexPOS retail operations platform
+**Status:** Design for review
 **Source audit:** `docs/audits/2026-09-29-deep-pos-system-audit.md`
 
 ## 1. Goal
@@ -440,4 +440,3 @@ Phase A is complete when:
 - Help/Administration has a stable home;
 - desktop/tablet/mobile E2E covers these flows;
 - no regression is introduced in POS checkout, payments, offline sync, shifts, permissions, or reports.
-
