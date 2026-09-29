@@ -4,6 +4,7 @@ import {
   PayMongoHttpClient,
   createManagedPayMongoFromEnv,
   createPayMongoFromEnv,
+  listPayMongoPaymentMethodCapabilitiesFromEnv,
   listPayMongoWebhookDiagnosticsFromEnv,
   payMongoModeFromEnv,
   payMongoMethodType,
@@ -112,6 +113,27 @@ describe("PayMongo adapter", () => {
       events: ["checkout_session.payment.paid"],
     }]);
     expect(JSON.stringify(diagnostics)).not.toContain("whsk_must_not_escape");
+  });
+
+  it("lists active payment-method capabilities without returning API credentials", async () => {
+    const fetchMock = vi.fn(async (
+      _input: Parameters<typeof fetch>[0],
+      _init?: Parameters<typeof fetch>[1],
+    ) => new Response(JSON.stringify({
+      data: ["card", "gcash", "paymaya", "qrph"],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const capabilities = await listPayMongoPaymentMethodCapabilitiesFromEnv({
+      PAYMONGO_SECRET_KEY: "sk_test_capabilities",
+      PAYMONGO_API_BASE: "https://api.paymongo.test",
+    });
+
+    expect(capabilities).toEqual(["card", "gcash", "paymaya", "qrph"]);
+    expect(String(fetchMock.mock.calls[0]![0])).toBe(
+      "https://api.paymongo.test/v1/merchants/capabilities/payment_methods",
+    );
+    expect(JSON.stringify(capabilities)).not.toContain("sk_test_capabilities");
   });
 
   it("creates the managed checkout webhook and immediately uses its signing secret", async () => {

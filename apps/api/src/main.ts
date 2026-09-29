@@ -4,7 +4,11 @@ import type { NestExpressApplication } from "@nestjs/platform-express";
 import type { RequestHandler } from "express";
 import cookieParser from "cookie-parser";
 import { AppModule } from "./app.module";
-import { listPayMongoWebhookDiagnosticsFromEnv, payMongoModeFromEnv } from "./payments/paymongo";
+import {
+  listPayMongoPaymentMethodCapabilitiesFromEnv,
+  listPayMongoWebhookDiagnosticsFromEnv,
+  payMongoModeFromEnv,
+} from "./payments/paymongo";
 
 async function bootstrap(): Promise<void> {
   // rawBody preserves the exact request bytes so billing webhooks can verify a
@@ -35,6 +39,14 @@ async function bootstrap(): Promise<void> {
       console.info(`PayMongo webhook diagnostics: ${JSON.stringify(diagnostics)}`);
     } catch {
       console.warn("PayMongo webhook diagnostics: unavailable");
+    }
+  }
+  if (process.env["PAYMONGO_CAPABILITY_DIAGNOSTICS"] === "1") {
+    try {
+      const methods = await listPayMongoPaymentMethodCapabilitiesFromEnv(process.env);
+      console.info(`PayMongo payment method capabilities: ${JSON.stringify(methods)}`);
+    } catch {
+      console.warn("PayMongo payment method capabilities: unavailable");
     }
   }
   // SIGTERM/SIGINT end the PostgreSQL pool via AppModule's shutdown hook, so

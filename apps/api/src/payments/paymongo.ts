@@ -401,3 +401,23 @@ export async function listPayMongoWebhookDiagnosticsFromEnv(
     }];
   });
 }
+
+export async function listPayMongoPaymentMethodCapabilitiesFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<string[]> {
+  const secretKey = env["PAYMONGO_SECRET_KEY"]?.trim() ?? "";
+  if (!secretKey) return [];
+  const apiBase = (env["PAYMONGO_API_BASE"]?.trim() || "https://api.paymongo.com").replace(/\/$/, "");
+  const response = await fetch(`${apiBase}/v1/merchants/capabilities/payment_methods`, {
+    method: "GET",
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${secretKey}:`).toString("base64")}`,
+      "Content-Type": "application/json",
+    },
+  });
+  if (!response.ok) throw new Error("PAYMONGO_CAPABILITY_DIAGNOSTIC_FAILED");
+  const body = await response.json() as { data?: unknown };
+  return Array.isArray(body.data)
+    ? body.data.filter((entry): entry is string => typeof entry === "string")
+    : [];
+}
