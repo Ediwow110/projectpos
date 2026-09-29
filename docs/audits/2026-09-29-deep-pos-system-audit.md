@@ -16,10 +16,10 @@ The product was also benchmarked against current official documentation for Shop
 | Returns and exchanges | Mature retail POS supports return/exchange directly from order context | Refund request/approve/reject exists; exchange does not | Add exchange as P0/P1 cashier flow |
 | Purchase orders / vendors | Square, Lightspeed, and Loyverse make supplier/vendor ordering and receiving first-class inventory workflows | No supplier/vendor/PO schema | Largest inventory lifecycle gap; P0 |
 | Receiving / stock counts | Retail POS systems support bulk receiving, partial PO receive, and physical counts | Manual inventory movements exist; transfer receiving exists; no PO receiving/count sessions | P0/P1 |
-| Multi-location operations | Current retail POS keeps device/location, staff access, inventory, transfers, and reporting location-aware | Branch domain exists, but shell says `Main branch` and active context is incomplete | P0 correctness issue |
-| Staff management | Retail POS exposes staff roles, PINs/access, and location assignment | Membership API exists; no Team UI or branch assignment workflow | P0 discoverability/operations gap |
+| Multi-location operations | Current retail POS keeps device/location, staff access, inventory, transfers, and reporting location-aware | Phase A added server-backed active branch context and scoped POS/inventory behavior | Implemented baseline; branch assignment remains a separate domain concern |
+| Staff management | Retail POS exposes staff roles, PINs/access, and location assignment | Phase A added owner-facing Team management over the existing membership API | Implemented baseline; branch assignment and invite/reset UX remain future work |
 | Discounts / overrides | Retail POS applies line/order discounts with permission or manager approval | Backend supports discounts/override; POS sends zero discounts | P0 UI/domain disconnect |
-| Device management | Retail POS setup includes device/location readiness and device controls | List/revoke API exists; UI only enrolls and incorrectly says fleet listing is unavailable | P0 existing-capability gap |
+| Device management | Retail POS setup includes device/location readiness and device controls | Phase A added Device Fleet list/enroll/revoke UI and current-device/session-impact handling | Implemented baseline; last-seen/online telemetry is not modeled |
 | Printers / hardware | Setup guides make printer/device configuration discoverable | Printer and print-job APIs exist; no management surface | P1 |
 | Product variants / bundles | Lightspeed/Square/Shopify commonly model variations and richer item structures | Basic product model only | P1 for apparel/retail breadth |
 | Gift card / loyalty | Square/Loyverse/Shopify ecosystems offer stored value and loyalty | Not modeled | P1/P2 depending target market |
@@ -70,23 +70,23 @@ Recommended flow: cashier triggers protected action → manager PIN/passcode/rea
 
 The sale domain supports line and order discounts plus override thresholds, but the current POS draft maps every cart line with zero discount. Add line discount and order discount controls, with visible authorization state and manager approval above thresholds.
 
-### 6. Active branch/register context must be authoritative
+### 6. Active branch/register context must be authoritative — implemented in Phase A
 
-The shared shell still displays a hard-coded `Main branch` while branches are real domain objects. This can mislead owners and staff in multi-location operation.
+The shared shell now uses a server-backed session branch context instead of hard-coded `Main branch`. Branch selection persists on the authenticated session, rejects foreign/inactive branches, clears on business switch, falls back to All branches when the stored branch becomes invalid, and scopes POS registers plus inventory queries.
 
-Required flow: authenticated active location → visible shell context → scoped registers/inventory/reports/POS → explicit switch with permission checks → device/register association retained where appropriate.
+Further branch-assignment policy for staff/devices remains a separate domain decision and is not inferred client-side.
 
 ### 7. Device fleet UI should use the API that already exists — implemented in Phase A2
 
 At audit start, GET /devices and revoke APIs existed while the Sync page said a device fleet list was unavailable and only exposed enrollment.
 
-Implemented baseline: owners/managers can view the business device fleet; other staff see their own devices. Sync now shows active/revoked state, current-browser marker, revoke confirmation, and session-impact messaging. Last-activity telemetry is not yet modeled.
+Implemented baseline: owners/managers can view the business device fleet; other staff see the server-authorized subset. Device Fleet owns registration, active/revoked state, current-browser marker, revoke confirmation, and session-impact handling. Sync is now focused on offline replay/conflict recovery. Last-activity telemetry is not yet modeled.
 
 ### 8. Navigation / information architecture — implemented baseline in Phase A2
 
 At audit start, Categories, Registers, Expenses, and Transfers were implemented routes but were not first-class shell navigation.
 
-Implemented baseline: role-aware grouped navigation now exposes Categories, Registers, Expenses, Transfers, Team, Branches, Sync & devices, and existing primary workflows. A dedicated Settings / Administration hub for business settings, payments, printers, API tokens, billing, and security sessions remains future work.
+Implemented baseline: role-aware grouped navigation now exposes Categories, Registers, Expenses, Transfers, Team, Devices, Branches, Administration / Help, and existing primary workflows. The new Administration landing links only to implemented destinations and can restart the system tour. Broader business settings such as printers, payments, API tokens, billing, and security sessions remain future work.
 
 ### 9. Purchasing and replenishment
 
@@ -147,7 +147,7 @@ Implemented during this audit:
 
 ### Discoverability
 
-Phase A2 closes the hidden-route gap with role-aware grouped navigation. The remaining discoverability work is a dedicated Settings / Administration hub, richer in-product help, and completion of workflows such as held sales and purchasing.
+Phase A closes the hidden-route gap with role-aware grouped navigation and adds a dedicated Administration / Help landing. Remaining discoverability work is deeper help/settings coverage for future domains and completion of workflows such as held sales and purchasing.
 
 ### Validation consistency
 
@@ -155,13 +155,15 @@ Many route-owned forms still omit the project's app-owned validation contract. B
 
 ### Help / administration ownership
 
-There is no dedicated Help/Settings hub. The newly added Restart tour control is a minimum durable entry point. A future Administration area should centralize Team, payment configuration, devices, printers, API tokens, business/receipt settings, billing, security sessions, and support/help.
+Phase A added a dedicated Administration / Help landing with Team, Devices, Branches, Registers, system-tour restart, and a route back to POS. Payment configuration, printers, API tokens, business/receipt settings, billing, and security sessions should be added only when those management surfaces are implemented.
 
 ## Recommended delivery phases
 
 ### Phase A — usability completion
 
-First-run tour, navigation grouping, active branch context, app-owned validation, Help/Settings shell, device fleet UI, Team UI.
+Implemented baseline: first-run role-aware tour, grouped navigation, authoritative active branch context, Administration / Help landing, Device Fleet UI, and Team UI. Standardizing app-owned validation across older management forms remains an explicit follow-up rather than being marked complete.
+
+Verification on 2026-09-30: web unit/component 144/144, API 441/441, PostgreSQL 135/135, typecheck/lint/build passed, production dependency audit reported no known vulnerabilities, and the complete Playwright desktop/tablet/mobile matrix passed 90/90 after updating stale E2E assumptions for the 7-step owner tour, the Device Fleet route, and branch-card visibility.
 
 ### Phase B — cashier workflow completion
 

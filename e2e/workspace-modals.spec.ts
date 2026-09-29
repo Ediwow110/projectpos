@@ -38,7 +38,7 @@ test("workspace create and consequential actions use consistent dialogs", async 
     await dialog.getByLabel("Branch name").fill(name);
     await dialog.getByLabel("Type").selectOption(type);
     await dialog.getByRole("button", { name: "Create branch", exact: true }).click();
-    await expect(page.getByText(name, { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
   }
   const branchesResponse = await request.get(`${API}/api/v1/branches`, { headers });
   expect(branchesResponse.ok()).toBe(true);

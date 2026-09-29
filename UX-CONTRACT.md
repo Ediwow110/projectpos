@@ -78,11 +78,19 @@ No global toast provider is currently canonical. Status, warnings, errors, payme
 
 - Route document title policy: root metadata identifies NexPOS; route-specific title expansion may be added later.
 - Route error / 403 behavior: existing API error/permission handling remains authoritative.
-- Breadcrumb/tab/route-state policy: role-aware grouped shell navigation owns top-level routes; report tabs own report subroutes. Owner-only Team management is not shown to roles that cannot use user.manage.
+- Breadcrumb/tab/route-state policy: role-aware grouped shell navigation owns top-level routes; report tabs own report subroutes. Owner-only Team/Administration management is not shown to roles that cannot use those operations.
 - Sidebar/drawer/bottom-sheet transformation: persistent sidebar at xl; compact top navigation below xl; POS tablet remains full-width with bottom cart tray.
 - Responsive table strategy: horizontal scroll before destructive column compression.
 - Truncation/full-value access: IDs/data use mono; interactive links expose full authoritative record on detail routes.
 - Focus restoration and sticky-obstruction policy: sticky topbar must not obscure focused primary controls; modals keep focusable controls visible.
+
+## Workspace branch context
+
+- The authenticated session is the source of truth for `activeBranchId`; the shell never invents a branch name.
+- `null` means All branches. Selecting a branch persists it through the authenticated API and invalidates branch-sensitive workspace queries.
+- A foreign, inactive, or later-archived branch cannot remain authoritative; server validation rejects or clears it.
+- Switching businesses clears the active branch before the new workspace is projected.
+- POS register choices and inventory queries follow the active session branch. Client role strings never grant branch access.
 
 ## First-run guidance and help
 
@@ -91,6 +99,13 @@ No global toast provider is currently canonical. Status, warnings, errors, payme
 - A user can manually restart the tour at any time from the shared shell Help / Restart tour control. Manual restart does not reset the persisted first-run preference.
 - The tour is role-aware and task-oriented. Owners/managers, cashiers, and inventory staff receive different guidance, and the tour must never fabricate permissions or imply that a role can perform an unavailable action. The server remains authoritative.
 - Tour overlays are app-owned dialogs, keyboard reachable, reduced-motion safe, responsive to desktop/tablet/mobile, and block accidental interaction with the background while open.
+- Administration / Help provides a second durable restart entry point without resetting the persisted first-run preference.
+
+## Team and device administration
+
+- Team management reuses the membership API. New temporary credentials are display-once React state and are never persisted in URL, local storage, query cache, or logs.
+- Device Fleet owns device registration/list/revocation. Sync remains focused on offline replay and conflicts.
+- Device revocation explains session impact before confirmation. Current-device revocation clears local device identity and follows the server's resulting authentication state.
 
 ## Overlays and feedback
 

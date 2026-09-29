@@ -30,7 +30,7 @@ test("first workspace landing shows a dismissible tour once and allows manual re
 
   const tour = page.getByRole("dialog", { name: "Welcome to NexPOS" });
   await expect(tour).toBeVisible();
-  await expect(tour.getByText("System tour · 1 of 6")).toBeVisible();
+  await expect(tour.getByText("System tour · 1 of 7")).toBeVisible();
   await tour.getByRole("button", { name: "Skip tour" }).click();
   await expect(tour).toBeHidden();
 
@@ -114,7 +114,7 @@ test("device enrollment acknowledges slow work immediately", async ({ page }) =>
     businessName: "Device Feedback Store",
   });
   await completeOnboarding(page);
-  await page.goto("/sync");
+  await page.goto("/devices");
 
   await page.route("**/api/v1/devices", async (route) => {
     if (route.request().method() === "POST") {
@@ -128,12 +128,12 @@ test("device enrollment acknowledges slow work immediately", async ({ page }) =>
   const busy = page.getByRole("button", { name: "Registering…" });
   await expect(busy).toBeDisabled();
   await expect(busy).toHaveAttribute("aria-busy", "true");
-  await expect(page.getByText("This device is registered. Future sign-ins will bind to it.")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("This browser is registered. Future sign-ins will bind sessions to this device.")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("heading", { name: "Registered devices" })).toBeVisible();
   await expect(page.getByText("Till QA", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Revoke Till QA" }).click();
   const revokeDialog = page.getByRole("dialog", { name: "Revoke device?" });
   await expect(revokeDialog).toBeVisible();
   await revokeDialog.getByRole("button", { name: "Revoke device", exact: true }).click();
-  await expect(page.getByText("Device revoked. Existing sessions bound to it were ended.")).toBeVisible();
+  await expect(page.getByText("This device was revoked. This session was not device-bound, so you can continue until you sign out.")).toBeVisible();
 });
