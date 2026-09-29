@@ -36,11 +36,18 @@ const OWNER_STEPS: GuidedTourStep[] = [
     target: "sales",
   },
   {
+    title: "Manage access and workspace settings",
+    body: "Administration brings Team, Devices, Branches, Registers, and Help together so owner-only setup and access controls stay easy to find without crowding daily selling screens.",
+    target: "admin",
+  },
+  {
     title: "Help is always available",
     body: "Use Restart tour whenever you want this walkthrough again. Closing, skipping, or finishing the tour stops it from appearing automatically on future sign-ins.",
     target: "tour-restart",
   },
 ];
+
+const MANAGER_STEPS: GuidedTourStep[] = OWNER_STEPS.filter((step) => step.target !== "admin");
 
 const CASHIER_STEPS: GuidedTourStep[] = [
   {
@@ -101,6 +108,7 @@ const INVENTORY_STEPS: GuidedTourStep[] = [
 export function guidedTourStepsForRole(role?: string): GuidedTourStep[] {
   if (role === "cashier") return CASHIER_STEPS;
   if (role === "inventory") return INVENTORY_STEPS;
+  if (role === "manager") return MANAGER_STEPS;
   return OWNER_STEPS;
 }
 

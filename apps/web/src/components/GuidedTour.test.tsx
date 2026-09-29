@@ -14,7 +14,7 @@ describe("GuidedTour", () => {
     expect(html).toContain('aria-modal="true"');
     expect(html).toContain("Welcome to NexPOS");
     expect(html).toContain("Skip tour");
-    expect(html).toContain("1 of 6");
+    expect(html).toContain("1 of 7");
     expect(html).toContain("Next");
   });
 
@@ -25,6 +25,13 @@ describe("GuidedTour", () => {
     expect(titles).toContain("Open a shift before selling");
     expect(titles).toContain("Complete a sale");
     expect(titles).toContain("Review receipts and reports");
+    expect(titles).toContain("Manage access and workspace settings");
+  });
+
+  it("keeps owner-only administration copy out of the manager tour", () => {
+    const titles = guidedTourStepsForRole("manager").map((step) => step.title);
+    expect(titles).not.toContain("Manage access and workspace settings");
+    expect(titles).toContain("Complete a sale");
   });
 
   it("does not walk a cashier through owner-only administration", () => {

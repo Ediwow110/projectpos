@@ -24,8 +24,10 @@ const ITEMS = {
   expenses: { href: "/expenses", label: "Expenses", icon: "−", tour: "expenses" },
   reports: { href: "/reports/sales", label: "Reports", icon: "▥", tour: "reports" },
   branches: { href: "/branches", label: "Branches", icon: "⌘", tour: "branches" },
-  sync: { href: "/sync", label: "Sync & devices", icon: "↻", tour: "sync" },
+  sync: { href: "/sync", label: "Sync", icon: "↻", tour: "sync" },
   team: { href: "/team", label: "Team", icon: "◎", tour: "team" },
+  devices: { href: "/devices", label: "Devices", icon: "▦", tour: "devices" },
+  admin: { href: "/admin", label: "Administration / Help", icon: "?", tour: "admin" },
 } as const satisfies Record<string, WorkspaceNavigationItem>;
 
 function group(label: string, keys: Array<keyof typeof ITEMS>): WorkspaceNavigationGroup {
@@ -36,13 +38,13 @@ export function workspaceNavigationForRole(role?: string): WorkspaceNavigationGr
   if (role === "cashier") {
     return [
       group("Sell", ["dashboard", "pos", "sales", "customers"]),
-      group("Operations", ["inventory", "registers", "shifts", "sync"]),
+      group("Operations", ["inventory", "registers", "shifts", "devices", "sync"]),
     ];
   }
   if (role === "inventory") {
     return [
       group("Catalog & stock", ["dashboard", "products", "categories", "inventory"]),
-      group("Operations", ["transfers", "branches", "sync"]),
+      group("Operations", ["transfers", "branches", "devices", "sync"]),
       group("Insights", ["reports"]),
     ];
   }
@@ -52,7 +54,7 @@ export function workspaceNavigationForRole(role?: string): WorkspaceNavigationGr
       group("Catalog & stock", ["products", "categories", "inventory"]),
       group("Operations", ["registers", "shifts", "transfers", "expenses"]),
       group("Insights", ["reports"]),
-      group("Administration", ["branches", "sync"]),
+      group("Administration", ["branches", "devices", "sync", "admin"]),
     ];
   }
   return [
@@ -60,7 +62,7 @@ export function workspaceNavigationForRole(role?: string): WorkspaceNavigationGr
     group("Catalog & stock", ["products", "categories", "inventory"]),
     group("Operations", ["registers", "shifts", "transfers", "expenses"]),
     group("Insights", ["reports"]),
-    group("Administration", ["branches", "sync", "team"]),
+    group("Administration", ["branches", "devices", "sync", "team", "admin"]),
   ];
 }
 

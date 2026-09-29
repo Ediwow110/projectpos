@@ -9,7 +9,6 @@ import { DecorativeBackdrop } from "./premium";
 import { ApiError, apiFetch } from "../lib/api";
 import { clearActiveSyncScope } from "../lib/sync-store";
 import {
-  flattenedWorkspaceNavigation,
   workspaceNavigationForRole,
   type WorkspaceNavigationItem,
 } from "../lib/workspace-navigation";
@@ -117,6 +116,7 @@ export function AppShell({
   const [pendingHref, setPendingHref] = React.useState<string | null>(null);
   const [showNavigationProgress, setShowNavigationProgress] = React.useState(false);
   const [showTour, setShowTour] = React.useState(false);
+  const [showMobileMenu, setShowMobileMenu] = React.useState(false);
   const today = new Date().toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
   const year = new Date().getFullYear();
   const name = businessName ?? "NexPOS";
@@ -125,7 +125,10 @@ export function AppShell({
   const activeBranchName = shellMe.data?.activeBranchName ?? null;
   const activeBranches = (branchesQuery.data?.items ?? []).filter((branch) => branch.isActive);
   const navigationGroups = workspaceNavigationForRole(currentRole);
-  const mobileNavigation = flattenedWorkspaceNavigation(currentRole);
+  const primaryMobileNavigation = navigationGroups[0]?.items ?? [];
+  const secondaryNavigationGroups = navigationGroups.slice(1);
+  const secondaryMobileNavigation = secondaryNavigationGroups.flatMap((group) => group.items);
+  const activeSecondaryItem = secondaryMobileNavigation.find((item) => isActive(pathname, item.href));
   const initial = name.slice(0, 1).toUpperCase();
   const mobileHeaderHeight = posMode ? "min-h-[62px]" : "min-h-[60px]";
   const showSessionControls = businessName !== undefined || role !== undefined;
@@ -133,7 +136,23 @@ export function AppShell({
   React.useEffect(() => {
     setPendingHref(null);
     setShowNavigationProgress(false);
+    setShowMobileMenu(false);
   }, [pathname]);
+
+  React.useEffect(() => {
+    const restartTour = (): void => setShowTour(true);
+    window.addEventListener("nexpos:restart-tour", restartTour);
+    return () => window.removeEventListener("nexpos:restart-tour", restartTour);
+  }, []);
+
+  React.useEffect(() => {
+    if (!showMobileMenu) return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") setShowMobileMenu(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [showMobileMenu]);
 
   React.useEffect(() => {
     if (pendingHref === null) {
@@ -370,9 +389,66 @@ export function AppShell({
           className="border-b border-[#eadfd6] bg-white/95 px-3 shadow-[0_4px_14px_-10px_rgb(28_20_15/0.12)] backdrop-blur xl:hidden"
         >
           <div className="mx-auto flex w-full items-center overflow-x-auto">
-            {mobileNavigation.map((item) => <NavLink key={item.href} item={item} pathname={pathname} onNavigateStart={setPendingHref} />)}
+            {primaryMobileNavigation.map((item) => (
+              <NavLink
+                key={item.href}
+                item={item}
+                pathname={pathname}
+                onNavigateStart={(href) => {
+                  setShowMobileMenu(false);
+                  setPendingHref(href);
+                }}
+              />
+            ))}
+            {secondaryMobileNavigation.length > 0 ? (
+              <button
+                type="button"
+                aria-expanded={showMobileMenu}
+                aria-controls="workspace-more-menu"
+                aria-label={activeSecondaryItem ? `More workspace navigation, current page ${activeSecondaryItem.label}` : "More workspace navigation"}
+                onClick={() => setShowMobileMenu((open) => !open)}
+                className={
+                  "relative inline-flex h-11 shrink-0 items-center gap-2 border-b-2 px-3 text-[11px] font-semibold transition " +
+                  (activeSecondaryItem || showMobileMenu
+                    ? "border-[#f35d3f] text-[#e44e34]"
+                    : "border-transparent text-[#665b53] hover:border-[#ead7cd] hover:text-[#17130f]")
+                }
+              >
+                <span aria-hidden className="grid h-6 w-6 place-items-center rounded-lg bg-[#f4f0ea] font-data text-[10px] text-[#635950]">•••</span>
+                {activeSecondaryItem ? activeSecondaryItem.label : "More"}
+              </button>
+            ) : null}
           </div>
         </nav>
+        {showMobileMenu ? (
+          <div
+            id="workspace-more-menu"
+            data-ui="shell-mobile-more"
+            className="max-h-[calc(100vh-132px)] overflow-y-auto border-b border-[#eadfd6] bg-[#fcf8f3] px-4 py-4 shadow-[0_14px_26px_-18px_rgb(28_20_15/0.35)] xl:hidden"
+          >
+            <nav aria-label="More workspace navigation" className="mx-auto grid w-full max-w-[920px] gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {secondaryNavigationGroups.map((group) => (
+                <section key={group.label} aria-label={group.label}>
+                  <p className="px-2 pb-1.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-[#a0948b]">{group.label}</p>
+                  <div className="space-y-1">
+                    {group.items.map((item) => (
+                      <NavLink
+                        key={item.href}
+                        item={item}
+                        pathname={pathname}
+                        compact
+                        onNavigateStart={(href) => {
+                          setShowMobileMenu(false);
+                          setPendingHref(href);
+                        }}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </nav>
+          </div>
+        ) : null}
         {showNavigationProgress ? (
           <div
             data-ui="navigation-progress"
