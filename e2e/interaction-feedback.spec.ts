@@ -1,14 +1,48 @@
 import { expect, test } from "@playwright/test";
 import { registerBusiness } from "./helpers";
 
-async function completeOnboarding(page: import("@playwright/test").Page): Promise<void> {
+async function completeOnboarding(
+  page: import("@playwright/test").Page,
+  dismissTour = true,
+): Promise<void> {
   for (let i = 0; i < 4; i += 1) {
     const button = page.getByRole("button", { name: "Mark step complete" });
     await expect(button).toBeVisible({ timeout: 30_000 });
     await button.click();
   }
   await expect(page).toHaveURL("/", { timeout: 30_000 });
+  if (dismissTour) {
+    const tour = page.getByRole("dialog", { name: "Welcome to NexPOS" });
+    await expect(tour).toBeVisible({ timeout: 30_000 });
+    await tour.getByRole("button", { name: "Skip tour" }).click();
+    await expect(tour).toBeHidden();
+  }
 }
+
+test("first workspace landing shows a dismissible tour once and allows manual restart", async ({ page }) => {
+  await registerBusiness(page, {
+    ownerName: "Tour Feedback Owner",
+    email: `feedback-tour-${Date.now()}@example.com`,
+    password: "correct-horse-12",
+    businessName: "Tour Feedback Store",
+  });
+  await completeOnboarding(page, false);
+
+  const tour = page.getByRole("dialog", { name: "Welcome to NexPOS" });
+  await expect(tour).toBeVisible();
+  await expect(tour.getByText("System tour · 1 of 6")).toBeVisible();
+  await tour.getByRole("button", { name: "Skip tour" }).click();
+  await expect(tour).toBeHidden();
+
+  await page.reload();
+  await expect(page.getByRole("dialog", { name: "Welcome to NexPOS" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Restart system tour" }).click();
+  await expect(page.getByRole("dialog", { name: "Welcome to NexPOS" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Welcome to NexPOS" }).getByRole("button", { name: "Next" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Welcome to NexPOS" })).toHaveCount(0);
+});
 
 test("onboarding acknowledges a slow step mutation immediately", async ({ page }) => {
   await registerBusiness(page, {

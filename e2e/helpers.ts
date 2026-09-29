@@ -75,6 +75,10 @@ export async function registerOperationalBusiness(
   expect(result.ok, `operational onboarding setup failed with HTTP ${result.status}`).toBe(true);
   await page.goto("/");
   await expect(page).toHaveURL(/\/$/, { timeout: 30_000 });
+  const tour = page.getByRole("dialog", { name: "Welcome to NexPOS" });
+  await expect(tour).toBeVisible({ timeout: 30_000 });
+  await tour.getByRole("button", { name: "Skip tour" }).click();
+  await expect(tour).toBeHidden();
   return email;
 }
 

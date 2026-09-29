@@ -1,6 +1,7 @@
-import { Controller, Get, Inject, Req, Res, UseGuards } from "@nestjs/common";
+import { Controller, Get, Inject, Post, Req, Res, UseGuards } from "@nestjs/common";
 import type { Request, Response } from "express";
 import { SessionGuard } from "../../common/session.guard";
+import { CsrfGuard } from "../../common/csrf.guard";
 import { me } from "../../routes/me";
 import { health } from "../../routes/health";
 import { getCorrelationId } from "../../correlation";
@@ -31,5 +32,11 @@ export class TenantController {
   async health(@Req() req: Request, @Res() res: Response): Promise<void> {
     const auth = req.auth!;
     res.json(health({ businessId: auth.businessId }, rid(req)));
+  }
+
+  @Post("me/tour/seen")
+  @UseGuards(CsrfGuard)
+  async markWorkspaceTourSeen(@Req() req: Request, @Res() res: Response): Promise<void> {
+    res.status(200).json(await this.tenant.markWorkspaceTourSeen(req.auth!.userId));
   }
 }

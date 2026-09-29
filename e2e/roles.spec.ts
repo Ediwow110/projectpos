@@ -54,6 +54,13 @@ test("cashier session can sell and read inventory without owner controls", async
   await expect(page).toHaveURL(/\/$/);
   await expect(page).not.toHaveURL(/\/onboarding/);
 
+  const tour = page.getByRole("dialog", { name: "Welcome to NexPOS" });
+  await expect(tour).toBeVisible();
+  await tour.getByRole("button", { name: "Next" }).click();
+  await expect(page.getByRole("dialog", { name: "Open your shift" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Open your shift" })).toHaveCount(0);
+
   await page.goto("/pos");
   await expect(page.getByRole("region", { name: "Products" })).toBeVisible();
   await expect(posCartRegion(page)).toBeVisible();

@@ -84,6 +84,14 @@ No global toast provider is currently canonical. Status, warnings, errors, payme
 - Truncation/full-value access: IDs/data use mono; interactive links expose full authoritative record on detail routes.
 - Focus restoration and sticky-obstruction policy: sticky topbar must not obscure focused primary controls; modals keep focusable controls visible.
 
+## First-run guidance and help
+
+- After required owner onboarding is complete, each user receives one shared-workspace guided tour on their first authenticated landing.
+- The tour is optional: Close, Skip, and Finish all permanently suppress automatic display for that user. The server-backed user preference is authoritative across devices; local storage is only a resilience fallback when the preference write cannot reach the API.
+- A user can manually restart the tour at any time from the shared shell Help / Restart tour control. Manual restart does not reset the persisted first-run preference.
+- The tour is role-aware and task-oriented. Owners/managers, cashiers, and inventory staff receive different guidance, and the tour must never fabricate permissions or imply that a role can perform an unavailable action. The server remains authoritative.
+- Tour overlays are app-owned dialogs, keyboard reachable, reduced-motion safe, responsive to desktop/tablet/mobile, and block accidental interaction with the background while open.
+
 ## Overlays and feedback
 
 - Dialog primitive: route-owned accessible role=dialog overlays until a shared dialog is introduced.

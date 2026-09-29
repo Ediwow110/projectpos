@@ -93,7 +93,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       return users.get(id) ?? null;
     },
     async createUser(u) {
-      const row = { ...u, id: nid("user") };
+      const row = { workspaceTourSeen: false, ...u, id: nid("user") };
       users.set(row.id, row);
       return row;
     },
@@ -104,6 +104,10 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     async setUserEmailVerified(id, verified) {
       const u = users.get(id);
       if (u) users.set(id, { ...u, emailVerified: verified });
+    },
+    async setUserWorkspaceTourSeen(id, seen) {
+      const u = users.get(id);
+      if (u) users.set(id, { ...u, workspaceTourSeen: seen });
     },
     async createBusiness(b) {
       const row = { ...b, id: nid("biz") };

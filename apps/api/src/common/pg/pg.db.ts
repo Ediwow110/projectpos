@@ -88,6 +88,9 @@ export class PgDbPort implements DbPort {
   setUserEmailVerified(id: string, verified: boolean): Promise<void> {
     return this.tenants.setUserEmailVerified(id, verified);
   }
+  setUserWorkspaceTourSeen(id: string, seen: boolean): Promise<void> {
+    return this.tenants.setUserWorkspaceTourSeen(id, seen);
+  }
   createBusiness(b: Omit<DbBusiness, "id">): Promise<DbBusiness> {
     return this.tenants.createBusiness(b);
   }

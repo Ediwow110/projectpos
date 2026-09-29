@@ -26,7 +26,14 @@ describe("phase12 pg tenants: users", () => {
       const created = await db.createUser({ name: "Ana", email, passwordHash: "h1", emailVerified: false });
       expect(created.id).toBeTruthy();
       const byEmail = await db.findUserByEmail(email);
-      expect(byEmail).toEqual({ id: created.id, name: "Ana", email, passwordHash: "h1", emailVerified: false });
+      expect(byEmail).toEqual({
+        id: created.id,
+        name: "Ana",
+        email,
+        passwordHash: "h1",
+        emailVerified: false,
+        workspaceTourSeen: false,
+      });
       const byId = await db.findUserById(created.id);
       expect(byId).toEqual(byEmail);
     });
@@ -55,6 +62,15 @@ describe("phase12 pg tenants: users", () => {
       const after = (await db.findUserById(u.id))!;
       expect(after.passwordHash).toBe("hash-new");
       expect(after.emailVerified).toBe(false);
+    });
+  });
+
+  it("persists the per-user workspace-tour preference", async () => {
+    await withPg(async (db) => {
+      const u = await seedUser(db);
+      expect((await db.findUserById(u.id))!.workspaceTourSeen).toBe(false);
+      await db.setUserWorkspaceTourSeen(u.id, true);
+      expect((await db.findUserById(u.id))!.workspaceTourSeen).toBe(true);
     });
   });
 });

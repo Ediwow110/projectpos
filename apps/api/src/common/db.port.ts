@@ -6,6 +6,9 @@ export interface DbUser {
   // Phase 11: undefined/true = verified (legacy rows, invited members);
   // false only when the business opts into email verification.
   emailVerified?: boolean;
+  // Per-user first-run workspace guidance. False/undefined means the shared
+  // AppShell may auto-show the tour after required business onboarding.
+  workspaceTourSeen?: boolean;
 }
 
 export interface DbBusiness {
@@ -451,6 +454,7 @@ export interface DbPort {
   createUser(u: Omit<DbUser, "id">): Promise<DbUser>;
   updateUserPassword(id: string, passwordHash: string): Promise<void>;
   setUserEmailVerified(id: string, verified: boolean): Promise<void>;
+  setUserWorkspaceTourSeen(id: string, seen: boolean): Promise<void>;
   createBusiness(b: Omit<DbBusiness, "id">): Promise<DbBusiness>;
   findBusinessById(id: string): Promise<DbBusiness | null>;
   listMembershipsByUser(userId: string): Promise<DbMembership[]>;

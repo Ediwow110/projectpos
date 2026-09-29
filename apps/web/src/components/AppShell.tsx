@@ -8,18 +8,19 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DecorativeBackdrop } from "./premium";
 import { ApiError, apiFetch } from "../lib/api";
 import { clearActiveSyncScope } from "../lib/sync-store";
+import { GuidedTour } from "./GuidedTour";
 
-const NAV: Array<{ href: string; label: string; icon: string }> = [
-  { href: "/", label: "Dashboard", icon: "⌂" },
-  { href: "/pos", label: "POS", icon: "▣" },
-  { href: "/sales", label: "Sales", icon: "↗" },
-  { href: "/products", label: "Products", icon: "◇" },
-  { href: "/inventory", label: "Inventory", icon: "□" },
-  { href: "/customers", label: "Customers", icon: "○" },
-  { href: "/shifts", label: "Shifts", icon: "▤" },
-  { href: "/reports/sales", label: "Reports", icon: "▥" },
-  { href: "/branches", label: "Branches", icon: "⌘" },
-  { href: "/sync", label: "Sync", icon: "↻" },
+const NAV: Array<{ href: string; label: string; icon: string; tour: string }> = [
+  { href: "/", label: "Dashboard", icon: "⌂", tour: "dashboard" },
+  { href: "/pos", label: "POS", icon: "▣", tour: "pos" },
+  { href: "/sales", label: "Sales", icon: "↗", tour: "sales" },
+  { href: "/products", label: "Products", icon: "◇", tour: "products" },
+  { href: "/inventory", label: "Inventory", icon: "□", tour: "inventory" },
+  { href: "/customers", label: "Customers", icon: "○", tour: "customers" },
+  { href: "/shifts", label: "Shifts", icon: "▤", tour: "shifts" },
+  { href: "/reports/sales", label: "Reports", icon: "▥", tour: "reports" },
+  { href: "/branches", label: "Branches", icon: "⌘", tour: "branches" },
+  { href: "/sync", label: "Sync", icon: "↻", tour: "sync" },
 ];
 
 function isActive(pathname: string, href: string): boolean {
@@ -50,6 +51,7 @@ function NavLink({
         if (!active) onNavigateStart(item.href);
       }}
       aria-current={active ? "page" : undefined}
+      data-tour={item.tour}
       className={
         compact
           ? "group relative flex min-h-[40px] items-center gap-2.5 rounded-xl px-3 text-[12px] font-medium transition " +
@@ -103,6 +105,7 @@ export function AppShell({
       businessName: string;
       role: string;
       onboardingRequired: boolean;
+      workspaceTourSeen: boolean;
     }>("/api/v1/me"),
     retry: false,
   });
@@ -110,6 +113,7 @@ export function AppShell({
   const [signOutError, setSignOutError] = React.useState("");
   const [pendingHref, setPendingHref] = React.useState<string | null>(null);
   const [showNavigationProgress, setShowNavigationProgress] = React.useState(false);
+  const [showTour, setShowTour] = React.useState(false);
   const today = new Date().toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
   const year = new Date().getFullYear();
   const name = businessName ?? "NexPOS";
@@ -136,6 +140,32 @@ export function AppShell({
       router.replace("/onboarding");
     }
   }, [router, shellMe.data?.onboardingRequired]);
+
+  React.useEffect(() => {
+    const profile = shellMe.data;
+    if (!profile || profile.onboardingRequired || profile.workspaceTourSeen) return;
+    const localKey = `nexpos-workspace-tour-seen:${profile.userId}`;
+    if (window.localStorage.getItem(localKey) === "1") return;
+    setShowTour(true);
+  }, [shellMe.data]);
+
+  async function dismissTour(): Promise<void> {
+    const profile = shellMe.data;
+    setShowTour(false);
+    if (!profile) return;
+    window.localStorage.setItem(`nexpos-workspace-tour-seen:${profile.userId}`, "1");
+    queryClient.setQueryData(["me"], { ...profile, workspaceTourSeen: true });
+    try {
+      const csrf = await apiFetch<{ csrfToken: string }>("/api/v1/auth/csrf");
+      await apiFetch("/api/v1/me/tour/seen", {
+        csrfToken: csrf.csrfToken,
+        init: { method: "POST" },
+      });
+    } catch {
+      // Local suppression prevents a failed preference write from interrupting
+      // daily work; the server remains the cross-device source of truth.
+    }
+  }
 
   async function signOut(): Promise<void> {
     if (signingOut) return;
@@ -235,6 +265,18 @@ export function AppShell({
               {signOutError ? <span role="alert" className="max-w-28 text-right text-[8px] font-medium text-[#c43e3e]">{signOutError}</span> : null}
               <span aria-hidden className="hidden text-sm text-[#2a241f] sm:inline">⌕</span>
               <span aria-hidden className="hidden text-sm text-[#2a241f] sm:inline">♢</span>
+              {showSessionControls ? (
+                <button
+                  type="button"
+                  data-tour="tour-restart"
+                  onClick={() => setShowTour(true)}
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[#eadfd6] bg-white text-[11px] font-bold text-[#665b53] hover:border-[#f2b8a9] hover:text-[#d94a30]"
+                  aria-label="Restart system tour"
+                  title="Restart system tour"
+                >
+                  ?
+                </button>
+              ) : null}
               <div className="font-display grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#f35d3f] text-[11px] font-bold text-white">
                 {initial}
               </div>
@@ -297,6 +339,14 @@ export function AppShell({
             </nav>
 
             <div className="mt-auto pt-6">
+              <button
+                type="button"
+                onClick={() => setShowTour(true)}
+                className="mb-3 flex w-full items-center justify-between rounded-xl border border-[#eee4db] bg-white px-3 py-2.5 text-left text-[10px] font-semibold text-[#655b53] hover:border-[#f2b8a9] hover:text-[#d94a30]"
+              >
+                <span>Help · Restart tour</span>
+                <span aria-hidden>?</span>
+              </button>
               <div className="rounded-2xl border border-[#f0e4da] bg-[#fff6f1] p-3">
                 <div className="flex items-center gap-2.5">
                   <div className="font-display grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#f35d3f] text-xs font-bold text-white">
@@ -326,6 +376,11 @@ export function AppShell({
           <p className="font-data">© {year} · Secure session workspace</p>
         </div>
       </footer>
+      <GuidedTour
+        open={showTour}
+        role={shellMe.data?.role ?? role}
+        onDismiss={() => void dismissTour()}
+      />
     </div>
   );
 }

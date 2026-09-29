@@ -14,6 +14,7 @@ export class TenantService {
     businessName: string;
     role: string;
     onboardingRequired: boolean;
+    workspaceTourSeen: boolean;
   }> {
     const user = await this.db.findUserById(userId);
     const business = await this.db.findBusinessById(businessId);
@@ -29,6 +30,14 @@ export class TenantService {
       businessName: business.name,
       role: membership.role,
       onboardingRequired: membership.role === "owner" && !isOnboardingComplete(onboarding),
+      workspaceTourSeen: user.workspaceTourSeen === true,
     };
+  }
+
+  async markWorkspaceTourSeen(userId: string): Promise<{ workspaceTourSeen: true }> {
+    const user = await this.db.findUserById(userId);
+    if (!user) throw new Error("TENANT_REQUIRED");
+    await this.db.setUserWorkspaceTourSeen(userId, true);
+    return { workspaceTourSeen: true };
   }
 }

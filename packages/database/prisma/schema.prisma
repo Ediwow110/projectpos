@@ -15,6 +15,7 @@ model User {
   // Phase 11: false only when the business opts into email verification;
   // legacy rows and invited members default to verified.
   emailVerified     Boolean              @default(true)
+  workspaceTourSeen Boolean              @default(false)
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
   memberships       BusinessMembership[]

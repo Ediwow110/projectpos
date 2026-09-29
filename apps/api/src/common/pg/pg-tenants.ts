@@ -22,7 +22,7 @@ export function tenantsFamily(ctx: PgContext) {
       const c = await ctx.client();
       try {
         const r = await c.query(
-          'SELECT "id", "name", "email", "passwordHash", "emailVerified" FROM "User" WHERE "email" = $1',
+          'SELECT "id", "name", "email", "passwordHash", "emailVerified", "workspaceTourSeen" FROM "User" WHERE "email" = $1',
           [email],
         );
         return (r.rows[0] as DbUser | undefined) ?? null;
@@ -35,7 +35,7 @@ export function tenantsFamily(ctx: PgContext) {
       const c = await ctx.client();
       try {
         const r = await c.query(
-          'SELECT "id", "name", "email", "passwordHash", "emailVerified" FROM "User" WHERE "id" = $1',
+          'SELECT "id", "name", "email", "passwordHash", "emailVerified", "workspaceTourSeen" FROM "User" WHERE "id" = $1',
           [id],
         );
         return (r.rows[0] as DbUser | undefined) ?? null;
@@ -47,12 +47,12 @@ export function tenantsFamily(ctx: PgContext) {
     async createUser(u: Omit<DbUser, "id">): Promise<DbUser> {
       const c = await ctx.client();
       try {
-        const row = { ...u, id: nid("user") };
+        const row = { workspaceTourSeen: false, ...u, id: nid("user") };
         // undefined/true both mean verified (Phase 11); the column is NOT NULL.
         await c.query(
-          'INSERT INTO "User" ("id", "name", "email", "passwordHash", "emailVerified", "createdAt", "updatedAt")' +
-            ' VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
-          [row.id, row.name, row.email, row.passwordHash, row.emailVerified ?? true],
+          'INSERT INTO "User" ("id", "name", "email", "passwordHash", "emailVerified", "workspaceTourSeen", "createdAt", "updatedAt")' +
+            ' VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
+          [row.id, row.name, row.email, row.passwordHash, row.emailVerified ?? true, row.workspaceTourSeen ?? false],
         );
         return row;
       } finally {
@@ -78,6 +78,18 @@ export function tenantsFamily(ctx: PgContext) {
         await c.query(
           'UPDATE "User" SET "emailVerified" = $1, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $2',
           [verified, id],
+        );
+      } finally {
+        if (ctx.owns()) c.release();
+      }
+    },
+
+    async setUserWorkspaceTourSeen(id: string, seen: boolean): Promise<void> {
+      const c = await ctx.client();
+      try {
+        await c.query(
+          'UPDATE "User" SET "workspaceTourSeen" = $1, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $2',
+          [seen, id],
         );
       } finally {
         if (ctx.owns()) c.release();
