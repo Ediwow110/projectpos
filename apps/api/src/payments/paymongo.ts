@@ -212,7 +212,7 @@ export class PayMongoHttpClient implements PayMongoPort {
       }
       if (typeof attrs.secret_key === "string" && attrs.secret_key.trim() !== "") {
         this.config.webhookSecret = attrs.secret_key.trim();
-      } else if (this.config.webhookSecret.trim() === "") {
+      } else {
         throw new Error("PAYMONGO_WEBHOOK_SECRET_UNAVAILABLE");
       }
       return {

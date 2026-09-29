@@ -214,6 +214,31 @@ describe("PayMongo adapter", () => {
     expect(managed.verifyWebhook(raw, `t=${timestamp},te=${signature},li=`)).toBe(true);
   });
 
+  it("refuses to trust a stale configured secret when managed webhook metadata omits the provider secret", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      data: [{
+        id: "hook_existing",
+        type: "webhook",
+        attributes: {
+          events: ["checkout_session.payment.paid"],
+          livemode: false,
+          status: "enabled",
+          url: "https://api.example.test/api/v1/payments/paymongo/webhook",
+        },
+      }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } })));
+    const managed = new PayMongoHttpClient({
+      secretKey: "sk_test_secret",
+      webhookSecret: "whsk_stale",
+      apiBase: "https://api.paymongo.test",
+      webhookToleranceSeconds: 300,
+    });
+
+    await expect(managed.ensureWebhook(
+      "https://api.example.test/api/v1/payments/paymongo/webhook",
+    )).rejects.toThrow("PAYMONGO_WEBHOOK_SECRET_UNAVAILABLE");
+  });
+
   it("bootstraps the managed Render webhook only when explicitly enabled", async () => {
     const fetchMock = vi.fn(async (
       input: Parameters<typeof fetch>[0],
