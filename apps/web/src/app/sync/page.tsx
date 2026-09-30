@@ -233,6 +233,7 @@ export default function SyncPage(): JSX.Element {
                     </div>
                     {command.status === "CONFLICT" ? (
                       <form
+                        noValidate
                         onSubmit={(event) => {
                           event.preventDefault();
                           void resolve(command);
