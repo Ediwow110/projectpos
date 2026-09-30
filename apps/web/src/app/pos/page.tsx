@@ -14,18 +14,21 @@ import {
   addProductToCart,
   changeCartQuantity,
   filterOfflineCatalog,
+  heldSaleToCart,
   isPayMongoMethodKey,
   resolveTenderedMinor,
   type PosCartEntry,
+  type PosHeldSale,
   type PosProduct,
 } from "../../lib/pos-sale-model";
-import { completePosSale, holdPosSale, queueOfflinePosSale } from "../../lib/pos-operations";
+import { completePosSale, holdPosSale, queueOfflinePosSale, resumePosSale } from "../../lib/pos-operations";
 import { usePosData } from "../../lib/use-pos-data";
 import { usePosOffline } from "../../lib/use-pos-offline";
 import { registersForBranch } from "../../lib/workspace-branch";
 import { AppShell } from "../../components/AppShell";
 import { PosCartPanel } from "../../components/PosCartPanel";
 import { PosCustomerDialog } from "../../components/PosCustomerDialog";
+import { PosHeldSalesDialog } from "../../components/PosHeldSalesDialog";
 import { PosPaymentWorkspace } from "../../components/PosPaymentWorkspace";
 import { PosProductCatalog } from "../../components/PosProductCatalog";
 import { PosResponsiveCart } from "../../components/PosResponsiveCart";
@@ -56,8 +59,11 @@ export default function PosPage(): JSX.Element {
   const [walkIn, setWalkIn] = useState("");
   const [showPay, setShowPay] = useState(false);
   const [showCustomer, setShowCustomer] = useState(false);
+  const [showHeldSales, setShowHeldSales] = useState(false);
   const [showTabletCart, setShowTabletCart] = useState(false);
   const [paying, setPaying] = useState(false);
+  const [resumingSaleId, setResumingSaleId] = useState<string | null>(null);
+  const [activeDraft, setActiveDraft] = useState<{ id: string; totalMinor: number } | null>(null);
 
   const {
     meQuery,
@@ -66,6 +72,7 @@ export default function PosPage(): JSX.Element {
     paymentMethodsQuery,
     categoriesQuery,
     searchQuery,
+    heldSalesQuery,
   } = usePosData(q, activeCategoryId, customerQ);
 
   const { store, offline, catalogAt, cachedItems, now } = usePosOffline(
@@ -86,7 +93,8 @@ export default function PosPage(): JSX.Element {
     }
   }, [registerId, scopedRegisters]);
   const canSell = role === "owner" || role === "manager" || role === "cashier";
-  const due = cartTotal(cart.map((c) => ({ qty: c.qty, priceMinor: c.priceMinor, lineDiscountMinor: 0 })));
+  const cartDue = cartTotal(cart.map((c) => ({ qty: c.qty, priceMinor: c.priceMinor, lineDiscountMinor: 0 })));
+  const due = activeDraft?.totalMinor ?? cartDue;
   const effectiveMethod = offline ? "cash" : method;
   const tenderedMinor = resolveTenderedMinor(received, due);
   const changeMinor = Math.max(0, tenderedMinor - due);
@@ -100,12 +108,92 @@ export default function PosPage(): JSX.Element {
   const methodAvailable = (key: string): boolean => paymentConfig.find((entry) => entry.key === key)?.available ?? false;
   const paymentTiles = METHODS.filter((entry) => configuredMethodKeys.has(entry.key));
 
+  const resumedSaleLocked = activeDraft !== null;
+
+  function lockedSaleMessage(): void {
+    setStatus("This resumed sale is locked to its saved cart. Pay it or Hold it again before making changes.");
+  }
+
   function addToCart(p: PosProduct): void {
+    if (resumedSaleLocked) {
+      lockedSaleMessage();
+      return;
+    }
     setCart((prev) => addProductToCart(prev, p));
   }
 
   function setQty(productId: string, delta: number): void {
+    if (resumedSaleLocked) {
+      lockedSaleMessage();
+      return;
+    }
     setCart((prev) => changeCartQuantity(prev, productId, delta));
+  }
+
+  function setSaleRegister(nextRegisterId: string): void {
+    if (resumedSaleLocked) {
+      lockedSaleMessage();
+      return;
+    }
+    setRegisterId(nextRegisterId);
+  }
+
+  function openCustomerAssignment(): void {
+    if (resumedSaleLocked) {
+      lockedSaleMessage();
+      return;
+    }
+    setShowCustomer(true);
+  }
+
+  function openHeldSales(): void {
+    if (offline) {
+      setStatus("Held sales require connectivity.");
+      return;
+    }
+    void heldSalesQuery.refetch();
+    setShowHeldSales(true);
+  }
+
+  async function resumeHeldSale(held: PosHeldSale): Promise<void> {
+    setStatus("");
+    if (offline) {
+      setStatus("Reconnect before resuming a held sale.");
+      return;
+    }
+    if (cart.length > 0) {
+      setShowHeldSales(false);
+      setStatus("Hold or clear the current sale before resuming another held sale.");
+      return;
+    }
+    const activeBranchId = meQuery.data?.activeBranchId ?? null;
+    if (activeBranchId !== null && held.sale.branchId !== activeBranchId) {
+      setShowHeldSales(false);
+      setStatus("Switch to the held sale's branch before resuming it.");
+      return;
+    }
+    setResumingSaleId(held.sale.id);
+    try {
+      await resumePosSale(held.sale.id);
+      setCart(heldSaleToCart(held.sale));
+      setActiveDraft({ id: held.sale.id, totalMinor: held.sale.totalMinor });
+      setRegisterId(held.sale.registerId ?? "");
+      setCustomerId(held.sale.customerId ?? "");
+      if (held.sale.customerId) {
+        setCustomerQ(held.sale.customerName ?? "");
+        setWalkIn("");
+      } else {
+        setCustomerQ("");
+        setWalkIn(held.sale.customerName ?? "");
+      }
+      setShowHeldSales(false);
+      await heldSalesQuery.refetch();
+      setStatus("Held sale resumed. Its saved cart is locked until payment or re-hold.");
+    } catch (err) {
+      setStatus(err instanceof ApiError ? err.code + ": " + err.message : "Resume failed");
+    } finally {
+      setResumingSaleId(null);
+    }
   }
 
   async function holdCart(): Promise<void> {
@@ -115,14 +203,20 @@ export default function PosPage(): JSX.Element {
       return;
     }
     try {
-      const held = await holdPosSale({
+      await holdPosSale({
         cart,
         registerId,
         customerId,
         walkIn,
+        existingDraftId: activeDraft?.id,
       });
       setCart([]);
-      setStatus("Cart held. Resume it from the held sale " + held.draftId + ".");
+      setActiveDraft(null);
+      setCustomerId("");
+      setCustomerQ("");
+      setWalkIn("");
+      await heldSalesQuery.refetch();
+      setStatus("Sale held. Open Held sales to resume it later.");
     } catch (err) {
       setStatus(err instanceof ApiError ? err.code + ": " + err.message : "Hold failed");
     }
@@ -176,6 +270,10 @@ export default function PosPage(): JSX.Element {
       return;
     }
     if (offline) {
+      if (activeDraft) {
+        setStatus("Reconnect before completing this resumed held sale.");
+        return;
+      }
       await payOffline();
       return;
     }
@@ -192,6 +290,7 @@ export default function PosPage(): JSX.Element {
         walkIn,
         received,
         method,
+        existingDraft: activeDraft ?? undefined,
       });
       if (result.kind === "redirect") {
         setStatus("Redirecting to PayMongo secure checkout…");
@@ -199,6 +298,7 @@ export default function PosPage(): JSX.Element {
         return;
       }
       if (result.kind === "unknown") {
+        setActiveDraft(null);
         setReconcileId(result.paymentId);
         setReconcileSaleId(result.saleId);
         setShowPay(false);
@@ -206,6 +306,7 @@ export default function PosPage(): JSX.Element {
         return;
       }
       setCart([]);
+      setActiveDraft(null);
       setReceived("");
       setShowPay(false);
       setReconcileSaleId(null);
@@ -223,7 +324,7 @@ export default function PosPage(): JSX.Element {
     : (searchQuery.data?.items ?? []);
   const count = cart.reduce((n, c) => n + c.qty, 0);
   const statusView = paymentPresentation(status);
-  const canPay = canPresentPayAction(cart.length, canSell) && reconcileId === null;
+  const canPay = canPresentPayAction(cart.length, canSell) && reconcileId === null && !(offline && resumedSaleLocked);
   const selectedRegisterName =
     scopedRegisters.find((register) => register.id === registerId)?.name ?? "—";
 
@@ -239,7 +340,8 @@ export default function PosPage(): JSX.Element {
           <select
             aria-label="Register"
             value={registerId}
-            onChange={(e) => setRegisterId(e.target.value)}
+            onChange={(e) => setSaleRegister(e.target.value)}
+            disabled={resumedSaleLocked}
             className="max-w-28 bg-transparent font-data text-[8px] font-medium text-[#746960] outline-none"
           >
             <option value="">—</option>
@@ -271,14 +373,15 @@ export default function PosPage(): JSX.Element {
           selectedProductIds={new Set(cart.map((item) => item.productId))}
           loading={searchQuery.isLoading}
           offline={offline}
+          saleLocked={resumedSaleLocked}
           catalogAt={catalogAt}
           connectivityBanner={offline && store ? <div className="mt-3"><ConnectivityBanner store={store} /></div> : null}
-          onRegisterChange={setRegisterId}
+          onRegisterChange={setSaleRegister}
           onQueryChange={setQ}
           onSearch={() => void searchQuery.refetch()}
           onCategoryChange={setActiveCategoryId}
           onAddProduct={addToCart}
-          onAssignCustomer={() => setShowCustomer(true)}
+          onAssignCustomer={openCustomerAssignment}
         />
         <PosCartPanel
           cart={cart}
@@ -288,6 +391,8 @@ export default function PosPage(): JSX.Element {
           canSell={canSell}
           canPay={canPay}
           offline={offline}
+          saleLocked={resumedSaleLocked}
+          heldCount={heldSalesQuery.data?.items.length ?? 0}
           effectiveMethod={effectiveMethod}
           status={status}
           statusTone={statusView.tone}
@@ -296,10 +401,11 @@ export default function PosPage(): JSX.Element {
           reconcileSaleId={reconcileSaleId}
           methodAvailable={methodAvailable}
           onHold={() => void holdCart()}
+          onOpenHeldSales={openHeldSales}
           onClearCart={() => setCart([])}
           onResetSale={() => { setCart([]); setStatus(''); setReceiptId(null); }}
           onSetQty={setQty}
-          onAssignCustomer={() => setShowCustomer(true)}
+          onAssignCustomer={openCustomerAssignment}
           onOpenPayment={() => { setStatus(''); setShowPay(true); }}
           onSelectShortcut={(key) => {
             if (key !== 'more') setMethod(key);
@@ -314,6 +420,8 @@ export default function PosPage(): JSX.Element {
           count={count}
           due={due}
           canPay={canPay}
+          saleLocked={resumedSaleLocked}
+          heldCount={heldSalesQuery.data?.items.length ?? 0}
           status={status}
           statusTone={statusView.tone}
           receiptId={receiptId}
@@ -323,7 +431,15 @@ export default function PosPage(): JSX.Element {
           onCloseDrawer={() => setShowTabletCart(false)}
           onAssignCustomer={() => {
             setShowTabletCart(false);
-            setShowCustomer(true);
+            openCustomerAssignment();
+          }}
+          onHold={() => {
+            setShowTabletCart(false);
+            void holdCart();
+          }}
+          onOpenHeldSales={() => {
+            setShowTabletCart(false);
+            openHeldSales();
           }}
           onSetQty={setQty}
           onOpenPayment={() => {
@@ -332,6 +448,16 @@ export default function PosPage(): JSX.Element {
             setShowPay(true);
           }}
         />
+
+        {showHeldSales ? (
+          <PosHeldSalesDialog
+            heldSales={heldSalesQuery.data?.items ?? []}
+            loading={heldSalesQuery.isLoading || heldSalesQuery.isFetching}
+            busySaleId={resumingSaleId}
+            onResume={(held) => void resumeHeldSale(held)}
+            onClose={() => resumingSaleId === null && setShowHeldSales(false)}
+          />
+        ) : null}
 
         {showCustomer ? (
           <PosCustomerDialog

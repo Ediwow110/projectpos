@@ -23,6 +23,7 @@ interface SaleIdentityInput {
   registerId: string;
   customerId: string;
   walkIn: string;
+  existingDraftId?: string;
 }
 
 export async function holdPosSale(
@@ -31,18 +32,32 @@ export async function holdPosSale(
 ): Promise<{ draftId: string }> {
   const api = deps.api ?? apiFetch;
   const csrf = await api<{ csrfToken: string }>("/api/v1/auth/csrf");
-  const draft = await api<{ id: string }>("/api/v1/sales/drafts", {
-    csrfToken: csrf.csrfToken,
-    init: {
-      method: "POST",
-      body: JSON.stringify(buildDraftSaleInput(input.cart, input.registerId, input.customerId, input.walkIn)),
-    },
-  });
+  const draft = input.existingDraftId
+    ? { id: input.existingDraftId }
+    : await api<{ id: string }>("/api/v1/sales/drafts", {
+        csrfToken: csrf.csrfToken,
+        init: {
+          method: "POST",
+          body: JSON.stringify(buildDraftSaleInput(input.cart, input.registerId, input.customerId, input.walkIn)),
+        },
+      });
   await api("/api/v1/sales/" + draft.id + "/hold", {
     csrfToken: csrf.csrfToken,
     init: { method: "POST", body: JSON.stringify({}) },
   });
   return { draftId: draft.id };
+}
+
+export async function resumePosSale(
+  saleId: string,
+  deps: { api?: PosApiCall } = {},
+): Promise<{ id: string; status: string }> {
+  const api = deps.api ?? apiFetch;
+  const csrf = await api<{ csrfToken: string }>("/api/v1/auth/csrf");
+  return api<{ id: string; status: string }>(`/api/v1/sales/${saleId}/resume`, {
+    csrfToken: csrf.csrfToken,
+    init: { method: "POST", body: JSON.stringify({}) },
+  });
 }
 
 export async function queueOfflinePosSale(
@@ -87,13 +102,14 @@ export async function completePosSale(
   input: SaleIdentityInput & {
     received: string;
     method: string;
+    existingDraft?: { id: string; totalMinor: number };
   },
   deps: { api?: PosApiCall; uuid?: () => string } = {},
 ): Promise<CompletePosSaleResult> {
   const api = deps.api ?? apiFetch;
   const uuid = deps.uuid ?? (() => crypto.randomUUID());
   const csrf = await api<{ csrfToken: string }>("/api/v1/auth/csrf");
-  const draft = await api<{ id: string; totalMinor: number }>("/api/v1/sales/drafts", {
+  const draft = input.existingDraft ?? await api<{ id: string; totalMinor: number }>("/api/v1/sales/drafts", {
     csrfToken: csrf.csrfToken,
     init: {
       method: "POST",

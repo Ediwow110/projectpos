@@ -17,6 +17,7 @@ describe("POS product catalog", () => {
         selectedProductIds={new Set(["p1"])}
         loading={false}
         offline={false}
+        saleLocked={false}
         catalogAt={null}
         connectivityBanner={null}
         onRegisterChange={() => undefined}

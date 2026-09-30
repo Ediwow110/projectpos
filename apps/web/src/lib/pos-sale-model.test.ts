@@ -6,11 +6,24 @@ import {
   buildOfflineSalePayload,
   changeCartQuantity,
   filterOfflineCatalog,
+  heldSaleToCart,
   isPayMongoMethodKey,
   resolveTenderedMinor,
 } from "./pos-sale-model";
 
 describe("POS sale model", () => {
+  it("restores held-sale items in their saved cashier order", () => {
+    expect(heldSaleToCart({
+      items: [
+        { position: 1, productId: "p2", name: "Second", priceMinor: 2000, qty: 2 },
+        { position: 0, productId: "p1", name: "First", priceMinor: 1000, qty: 1 },
+      ],
+    })).toEqual([
+      { productId: "p1", name: "First", priceMinor: 1000, qty: 1 },
+      { productId: "p2", name: "Second", priceMinor: 2000, qty: 2 },
+    ]);
+  });
+
   it("builds draft input without empty optional customer/register fields", () => {
     const cart = [{ productId: "p1", name: "Coffee", priceMinor: 2500, qty: 2 }];
     expect(buildDraftSaleInput(cart, "", "", "  Walk In  ")).toEqual({

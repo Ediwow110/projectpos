@@ -11,6 +11,8 @@ interface PosResponsiveCartProps {
   count: number;
   due: number;
   canPay: boolean;
+  saleLocked: boolean;
+  heldCount: number;
   status: string;
   statusTone: StatusTone;
   receiptId: string | null;
@@ -19,6 +21,8 @@ interface PosResponsiveCartProps {
   onOpenDrawer: () => void;
   onCloseDrawer: () => void;
   onAssignCustomer: () => void;
+  onHold: () => void;
+  onOpenHeldSales: () => void;
   onSetQty: (productId: string, delta: number) => void;
   onOpenPayment: () => void;
 }
@@ -32,6 +36,8 @@ export function PosResponsiveCart({
   count,
   due,
   canPay,
+  saleLocked,
+  heldCount,
   status,
   statusTone,
   receiptId,
@@ -40,6 +46,8 @@ export function PosResponsiveCart({
   onOpenDrawer,
   onCloseDrawer,
   onAssignCustomer,
+  onHold,
+  onOpenHeldSales,
   onSetQty,
   onOpenPayment,
 }: PosResponsiveCartProps) {
@@ -64,6 +72,13 @@ export function PosResponsiveCart({
             className="h-11 shrink-0 rounded-[10px] border border-white/15 px-3 text-[10px] font-semibold text-white/80"
           >
             View cart
+          </button>
+          <button
+            type="button"
+            onClick={onOpenHeldSales}
+            className="h-11 shrink-0 rounded-[10px] border border-white/15 px-2.5 text-[10px] font-semibold text-white/80"
+          >
+            Held {heldCount}
           </button>
           <button
             type="button"
@@ -94,6 +109,13 @@ export function PosResponsiveCart({
           className="absolute left-7 top-[88px] h-12 w-[180px] rounded-[10px] border border-white/15 text-[11px] font-semibold text-white/80"
         >
           View cart
+        </button>
+        <button
+          type="button"
+          onClick={onOpenHeldSales}
+          className="absolute left-[220px] top-[88px] h-12 w-[120px] rounded-[10px] border border-white/15 text-[11px] font-semibold text-white/80"
+        >
+          Held {heldCount}
         </button>
         <div className="absolute right-[221px] top-6 w-[123px] text-left">
           <p className="font-data text-[8px] uppercase tracking-[0.12em] text-white/45">Total</p>
@@ -141,7 +163,7 @@ export function PosResponsiveCart({
 
       {drawerOpen ? (
         <div
-          className="fixed inset-0 z-40 bg-black/45 p-3 sm:p-5 xl:hidden"
+          className="fixed inset-0 z-[90] bg-black/45 p-3 sm:p-5 xl:hidden"
           role="dialog"
           aria-modal="true"
           aria-label="Tablet cart details"
@@ -156,9 +178,18 @@ export function PosResponsiveCart({
                 <button
                   type="button"
                   onClick={onAssignCustomer}
-                  className="rounded-lg border border-white/10 px-3 py-2 text-[10px] font-semibold text-white/70 hover:text-white"
+                  disabled={saleLocked}
+                  className="rounded-lg border border-white/10 px-3 py-2 text-[10px] font-semibold text-white/70 hover:text-white disabled:opacity-35"
                 >
                   Add customer
+                </button>
+                <button
+                  type="button"
+                  onClick={onHold}
+                  disabled={cart.length === 0}
+                  className="rounded-lg border border-white/10 px-3 py-2 text-[10px] font-semibold text-white/70 hover:text-white disabled:opacity-35"
+                >
+                  {saleLocked ? "Re-hold" : "Hold"}
                 </button>
                 <button
                   type="button"
@@ -190,8 +221,9 @@ export function PosResponsiveCart({
                     <button
                       type="button"
                       onClick={() => onSetQty(item.productId, -1)}
+                      disabled={saleLocked}
                       aria-label={"Decrease " + item.name}
-                      className="grid h-7 w-7 place-items-center rounded-md bg-white/10 text-sm font-bold"
+                      className="grid h-7 w-7 place-items-center rounded-md bg-white/10 text-sm font-bold disabled:opacity-35"
                     >
                       −
                     </button>
@@ -199,8 +231,9 @@ export function PosResponsiveCart({
                     <button
                       type="button"
                       onClick={() => onSetQty(item.productId, 1)}
+                      disabled={saleLocked}
                       aria-label={"Increase " + item.name}
-                      className="grid h-7 w-7 place-items-center rounded-md bg-white/10 text-sm font-bold hover:bg-[#f35d3f]"
+                      className="grid h-7 w-7 place-items-center rounded-md bg-white/10 text-sm font-bold hover:bg-[#f35d3f] disabled:opacity-35"
                     >
                       +
                     </button>

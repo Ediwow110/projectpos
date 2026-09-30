@@ -17,6 +17,8 @@ describe("POS current-sale panel", () => {
         canSell
         canPay
         offline={false}
+        saleLocked={false}
+        heldCount={1}
         effectiveMethod="cash"
         status=""
         statusTone="neutral"
@@ -25,6 +27,7 @@ describe("POS current-sale panel", () => {
         reconcileSaleId={null}
         methodAvailable={() => true}
         onHold={noop}
+        onOpenHeldSales={noop}
         onClearCart={noop}
         onResetSale={noop}
         onSetQty={noop}
@@ -53,6 +56,8 @@ describe("POS current-sale panel", () => {
         canSell
         canPay={false}
         offline={false}
+        saleLocked={false}
+        heldCount={0}
         effectiveMethod="cash"
         status="Payment status unknown. Do not retry blindly."
         statusTone="warn"
@@ -61,6 +66,7 @@ describe("POS current-sale panel", () => {
         reconcileSaleId="sale-unknown"
         methodAvailable={() => true}
         onHold={noop}
+        onOpenHeldSales={noop}
         onClearCart={noop}
         onResetSale={noop}
         onSetQty={noop}

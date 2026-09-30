@@ -69,6 +69,7 @@ No global toast provider is currently canonical. Status, warnings, errors, payme
 | Operation | Trigger | Pending | Success destination | Success feedback | Failure recovery | Focus outcome | Source ref |
 |---|---|---|---|---|---|---|---|
 | Complete sale | POS Pay | processing state, duplicate action disabled | receipt/current POS | completed + receipt link | unknown remains PAYMENT_UNKNOWN; no blind retry | payment context remains available | Phase 4 spec |
+| Hold / resume sale | POS Hold / Held sales | hold/resume mutation pending; saved draft remains authoritative | POS | held/resumed inline status | offline resume blocked; branch mismatch requires switch; resume failure leaves current cart untouched | Held sales dialog / restored POS cart | Phase B held-sales baseline |
 | Offline sale | POS Pay while offline | queued locally | POS + Sync follow-up | provisional receipt + pending-sync copy | Sync page/retry queue | stays in POS context | Phase 9b spec |
 | Close shift | Close shift action | mutation pending | shift history/detail | expected/count/variance snapshot shown | server error with counted values preserved where possible | close form/result | Phase 5 spec |
 | Search/filter | field/filter change + Apply where present | route/query loading | same route | updated list/chart | inline query error | control retains focus | route implementation |
@@ -138,6 +139,7 @@ No global toast provider is currently canonical. Status, warnings, errors, payme
 - Server error mapping: preserve stable API codes where useful for recovery.
 - Sensitive-value handling: no business-sensitive metrics before authentication; permission-sensitive cost/profit stays server-authorized.
 - Duplicate-submit prevention: pending controls disable where repeat would be unsafe.
+- Resumed held-sale drafts are read-only in the cashier cart until payment or re-hold so the client cannot silently diverge from the authoritative saved draft.
 
 ## Permission and clipboard
 

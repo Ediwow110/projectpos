@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { apiFetch } from "./api";
 import { buildProductSearch } from "./catalog";
-import type { PosProduct } from "./pos-sale-model";
+import type { PosHeldSale, PosProduct } from "./pos-sale-model";
 
 export interface PosMe {
   userId: string;
@@ -64,6 +64,12 @@ export function usePosData(query: string, activeCategoryId: string, customerQuer
       ),
     retry: false,
   });
+  const heldSalesQuery = useQuery({
+    queryKey: ["pos-held-sales"],
+    queryFn: () => apiFetch<{ items: PosHeldSale[] }>("/api/v1/sales/held"),
+    retry: false,
+    enabled: meQuery.data !== undefined && ["owner", "manager", "cashier"].includes(meQuery.data.role),
+  });
 
   return {
     meQuery,
@@ -72,5 +78,6 @@ export function usePosData(query: string, activeCategoryId: string, customerQuer
     paymentMethodsQuery,
     categoriesQuery,
     searchQuery,
+    heldSalesQuery,
   };
 }

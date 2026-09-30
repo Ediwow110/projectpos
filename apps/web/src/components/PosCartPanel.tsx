@@ -13,6 +13,8 @@ interface PosCartPanelProps {
   canSell: boolean;
   canPay: boolean;
   offline: boolean;
+  saleLocked: boolean;
+  heldCount: number;
   effectiveMethod: string;
   status: string;
   statusTone: StatusTone;
@@ -21,6 +23,7 @@ interface PosCartPanelProps {
   reconcileSaleId: string | null;
   methodAvailable: (key: string) => boolean;
   onHold: () => void;
+  onOpenHeldSales: () => void;
   onClearCart: () => void;
   onResetSale: () => void;
   onSetQty: (productId: string, delta: number) => void;
@@ -41,6 +44,8 @@ export function PosCartPanel({
   canSell,
   canPay,
   offline,
+  saleLocked,
+  heldCount,
   effectiveMethod,
   status,
   statusTone,
@@ -49,6 +54,7 @@ export function PosCartPanel({
   reconcileSaleId,
   methodAvailable,
   onHold,
+  onOpenHeldSales,
   onClearCart,
   onResetSale,
   onSetQty,
@@ -64,16 +70,23 @@ export function PosCartPanel({
           type="button"
           onClick={onHold}
           disabled={cart.length === 0}
-          className="absolute right-[60px] top-[-4px] h-[34px] w-[90px] rounded-[9px] border border-[#3b3732] bg-[#252422] text-[9px] font-semibold text-[#d5cdc6] disabled:opacity-40"
+          className="absolute right-[120px] top-[-4px] h-[34px] w-[68px] rounded-[9px] border border-[#3b3732] bg-[#252422] text-[9px] font-semibold text-[#d5cdc6] disabled:opacity-40"
         >
-          Hold
+          {saleLocked ? "Re-hold" : "Hold"}
+        </button>
+        <button
+          type="button"
+          onClick={onOpenHeldSales}
+          className="absolute right-[48px] top-[-4px] h-[34px] w-[68px] rounded-[9px] border border-[#3b3732] bg-[#252422] text-[9px] font-semibold text-[#d5cdc6] hover:border-[#5a524b]"
+        >
+          Held {heldCount}
         </button>
         <button
           type="button"
           aria-label="Clear sale"
           onClick={onClearCart}
-          disabled={cart.length === 0}
-          className="absolute right-[10px] top-[-4px] h-[34px] w-[42px] rounded-[9px] border border-[#3b3732] bg-[#252422] text-[14px] font-semibold text-[#ff765a] disabled:opacity-40"
+          disabled={cart.length === 0 || saleLocked}
+          className="absolute right-0 top-[-4px] h-[34px] w-[40px] rounded-[9px] border border-[#3b3732] bg-[#252422] text-[14px] font-semibold text-[#ff765a] disabled:opacity-40"
         >
           ⌫
         </button>
@@ -95,8 +108,8 @@ export function PosCartPanel({
                 <p className="truncate text-[9px] font-semibold text-white">{entry.name}</p>
                 <div className="mt-2 flex items-center gap-2 font-data text-[8px] text-[#aaa096]">
                   <span>Qty {entry.qty}</span>
-                  <button type="button" onClick={() => onSetQty(entry.productId, -1)} aria-label={"Decrease " + entry.name} className="grid h-5 w-5 place-items-center rounded bg-white/[0.06] text-[11px] hover:bg-white/10">−</button>
-                  <button type="button" onClick={() => onSetQty(entry.productId, 1)} aria-label={"Increase " + entry.name} className="grid h-5 w-5 place-items-center rounded bg-white/[0.06] text-[11px] hover:bg-white/10">+</button>
+                  <button type="button" onClick={() => onSetQty(entry.productId, -1)} disabled={saleLocked} aria-label={"Decrease " + entry.name} className="grid h-5 w-5 place-items-center rounded bg-white/[0.06] text-[11px] hover:bg-white/10 disabled:opacity-35">−</button>
+                  <button type="button" onClick={() => onSetQty(entry.productId, 1)} disabled={saleLocked} aria-label={"Increase " + entry.name} className="grid h-5 w-5 place-items-center rounded bg-white/[0.06] text-[11px] hover:bg-white/10 disabled:opacity-35">+</button>
                 </div>
               </div>
               <span className="money shrink-0 text-[9px] font-medium text-white">₱{money(entry.qty * entry.priceMinor)}</span>
@@ -108,7 +121,8 @@ export function PosCartPanel({
           type="button"
           aria-label="Assign customer to sale"
           onClick={onAssignCustomer}
-          className="absolute inset-x-0 top-[322px] h-[38px] rounded-[8px] bg-[#252422] px-3 text-left text-[9px] text-[#aaa096] hover:text-white"
+          disabled={saleLocked}
+          className="absolute inset-x-0 top-[322px] h-[38px] rounded-[8px] bg-[#252422] px-3 text-left text-[9px] text-[#aaa096] hover:text-white disabled:opacity-40"
         >
           ○ Add customer / walk-in
         </button>
@@ -167,7 +181,7 @@ export function PosCartPanel({
         <button
           type="button"
           onClick={onResetSale}
-          disabled={cart.length === 0 || reconcileId !== null}
+          disabled={cart.length === 0 || reconcileId !== null || saleLocked}
           className="absolute inset-x-0 top-[660px] h-12 rounded-[10px] border border-[#d94a30] text-[10px] font-semibold text-[#ff765a] hover:bg-[#2b1d19] disabled:opacity-35"
         >
           ⌫ Clear sale

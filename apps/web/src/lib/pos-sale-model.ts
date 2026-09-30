@@ -14,6 +14,29 @@ export interface PosCartEntry {
   qty: number;
 }
 
+export interface PosHeldSaleItem {
+  position: number;
+  productId: string;
+  name: string;
+  priceMinor: number;
+  qty: number;
+}
+
+export interface PosHeldSale {
+  heldId: string;
+  sale: {
+    id: string;
+    status: string;
+    createdAt: string;
+    registerId: string | null;
+    branchId: string | null;
+    customerId: string | null;
+    customerName: string | null;
+    totalMinor: number;
+    items: PosHeldSaleItem[];
+  };
+}
+
 export interface PosDraftInput {
   lines: Array<{ productId: string; qty: number }>;
   registerId?: string;
@@ -73,6 +96,17 @@ export function changeCartQuantity(cart: PosCartEntry[], productId: string, delt
   return cart
     .map((entry) => entry.productId === productId ? { ...entry, qty: entry.qty + delta } : entry)
     .filter((entry) => entry.qty > 0);
+}
+
+export function heldSaleToCart(sale: Pick<PosHeldSale["sale"], "items">): PosCartEntry[] {
+  return [...sale.items]
+    .sort((a, b) => a.position - b.position)
+    .map((item) => ({
+      productId: item.productId,
+      name: item.name,
+      priceMinor: item.priceMinor,
+      qty: item.qty,
+    }));
 }
 
 export function filterOfflineCatalog(products: PosProduct[], query: string, categoryId: string): PosProduct[] {

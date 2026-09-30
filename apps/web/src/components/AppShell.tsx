@@ -463,7 +463,7 @@ export function AppShell({
 
       <div
         data-ui="shell-body"
-        className="relative z-10 mx-auto grid w-full max-w-[1480px] flex-1 xl:grid-cols-[220px_minmax(0,1fr)]"
+        className="relative mx-auto grid w-full max-w-[1480px] flex-1 xl:grid-cols-[220px_minmax(0,1fr)]"
       >
         <aside
           data-ui="shell-sidebar"

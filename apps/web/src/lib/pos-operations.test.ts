@@ -5,6 +5,7 @@ import {
   completePosSale,
   holdPosSale,
   queueOfflinePosSale,
+  resumePosSale,
   type PosApiCall,
 } from "./pos-operations";
 
@@ -30,6 +31,44 @@ describe("POS operations", () => {
       { path: "/api/v1/auth/csrf", method: undefined },
       { path: "/api/v1/sales/drafts", method: "POST" },
       { path: "/api/v1/sales/sale-1/hold", method: "POST" },
+    ]);
+  });
+
+  it("re-holds an existing resumed draft without creating a duplicate draft", async () => {
+    const calls: Array<{ path: string; method?: string }> = [];
+    const api: PosApiCall = async <T>(path: string, options?: { init?: RequestInit }) => {
+      calls.push({ path, method: options?.init?.method });
+      if (path === "/api/v1/auth/csrf") return { csrfToken: "csrf" } as T;
+      return {} as T;
+    };
+
+    const result = await holdPosSale(
+      { cart, registerId: "reg-1", customerId: "", walkIn: "", existingDraftId: "sale-held" },
+      { api },
+    );
+
+    expect(result).toEqual({ draftId: "sale-held" });
+    expect(calls).toEqual([
+      { path: "/api/v1/auth/csrf", method: undefined },
+      { path: "/api/v1/sales/sale-held/hold", method: "POST" },
+    ]);
+  });
+
+  it("resumes a held draft through csrf + resume", async () => {
+    const calls: Array<{ path: string; method?: string }> = [];
+    const api: PosApiCall = async <T>(path: string, options?: { init?: RequestInit }) => {
+      calls.push({ path, method: options?.init?.method });
+      if (path === "/api/v1/auth/csrf") return { csrfToken: "csrf" } as T;
+      if (path === "/api/v1/sales/sale-1/resume") return { id: "sale-1", status: "DRAFT" } as T;
+      throw new Error("unexpected path " + path);
+    };
+
+    const result = await resumePosSale("sale-1", { api });
+
+    expect(result).toEqual({ id: "sale-1", status: "DRAFT" });
+    expect(calls).toEqual([
+      { path: "/api/v1/auth/csrf", method: undefined },
+      { path: "/api/v1/sales/sale-1/resume", method: "POST" },
     ]);
   });
 
@@ -116,5 +155,33 @@ describe("POS operations", () => {
       saleId: "sale-2",
       paymentId: "pay-2",
     });
+  });
+
+  it("completes an existing resumed draft without creating a replacement", async () => {
+    const calls: string[] = [];
+    const api: PosApiCall = async <T>(path: string) => {
+      calls.push(path);
+      if (path === "/api/v1/auth/csrf") return { csrfToken: "csrf" } as T;
+      if (path === "/api/v1/sales/complete") {
+        return { id: "sale-held", status: "COMPLETED", payments: [] } as T;
+      }
+      throw new Error("unexpected path " + path);
+    };
+
+    const result = await completePosSale(
+      {
+        cart,
+        registerId: "reg-1",
+        customerId: "",
+        walkIn: "",
+        received: "",
+        method: "cash",
+        existingDraft: { id: "sale-held", totalMinor: 5000 },
+      },
+      { api, uuid: () => "complete-held" },
+    );
+
+    expect(result).toEqual({ kind: "completed", saleId: "sale-held" });
+    expect(calls).toEqual(["/api/v1/auth/csrf", "/api/v1/sales/complete"]);
   });
 });

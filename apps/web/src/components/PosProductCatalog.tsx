@@ -25,6 +25,7 @@ interface PosProductCatalogProps {
   selectedProductIds: Set<string>;
   loading: boolean;
   offline: boolean;
+  saleLocked: boolean;
   catalogAt: string | null;
   connectivityBanner: ReactNode;
   onRegisterChange: (registerId: string) => void;
@@ -49,6 +50,7 @@ export function PosProductCatalog({
   selectedProductIds,
   loading,
   offline,
+  saleLocked,
   catalogAt,
   connectivityBanner,
   onRegisterChange,
@@ -66,6 +68,7 @@ export function PosProductCatalog({
           aria-label="Mobile register"
           value={registerId}
           onChange={(event) => onRegisterChange(event.target.value)}
+          disabled={saleLocked}
           className="min-w-0 max-w-[190px] rounded-lg border border-white/10 bg-[#252422] px-2 py-2 text-[10px] font-semibold text-white outline-none"
         >
           <option value="">Select register</option>
@@ -144,6 +147,7 @@ export function PosProductCatalog({
         <button
           type="button"
           onClick={onAssignCustomer}
+          disabled={saleLocked}
           className="ml-auto rounded-full border border-white/15 px-3 py-1.5 text-[11px] font-semibold text-white/65 hover:text-white lg:hidden"
         >
           Customer
@@ -160,9 +164,11 @@ export function PosProductCatalog({
           return (
             <li key={product.id} style={{ animation: `rise 0.35s ${Math.min(index * 0.02, 0.25)}s both` }}>
               <button
+                type="button"
                 onClick={() => onAddProduct(product)}
+                disabled={saleLocked}
                 className={
-                  "card-hover relative w-full rounded-xl border bg-[#252422] p-3 text-left lg:max-xl:h-[220px] lg:max-xl:p-[13px] xl:h-[152px] xl:p-[11px] " +
+                  "card-hover relative w-full rounded-xl border bg-[#252422] p-3 text-left disabled:cursor-not-allowed disabled:opacity-55 lg:max-xl:h-[220px] lg:max-xl:p-[13px] xl:h-[152px] xl:p-[11px] " +
                   (selected ? "border-[#ff765a]" : "border-[#35312d]")
                 }
               >
@@ -190,6 +196,7 @@ export function PosProductCatalog({
         <button
           type="button"
           onClick={onAssignCustomer}
+          disabled={saleLocked}
           className="rounded-lg border border-white/10 bg-white/[0.04] px-5 py-2 text-[10px] font-semibold text-white/75 hover:bg-white/[0.08] hover:text-white"
         >
           Add customer <span className="font-data text-white/35">F1</span>

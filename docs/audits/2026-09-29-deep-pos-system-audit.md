@@ -11,7 +11,7 @@ The product was also benchmarked against current official documentation for Shop
 | Workflow | Current market pattern | NexPOS status | Audit conclusion |
 | --- | --- | --- | --- |
 | First login / guided setup | Shopify shows POS introduction screens; Square exposes a reusable Setup Guide | Previously missing after business onboarding; implemented in this audit | Necessary for discoverability and training reduction |
-| Saved/open carts | Shopify POS exposes saved/recent carts with staff permissions; Loyverse exposes open tickets | Hold API exists but no usable held-sale queue | P0 flow gap |
+| Saved/open carts | Shopify POS exposes saved/recent carts with staff permissions; Loyverse exposes open tickets | Phase B adds a cashier-facing Held sales queue that resumes the original draft | Implemented baseline; labels/search/cancel handoff remain future refinements |
 | Manager approval | Shopify can require manager approval/PIN for returns and other protected POS actions | Permissions exist, but no in-context supervisor approval UX | P0 flow gap |
 | Returns and exchanges | Mature retail POS supports return/exchange directly from order context | Refund request/approve/reject exists; exchange does not | Add exchange as P0/P1 cashier flow |
 | Purchase orders / vendors | Square, Lightspeed, and Loyverse make supplier/vendor ordering and receiving first-class inventory workflows | No supplier/vendor/PO schema | Largest inventory lifecycle gap; P0 |
@@ -48,11 +48,11 @@ NexPOS should not copy every competitor feature. The immediate goal is to comple
 
 Current onboarding is structurally sound but the tax/currency and receipt steps mostly record `done` state. The first-run flow should configure the actual business settings it claims to prepare: tax defaults, currency rules, receipt header/footer/behavior, first register, branch, payment methods, and optionally first product/team member.
 
-### 2. Held-sale retrieval is incomplete
+### 2. Held-sale retrieval — implemented baseline in Phase B
 
-POS can hold a sale, but the cashier is only told a draft identifier. There is no visible held/open-ticket queue to browse, resume, rename, search, or hand off. This is a dead-end workflow under real counter pressure.
+POS now exposes a visible Held sales queue directly from the cashier workspace. A seller can hold the current draft, see their own held carts with customer/item/total context, resume the original draft without cloning it, and either complete payment or re-hold it. Saved item order, register, branch, customer/walk-in context, and original sale identity are preserved. Offline resume is blocked and branch mismatch requires an explicit branch switch.
 
-Required flow: Hold → optional label/customer → Held sales list → resume on any permitted register/device → expire/cancel with audit trail.
+Future refinements remain: optional labels, search/filter, explicit cancel/expiry workflows, and audited handoff between permitted staff. These are not marked complete.
 
 ### 3. Staff/team management UI — implemented in Phase A2
 
@@ -167,7 +167,7 @@ Verification on 2026-09-30: web unit/component 144/144, API 441/441, PostgreSQL 
 
 ### Phase B — cashier workflow completion
 
-Held-sale queue/resume, POS discounts, manager approval/passcode, direct exchange flow, receipt delivery and printer setup.
+Held-sale queue/resume baseline is implemented. Remaining Phase B work: POS discounts, manager approval/passcode, direct exchange flow, receipt delivery, and printer setup.
 
 ### Phase C — inventory lifecycle
 

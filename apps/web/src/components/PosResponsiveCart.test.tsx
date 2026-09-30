@@ -14,6 +14,8 @@ describe("POS responsive cart", () => {
         count={2}
         due={5000}
         canPay
+        saleLocked={false}
+        heldCount={1}
         status="Payment status unknown. Do not retry blindly."
         statusTone="warn"
         receiptId="sale-receipt"
@@ -22,6 +24,8 @@ describe("POS responsive cart", () => {
         onOpenDrawer={noop}
         onCloseDrawer={noop}
         onAssignCustomer={noop}
+        onHold={noop}
+        onOpenHeldSales={noop}
         onSetQty={noop}
         onOpenPayment={noop}
       />,

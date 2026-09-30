@@ -174,6 +174,61 @@ export class SalesService {
     return this.lifecycle.holdSale(businessId, actorId, requestId, saleId);
   }
 
+  async listHeldSales(
+    businessId: string,
+    actorId: string,
+  ): Promise<{
+    items: Array<{
+      heldId: string;
+      sale: Pick<DbSale, "id" | "status" | "createdAt" | "registerId" | "branchId" | "customerId" | "customerName" | "totalMinor"> & {
+        items: Array<Pick<DbSaleItem, "position" | "productId" | "name" | "qty" | "priceMinor">>;
+      };
+    }>;
+  }> {
+    withScope(businessId, {});
+    const heldRows = await this.db.listHeldSales(businessId, actorId);
+    const items: Array<{
+      heldId: string;
+      sale: Pick<DbSale, "id" | "status" | "createdAt" | "registerId" | "branchId" | "customerId" | "customerName" | "totalMinor"> & {
+        items: Array<Pick<DbSaleItem, "position" | "productId" | "name" | "qty" | "priceMinor">>;
+      };
+    }> = [];
+
+    for (const held of heldRows) {
+      if (held.resumedAt !== null) continue;
+      const saleId = (held.payload as { saleId?: unknown } | null)?.saleId;
+      if (typeof saleId !== "string") continue;
+      const sale = await this.db.findSaleById(saleId, businessId);
+      if (!sale || sale.actorId !== actorId || sale.status !== "DRAFT") continue;
+      const saleItems = await this.db.listSaleItems(sale.id, businessId);
+      items.push({
+        heldId: held.id,
+        sale: {
+          id: sale.id,
+          status: sale.status,
+          createdAt: sale.createdAt,
+          registerId: sale.registerId,
+          branchId: sale.branchId,
+          customerId: sale.customerId,
+          customerName: sale.customerName,
+          totalMinor: sale.totalMinor,
+          items: saleItems
+            .map((item) => ({
+              position: item.position,
+              productId: item.productId,
+              name: item.name,
+              qty: item.qty,
+              priceMinor: item.priceMinor,
+            }))
+            .sort((a, b) => a.position - b.position),
+        },
+      });
+    }
+
+    items.sort((a, b) => b.sale.createdAt.getTime() - a.sale.createdAt.getTime());
+    return { items };
+  }
+
   async resumeSale(
     businessId: string,
     actorId: string,

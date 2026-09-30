@@ -271,6 +271,23 @@ export class SalesController {
     }
   }
 
+  @Get("sales/held")
+  async heldSales(
+    @Req() req: Request,
+    @Res() res: Response,
+  ): Promise<void> {
+    if (!SELL_ROLES.has(req.auth!.role)) {
+      fail(res, 403, "FORBIDDEN", "Held sales are not available for this role", req);
+      return;
+    }
+    try {
+      res.json(await this.sales.listHeldSales(req.auth!.businessId, req.auth!.userId));
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "VALIDATION";
+      fail(res, statusFor(code), code, "Held sales fetch failed", req);
+    }
+  }
+
   @Get("sales/:id")
   async getSale(
     @Req() req: Request,

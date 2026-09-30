@@ -206,11 +206,28 @@ describe("phase4 sales permissions, unknown, and cross-tenant", () => {
       .set("Cookie", cookie).set("X-CSRF-Token", csrf)
       .send({});
     expect(held.status).toBe(200);
+    const heldList = await request(app.getHttpServer()).get("/api/v1/sales/held")
+      .set("Cookie", cookie);
+    expect(heldList.status).toBe(200);
+    expect(heldList.body.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        heldId: held.body.id,
+        sale: expect.objectContaining({
+          id: draft.body.id,
+          status: "DRAFT",
+          items: [expect.objectContaining({ productId, qty: 1, name: "Coke" })],
+        }),
+      }),
+    ]));
     const resumed = await request(app.getHttpServer()).post(`/api/v1/sales/${draft.body.id}/resume`)
       .set("Cookie", cookie).set("X-CSRF-Token", csrf)
       .send({});
     expect(resumed.status).toBe(200);
     expect(resumed.body.status).toBe("DRAFT");
+    const afterResume = await request(app.getHttpServer()).get("/api/v1/sales/held")
+      .set("Cookie", cookie);
+    expect(afterResume.status).toBe(200);
+    expect(afterResume.body.items.some((item: { sale: { id: string } }) => item.sale.id === draft.body.id)).toBe(false);
   });
 });
 
