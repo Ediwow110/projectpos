@@ -178,6 +178,8 @@ Refund initiation rules become:
 
 The refund request itself remains audited and idempotent but is no longer treated as the privileged money-moving step. Rejecting or approving a request remains protected.
 
+Preserve the existing separation-of-duties rule: a non-owner who created the refund request cannot become its sole approver merely because their role already has `sale.refund`. In that case a distinct owner/manager approval grant is still required and the operational actor remains the requester. The existing owner self-approval exception remains unchanged.
+
 Change the approve path so an eligible requester who lacks the required standing permission can request an in-context manager approval rather than receiving a dead-end `FORBIDDEN`.
 
 Flow:
@@ -218,6 +220,8 @@ Branch context is part of the fingerprint. A token minted for one branch cannot 
 ### 5.4 Shift close override
 
 Closing one's own shift continues to use the user's standing `shift.close` behavior and does not require a manager approval.
+
+The current cashier shift query hides every shift opened by another actor, which would make this approval path unreachable. Add only the minimum visibility needed for the protected action: the Shifts workspace may show other **open** shifts as close-only supervisor-approval candidates with register/branch identity and status, but must not expose their detailed cash ledger, cash-movement controls, closed-shift history, or shift-report route to that cashier. Existing owner/manager visibility is unchanged.
 
 When the shift was opened by another actor and the service requires `shift.close.override`:
 
