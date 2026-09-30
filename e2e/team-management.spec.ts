@@ -12,6 +12,17 @@ test("owner creates and deactivates a cashier while temporary credentials are di
   });
 
   await page.goto("/team");
+
+  const ownerRow = page.getByRole("row").filter({ hasText: "Team Owner" });
+  await ownerRow.getByRole("button", { name: "Set approval PIN" }).click();
+  const pinDialog = page.getByRole("dialog", { name: "Set approval PIN" });
+  await pinDialog.getByLabel("Six-digit approval PIN").fill("482615");
+  await pinDialog.getByLabel("Confirm approval PIN").fill("482615");
+  await pinDialog.getByRole("button", { name: "Set PIN", exact: true }).click();
+  await expect(pinDialog).toBeHidden();
+  await expect(page.getByRole("status")).toContainText("approval PIN was enrolled");
+  await expect(ownerRow.getByRole("button", { name: "Rotate approval PIN" })).toBeVisible();
+
   await page.getByRole("button", { name: "+ Add team member" }).click();
 
   const cashierEmail = `team-cashier-${process.env.TEST_WORKER_INDEX ?? "w"}-${Date.now()}@example.com`;

@@ -1,5 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { randomBytes } from "node:crypto";
+import { verifyApprovalPin } from "../approval-pin";
 import { hashPassword, verifyPassword } from "../password";
 import { buildSessionRecord, hashToken, isReAuthFresh } from "../sessions";
 import { consumeResetToken, createResetToken } from "../reset-tokens";
@@ -317,12 +318,15 @@ export class AuthService {
     businessId: string,
     requesterId: string,
     requestId: string,
-    input: { email: string; password: string; permission: string; fingerprint: string },
+    input: { email: string; password?: string; pin?: string; permission: string; fingerprint: string },
   ): Promise<{ token: string; expiresAt: Date; approver: { id: string; name: string; role: string } }> {
     const approver = await this.db.findUserByEmail(input.email.trim().toLowerCase());
     const membership = approver ? await this.db.findMembership(approver.id, businessId) : null;
     const eligibleRole = membership?.role === "owner" || membership?.role === "manager";
     const eligiblePermission = membership ? this.rolePermissions(membership.role).includes(input.permission) : false;
+    const credentialValid = input.pin !== undefined
+      ? membership?.approvalPinHash != null && await verifyApprovalPin(membership.approvalPinHash, input.pin)
+      : input.password !== undefined && approver !== null && await verifyPassword(approver.passwordHash, input.password);
     const valid =
       approver !== null &&
       membership !== null &&
@@ -331,7 +335,7 @@ export class AuthService {
       approver.id !== requesterId &&
       eligibleRole &&
       eligiblePermission &&
-      await verifyPassword(approver.passwordHash, input.password);
+      credentialValid;
     if (!valid || !approver || !membership) throw new Error("AUTH_INVALID_CREDENTIALS");
 
     const token = `mgr_${randomBytes(24).toString("hex")}`;

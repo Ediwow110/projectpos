@@ -90,7 +90,8 @@ export class SalesController {
         rid(req),
         {
           email: parsed.data.email,
-          password: parsed.data.password,
+          ...(parsed.data.password ? { password: parsed.data.password } : {}),
+          ...(parsed.data.pin ? { pin: parsed.data.pin } : {}),
           permission: "discount.override",
           fingerprint: discountApprovalFingerprint(parsed.data),
         },

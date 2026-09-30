@@ -1,4 +1,14 @@
-const SENSITIVE_KEYS = new Set(["password", "passwordHash", "token", "tokenHash", "approvalToken", "csrfToken", "authorization"]);
+const SENSITIVE_KEYS = new Set([
+  "password",
+  "passwordHash",
+  "pin",
+  "approvalPinHash",
+  "token",
+  "tokenHash",
+  "approvalToken",
+  "csrfToken",
+  "authorization",
+]);
 
 export function toSafeLogContext(input: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};

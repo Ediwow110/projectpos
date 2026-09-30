@@ -14,7 +14,7 @@ const cart = [{ productId: "p1", name: "Coffee", priceMinor: 2500, qty: 2, lineD
 const undiscountedCart = [{ productId: "p1", name: "Coffee", priceMinor: 2500, qty: 2, lineDiscountMinor: 0 }];
 
 describe("POS operations", () => {
-  it("requests a one-use manager approval without sending customer or register data", async () => {
+  it("requests a one-use manager approval by PIN without sending customer or register data", async () => {
     const calls: Array<{ path: string; body?: string | null }> = [];
     const api: PosApiCall = async <T>(path: string, options?: { init?: RequestInit }) => {
       calls.push({ path, body: options?.init?.body as string | null | undefined });
@@ -32,14 +32,14 @@ describe("POS operations", () => {
       cart,
       orderDiscountMinor: 300,
       email: "manager@example.com",
-      password: "manager-password",
+      pin: "482615",
     }, { api });
     expect(out.token).toMatch(/^mgr_/);
     expect(calls[1]?.body).toBe(JSON.stringify({
       lines: [{ productId: "p1", qty: 2, lineDiscountMinor: 500 }],
       orderDiscountMinor: 300,
       email: "manager@example.com",
-      password: "manager-password",
+      pin: "482615",
     }));
   });
 

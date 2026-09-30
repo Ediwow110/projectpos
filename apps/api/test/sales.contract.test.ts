@@ -125,6 +125,19 @@ describe("phase4 sales HTTP contract", () => {
 
 describe("phase4 sales permissions, unknown, and cross-tenant", () => {
   it("lets a cashier use one exact owner-approved over-threshold discount", async () => {
+    const ownerMemberships = await request(app.getHttpServer()).get("/api/v1/memberships").set("Cookie", cookie);
+    const ownerMembership = ownerMemberships.body.items.find((item: { userId: string }) => item.userId === ownerUserId);
+    expect(ownerMembership).toBeTruthy();
+    const pinSet = await request(app.getHttpServer()).post(`/api/v1/memberships/${ownerMembership.id}/approval-pin`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ pin: "482615" });
+    expect(pinSet.status).toBe(200);
+    const ownerMembershipsAfter = await request(app.getHttpServer()).get("/api/v1/memberships").set("Cookie", cookie);
+    expect(ownerMembershipsAfter.body.items.find((item: { id: string }) => item.id === ownerMembership.id)).toMatchObject({
+      approvalPinSet: true,
+    });
+    expect(JSON.stringify(ownerMembershipsAfter.body)).not.toContain("approvalPinHash");
+
     const inviteEmail = `approval-cashier-${Date.now()}@example.com`;
     const invited = await request(app.getHttpServer()).post("/api/v1/memberships")
       .set("Cookie", cookie).set("X-CSRF-Token", csrf)
@@ -148,12 +161,12 @@ describe("phase4 sales permissions, unknown, and cross-tenant", () => {
 
     const badApproval = await request(app.getHttpServer()).post("/api/v1/sales/discount-approval")
       .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf)
-      .send({ ...discounted, email: OWNER_EMAIL, password: "not-the-owner-password" });
+      .send({ ...discounted, email: OWNER_EMAIL, pin: "111111" });
     expect(badApproval.status).toBe(401);
 
     const approval = await request(app.getHttpServer()).post("/api/v1/sales/discount-approval")
       .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf)
-      .send({ ...discounted, email: OWNER_EMAIL, password: OWNER_PASSWORD });
+      .send({ ...discounted, email: OWNER_EMAIL, pin: "482615" });
     expect(approval.status).toBe(201);
     expect(approval.body.token).toMatch(/^mgr_/);
     expect(approval.body.approver).toMatchObject({ name: "Ana", role: "owner" });

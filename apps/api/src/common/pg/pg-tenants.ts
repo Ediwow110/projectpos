@@ -11,7 +11,7 @@ import type { PgContext } from "./context";
 //   and activeBranchId are null when unset.
 export function tenantsFamily(ctx: PgContext) {
   const MEMBERSHIP_SELECT =
-    'SELECT m."id", m."businessId", m."userId", r."name" AS "role", m."deactivatedAt"' +
+    'SELECT m."id", m."businessId", m."userId", r."name" AS "role", m."deactivatedAt", m."approvalPinHash"' +
     ' FROM "BusinessMembership" m JOIN "Role" r ON r."id" = m."roleId"';
   const SESSION_SELECT =
     'SELECT "id", "userId", "businessId", "activeBusinessId", "activeBranchId", "tokenHash", "expiresAt", "revokedAt",' +
@@ -171,9 +171,9 @@ export function tenantsFamily(ctx: PgContext) {
           [nid("role"), m.businessId, m.role],
         );
         await c.query(
-          'INSERT INTO "BusinessMembership" ("id", "businessId", "userId", "roleId", "deactivatedAt", "createdAt")' +
-            ' VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)',
-          [row.id, m.businessId, m.userId, role.rows[0].id as string, m.deactivatedAt ?? null],
+          'INSERT INTO "BusinessMembership" ("id", "businessId", "userId", "roleId", "deactivatedAt", "approvalPinHash", "createdAt")' +
+            ' VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)',
+          [row.id, m.businessId, m.userId, role.rows[0].id as string, m.deactivatedAt ?? null, m.approvalPinHash ?? null],
         );
         return row;
       } finally {
@@ -181,13 +181,28 @@ export function tenantsFamily(ctx: PgContext) {
       }
     },
 
-    async updateMembership(id: string, businessId: string, patch: { deactivatedAt: Date | null }): Promise<void> {
+    async updateMembership(
+      id: string,
+      businessId: string,
+      patch: { deactivatedAt?: Date | null; approvalPinHash?: string | null },
+    ): Promise<void> {
       const c = await ctx.client();
       try {
-        // The businessId guard mirrors memory: a mismatched tenant is ignored.
+        const updates: string[] = [];
+        const values: unknown[] = [];
+        if (Object.prototype.hasOwnProperty.call(patch, "deactivatedAt")) {
+          values.push(patch.deactivatedAt ?? null);
+          updates.push(`"deactivatedAt" = $${values.length}`);
+        }
+        if (Object.prototype.hasOwnProperty.call(patch, "approvalPinHash")) {
+          values.push(patch.approvalPinHash ?? null);
+          updates.push(`"approvalPinHash" = $${values.length}`);
+        }
+        if (updates.length === 0) return;
+        values.push(id, businessId);
         await c.query(
-          'UPDATE "BusinessMembership" SET "deactivatedAt" = $1 WHERE "id" = $2 AND "businessId" = $3',
-          [patch.deactivatedAt, id, businessId],
+          `UPDATE "BusinessMembership" SET ${updates.join(", ")} WHERE "id" = $${values.length - 1} AND "businessId" = $${values.length}`,
+          values,
         );
       } finally {
         if (ctx.owns()) c.release();

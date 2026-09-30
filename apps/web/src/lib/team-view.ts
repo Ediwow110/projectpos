@@ -5,6 +5,7 @@ export interface TeamMemberRow {
   email: string;
   role: string;
   deactivatedAt: string | null;
+  approvalPinSet: boolean;
 }
 
 export function teamRoleLabel(role: string): string {
@@ -17,4 +18,8 @@ export function teamRoleLabel(role: string): string {
 
 export function canDeactivateMember(currentUserId: string, member: TeamMemberRow): boolean {
   return member.role !== "owner" && member.userId !== currentUserId && member.deactivatedAt === null;
+}
+
+export function canManageApprovalPin(member: TeamMemberRow): boolean {
+  return member.deactivatedAt === null && (member.role === "owner" || member.role === "manager");
 }

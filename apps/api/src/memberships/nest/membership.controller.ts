@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Inject, Param, Post, Req, Res, UseGuards } from "@nestjs/common";
 import type { Request, Response } from "express";
-import { membershipCreateSchema } from "@pos/validation";
+import { approvalPinSchema, membershipCreateSchema } from "@pos/validation";
 import { SessionGuard } from "../../common/session.guard";
 import { CsrfGuard } from "../../common/csrf.guard";
 import { getCorrelationId } from "../../correlation";
@@ -84,6 +84,31 @@ export class MembershipController {
       );
     } catch (e) {
       failFromError(res, e, "Membership deactivation failed", req);
+    }
+  }
+
+  @Post("memberships/:id/approval-pin")
+  @UseGuards(CsrfGuard)
+  async setApprovalPin(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Param("id") id: string,
+    @Body() body: unknown,
+  ): Promise<void> {
+    const granted = this.manageGuard(req, res);
+    if (granted === false) return;
+    const parsed = approvalPinSchema.safeParse(body);
+    if (!parsed.success) {
+      fail(res, 400, "VALIDATION", "Approval PIN must be exactly six digits", req);
+      return;
+    }
+    try {
+      const auth = req.auth!;
+      res.status(200).json(
+        await this.memberships.setApprovalPin(auth.businessId, auth.userId, rid(req), granted, id, parsed.data.pin),
+      );
+    } catch (e) {
+      failFromError(res, e, "Approval PIN update failed", req);
     }
   }
 }

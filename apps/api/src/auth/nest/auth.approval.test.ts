@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createMemoryDb } from "../../common/memory.db";
+import { hashApprovalPin } from "../approval-pin";
 import { hashPassword } from "../password";
 import { AuthService } from "./auth.service";
 
@@ -139,5 +140,35 @@ describe("manager action approvals", () => {
       "different-cart",
       minted.token,
     )).rejects.toThrow("FORBIDDEN");
+  });
+
+  it("mints the same one-use approval grant from a business-scoped staff PIN while preserving password fallback", async () => {
+    const { auth, db, business, cashier, manager, managerMembership } = await setupApprovers();
+    await db.updateMembership(managerMembership.id, business.id, {
+      approvalPinHash: await hashApprovalPin("482615"),
+    });
+
+    const byPin = await auth.mintManagerApproval(business.id, cashier.id, "approval-pin-r1", {
+      email: manager.email,
+      pin: "482615",
+      permission: "discount.override",
+      fingerprint: "cart-pin-1",
+    });
+    expect(byPin.approver).toEqual({ id: manager.id, name: manager.name, role: "manager" });
+
+    await expect(auth.mintManagerApproval(business.id, cashier.id, "approval-pin-r2", {
+      email: manager.email,
+      pin: "111111",
+      permission: "discount.override",
+      fingerprint: "cart-pin-2",
+    })).rejects.toThrow("AUTH_INVALID_CREDENTIALS");
+
+    const byPassword = await auth.mintManagerApproval(business.id, cashier.id, "approval-pin-r3", {
+      email: manager.email,
+      password: "manager-password-12",
+      permission: "discount.override",
+      fingerprint: "cart-pin-3",
+    });
+    expect(byPassword.token).toMatch(/^mgr_/);
   });
 });

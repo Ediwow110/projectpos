@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { PosManagerApprovalDialog } from "./PosManagerApprovalDialog";
 
 describe("POS manager approval dialog", () => {
-  it("uses masked manager credentials and explains the one-use discount approval", () => {
+  it("supports a masked six-digit approval PIN with password fallback and explains one-use approval", () => {
     const html = renderToStaticMarkup(
       <PosManagerApprovalDialog
         action="pay"
@@ -18,7 +18,9 @@ describe("POS manager approval dialog", () => {
     );
     expect(html).toContain("Manager approval");
     expect(html).toContain("Manager email");
-    expect(html).toContain("Manager password");
+    expect(html).toContain("Approval PIN");
+    expect(html).toContain("Use password instead");
+    expect(html).toContain('inputMode="numeric"');
     expect(html).toContain('type="password"');
     expect(html).toContain("one-use");
     expect(html).toContain("₱3.00");

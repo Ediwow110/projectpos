@@ -24,6 +24,8 @@ export interface DbMembership {
   role: string;
   // Phase 11: set when the member is deactivated; deactivated members have no access.
   deactivatedAt?: Date | null;
+  // Business-scoped staff approval PIN. Only the Argon2id hash is persisted.
+  approvalPinHash?: string | null;
 }
 
 export interface DbPlan {
@@ -490,7 +492,11 @@ export interface DbPort {
   listMembershipsByUser(userId: string): Promise<DbMembership[]>;
   findMembership(userId: string, businessId: string): Promise<DbMembership | null>;
   createMembership(m: Omit<DbMembership, "id">): Promise<DbMembership>;
-  updateMembership(id: string, businessId: string, patch: { deactivatedAt: Date | null }): Promise<void>;
+  updateMembership(
+    id: string,
+    businessId: string,
+    patch: { deactivatedAt?: Date | null; approvalPinHash?: string | null },
+  ): Promise<void>;
   createSession(s: Omit<DbSession, "id">): Promise<DbSession>;
   findSessionByTokenHash(tokenHash: string): Promise<DbSession | null>;
   listSessionsByUser(userId: string): Promise<DbSession[]>;

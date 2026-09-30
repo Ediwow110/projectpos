@@ -2,6 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { randomBytes } from "node:crypto";
 import { withScope } from "@pos/database";
 import type { DbPort } from "../../common/db.port";
+import { hashApprovalPin } from "../../auth/approval-pin";
 import { hashPassword } from "../../auth/password";
 import { BillingService } from "../../billing/nest/billing.service";
 
@@ -77,7 +78,7 @@ export class MembershipService {
   }
 
   async list(businessId: string): Promise<{
-    items: Array<{ id: string; userId: string; name: string; email: string; role: string; deactivatedAt: Date | null }>;
+    items: Array<{ id: string; userId: string; name: string; email: string; role: string; deactivatedAt: Date | null; approvalPinSet: boolean }>;
   }> {
     withScope(businessId, {});
     const members = (await this.db.listMembershipsByBusiness(businessId)).filter((m) => !m.deactivatedAt);
@@ -91,9 +92,39 @@ export class MembershipService {
         email: user?.email ?? "",
         role: m.role,
         deactivatedAt: m.deactivatedAt ?? null,
+        approvalPinSet: Boolean(m.approvalPinHash),
       });
     }
     return { items };
+  }
+
+  async setApprovalPin(
+    businessId: string,
+    actorId: string,
+    requestId: string,
+    granted: string[],
+    membershipId: string,
+    pin: string,
+  ): Promise<{ ok: true }> {
+    withScope(businessId, {});
+    if (!granted.includes("user.manage")) throw new Error("FORBIDDEN");
+    const members = await this.db.listMembershipsByBusiness(businessId);
+    const target = members.find((member) => member.id === membershipId && !member.deactivatedAt);
+    if (!target) throw new Error("NOT_FOUND");
+    if (target.role !== "owner" && target.role !== "manager") throw new Error("VALIDATION");
+    const approvalPinHash = await hashApprovalPin(pin);
+    await this.db.updateMembership(membershipId, businessId, { approvalPinHash });
+    await this.db.appendAudit({
+      businessId,
+      actorId,
+      action: "member.approval-pin.updated",
+      entityType: "BusinessMembership",
+      entityId: membershipId,
+      requestId,
+      reason: `role ${target.role}`,
+      after: { approvalPinSet: true },
+    });
+    return { ok: true };
   }
 
   async deactivate(

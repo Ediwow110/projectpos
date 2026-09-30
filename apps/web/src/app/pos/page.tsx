@@ -391,18 +391,17 @@ export default function PosPage(): JSX.Element {
     }
   }
 
-  async function approveDiscount(input: { email: string; password: string }): Promise<void> {
+  async function approveDiscount(input: { email: string; pin?: string; password?: string }): Promise<void> {
     if (!approvalRequest || approvalBusy) return;
     const action = approvalRequest;
     setApprovalBusy(true);
     setApprovalError("");
     try {
-      const approval = await authorizePosDiscount({
-        cart,
-        orderDiscountMinor,
-        email: input.email,
-        password: input.password,
-      });
+      const approval = await authorizePosDiscount(
+        input.pin
+          ? { cart, orderDiscountMinor, email: input.email, pin: input.pin }
+          : { cart, orderDiscountMinor, email: input.email, password: input.password ?? "" },
+      );
       setStatus(`${approval.approver.name} approved this discount. Continuing ${action === "pay" ? "payment" : "hold"}…`);
       const completed = action === "pay"
         ? await pay(approval.token)

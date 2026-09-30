@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createMemoryDb } from "../../common/memory.db";
+import { verifyApprovalPin } from "../../auth/approval-pin";
 import { MembershipService } from "./membership.service";
 
 const OWNER = ["user.manage", "settings.write", "sale.refund"];
@@ -91,5 +92,36 @@ describe("phase11 membership management", () => {
 
     expect(outcomes.filter((result) => result.status === "fulfilled")).toHaveLength(1);
     expect((await svc.list(biz.id)).items).toHaveLength(3);
+  });
+
+  it("enrolls and rotates a hashed approval PIN only for active owner/manager memberships", async () => {
+    const db = createMemoryDb();
+    const biz = await db.createBusiness({ name: "PIN Store", currency: "PHP" });
+    const managerUser = await db.createUser({
+      name: "Manager", email: "pin-manager@example.com", passwordHash: "unused-password-hash",
+    });
+    const cashierUser = await db.createUser({
+      name: "Cashier", email: "pin-cashier@example.com", passwordHash: "unused-password-hash",
+    });
+    const manager = await db.createMembership({ businessId: biz.id, userId: managerUser.id, role: "manager", deactivatedAt: null });
+    const cashier = await db.createMembership({ businessId: biz.id, userId: cashierUser.id, role: "cashier", deactivatedAt: null });
+    const svc = new MembershipService(db);
+
+    await svc.setApprovalPin(biz.id, "owner-1", "pin-r1", OWNER, manager.id, "482615");
+    const stored = await db.findMembership(managerUser.id, biz.id);
+    expect(stored?.approvalPinHash).toBeTruthy();
+    expect(stored?.approvalPinHash).not.toContain("482615");
+    expect(await verifyApprovalPin(stored!.approvalPinHash!, "482615")).toBe(true);
+    expect((await svc.list(biz.id)).items.find((item) => item.id === manager.id)?.approvalPinSet).toBe(true);
+
+    await svc.setApprovalPin(biz.id, "owner-1", "pin-r2", OWNER, manager.id, "593726");
+    const rotated = await db.findMembership(managerUser.id, biz.id);
+    expect(await verifyApprovalPin(rotated!.approvalPinHash!, "482615")).toBe(false);
+    expect(await verifyApprovalPin(rotated!.approvalPinHash!, "593726")).toBe(true);
+
+    await expect(svc.setApprovalPin(biz.id, "owner-1", "pin-r3", OWNER, cashier.id, "482615")).rejects.toThrow("VALIDATION");
+    await expect(svc.setApprovalPin(biz.id, "owner-1", "pin-r4", ["sale.refund"], manager.id, "482615")).rejects.toThrow("FORBIDDEN");
+    await db.updateMembership(manager.id, biz.id, { deactivatedAt: new Date() });
+    await expect(svc.setApprovalPin(biz.id, "owner-1", "pin-r5", OWNER, manager.id, "482615")).rejects.toThrow("NOT_FOUND");
   });
 });

@@ -43,6 +43,23 @@ describe("phase4 sales schemas", () => {
     });
     expect(out.email).toBe("manager@example.com");
     expect(out.lines[0]?.lineDiscountMinor).toBe(300);
+    const byPin = discountApprovalSchema.parse({
+      email: "manager@example.com",
+      pin: "482615",
+      lines: [{ productId: "p1", qty: 1, lineDiscountMinor: 300 }],
+      orderDiscountMinor: 200,
+    });
+    expect(byPin.pin).toBe("482615");
+    expect(() => discountApprovalSchema.parse({
+      email: "manager@example.com",
+      password: "correct-horse-12",
+      pin: "482615",
+      lines: [{ productId: "p1", qty: 1 }],
+    })).toThrow();
+    expect(() => discountApprovalSchema.parse({
+      email: "manager@example.com",
+      lines: [{ productId: "p1", qty: 1 }],
+    })).toThrow();
   });
   it("accepts QR Ph as a payment method", () => {
     const out = completeSchema.parse({

@@ -33,8 +33,7 @@ export async function authorizePosDiscount(
     cart: PosCartEntry[];
     orderDiscountMinor: number;
     email: string;
-    password: string;
-  },
+  } & ({ pin: string; password?: never } | { password: string; pin?: never }),
   deps: { api?: PosApiCall } = {},
 ): Promise<{ token: string; expiresAt: string; approver: { name: string; role: string } }> {
   const api = deps.api ?? apiFetch;
@@ -51,7 +50,8 @@ export async function authorizePosDiscount(
         })),
         orderDiscountMinor: input.orderDiscountMinor,
         email: input.email.trim().toLowerCase(),
-        password: input.password,
+        ...(input.pin ? { pin: input.pin } : {}),
+        ...(input.password ? { password: input.password } : {}),
       }),
     },
   });

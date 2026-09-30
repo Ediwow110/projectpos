@@ -153,7 +153,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     },
     async updateMembership(id, businessId, patch) {
       const m = memberships.get(id);
-      if (m && m.businessId === businessId) memberships.set(id, { ...m, deactivatedAt: patch.deactivatedAt });
+      if (m && m.businessId === businessId) memberships.set(id, { ...m, ...patch });
     },
     async createSession(s) {
       const row = { ...s, id: nid("sess") };

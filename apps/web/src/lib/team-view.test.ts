@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { canDeactivateMember, teamRoleLabel, type TeamMemberRow } from "./team-view";
+import { canDeactivateMember, canManageApprovalPin, teamRoleLabel, type TeamMemberRow } from "./team-view";
 
 const member = (overrides: Partial<TeamMemberRow> = {}): TeamMemberRow => ({
   id: "membership_1",
@@ -9,6 +9,7 @@ const member = (overrides: Partial<TeamMemberRow> = {}): TeamMemberRow => ({
   email: "jamie@example.com",
   role: "cashier",
   deactivatedAt: null,
+  approvalPinSet: false,
   ...overrides,
 });
 
@@ -28,5 +29,13 @@ describe("team view helpers", () => {
   it("allows deactivation of another active staff membership", () => {
     expect(canDeactivateMember("user_1", member())).toBe(true);
     expect(canDeactivateMember("user_1", member({ deactivatedAt: "2026-09-30T00:00:00.000Z" }))).toBe(false);
+  });
+
+  it("offers approval PIN management only for active owner and manager memberships", () => {
+    expect(canManageApprovalPin(member({ role: "owner" }))).toBe(true);
+    expect(canManageApprovalPin(member({ role: "manager" }))).toBe(true);
+    expect(canManageApprovalPin(member({ role: "cashier" }))).toBe(false);
+    expect(canManageApprovalPin(member({ role: "inventory" }))).toBe(false);
+    expect(canManageApprovalPin(member({ role: "manager", deactivatedAt: "2026-09-30T00:00:00.000Z" }))).toBe(false);
   });
 });

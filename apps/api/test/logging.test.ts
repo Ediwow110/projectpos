@@ -20,6 +20,8 @@ describe("phase8 observability", () => {
       passwordHash: "hash",
       token: "tok",
       approvalToken: "mgr_secret",
+      pin: "482615",
+      approvalPinHash: "pin_hash",
       csrfToken: "csrf",
       message: "hello",
     });
@@ -29,6 +31,8 @@ describe("phase8 observability", () => {
       passwordHash: "[redacted]",
       token: "[redacted]",
       approvalToken: "[redacted]",
+      pin: "[redacted]",
+      approvalPinHash: "[redacted]",
       csrfToken: "[redacted]",
       message: "hello",
     });

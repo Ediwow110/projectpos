@@ -11,7 +11,7 @@ import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "..
 import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { apiFetch } from "../../lib/api";
 import { errorText } from "../../lib/billing";
-import { canDeactivateMember, teamRoleLabel, type TeamMemberRow } from "../../lib/team-view";
+import { canDeactivateMember, canManageApprovalPin, teamRoleLabel, type TeamMemberRow } from "../../lib/team-view";
 
 interface Me {
   userId: string;
@@ -46,6 +46,9 @@ export default function TeamPage(): JSX.Element {
   const [temporaryCredential, setTemporaryCredential] = useState<TemporaryCredential | null>(null);
   const [copyStatus, setCopyStatus] = useState("");
   const [deactivateTarget, setDeactivateTarget] = useState<TeamMemberRow | null>(null);
+  const [pinTarget, setPinTarget] = useState<TeamMemberRow | null>(null);
+  const [approvalPin, setApprovalPin] = useState("");
+  const [approvalPinConfirm, setApprovalPinConfirm] = useState("");
 
   const meQuery = useQuery({
     queryKey: ["me"],
@@ -156,6 +159,38 @@ export default function TeamPage(): JSX.Element {
     }
   }
 
+  async function saveApprovalPin(event: React.FormEvent): Promise<void> {
+    event.preventDefault();
+    if (!pinTarget || busy) return;
+    if (!/^\d{6}$/.test(approvalPin)) {
+      setError("Approval PIN must be exactly six digits.");
+      return;
+    }
+    if (approvalPin !== approvalPinConfirm) {
+      setError("Approval PIN confirmation does not match.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setSuccess("");
+    try {
+      const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
+      await apiFetch(`/api/v1/memberships/${pinTarget.id}/approval-pin`, {
+        csrfToken: csrf.csrfToken,
+        init: { method: "POST", body: JSON.stringify({ pin: approvalPin }) },
+      });
+      setSuccess(`${pinTarget.name}'s approval PIN was ${pinTarget.approvalPinSet ? "rotated" : "enrolled"}.`);
+      setPinTarget(null);
+      setApprovalPin("");
+      setApprovalPinConfirm("");
+      await membersQuery.refetch();
+    } catch (err) {
+      setError(errorText(err, "Could not update approval PIN."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role}>
       <main className="mx-auto max-w-[1240px] space-y-5 px-4 pb-10 pt-3 sm:px-6">
@@ -219,15 +254,31 @@ export default function TeamPage(): JSX.Element {
                           <td className="px-5 py-3 text-[#655b53]">{member.email}</td>
                           <td className="px-5 py-3"><StatusPill tone={member.role === "owner" ? "ok" : "info"}>{teamRoleLabel(member.role)}</StatusPill></td>
                           <td className="px-5 py-3 text-right">
-                            {canDeactivateMember(meQuery.data?.userId ?? "", member) ? (
-                              <GhostButton type="button" className="!min-h-8 !px-3 !py-1.5 text-xs" onClick={() => setDeactivateTarget(member)}>
-                                Deactivate
-                              </GhostButton>
-                            ) : (
-                              <span className="text-[10px] font-medium text-[#9a8d83]">
-                                {member.userId === meQuery.data?.userId ? "Current user" : "Protected"}
-                              </span>
-                            )}
+                            <div className="flex flex-wrap justify-end gap-2">
+                              {canManageApprovalPin(member) ? (
+                                <GhostButton
+                                  type="button"
+                                  className="!min-h-8 !px-3 !py-1.5 text-xs"
+                                  onClick={() => {
+                                    setError("");
+                                    setPinTarget(member);
+                                    setApprovalPin("");
+                                    setApprovalPinConfirm("");
+                                  }}
+                                >
+                                  {member.approvalPinSet ? "Rotate approval PIN" : "Set approval PIN"}
+                                </GhostButton>
+                              ) : null}
+                              {canDeactivateMember(meQuery.data?.userId ?? "", member) ? (
+                                <GhostButton type="button" className="!min-h-8 !px-3 !py-1.5 text-xs" onClick={() => setDeactivateTarget(member)}>
+                                  Deactivate
+                                </GhostButton>
+                              ) : !canManageApprovalPin(member) ? (
+                                <span className="self-center text-[10px] font-medium text-[#9a8d83]">
+                                  {member.userId === meQuery.data?.userId ? "Current user" : "Protected"}
+                                </span>
+                              ) : null}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -307,6 +358,61 @@ export default function TeamPage(): JSX.Element {
             {copyStatus ? <p role="status" className="text-[11px] font-medium text-[#655b53]">{copyStatus}</p> : null}
           </div>
         ) : null}
+      </Modal>
+
+      <Modal
+        open={pinTarget !== null}
+        onClose={() => {
+          if (busy) return;
+          setPinTarget(null);
+          setApprovalPin("");
+          setApprovalPinConfirm("");
+          setError("");
+        }}
+        title={pinTarget?.approvalPinSet ? "Rotate approval PIN" : "Set approval PIN"}
+        description={pinTarget ? `Create a six-digit in-context approval PIN for ${pinTarget.name}. The PIN is scoped to this business and is never displayed again.` : undefined}
+        footer={
+          <div className="flex justify-end gap-2">
+            <GhostButton type="button" disabled={busy} onClick={() => setPinTarget(null)}>Cancel</GhostButton>
+            <PrimaryButton type="submit" form="team-approval-pin-form" disabled={busy}>
+              {busy ? "Saving…" : pinTarget?.approvalPinSet ? "Rotate PIN" : "Set PIN"}
+            </PrimaryButton>
+          </div>
+        }
+      >
+        <form id="team-approval-pin-form" noValidate onSubmit={(event) => void saveApprovalPin(event)} className="space-y-4">
+          <div className="rounded-xl border border-[#f0e2d7] bg-[#fff8f3] p-4 text-[11px] leading-5 text-[#6d6057]">
+            This PIN authorizes protected POS actions for this owner or manager. NexPOS stores only a one-way hash. Do not reuse a banking, card, or device PIN.
+          </div>
+          <label className="block text-[11px] font-semibold text-[#655b53]">
+            Six-digit approval PIN
+            <input
+              autoFocus
+              type="password"
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength={6}
+              value={approvalPin}
+              onChange={(event) => setApprovalPin(event.target.value.replace(/\D/g, "").slice(0, 6))}
+              className="field font-data mt-1.5 tracking-[0.35em]"
+              placeholder="••••••"
+            />
+          </label>
+          <label className="block text-[11px] font-semibold text-[#655b53]">
+            Confirm approval PIN
+            <input
+              type="password"
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength={6}
+              value={approvalPinConfirm}
+              onChange={(event) => setApprovalPinConfirm(event.target.value.replace(/\D/g, "").slice(0, 6))}
+              className="field font-data mt-1.5 tracking-[0.35em]"
+              placeholder="••••••"
+            />
+          </label>
+          {error ? <p role="alert" className="rounded-xl bg-[#fff0f0] px-3 py-2 text-[12px] font-medium text-[#c43e3e]">{error}</p> : null}
+        </form>
       </Modal>
 
       <ConfirmDialog

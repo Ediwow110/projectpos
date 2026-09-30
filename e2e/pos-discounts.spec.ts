@@ -120,6 +120,17 @@ test("cashier completes an over-threshold discount after one-use owner approval"
     businessName: `Discount Auth Store ${stamp}`,
   });
   const { headers } = await apiAuthedContext(request, ownerEmail, ownerPassword, page);
+  const approvalPin = "482615";
+  const memberships = await request.get(`${API}/api/v1/memberships`, { headers });
+  expect(memberships.ok()).toBe(true);
+  const ownerMembership = ((await memberships.json()) as { items: Array<{ id: string; email: string; role: string }> }).items
+    .find((member) => member.email === ownerEmail && member.role === "owner");
+  expect(ownerMembership).toBeTruthy();
+  const setPin = await request.post(`${API}/api/v1/memberships/${ownerMembership!.id}/approval-pin`, {
+    headers,
+    data: { pin: approvalPin },
+  });
+  expect(setPin.ok()).toBe(true);
   const productName = `Auth Coffee ${stamp}`;
   await seedProduct(request, headers, { name: productName, priceMinor: 2500, stock: 10 });
   await createCounterWithOpenShift(page, "Auth Counter");
@@ -162,12 +173,12 @@ test("cashier completes an over-threshold discount after one-use owner approval"
   const approvalDialog = page.getByRole("dialog", { name: "Manager approval" });
   await expect(approvalDialog).toBeVisible();
   await approvalDialog.getByLabel("Manager email").fill(ownerEmail);
-  await approvalDialog.getByLabel(/Manager password/).fill("wrong-owner-password");
+  await approvalDialog.getByLabel("Approval PIN").fill("111111");
   await approvalDialog.getByRole("button", { name: "Approve & continue" }).click();
   await expect(approvalDialog.getByRole("alert")).toContainText("Manager credentials could not be verified");
   await expect(approvalDialog).toBeVisible();
 
-  await approvalDialog.getByLabel(/Manager password/).fill(ownerPassword);
+  await approvalDialog.getByLabel("Approval PIN").fill(approvalPin);
   await approvalDialog.getByRole("button", { name: "Approve & continue" }).click();
   await expect(approvalDialog).toBeHidden({ timeout: 30_000 });
   await expectPosStatus(page, "Sale completed.");
@@ -181,4 +192,5 @@ test("cashier completes an over-threshold discount after one-use owner approval"
 
   const browserStorage = await page.evaluate(() => `${JSON.stringify(localStorage)} ${JSON.stringify(sessionStorage)}`);
   expect(browserStorage).not.toContain(ownerPassword);
+  expect(browserStorage).not.toContain(approvalPin);
 });

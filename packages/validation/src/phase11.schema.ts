@@ -34,6 +34,10 @@ export const membershipCreateSchema = z.object({
   role: z.enum(["manager", "cashier", "inventory"]),
 });
 
+export const approvalPinSchema = z.object({
+  pin: z.string().regex(/^\d{6}$/, "VALIDATION"),
+});
+
 export const verifyEmailSchema = z.object({
   token: z.string().trim().min(10, "VALIDATION").max(128, "VALIDATION"),
 });

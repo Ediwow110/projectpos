@@ -98,7 +98,7 @@ describe("phase12 pg tenants: memberships", () => {
       const m = await db.createMembership({ businessId: b.id, userId: u.id, role: "cashier", deactivatedAt: null });
       expect(m.id).toBeTruthy();
       expect(await db.findMembership(u.id, b.id)).toEqual({
-        id: m.id, businessId: b.id, userId: u.id, role: "cashier", deactivatedAt: null,
+        id: m.id, businessId: b.id, userId: u.id, role: "cashier", deactivatedAt: null, approvalPinHash: null,
       });
       // A second member with the same role upserts one Role row, not two.
       const u2 = await seedUser(db);
@@ -133,6 +133,21 @@ describe("phase12 pg tenants: memberships", () => {
       const at = new Date();
       await db.updateMembership(m.id, b1.id, { deactivatedAt: at });
       expect((await db.findMembership(u.id, b1.id))!.deactivatedAt).toEqual(at);
+    });
+  });
+
+  it("stores a business-scoped approval PIN hash without affecting deactivation state", async () => {
+    await withPg(async (db) => {
+      const u = await seedUser(db);
+      const b1 = await seedBusiness(db);
+      const b2 = await seedBusiness(db);
+      const m = await db.createMembership({ businessId: b1.id, userId: u.id, role: "manager", deactivatedAt: null });
+      await db.updateMembership(m.id, b2.id, { approvalPinHash: "wrong-tenant-hash" });
+      expect((await db.findMembership(u.id, b1.id))!.approvalPinHash).toBeNull();
+      await db.updateMembership(m.id, b1.id, { approvalPinHash: "argon2-pin-hash" });
+      const stored = (await db.findMembership(u.id, b1.id))!;
+      expect(stored.approvalPinHash).toBe("argon2-pin-hash");
+      expect(stored.deactivatedAt).toBeNull();
     });
   });
 

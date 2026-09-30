@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  approvalPinSchema,
   correctionSchema,
   emailVerificationSchema,
   paymentMethodConfigSchema,
@@ -30,5 +31,12 @@ describe("phase11 schemas", () => {
     expect(correctionSchema.parse({ amountMinor: -500, reason: "counted wrong" }).amountMinor).toBe(-500);
     expect(supportGrantSchema.parse({ purpose: "invoice support", ttlMinutes: 30, actorId: "ops" }).ttlMinutes).toBe(30);
     expect(() => supportGrantSchema.parse({ purpose: "x", ttlMinutes: 61, actorId: "ops" })).toThrow();
+  });
+
+  it("accepts only a six-digit staff approval PIN", () => {
+    expect(approvalPinSchema.parse({ pin: "482615" })).toEqual({ pin: "482615" });
+    expect(() => approvalPinSchema.parse({ pin: "12345" })).toThrow();
+    expect(() => approvalPinSchema.parse({ pin: "1234567" })).toThrow();
+    expect(() => approvalPinSchema.parse({ pin: "12A456" })).toThrow();
   });
 });

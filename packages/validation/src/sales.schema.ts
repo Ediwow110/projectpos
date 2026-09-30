@@ -30,9 +30,14 @@ export const draftCreateSchema = z.object({
 
 export const discountApprovalSchema = z.object({
   email: z.string().trim().email("VALIDATION").max(254, "VALIDATION"),
-  password: z.string().min(1, "VALIDATION").max(256, "VALIDATION"),
+  password: z.string().min(1, "VALIDATION").max(256, "VALIDATION").optional(),
+  pin: z.string().regex(/^\d{6}$/, "VALIDATION").optional(),
   lines: draftLineSchema.array().min(1, "VALIDATION").max(100, "VALIDATION"),
   orderDiscountMinor: moneyMinorSchema.default(0),
+}).superRefine((value, ctx) => {
+  if ((value.password ? 1 : 0) + (value.pin ? 1 : 0) !== 1) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "VALIDATION", path: ["password"] });
+  }
 });
 
 export const paymentInputSchema = z.object({
