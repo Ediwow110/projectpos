@@ -1,4 +1,4 @@
-import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbDisplayToken, DbFeatureFlag, DbInvoice, DbMembership, DbMovement, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbResetToken, DbSession, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent } from "./db.port";
+import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbDisplayToken, DbExchange, DbFeatureFlag, DbInvoice, DbMembership, DbMovement, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbResetToken, DbSession, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent } from "./db.port";
 
 let n = 0;
 const nid = (p: string): string => `${p}_${Date.now().toString(36)}_${(n += 1)}`;
@@ -26,6 +26,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const customers = new Map<string, DbCustomer>();
   const refunds = new Map<string, DbRefund>();
   const refundItems = new Map<string, DbRefundItem>();
+  const exchanges = new Map<string, DbExchange>();
   const expenses = new Map<string, DbExpense>();
   const branches = new Map<string, DbBranch>();
   const transfers = new Map<string, DbStockTransfer>();
@@ -568,6 +569,26 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     },
     async listRefundItemsByBusiness(businessId) {
       return [...refundItems.values()].filter((i) => i.businessId === businessId);
+    },
+    async createExchange(e) {
+      const row = { ...e, id: nid("exch"), createdAt: new Date() };
+      exchanges.set(row.id, row);
+      return row;
+    },
+    async findExchangeById(id, businessId) {
+      const row = exchanges.get(id) ?? null;
+      if (!row || row.businessId !== businessId) return null;
+      return row;
+    },
+    async listExchangesByOriginalSale(originalSaleId, businessId) {
+      return [...exchanges.values()]
+        .filter((row) => row.businessId === businessId && row.originalSaleId === originalSaleId)
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    },
+    async findExchangeByReplacementSale(replacementSaleId, businessId) {
+      return [...exchanges.values()].find(
+        (row) => row.businessId === businessId && row.replacementSaleId === replacementSaleId,
+      ) ?? null;
     },
     async createExpense(e) {
       const row = { ...e, id: nid("exp") };

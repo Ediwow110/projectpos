@@ -52,6 +52,54 @@ beforeAll(async () => {
 afterAll(async () => { await app.close(); });
 
 describe("phase6 refund HTTP contract", () => {
+  it("completes and idempotently replays a cash exchange", async () => {
+    const replacement = await request(app.getHttpServer()).post("/api/v1/products")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ name: "Sprite Exchange", priceMinor: 3000, costMinor: 1200 });
+    await request(app.getHttpServer()).post("/api/v1/inventory/movements")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ productId: replacement.body.id, type: "opening_stock", qtyDelta: 20 });
+    const sale = await makeCompletedSale("exchange-sale-1", 1, registerId);
+    const items = (await request(app.getHttpServer()).get(`/api/v1/sales/${sale.id}`).set("Cookie", cookie)).body.items;
+    const body = {
+      returns: [{ saleItemId: items[0].id, qty: 1 }],
+      replacements: [{ productId: replacement.body.id, qty: 1 }],
+      reason: "Wrong item",
+    };
+    const first = await request(app.getHttpServer()).post(`/api/v1/sales/${sale.id}/exchange`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .set("Idempotency-Key", "exchange-http-1")
+      .send(body);
+    expect(first.status).toBe(201);
+    expect(first.body.exchange).toMatchObject({ returnMinor: 2500, replacementMinor: 3000, netMinor: 500, direction: "COLLECT" });
+    expect(first.body.refund.saleId).toBe(sale.id);
+    expect(first.body.replacementSale.status).toBe("COMPLETED");
+    const detailAfterExchange = await request(app.getHttpServer()).get(`/api/v1/sales/${sale.id}`).set("Cookie", cookie);
+    expect(detailAfterExchange.body.exchanges).toEqual([
+      expect.objectContaining({ id: first.body.exchange.id, replacementSaleId: first.body.replacementSale.id, netMinor: 500 }),
+    ]);
+    const replacementDetail = await request(app.getHttpServer())
+      .get(`/api/v1/sales/${first.body.replacementSale.id}`)
+      .set("Cookie", cookie);
+    expect(replacementDetail.status).toBe(200);
+    expect(replacementDetail.body.exchangeOrigin).toEqual(
+      expect.objectContaining({
+        id: first.body.exchange.id,
+        originalSaleId: sale.id,
+        originalReceiptNo: detailAfterExchange.body.receiptNo,
+        replacementSaleId: first.body.replacementSale.id,
+      }),
+    );
+
+    const replay = await request(app.getHttpServer()).post(`/api/v1/sales/${sale.id}/exchange`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .set("Idempotency-Key", "exchange-http-1")
+      .send(body);
+    expect(replay.status).toBe(200);
+    expect(replay.body.replayed).toBe(true);
+    expect(replay.body.exchange.id).toBe(first.body.exchange.id);
+  });
+
   it("approves a full refund and marks the sale REFUNDED", async () => {
     const sale = await makeCompletedSale("ref-sale-1", 2, registerId);
     const items = (await request(app.getHttpServer()).get(`/api/v1/sales/${sale.id}`).set("Cookie", cookie)).body.items;

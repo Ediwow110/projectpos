@@ -401,6 +401,22 @@ export interface DbRefundItem {
   restocked: boolean;
 }
 
+export interface DbExchange {
+  id: string;
+  businessId: string;
+  originalSaleId: string;
+  refundId: string;
+  replacementSaleId: string;
+  returnMinor: number;
+  replacementMinor: number;
+  netMinor: number;
+  direction: "COLLECT" | "REFUND" | "EVEN";
+  reason: string;
+  actorId: string;
+  requestId: string;
+  createdAt: Date;
+}
+
 export interface DbExpense {
   id: string;
   businessId: string;
@@ -573,6 +589,10 @@ export interface DbPort {
   listRefundItemsBySale(saleId: string, businessId: string): Promise<DbRefundItem[]>;
   // Phase 12 bulk read: reporting groups these by saleId in one round-trip.
   listRefundItemsByBusiness(businessId: string): Promise<DbRefundItem[]>;
+  createExchange(e: Omit<DbExchange, "id" | "createdAt">): Promise<DbExchange>;
+  findExchangeById(id: string, businessId: string): Promise<DbExchange | null>;
+  listExchangesByOriginalSale(originalSaleId: string, businessId: string): Promise<DbExchange[]>;
+  findExchangeByReplacementSale(replacementSaleId: string, businessId: string): Promise<DbExchange | null>;
   createExpense(e: Omit<DbExpense, "id">): Promise<DbExpense>;
   listExpensesByBusiness(businessId: string): Promise<DbExpense[]>;
   listExpensesPage(businessId: string, afterId: string | null, limit: number): Promise<DbExpense[]>;

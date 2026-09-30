@@ -1,4 +1,4 @@
-import type { DbCustomer, DbExpense, DbRefund, DbRefundItem } from "../db.port";
+import type { DbCustomer, DbExchange, DbExpense, DbRefund, DbRefundItem } from "../db.port";
 import { nid } from "./context";
 import type { PgContext } from "./context";
 
@@ -20,6 +20,9 @@ const REFUND_COLUMNS =
   '"approvedBy", "requestId", "approvedRequestId", "singleStep"';
 const REFUND_ITEM_COLUMNS =
   '"id", "businessId", "refundId", "saleItemId", "productId", "qty", "amountMinor", "restocked"';
+const EXCHANGE_COLUMNS =
+  '"id", "businessId", "originalSaleId", "refundId", "replacementSaleId", "returnMinor", "replacementMinor", ' +
+  '"netMinor", "direction", "reason", "actorId", "requestId", "createdAt"';
 const EXPENSE_COLUMNS =
   '"id", "businessId", "category", "amountMinor", "description", "method", "shiftId", "branchId", ' +
   '"expenseDate", "actorId", "requestId", "attachmentUrl", "voidedAt", "voidReason", "cashAdjusted"';
@@ -210,6 +213,60 @@ export function peopleFamily(ctx: PgContext) {
           [businessId],
         );
         return r.rows as DbRefundItem[];
+      } finally {
+        if (ctx.owns()) cl.release();
+      }
+    },
+
+    async createExchange(e: Omit<DbExchange, "id" | "createdAt">): Promise<DbExchange> {
+      const cl = await ctx.client();
+      try {
+        const row: DbExchange = { ...e, id: nid("exch"), createdAt: new Date() };
+        await cl.query(
+          'INSERT INTO "Exchange" ("id", "businessId", "originalSaleId", "refundId", "replacementSaleId", "returnMinor", "replacementMinor", "netMinor", "direction", "reason", "actorId", "requestId", "createdAt")' +
+            ' VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)',
+          [row.id, row.businessId, row.originalSaleId, row.refundId, row.replacementSaleId, row.returnMinor, row.replacementMinor, row.netMinor, row.direction, row.reason, row.actorId, row.requestId, row.createdAt],
+        );
+        return row;
+      } finally {
+        if (ctx.owns()) cl.release();
+      }
+    },
+
+    async findExchangeById(id: string, businessId: string): Promise<DbExchange | null> {
+      const cl = await ctx.client();
+      try {
+        const r = await cl.query(
+          `SELECT ${EXCHANGE_COLUMNS} FROM "Exchange" WHERE "id" = $1 AND "businessId" = $2`,
+          [id, businessId],
+        );
+        return (r.rows[0] as DbExchange | undefined) ?? null;
+      } finally {
+        if (ctx.owns()) cl.release();
+      }
+    },
+
+    async listExchangesByOriginalSale(originalSaleId: string, businessId: string): Promise<DbExchange[]> {
+      const cl = await ctx.client();
+      try {
+        const r = await cl.query(
+          `SELECT ${EXCHANGE_COLUMNS} FROM "Exchange" WHERE "originalSaleId" = $1 AND "businessId" = $2 ORDER BY "createdAt" ASC, "id" ASC`,
+          [originalSaleId, businessId],
+        );
+        return r.rows as DbExchange[];
+      } finally {
+        if (ctx.owns()) cl.release();
+      }
+    },
+
+    async findExchangeByReplacementSale(replacementSaleId: string, businessId: string): Promise<DbExchange | null> {
+      const cl = await ctx.client();
+      try {
+        const r = await cl.query(
+          `SELECT ${EXCHANGE_COLUMNS} FROM "Exchange" WHERE "replacementSaleId" = $1 AND "businessId" = $2 ORDER BY "createdAt" ASC, "id" ASC LIMIT 1`,
+          [replacementSaleId, businessId],
+        );
+        return (r.rows[0] as DbExchange | undefined) ?? null;
       } finally {
         if (ctx.owns()) cl.release();
       }

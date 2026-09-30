@@ -1,5 +1,6 @@
 import type {
   DbCustomer,
+  DbExchange,
   DbPayment,
   DbRefund,
   DbRefundItem,
@@ -36,5 +37,7 @@ export type SaleWithLines = DbSale & {
 
 export type SaleDetail = SaleWithLines & {
   refunds: Array<DbRefund & { items: DbRefundItem[] }>;
+  exchanges: DbExchange[];
+  exchangeOrigin: (DbExchange & { originalReceiptNo: string }) | null;
   customer: DbCustomer | null;
 };

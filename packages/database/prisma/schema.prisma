@@ -476,6 +476,26 @@ model RefundItem {
   @@index([businessId, saleItemId])
 }
 
+model Exchange {
+  id                String   @id @default(cuid())
+  businessId        String
+  originalSaleId    String
+  refundId          String
+  replacementSaleId String
+  returnMinor       Int
+  replacementMinor  Int
+  netMinor          Int
+  direction         String
+  reason            String
+  actorId           String
+  requestId         String
+  createdAt         DateTime @default(now())
+
+  @@index([businessId, originalSaleId, createdAt])
+  @@index([businessId, replacementSaleId])
+  @@index([businessId, refundId])
+}
+
 model Expense {
   id            String    @id @default(cuid())
   businessId    String

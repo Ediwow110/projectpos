@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { refundApproveSchema, refundRejectSchema } from "../src/refunds.schema";
+import { exchangeCreateSchema, refundApproveSchema, refundRejectSchema } from "../src/refunds.schema";
 
 describe("phase6 refund schemas", () => {
   it("rejects empty items", () => {
@@ -16,5 +16,22 @@ describe("phase6 refund schemas", () => {
   it("accepts a valid approval", () => {
     const out = refundApproveSchema.parse({ saleId: "s1", items: [{ saleItemId: "i1", qty: 1 }] });
     expect(out.items.length).toBe(1);
+  });
+
+  it("accepts a cash-register exchange with returns and replacements", () => {
+    const out = exchangeCreateSchema.parse({
+      saleId: "s1",
+      returns: [{ saleItemId: "i1", qty: 1 }],
+      replacements: [{ productId: "p2", qty: 2 }],
+      reason: "Wrong size",
+    });
+    expect(out.returns).toEqual([{ saleItemId: "i1", qty: 1 }]);
+    expect(out.replacements).toEqual([{ productId: "p2", qty: 2 }]);
+  });
+
+  it("rejects exchanges without either side or a meaningful reason", () => {
+    expect(() => exchangeCreateSchema.parse({ saleId: "s1", returns: [], replacements: [{ productId: "p2", qty: 1 }], reason: "Wrong size" })).toThrow();
+    expect(() => exchangeCreateSchema.parse({ saleId: "s1", returns: [{ saleItemId: "i1", qty: 1 }], replacements: [], reason: "Wrong size" })).toThrow();
+    expect(() => exchangeCreateSchema.parse({ saleId: "s1", returns: [{ saleItemId: "i1", qty: 1 }], replacements: [{ productId: "p2", qty: 1 }], reason: "x" })).toThrow();
   });
 });

@@ -1,12 +1,13 @@
 import { Body, Controller, Inject, Param, Post, Req, Res, UseGuards } from "@nestjs/common";
 import type { Request, Response } from "express";
-import { refundApproveSchema, refundRejectSchema } from "@pos/validation";
+import { exchangeCreateSchema, refundApproveSchema, refundRejectSchema } from "@pos/validation";
 import { SessionGuard } from "../../common/session.guard";
 import { CsrfGuard } from "../../common/csrf.guard";
 import { getCorrelationId } from "../../correlation";
 import { fail, statusFor } from "../../common/http-helpers";
 import { createRateLimiter } from "../../common/rate-limit";
 import { AuthService } from "../../auth/nest/auth.service";
+import { ExchangeService } from "./exchange.service";
 import { RefundService } from "./refund.service";
 
 function rid(req: Request): string {
@@ -29,6 +30,7 @@ function idemKey(req: Request): string | null {
 export class RefundController {
   constructor(
     @Inject(RefundService) private readonly refunds: RefundService,
+    @Inject(ExchangeService) private readonly exchanges: ExchangeService,
     @Inject(AuthService) private readonly auth: AuthService,
   ) {}
 
@@ -38,6 +40,51 @@ export class RefundController {
 
   // Same abuse brake as sales money commands: 1000/min/business.
   private readonly approveLimiter = createRateLimiter(1000, 60_000);
+
+  @Post("sales/:id/exchange")
+  @UseGuards(CsrfGuard)
+  async exchange(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Param("id") id: string,
+    @Body() body: unknown,
+  ): Promise<void> {
+    const key = idemKey(req);
+    if (!key) {
+      fail(res, 400, "VALIDATION", "Idempotency-Key header required", req);
+      return;
+    }
+    const parsed = exchangeCreateSchema.safeParse({ ...(body as Record<string, unknown>), saleId: id });
+    if (!parsed.success) {
+      fail(res, 400, "VALIDATION", "Invalid exchange payload", req);
+      return;
+    }
+    try {
+      const auth = req.auth!;
+      if (await this.approveLimiter.hit(`${auth.businessId}:exchange`)) {
+        fail(res, 429, "RATE_LIMITED", "Too many attempts", req);
+        return;
+      }
+      const result = await this.exchanges.completeExchange(
+        auth.businessId,
+        auth.userId,
+        rid(req),
+        id,
+        {
+          returns: parsed.data.returns,
+          replacements: parsed.data.replacements,
+          reason: parsed.data.reason,
+          key,
+        },
+        this.perms(req),
+        auth.role,
+      );
+      res.status(result.replayed ? 200 : 201).json(result);
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "VALIDATION";
+      fail(res, statusFor(code), code, "Exchange failed", req);
+    }
+  }
 
   @Post("sales/:id/refund-approve")
   @UseGuards(CsrfGuard)

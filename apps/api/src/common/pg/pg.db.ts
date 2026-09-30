@@ -1,4 +1,4 @@
-import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCashMovement, DbCategory, DbCustomer, DbDevice, DbExpense, DbFeatureFlag, DbHeldSale, DbIdempotency, DbInvoice, DbMovement, DbPayment, DbPlan, DbMembership, DbPort, DbPrinter, DbPrintJob, DbProduct, DbRefund, DbRefundItem, DbRegister, DbResetToken, DbSale, DbSaleItem, DbSession, DbShift, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbDisplayToken, DbUsageCounter, DbUser, DbWebhookEvent } from "../db.port";
+import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCashMovement, DbCategory, DbCustomer, DbDevice, DbExchange, DbExpense, DbFeatureFlag, DbHeldSale, DbIdempotency, DbInvoice, DbMovement, DbPayment, DbPlan, DbMembership, DbPort, DbPrinter, DbPrintJob, DbProduct, DbRefund, DbRefundItem, DbRegister, DbResetToken, DbSale, DbSaleItem, DbSession, DbShift, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbDisplayToken, DbUsageCounter, DbUser, DbWebhookEvent } from "../db.port";
 import { PgContext } from "./context";
 import { settingsFamily } from "./pg-settings";
 import { auditFamily } from "./pg-audit";
@@ -376,6 +376,18 @@ export class PgDbPort implements DbPort {
   }
   listRefundItemsByBusiness(businessId: string): Promise<DbRefundItem[]> {
     return this.people.listRefundItemsByBusiness(businessId);
+  }
+  createExchange(e: Omit<DbExchange, "id" | "createdAt">): Promise<DbExchange> {
+    return this.people.createExchange(e);
+  }
+  findExchangeById(id: string, businessId: string): Promise<DbExchange | null> {
+    return this.people.findExchangeById(id, businessId);
+  }
+  listExchangesByOriginalSale(originalSaleId: string, businessId: string): Promise<DbExchange[]> {
+    return this.people.listExchangesByOriginalSale(originalSaleId, businessId);
+  }
+  findExchangeByReplacementSale(replacementSaleId: string, businessId: string): Promise<DbExchange | null> {
+    return this.people.findExchangeByReplacementSale(replacementSaleId, businessId);
   }
   createExpense(e: Omit<DbExpense, "id">): Promise<DbExpense> {
     return this.people.createExpense(e);

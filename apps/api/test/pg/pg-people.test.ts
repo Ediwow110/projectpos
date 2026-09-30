@@ -3,7 +3,7 @@ import { Client } from "pg";
 import { PgContext } from "../../src/common/pg/context";
 import { tenantsFamily } from "../../src/common/pg/pg-tenants";
 import { peopleFamily } from "../../src/common/pg/pg-people";
-import type { DbCustomer, DbExpense, DbRefund, DbRefundItem } from "../../src/common/db.port";
+import type { DbCustomer, DbExchange, DbExpense, DbRefund, DbRefundItem } from "../../src/common/db.port";
 
 // People-family tests (customers, refunds + items, expenses): the family runs
 // directly over a fresh PgContext (no PgDbPort), mirroring the memory store's
@@ -208,6 +208,35 @@ describe("phase12 pg people: refunds and items", () => {
     expect(await people.listRefundsBySale(saleId, b1.id)).toEqual([]);
     expect(await people.listRefundItems(refund.id, b1.id)).toEqual([]);
     expect(await people.listRefundItemsBySale(saleId, b1.id)).toEqual([]);
+  });
+});
+
+describe("phase12 pg people: exchanges", () => {
+  it("creates, finds and lists exchanges by original sale with tenant isolation", async () => {
+    const b1 = await seedBusiness();
+    const b2 = await seedBusiness();
+    const input = {
+      businessId: b1.id,
+      originalSaleId: uniq("sale-original"),
+      refundId: uniq("refund"),
+      replacementSaleId: uniq("sale-replacement"),
+      returnMinor: 2500,
+      replacementMinor: 3000,
+      netMinor: 500,
+      direction: "COLLECT" as const,
+      reason: "Wrong size",
+      actorId: "owner-1",
+      requestId: uniq("req"),
+    };
+    const created = await people.createExchange(input) as DbExchange;
+    expect(created.id).toBeTruthy();
+    expect(created.createdAt).toBeInstanceOf(Date);
+    expect(await people.findExchangeById(created.id, b1.id)).toEqual(created);
+    expect(await people.findExchangeById(created.id, b2.id)).toBeNull();
+    expect(await people.listExchangesByOriginalSale(input.originalSaleId, b1.id)).toEqual([created]);
+    expect(await people.listExchangesByOriginalSale(input.originalSaleId, b2.id)).toEqual([]);
+    expect(await people.findExchangeByReplacementSale(input.replacementSaleId, b1.id)).toEqual(created);
+    expect(await people.findExchangeByReplacementSale(input.replacementSaleId, b2.id)).toBeNull();
   });
 });
 

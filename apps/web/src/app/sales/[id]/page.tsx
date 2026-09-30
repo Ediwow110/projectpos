@@ -8,9 +8,11 @@ import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "../../../components/AppShell";
 import { ConfirmDialog } from "../../../components/ConfirmDialog";
 import { Modal } from "../../../components/Modal";
+import { SaleExchangeDialog } from "../../../components/SaleExchangeDialog";
 import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "../../../components/premium";
 import { DangerButton, GhostButton, PrimaryButton, StatusPill } from "../../../components/ui";
 import { ApiError, apiFetch } from "../../../lib/api";
+import { buildProductSearch } from "../../../lib/catalog";
 
 interface Me {
   role: string;
@@ -46,6 +48,36 @@ interface RefundRow {
   items: Array<{ saleItemId: string; qty: number; amountMinor: number }>;
 }
 
+interface ExchangeRow {
+  id: string;
+  originalSaleId: string;
+  refundId: string;
+  replacementSaleId: string;
+  returnMinor: number;
+  replacementMinor: number;
+  netMinor: number;
+  direction: "COLLECT" | "REFUND" | "EVEN";
+  reason: string;
+  actorId: string;
+  requestId: string;
+  createdAt: string;
+}
+
+interface ExchangeOriginRow extends ExchangeRow {
+  originalReceiptNo: string;
+}
+
+interface ExchangeProduct {
+  id: string;
+  name: string;
+  priceMinor: number;
+  taxRateBps: number | null;
+}
+
+interface BusinessPayload {
+  settings: Record<string, unknown>;
+}
+
 interface SaleDetail {
   id: string;
   receiptNo: string;
@@ -62,6 +94,8 @@ interface SaleDetail {
   items: SaleLine[];
   payments: SalePayment[];
   refunds: RefundRow[];
+  exchanges: ExchangeRow[];
+  exchangeOrigin: ExchangeOriginRow | null;
 }
 
 type ReconcileOutcome = "SUCCEEDED" | "FAILED";
@@ -92,6 +126,9 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
   const [busy, setBusy] = useState(false);
   const [reconcileOutcome, setReconcileOutcome] = useState<ReconcileOutcome | null>(null);
   const [refundMode, setRefundMode] = useState<RefundMode | null>(null);
+  const [exchangeOpen, setExchangeOpen] = useState(false);
+  const [exchangeSearch, setExchangeSearch] = useState("");
+  const [exchangeError, setExchangeError] = useState("");
 
   const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<Me>("/api/v1/me"), retry: false });
   const detailQuery = useQuery({
@@ -103,11 +140,36 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
       return current?.status === "PENDING_PAYMENT" ? 2_000 : false;
     },
   });
+  const businessQuery = useQuery({
+    queryKey: ["business"],
+    queryFn: () => apiFetch<BusinessPayload>("/api/v1/business"),
+    retry: false,
+  });
+  const exchangeProductsQuery = useQuery({
+    queryKey: ["exchange-products", exchangeSearch],
+    queryFn: () => apiFetch<{ items: ExchangeProduct[] }>(buildProductSearch({
+      q: exchangeSearch.trim() || undefined,
+      active: "true",
+      page: 1,
+      pageSize: 20,
+    })),
+    enabled: exchangeOpen,
+    retry: false,
+  });
 
   const role = meQuery.data?.role ?? "cashier";
   const canRefund = role === "owner" || role === "manager" || role === "inventory";
   const canReconcile = role === "owner" || role === "manager";
   const sale = detailQuery.data;
+  const successfulPayments = sale?.payments.filter((payment) => payment.status === "SUCCEEDED") ?? [];
+  const cashSettled = successfulPayments.length > 0 && successfulPayments.every((payment) => payment.method === "cash");
+  const canExchange = Boolean(
+    sale &&
+    (role === "owner" || role === "manager") &&
+    ["COMPLETED", "PARTIALLY_REFUNDED"].includes(sale.status) &&
+    sale.registerId &&
+    cashSettled,
+  );
   const unknownPayment = sale?.payments.find((payment) => payment.status === "UNKNOWN") ?? null;
   const paymongoPayment = sale?.payments.find(
     (payment) => ["card", "gcash", "maya", "qrph"].includes(payment.method) && ["PENDING", "SUCCEEDED", "FAILED"].includes(payment.status),
@@ -188,11 +250,59 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
     }
   }
 
+  async function completeExchange(input: {
+    returns: Array<{ saleItemId: string; qty: number }>;
+    replacements: Array<{ productId: string; qty: number }>;
+    reason: string;
+  }): Promise<void> {
+    if (!sale) return;
+    setExchangeError("");
+    setStatusMessage("");
+    setBusy(true);
+    try {
+      const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
+      const result = await apiFetch<{
+        exchange: ExchangeRow;
+        replacementSale: { id: string; receiptNo: string };
+      }>(`/api/v1/sales/${sale.id}/exchange`, {
+        csrfToken: csrf.csrfToken,
+        init: {
+          method: "POST",
+          headers: { "Idempotency-Key": crypto.randomUUID() },
+          body: JSON.stringify(input),
+        },
+      });
+      await detailQuery.refetch();
+      setExchangeOpen(false);
+      setExchangeSearch("");
+      const amount = Math.abs(result.exchange.netMinor);
+      setStatusMessage(
+        result.exchange.direction === "COLLECT"
+          ? `Exchange completed. Collect ₱${money(amount)}. Replacement sale ${result.replacementSale.receiptNo}.`
+          : result.exchange.direction === "REFUND"
+            ? `Exchange completed. Refund ₱${money(amount)}. Replacement sale ${result.replacementSale.receiptNo}.`
+            : `Exchange completed with no cash difference. Replacement sale ${result.replacementSale.receiptNo}.`,
+      );
+    } catch (err) {
+      setExchangeError(err instanceof ApiError ? `${err.code}: ${err.message}` : "Exchange failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (detailQuery.isError || (!detailQuery.isLoading && !sale)) {
     return <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role}><main className="mx-auto max-w-[1240px] p-6"><Panel className="border-[#efb9b9] bg-[#fff0f0] p-6"><p role="alert" className="text-sm font-medium text-[#c43e3e]">Sale not found.</p><Link href="/sales" className="mt-3 inline-block text-sm font-semibold text-[#e44e34]">← Back to sales</Link></Panel></main></AppShell>;
   }
 
   const refundable = sale && canRefund && ["COMPLETED", "REFUND_REQUESTED", "PARTIALLY_REFUNDED"].includes(sale.status);
+  const refundedQtyByLine = new Map<string, number>();
+  for (const refund of sale?.refunds ?? []) {
+    for (const item of refund.items) {
+      refundedQtyByLine.set(item.saleItemId, (refundedQtyByLine.get(item.saleItemId) ?? 0) + item.qty);
+    }
+  }
+  const taxSetting = businessQuery.data?.settings?.["taxRateBps"];
+  const businessTaxRateBps = typeof taxSetting === "number" ? taxSetting : null;
 
   return (
     <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role}>
@@ -255,6 +365,30 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
         ) : null}
 
         {sale ? (
+          sale.exchangeOrigin ? (
+            <section role="region" aria-label="Exchange origin">
+              <Panel className="border-[#f0e2d7] bg-[#fff8f3] p-5">
+                <SectionHeader
+                  title="Replacement from exchange"
+                  description="This sale was created as the replacement side of a linked exchange. Open the original sale to review the returned items, refund, and customer difference."
+                />
+                <div className="mt-4 flex flex-wrap items-center gap-3 text-[11px] text-[#73685f]">
+                  <StatusPill tone={sale.exchangeOrigin.direction === "EVEN" ? "info" : sale.exchangeOrigin.direction === "REFUND" ? "warn" : "ok"}>
+                    {sale.exchangeOrigin.direction}
+                  </StatusPill>
+                  <span className="font-data font-semibold text-[#2a241f]">Original {sale.exchangeOrigin.originalReceiptNo}</span>
+                  <span className="font-data">Net ₱{money(Math.abs(sale.exchangeOrigin.netMinor))}</span>
+                  <span>{sale.exchangeOrigin.reason}</span>
+                  <Link href={`/sales/${sale.exchangeOrigin.originalSaleId}`} className="font-semibold text-[#e44e34] hover:text-[#c53f2c]">
+                    Open original sale →
+                  </Link>
+                </div>
+              </Panel>
+            </section>
+          ) : null
+        ) : null}
+
+        {sale ? (
           <div className="grid gap-4 xl:grid-cols-[1.2fr_.8fr]">
             <DataTableFrame>
               <div className="px-5 py-4"><SectionHeader title="Sale lines" description="Amounts come from the recorded transaction, not current catalog pricing." /></div>
@@ -280,6 +414,46 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
               <table className="premium-table min-w-[760px] text-left text-[12px]"><thead><tr><th className="px-5 pb-3">Status</th><th className="px-5 pb-3">Reason</th><th className="px-5 pb-3">Requested by</th><th className="px-5 pb-3 text-right">Amount</th></tr></thead><tbody>{sale.refunds.map((refund) => <tr key={refund.id}><td className="px-5 py-3"><StatusPill tone={statusTone(refund.status)}>{refund.status}</StatusPill></td><td className="px-5 py-3 text-[#73685f]">{refund.reason ?? "—"}</td><td className="font-data px-5 py-3 text-[#9a8d83]">{refund.requestedBy.slice(0, 8)}</td><td className="font-data px-5 py-3 text-right font-semibold">₱{money(refund.totalMinor)}</td></tr>)}</tbody></table>
             )}
           </DataTableFrame>
+        ) : null}
+
+        {sale ? (
+          <section role="region" aria-label="Exchange history">
+            <DataTableFrame>
+              <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+                <SectionHeader
+                  title="Exchange history"
+                  description="Linked return and replacement transactions keep the customer cash difference auditable."
+                />
+                {canExchange ? (
+                  <PrimaryButton type="button" onClick={() => { setExchangeError(""); setExchangeOpen(true); }}>
+                    Exchange items
+                  </PrimaryButton>
+                ) : null}
+              </div>
+              {(role === "owner" || role === "manager") && ["COMPLETED", "PARTIALLY_REFUNDED"].includes(sale.status) && !cashSettled ? (
+                <p className="mx-5 mb-5 rounded-xl border border-[#efd6a5] bg-[#fff8eb] px-4 py-3 text-[11px] leading-5 text-[#8a5606]">
+                  Direct exchange currently supports cash-settled sales only. Use the normal refund flow for card, GCash, Maya, QR Ph, bank transfer, or mixed tenders until provider-side exchange settlement is modeled.
+                </p>
+              ) : null}
+              {sale.exchanges.length === 0 ? (
+                <p className="px-5 pb-8 text-sm text-[#8b8077]">No exchanges recorded.</p>
+              ) : (
+                <table className="premium-table min-w-[900px] text-left text-[12px]">
+                  <thead><tr><th className="px-5 pb-3">Direction</th><th className="px-5 pb-3">Reason</th><th className="px-5 pb-3 text-right">Return</th><th className="px-5 pb-3 text-right">Replacement</th><th className="px-5 pb-3 text-right">Net</th><th className="px-5 pb-3">Replacement sale</th></tr></thead>
+                  <tbody>{sale.exchanges.map((exchange) => (
+                    <tr key={exchange.id}>
+                      <td className="px-5 py-3"><StatusPill tone={exchange.direction === "EVEN" ? "info" : exchange.direction === "REFUND" ? "warn" : "ok"}>{exchange.direction}</StatusPill></td>
+                      <td className="px-5 py-3 text-[#73685f]">{exchange.reason}</td>
+                      <td className="font-data px-5 py-3 text-right">₱{money(exchange.returnMinor)}</td>
+                      <td className="font-data px-5 py-3 text-right">₱{money(exchange.replacementMinor)}</td>
+                      <td className="font-data px-5 py-3 text-right font-semibold">₱{money(Math.abs(exchange.netMinor))}</td>
+                      <td className="px-5 py-3"><Link href={`/sales/${exchange.replacementSaleId}`} className="font-semibold text-[#e44e34] hover:text-[#c53f2c]">Open replacement sale →</Link></td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              )}
+            </DataTableFrame>
+          </section>
         ) : null}
       </main>
 
@@ -308,6 +482,32 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
           {statusMessage.includes(":") ? <p role="alert" className="rounded-xl bg-[#fff0f0] px-3 py-2.5 text-[12px] font-medium text-[#c43e3e]">{statusMessage}</p> : null}
         </div>
       </Modal>
+
+      {exchangeOpen && sale ? (
+        <SaleExchangeDialog
+          lines={sale.items.map((line) => ({
+            id: line.id,
+            name: line.name,
+            qty: line.qty,
+            lineTotalMinor: line.lineTotalMinor,
+            alreadyRefundedQty: refundedQtyByLine.get(line.id) ?? 0,
+          }))}
+          products={exchangeProductsQuery.data?.items ?? []}
+          businessTaxRateBps={businessTaxRateBps}
+          search={exchangeSearch}
+          productsLoading={exchangeProductsQuery.isLoading || exchangeProductsQuery.isFetching}
+          busy={busy}
+          error={exchangeError}
+          onSearchChange={setExchangeSearch}
+          onSubmit={(input) => void completeExchange(input)}
+          onClose={() => {
+            if (busy) return;
+            setExchangeOpen(false);
+            setExchangeError("");
+            setExchangeSearch("");
+          }}
+        />
+      ) : null}
     </AppShell>
   );
 }

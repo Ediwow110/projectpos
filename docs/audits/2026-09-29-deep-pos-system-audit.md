@@ -13,7 +13,7 @@ The product was also benchmarked against current official documentation for Shop
 | First login / guided setup | Shopify shows POS introduction screens; Square exposes a reusable Setup Guide | Previously missing after business onboarding; implemented in this audit | Necessary for discoverability and training reduction |
 | Saved/open carts | Shopify POS exposes saved/recent carts with staff permissions; Loyverse exposes open tickets | Phase B adds a cashier-facing Held sales queue that resumes the original draft | Implemented baseline; labels/search/cancel handoff remain future refinements |
 | Manager approval | Shopify can require manager approval/PIN for returns and other protected POS actions | Phase B adds in-context owner/manager approval for over-threshold POS discounts | Implemented discount baseline; dedicated staff PIN and other protected actions remain future work |
-| Returns and exchanges | Mature retail POS supports return/exchange directly from order context | Refund request/approve/reject exists; exchange does not | Add exchange as P0/P1 cashier flow |
+| Returns and exchanges | Mature retail POS supports return/exchange directly from order context | Phase B adds a linked cash-settled exchange flow from sale detail | Implemented cash baseline; provider-side electronic-tender exchanges remain future work |
 | Purchase orders / vendors | Square, Lightspeed, and Loyverse make supplier/vendor ordering and receiving first-class inventory workflows | No supplier/vendor/PO schema | Largest inventory lifecycle gap; P0 |
 | Receiving / stock counts | Retail POS systems support bulk receiving, partial PO receive, and physical counts | Manual inventory movements exist; transfer receiving exists; no PO receiving/count sessions | P0/P1 |
 | Multi-location operations | Current retail POS keeps device/location, staff access, inventory, transfers, and reporting location-aware | Phase A added server-backed active branch context and scoped POS/inventory behavior | Implemented baseline; branch assignment remains a separate domain concern |
@@ -98,9 +98,13 @@ The schema has no supplier/vendor or purchase-order model. For a serious retail 
 
 Required baseline: suppliers → purchase order → partial/full receiving → stock/cost update → receiving discrepancy → supplier return/cancel → PO history. Reorder levels should be able to create purchasing suggestions.
 
-### 10. Returns/exchanges at the register
+### 10. Returns/exchanges at the register — cash baseline implemented in Phase B
 
-NexPOS has a strong refund workflow, but no direct exchange flow. Retail staff should be able to find a sale, choose returned quantities, add replacement products, calculate the difference, and collect/refund the net amount while preserving one auditable transaction relationship.
+Owners and managers can now open a completed/partially-refunded cash sale, choose exact remaining return quantities, search active replacement products, review the estimated return/replacement/net values, and complete the exchange from the transaction detail. The backend revalidates historical refundable value, current replacement price/tax, current stock, open shift, and refund thresholds before committing.
+
+Each exchange links an approved refund to a completed replacement sale and persists the relationship in exchange history. The original sale links to the replacement transaction, while the replacement sale exposes the original receipt and a direct backlink, so the exchange remains traceable from either side. The shift records the gross cash refund and gross replacement sale, so their combined effect equals the customer-facing net collect/refund difference while sales/refund reporting remains consistent with the existing domains. Exchange execution is idempotent and PostgreSQL-wrapped in one transaction, so refund, replacement, inventory, cash, audit, and exchange linkage roll back together on failure.
+
+This baseline intentionally accepts only cash-settled source sales. Card, GCash, Maya, QR Ph, bank-transfer, or mixed-tender exchanges are not simulated because provider-side refund/exchange settlement is not yet modeled.
 
 ## P1 — high-value retail capabilities
 
@@ -151,7 +155,7 @@ Implemented during this audit:
 
 ### Discoverability
 
-Phase A closes the hidden-route gap with role-aware grouped navigation and adds a dedicated Administration / Help landing. Phase B now also exposes Held sales and Discounts directly in the cashier workspace. Remaining discoverability work is deeper help/settings coverage for future domains and completion of workflows such as purchasing and exchanges.
+Phase A closes the hidden-route gap with role-aware grouped navigation and adds a dedicated Administration / Help landing. Phase B now exposes Held sales and Discounts in the cashier workspace and direct cash exchanges from sale detail. Remaining discoverability work is deeper help/settings coverage for future domains and completion of workflows such as purchasing.
 
 ### Validation consistency
 
@@ -171,7 +175,9 @@ Verification on 2026-09-30: web unit/component 144/144, API 441/441, PostgreSQL 
 
 ### Phase B — cashier workflow completion
 
-Implemented baselines: Held-sale queue/resume, fixed-PHP POS line/order discounts with server-enforced override thresholds, and one-use owner/manager approval for over-threshold discounts. Remaining Phase B work: dedicated staff PIN/passcode enrollment, approval expansion to other protected actions, direct exchange flow, receipt delivery, and printer setup.
+Implemented baselines: Held-sale queue/resume, fixed-PHP POS line/order discounts with server-enforced override thresholds, one-use owner/manager approval for over-threshold discounts, and direct cash-settled exchanges with linked return/replacement transactions. Remaining Phase B work: dedicated staff PIN/passcode enrollment, approval expansion to other protected actions, provider-backed electronic-tender exchanges, receipt delivery, and printer setup.
+
+Exchange verification on 2026-09-30: validation 72/72, web unit/component 162/162, API 453/453, PostgreSQL 137/137, typecheck/lint/build passed, strict premium UI audit reported zero findings, production dependency audit reported no known vulnerabilities, and the complete desktop/tablet/mobile Playwright matrix passed 102/102. The live browser flow covers return selection, replacement search, net collection preview, transaction completion, original-to-replacement navigation, and the replacement-to-original receipt backlink.
 
 Manager-approval verification on 2026-09-30: validation 70/70, web unit/component 159/159, API 447/447, PostgreSQL 136/136, typecheck/lint/build passed, strict premium UI audit reported zero findings, production dependency audit reported no known vulnerabilities, approval anti-pattern grep was clean, and the complete desktop/tablet/mobile Playwright matrix passed 99/99. The browser test covers wrong-manager-credential recovery, successful one-use owner approval, automatic retry of the original cashier payment, and confirmation that the manager password is absent from browser storage.
 

@@ -321,6 +321,14 @@ export class SalesService {
     for (const r of refundRows) {
       refunds.push({ ...r, items: await this.db.listRefundItems(r.id, businessId) });
     }
+    const exchanges = await this.db.listExchangesByOriginalSale(sale.id, businessId);
+    const exchangeOriginRow = await this.db.findExchangeByReplacementSale(sale.id, businessId);
+    const exchangeOriginSale = exchangeOriginRow
+      ? await this.db.findSaleById(exchangeOriginRow.originalSaleId, businessId)
+      : null;
+    const exchangeOrigin = exchangeOriginRow && exchangeOriginSale
+      ? { ...exchangeOriginRow, originalReceiptNo: exchangeOriginSale.receiptNo }
+      : null;
     let customer: DbCustomer | null = null;
     if (sale.customerId) {
       const row = await this.db.findCustomerById(sale.customerId, businessId);
@@ -328,7 +336,7 @@ export class SalesService {
         customer = role === "cashier" ? { ...row, phone: null, email: null, address: null } : row;
       }
     }
-    return { ...full, items, refunds, customer };
+    return { ...full, items, refunds, exchanges, exchangeOrigin, customer };
   }
 
   async listSales(
