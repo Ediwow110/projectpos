@@ -20,9 +20,10 @@ describe("POS held sales dialog", () => {
             branchId: "branch-1",
             customerId: "cust-1",
             customerName: "Ana Cruz",
+            discountMinor: 0,
             totalMinor: 5000,
             items: [
-              { position: 0, productId: "p1", name: "Coffee", priceMinor: 2500, qty: 2 },
+              { position: 0, productId: "p1", name: "Coffee", priceMinor: 2500, qty: 2, lineDiscountMinor: 0 },
             ],
           },
         }]}

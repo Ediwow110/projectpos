@@ -9,28 +9,34 @@ import {
   type PosApiCall,
 } from "./pos-operations";
 
-const cart = [{ productId: "p1", name: "Coffee", priceMinor: 2500, qty: 2 }];
+const cart = [{ productId: "p1", name: "Coffee", priceMinor: 2500, qty: 2, lineDiscountMinor: 500 }];
+const undiscountedCart = [{ productId: "p1", name: "Coffee", priceMinor: 2500, qty: 2, lineDiscountMinor: 0 }];
 
 describe("POS operations", () => {
   it("holds a draft through csrf + draft + hold without leaking UI state", async () => {
-    const calls: Array<{ path: string; method?: string }> = [];
+    const calls: Array<{ path: string; method?: string; body?: string | null }> = [];
     const api: PosApiCall = async <T>(path: string, options?: { init?: RequestInit }) => {
-      calls.push({ path, method: options?.init?.method });
+      calls.push({ path, method: options?.init?.method, body: options?.init?.body as string | null | undefined });
       if (path === "/api/v1/auth/csrf") return { csrfToken: "csrf" } as T;
       if (path === "/api/v1/sales/drafts") return { id: "sale-1" } as T;
       return {} as T;
     };
 
     const result = await holdPosSale(
-      { cart, registerId: "reg-1", customerId: "", walkIn: "Walk In" },
+      { cart, registerId: "reg-1", customerId: "", walkIn: "Walk In", orderDiscountMinor: 300 },
       { api },
     );
 
     expect(result).toEqual({ draftId: "sale-1" });
     expect(calls).toEqual([
-      { path: "/api/v1/auth/csrf", method: undefined },
-      { path: "/api/v1/sales/drafts", method: "POST" },
-      { path: "/api/v1/sales/sale-1/hold", method: "POST" },
+      { path: "/api/v1/auth/csrf", method: undefined, body: undefined },
+      { path: "/api/v1/sales/drafts", method: "POST", body: JSON.stringify({
+        lines: [{ productId: "p1", qty: 2, lineDiscountMinor: 500 }],
+        orderDiscountMinor: 300,
+        registerId: "reg-1",
+        customerName: "Walk In",
+      }) },
+      { path: "/api/v1/sales/sale-1/hold", method: "POST", body: "{}" },
     ]);
   });
 
@@ -43,7 +49,7 @@ describe("POS operations", () => {
     };
 
     const result = await holdPosSale(
-      { cart, registerId: "reg-1", customerId: "", walkIn: "", existingDraftId: "sale-held" },
+      { cart, registerId: "reg-1", customerId: "", walkIn: "", orderDiscountMinor: 300, existingDraftId: "sale-held" },
       { api },
     );
 
@@ -77,12 +83,13 @@ describe("POS operations", () => {
     const result = await queueOfflinePosSale(
       {
         store,
-        cart,
+        cart: undiscountedCart,
         registerId: "reg-1",
         customerId: "",
         walkIn: "Walk In",
         received: "60",
         dueMinor: 5000,
+        orderDiscountMinor: 0,
       },
       { uuid: () => "12345678-aaaa-bbbb-cccc-123456789012" },
     );
@@ -96,6 +103,21 @@ describe("POS operations", () => {
       customerName: "Walk In",
       payments: [{ method: "cash", amountMinor: 6000 }],
     });
+  });
+
+  it("refuses to queue approval-sensitive discounted sales while offline", async () => {
+    const store = new MemorySyncStore();
+    await expect(queueOfflinePosSale({
+      store,
+      cart,
+      registerId: "reg-1",
+      customerId: "",
+      walkIn: "",
+      received: "50",
+      dueMinor: 4200,
+      orderDiscountMinor: 300,
+    })).rejects.toThrow("DISCOUNT_REQUIRES_CONNECTIVITY");
+    expect(await store.listAll()).toEqual([]);
   });
 
   it("returns a hosted-checkout redirect for PayMongo methods", async () => {
@@ -116,6 +138,7 @@ describe("POS operations", () => {
         walkIn: "",
         received: "",
         method: "qrph",
+        orderDiscountMinor: 300,
       },
       { api, uuid: () => "checkout-key" },
     );
@@ -146,6 +169,7 @@ describe("POS operations", () => {
         walkIn: "",
         received: "50",
         method: "cash",
+        orderDiscountMinor: 300,
       },
       { api, uuid: () => "complete-key" },
     );
@@ -176,6 +200,7 @@ describe("POS operations", () => {
         walkIn: "",
         received: "",
         method: "cash",
+        orderDiscountMinor: 300,
         existingDraft: { id: "sale-held", totalMinor: 5000 },
       },
       { api, uuid: () => "complete-held" },

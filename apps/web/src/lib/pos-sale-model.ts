@@ -12,6 +12,7 @@ export interface PosCartEntry {
   name: string;
   priceMinor: number;
   qty: number;
+  lineDiscountMinor: number;
 }
 
 export interface PosHeldSaleItem {
@@ -20,6 +21,7 @@ export interface PosHeldSaleItem {
   name: string;
   priceMinor: number;
   qty: number;
+  lineDiscountMinor: number;
 }
 
 export interface PosHeldSale {
@@ -32,16 +34,27 @@ export interface PosHeldSale {
     branchId: string | null;
     customerId: string | null;
     customerName: string | null;
+    discountMinor: number;
     totalMinor: number;
     items: PosHeldSaleItem[];
   };
 }
 
 export interface PosDraftInput {
-  lines: Array<{ productId: string; qty: number }>;
+  lines: Array<{ productId: string; qty: number; lineDiscountMinor: number }>;
+  orderDiscountMinor: number;
   registerId?: string;
   customerId?: string;
   customerName?: string;
+}
+
+export interface PosDiscountSummary {
+  grossMinor: number;
+  lineDiscountMinor: number;
+  subtotalMinor: number;
+  orderDiscountMinor: number;
+  totalDiscountMinor: number;
+  totalMinor: number;
 }
 
 const PAYMONGO_METHODS = new Set(["card", "gcash", "maya", "qrph"]);
@@ -59,9 +72,15 @@ export function buildDraftSaleInput(
   registerId: string,
   customerId: string,
   walkIn: string,
+  orderDiscountMinor = 0,
 ): PosDraftInput {
   return {
-    lines: cart.map((entry) => ({ productId: entry.productId, qty: entry.qty })),
+    lines: cart.map((entry) => ({
+      productId: entry.productId,
+      qty: entry.qty,
+      lineDiscountMinor: Math.min(Math.max(0, entry.lineDiscountMinor), entry.qty * entry.priceMinor),
+    })),
+    orderDiscountMinor: Math.max(0, Math.round(orderDiscountMinor)),
     ...(registerId !== "" ? { registerId } : {}),
     ...(customerId !== "" ? { customerId } : {}),
     ...(customerId === "" && walkIn.trim() !== "" ? { customerName: walkIn.trim() } : {}),
@@ -74,9 +93,10 @@ export function buildOfflineSalePayload(
   customerId: string,
   walkIn: string,
   tenderedMinor: number,
+  orderDiscountMinor = 0,
 ): PosDraftInput & { payments: Array<{ method: "cash"; amountMinor: number }> } {
   return {
-    ...buildDraftSaleInput(cart, registerId, customerId, walkIn),
+    ...buildDraftSaleInput(cart, registerId, customerId, walkIn, orderDiscountMinor),
     payments: [{ method: "cash", amountMinor: tenderedMinor }],
   };
 }
@@ -88,14 +108,53 @@ export function addProductToCart(cart: PosCartEntry[], product: PosProduct): Pos
   }
   return [
     ...cart,
-    { productId: product.id, name: product.name, priceMinor: product.priceMinor, qty: 1 },
+    { productId: product.id, name: product.name, priceMinor: product.priceMinor, qty: 1, lineDiscountMinor: 0 },
   ];
 }
 
 export function changeCartQuantity(cart: PosCartEntry[], productId: string, delta: number): PosCartEntry[] {
   return cart
-    .map((entry) => entry.productId === productId ? { ...entry, qty: entry.qty + delta } : entry)
+    .map((entry) => {
+      if (entry.productId !== productId) return entry;
+      const qty = entry.qty + delta;
+      return {
+        ...entry,
+        qty,
+        lineDiscountMinor: Math.min(entry.lineDiscountMinor, Math.max(0, qty) * entry.priceMinor),
+      };
+    })
     .filter((entry) => entry.qty > 0);
+}
+
+export function applyCartDiscounts(cart: PosCartEntry[], byProductId: Record<string, number>): PosCartEntry[] {
+  return cart.map((entry) => ({
+    ...entry,
+    lineDiscountMinor: Math.min(
+      Math.max(0, Math.round(byProductId[entry.productId] ?? entry.lineDiscountMinor)),
+      entry.qty * entry.priceMinor,
+    ),
+  }));
+}
+
+export function posDiscountSummary(cart: PosCartEntry[], orderDiscountMinor: number): PosDiscountSummary {
+  let grossMinor = 0;
+  let lineDiscountMinor = 0;
+  for (const entry of cart) {
+    const gross = entry.qty * entry.priceMinor;
+    const discount = Math.min(Math.max(0, entry.lineDiscountMinor), gross);
+    grossMinor += gross;
+    lineDiscountMinor += discount;
+  }
+  const subtotalMinor = Math.max(0, grossMinor - lineDiscountMinor);
+  const effectiveOrderDiscount = Math.min(Math.max(0, Math.round(orderDiscountMinor)), subtotalMinor);
+  return {
+    grossMinor,
+    lineDiscountMinor,
+    subtotalMinor,
+    orderDiscountMinor: effectiveOrderDiscount,
+    totalDiscountMinor: lineDiscountMinor + effectiveOrderDiscount,
+    totalMinor: Math.max(0, subtotalMinor - effectiveOrderDiscount),
+  };
 }
 
 export function heldSaleToCart(sale: Pick<PosHeldSale["sale"], "items">): PosCartEntry[] {
@@ -106,6 +165,7 @@ export function heldSaleToCart(sale: Pick<PosHeldSale["sale"], "items">): PosCar
       name: item.name,
       priceMinor: item.priceMinor,
       qty: item.qty,
+      lineDiscountMinor: item.lineDiscountMinor,
     }));
 }
 

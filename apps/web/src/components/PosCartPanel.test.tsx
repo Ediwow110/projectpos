@@ -10,9 +10,11 @@ describe("POS current-sale panel", () => {
   it("renders the desktop cart rail with totals, payment action, and quantity controls", () => {
     const html = renderToStaticMarkup(
       <PosCartPanel
-        cart={[{ productId: "p1", name: "Coffee", priceMinor: 2500, qty: 2 }]}
+        cart={[{ productId: "p1", name: "Coffee", priceMinor: 2500, qty: 2, lineDiscountMinor: 500 }]}
         count={2}
-        due={5000}
+        subtotalMinor={5000}
+        due={4200}
+        discountMinor={800}
         selectedRegisterName="Counter 1"
         canSell
         canPay
@@ -28,6 +30,7 @@ describe("POS current-sale panel", () => {
         methodAvailable={() => true}
         onHold={noop}
         onOpenHeldSales={noop}
+        onOpenDiscounts={noop}
         onClearCart={noop}
         onResetSale={noop}
         onSetQty={noop}
@@ -40,8 +43,9 @@ describe("POS current-sale panel", () => {
     expect(html).toContain('aria-label="Cart"');
     expect(html).toContain("Current sale");
     expect(html).toContain("Coffee");
-    expect(html).toContain("₱50.00");
-    expect(html).toContain("Pay ₱50.00");
+    expect(html).toContain("−₱8.00");
+    expect(html).toContain("Discounts");
+    expect(html).toContain("Pay ₱42.00");
     expect(html).toContain('aria-label="Decrease Coffee"');
     expect(html).toContain('aria-label="Increase Coffee"');
   });
@@ -51,7 +55,9 @@ describe("POS current-sale panel", () => {
       <PosCartPanel
         cart={[]}
         count={0}
+        subtotalMinor={0}
         due={0}
+        discountMinor={0}
         selectedRegisterName="—"
         canSell
         canPay={false}
@@ -67,6 +73,7 @@ describe("POS current-sale panel", () => {
         methodAvailable={() => true}
         onHold={noop}
         onOpenHeldSales={noop}
+        onOpenDiscounts={noop}
         onClearCart={noop}
         onResetSale={noop}
         onSetQty={noop}

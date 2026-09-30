@@ -18,7 +18,7 @@ The product was also benchmarked against current official documentation for Shop
 | Receiving / stock counts | Retail POS systems support bulk receiving, partial PO receive, and physical counts | Manual inventory movements exist; transfer receiving exists; no PO receiving/count sessions | P0/P1 |
 | Multi-location operations | Current retail POS keeps device/location, staff access, inventory, transfers, and reporting location-aware | Phase A added server-backed active branch context and scoped POS/inventory behavior | Implemented baseline; branch assignment remains a separate domain concern |
 | Staff management | Retail POS exposes staff roles, PINs/access, and location assignment | Phase A added owner-facing Team management over the existing membership API | Implemented baseline; branch assignment and invite/reset UX remain future work |
-| Discounts / overrides | Retail POS applies line/order discounts with permission or manager approval | Backend supports discounts/override; POS sends zero discounts | P0 UI/domain disconnect |
+| Discounts / overrides | Retail POS applies line/order discounts with permission or manager approval | Phase B adds fixed-PHP line/order discounts in POS while preserving server override enforcement | Implemented baseline; in-context manager PIN approval remains separate work |
 | Device management | Retail POS setup includes device/location readiness and device controls | Phase A added Device Fleet list/enroll/revoke UI and current-device/session-impact handling | Implemented baseline; last-seen/online telemetry is not modeled |
 | Printers / hardware | Setup guides make printer/device configuration discoverable | Printer and print-job APIs exist; no management surface | P1 |
 | Product variants / bundles | Lightspeed/Square/Shopify commonly model variations and richer item structures | Basic product model only | P1 for apparel/retail breadth |
@@ -66,9 +66,11 @@ Granular permissions exist for discount override, refund/void, inventory adjustm
 
 Recommended flow: cashier triggers protected action → manager PIN/passcode/reauth overlay → action executes as approved-by manager → audit records cashier, approver, reason, amount/threshold.
 
-### 5. Discounts are backend-only from POS
+### 5. POS discounts — implemented baseline in Phase B
 
-The sale domain supports line and order discounts plus override thresholds, but the current POS draft maps every cart line with zero discount. Add line discount and order discount controls, with visible authorization state and manager approval above thresholds.
+The POS now exposes an app-owned Sale discounts dialog for fixed-PHP order and per-line discounts. Discount values travel through draft, hold/resume, payment, receipt, reporting/refund line totals, and remain server-authoritative. A resumed held draft restores its saved discounts and stays locked against client-side editing.
+
+The existing override policy remains authoritative: order discounts above 10% or line discounts above 20% require `discount.override`. The cashier UI does not invent or bypass authorization; an over-threshold cashier attempt surfaces the server `FORBIDDEN` state and explicitly explains that manager PIN approval is not available yet. Discounted offline checkout is blocked so approval-sensitive discounts are never queued for later sync failure.
 
 ### 6. Active branch/register context must be authoritative — implemented in Phase A
 
@@ -147,11 +149,11 @@ Implemented during this audit:
 
 ### Discoverability
 
-Phase A closes the hidden-route gap with role-aware grouped navigation and adds a dedicated Administration / Help landing. Remaining discoverability work is deeper help/settings coverage for future domains and completion of workflows such as held sales and purchasing.
+Phase A closes the hidden-route gap with role-aware grouped navigation and adds a dedicated Administration / Help landing. Phase B now also exposes Held sales and Discounts directly in the cashier workspace. Remaining discoverability work is deeper help/settings coverage for future domains and completion of workflows such as purchasing and exchanges.
 
 ### Validation consistency
 
-Many route-owned forms still omit the project's app-owned validation contract. Browser-native bubbles will feel inconsistent beside the custom premium UI and make field-error handling vary by browser.
+The app-owned validation cleanup is now complete for audited forms, and the strict premium UI audit reports zero findings. New cashier dialogs, including Held sales and Sale discounts, follow the same app-owned modal/inline-validation contract rather than browser-native validation bubbles.
 
 ### Help / administration ownership
 
@@ -167,7 +169,9 @@ Verification on 2026-09-30: web unit/component 144/144, API 441/441, PostgreSQL 
 
 ### Phase B — cashier workflow completion
 
-Held-sale queue/resume baseline is implemented. Remaining Phase B work: POS discounts, manager approval/passcode, direct exchange flow, receipt delivery, and printer setup.
+Implemented baselines: Held-sale queue/resume and fixed-PHP POS line/order discounts with server-enforced override thresholds. Remaining Phase B work: manager approval/passcode, direct exchange flow, receipt delivery, and printer setup.
+
+Discount verification on 2026-09-30: web unit/component 155/155, API 443/443, PostgreSQL 135/135, typecheck/lint/build passed, strict premium UI audit reported zero findings, production dependency audit reported no known vulnerabilities, and the complete desktop/tablet/mobile Playwright matrix passed 99/99. Browser coverage includes both an exactly-at-threshold discounted sale and a cashier over-threshold denial from the authoritative server.
 
 ### Phase C — inventory lifecycle
 

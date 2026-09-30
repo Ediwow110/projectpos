@@ -8,6 +8,8 @@ type StatusTone = "ok" | "warn" | "info" | "neutral";
 interface PosCartPanelProps {
   cart: PosCartEntry[];
   count: number;
+  subtotalMinor: number;
+  discountMinor: number;
   due: number;
   selectedRegisterName: string;
   canSell: boolean;
@@ -24,6 +26,7 @@ interface PosCartPanelProps {
   methodAvailable: (key: string) => boolean;
   onHold: () => void;
   onOpenHeldSales: () => void;
+  onOpenDiscounts: () => void;
   onClearCart: () => void;
   onResetSale: () => void;
   onSetQty: (productId: string, delta: number) => void;
@@ -39,6 +42,8 @@ function money(minor: number): string {
 export function PosCartPanel({
   cart,
   count,
+  subtotalMinor,
+  discountMinor,
   due,
   selectedRegisterName,
   canSell,
@@ -55,6 +60,7 @@ export function PosCartPanel({
   methodAvailable,
   onHold,
   onOpenHeldSales,
+  onOpenDiscounts,
   onClearCart,
   onResetSale,
   onSetQty,
@@ -102,19 +108,27 @@ export function PosCartPanel({
           {cart.length === 0 ? (
             <li className="grid h-full place-items-center text-[11px] text-white/40">Cart is empty. Tap products to add.</li>
           ) : null}
-          {cart.map((entry) => (
+          {cart.map((entry) => {
+            const gross = entry.qty * entry.priceMinor;
+            const net = Math.max(0, gross - entry.lineDiscountMinor);
+            return (
             <li key={entry.productId} className="flex h-[61px] items-center justify-between gap-3 border-b border-[#393530]">
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[9px] font-semibold text-white">{entry.name}</p>
                 <div className="mt-2 flex items-center gap-2 font-data text-[8px] text-[#aaa096]">
                   <span>Qty {entry.qty}</span>
+                  {entry.lineDiscountMinor > 0 ? <span className="text-[#ff9a82]">−₱{money(entry.lineDiscountMinor)}</span> : null}
                   <button type="button" onClick={() => onSetQty(entry.productId, -1)} disabled={saleLocked} aria-label={"Decrease " + entry.name} className="grid h-5 w-5 place-items-center rounded bg-white/[0.06] text-[11px] hover:bg-white/10 disabled:opacity-35">−</button>
                   <button type="button" onClick={() => onSetQty(entry.productId, 1)} disabled={saleLocked} aria-label={"Increase " + entry.name} className="grid h-5 w-5 place-items-center rounded bg-white/[0.06] text-[11px] hover:bg-white/10 disabled:opacity-35">+</button>
                 </div>
               </div>
-              <span className="money shrink-0 text-[9px] font-medium text-white">₱{money(entry.qty * entry.priceMinor)}</span>
+              <span className="money shrink-0 text-right text-[9px] font-medium text-white">
+                {entry.lineDiscountMinor > 0 ? <span className="mr-1 text-[8px] text-white/35 line-through">₱{money(gross)}</span> : null}
+                ₱{money(net)}
+              </span>
             </li>
-          ))}
+            );
+          })}
         </ul>
 
         <button
@@ -129,14 +143,25 @@ export function PosCartPanel({
 
         <div className="absolute inset-x-0 top-[382px] flex items-center justify-between text-[9px] text-[#afa59d]">
           <span>Subtotal ({count} item{count === 1 ? "" : "s"})</span>
-          <span className="money font-medium text-white">₱{money(due)}</span>
+          <span className="money font-medium text-white">₱{money(subtotalMinor)}</span>
         </div>
         <div className="absolute inset-x-0 top-[414px] flex items-center justify-between text-[9px] text-[#afa59d]">
+          <button
+            type="button"
+            onClick={onOpenDiscounts}
+            disabled={cart.length === 0 || offline || saleLocked}
+            className="font-semibold text-[#ff9a82] hover:text-[#ffb5a3] disabled:text-[#6f625a]"
+          >
+            Discounts
+          </button>
+          <span className="money font-medium text-[#ff9a82]">−₱{money(discountMinor)}</span>
+        </div>
+        <div className="absolute inset-x-0 top-[446px] flex items-center justify-between text-[9px] text-[#afa59d]">
           <span>Register</span>
           <span className="font-data max-w-48 truncate text-[8px] text-white/75">{selectedRegisterName}</span>
         </div>
-        <div aria-hidden className="absolute inset-x-0 top-[452px] border-t border-[#393530]" />
-        <div className="absolute inset-x-0 top-[467px] flex items-end justify-between">
+        <div aria-hidden className="absolute inset-x-0 top-[484px] border-t border-[#393530]" />
+        <div className="absolute inset-x-0 top-[499px] flex items-end justify-between">
           <span className="font-display text-[16px] font-semibold">Total</span>
           <span className="money text-[24px] font-bold">₱{money(due)}</span>
         </div>
@@ -145,12 +170,12 @@ export function PosCartPanel({
           type="button"
           onClick={onOpenPayment}
           disabled={!canPay}
-          className="absolute inset-x-0 top-[520px] h-[58px] rounded-xl bg-[#f35d3f] font-display text-[13px] font-semibold text-white shadow-[0_5px_16px_-6px_rgb(26_18_13/0.07)] hover:bg-[#d94a30] disabled:opacity-40"
+          className="absolute inset-x-0 top-[552px] h-[58px] rounded-xl bg-[#f35d3f] font-display text-[13px] font-semibold text-white shadow-[0_5px_16px_-6px_rgb(26_18_13/0.07)] hover:bg-[#d94a30] disabled:opacity-40"
         >
           ▣ Pay ₱{money(due)} (F5) →
         </button>
 
-        <div className="absolute inset-x-0 top-[596px] grid grid-cols-4 gap-2">
+        <div className="absolute inset-x-0 top-[628px] grid grid-cols-4 gap-2">
           {[
             { key: "cash", label: "Cash (F6)" },
             { key: "card", label: "Card (F7)" },
@@ -182,11 +207,11 @@ export function PosCartPanel({
           type="button"
           onClick={onResetSale}
           disabled={cart.length === 0 || reconcileId !== null || saleLocked}
-          className="absolute inset-x-0 top-[660px] h-12 rounded-[10px] border border-[#d94a30] text-[10px] font-semibold text-[#ff765a] hover:bg-[#2b1d19] disabled:opacity-35"
+          className="absolute inset-x-0 top-[692px] h-12 rounded-[10px] border border-[#d94a30] text-[10px] font-semibold text-[#ff765a] hover:bg-[#2b1d19] disabled:opacity-35"
         >
           ⌫ Clear sale
         </button>
-        <p className="absolute inset-x-0 top-[728px] font-data text-[7px] leading-4 text-[#756b63]">
+        <p className="absolute inset-x-0 top-[760px] font-data text-[7px] leading-4 text-[#756b63]">
           Totals are server-validated before commit. Unknown payment status blocks blind retries.
         </p>
 

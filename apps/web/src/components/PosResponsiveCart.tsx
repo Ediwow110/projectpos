@@ -10,6 +10,7 @@ interface PosResponsiveCartProps {
   cart: PosCartEntry[];
   count: number;
   due: number;
+  discountMinor: number;
   canPay: boolean;
   saleLocked: boolean;
   heldCount: number;
@@ -23,6 +24,7 @@ interface PosResponsiveCartProps {
   onAssignCustomer: () => void;
   onHold: () => void;
   onOpenHeldSales: () => void;
+  onOpenDiscounts: () => void;
   onSetQty: (productId: string, delta: number) => void;
   onOpenPayment: () => void;
 }
@@ -35,6 +37,7 @@ export function PosResponsiveCart({
   cart,
   count,
   due,
+  discountMinor,
   canPay,
   saleLocked,
   heldCount,
@@ -48,6 +51,7 @@ export function PosResponsiveCart({
   onAssignCustomer,
   onHold,
   onOpenHeldSales,
+  onOpenDiscounts,
   onSetQty,
   onOpenPayment,
 }: PosResponsiveCartProps) {
@@ -193,6 +197,14 @@ export function PosResponsiveCart({
                 </button>
                 <button
                   type="button"
+                  onClick={onOpenDiscounts}
+                  disabled={cart.length === 0 || saleLocked}
+                  className="rounded-lg border border-white/10 px-3 py-2 text-[10px] font-semibold text-[#ff9a82] hover:text-[#ffb5a3] disabled:opacity-35"
+                >
+                  Discounts
+                </button>
+                <button
+                  type="button"
                   aria-label="Close cart"
                   onClick={onCloseDrawer}
                   className="grid h-9 w-9 place-items-center rounded-lg bg-white/[0.07] text-white/65 hover:text-white"
@@ -216,6 +228,7 @@ export function PosResponsiveCart({
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[13px] font-semibold">{item.name}</p>
                     <p className="money mt-1 text-[11px] text-white/45">₱{money(item.priceMinor)} each</p>
+                    {item.lineDiscountMinor > 0 ? <p className="money mt-1 text-[10px] text-[#ff9a82]">Line discount −₱{money(item.lineDiscountMinor)}</p> : null}
                   </div>
                   <div className="flex items-center gap-1.5">
                     <button
@@ -243,6 +256,12 @@ export function PosResponsiveCart({
             </ul>
 
             <div className="border-t border-white/10 p-5">
+              {discountMinor > 0 ? (
+                <div className="mb-3 flex items-center justify-between text-[11px] text-white/55">
+                  <span>Discounts</span>
+                  <span className="money font-semibold text-[#ff9a82]">−₱{money(discountMinor)}</span>
+                </div>
+              ) : null}
               <div className="flex items-end justify-between">
                 <div>
                   <p className="font-data text-[8px] uppercase tracking-[0.12em] text-white/45">Total</p>

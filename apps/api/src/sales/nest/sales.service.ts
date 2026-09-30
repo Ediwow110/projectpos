@@ -180,8 +180,8 @@ export class SalesService {
   ): Promise<{
     items: Array<{
       heldId: string;
-      sale: Pick<DbSale, "id" | "status" | "createdAt" | "registerId" | "branchId" | "customerId" | "customerName" | "totalMinor"> & {
-        items: Array<Pick<DbSaleItem, "position" | "productId" | "name" | "qty" | "priceMinor">>;
+      sale: Pick<DbSale, "id" | "status" | "createdAt" | "registerId" | "branchId" | "customerId" | "customerName" | "discountMinor" | "totalMinor"> & {
+        items: Array<Pick<DbSaleItem, "position" | "productId" | "name" | "qty" | "priceMinor" | "lineDiscountMinor">>;
       };
     }>;
   }> {
@@ -189,8 +189,8 @@ export class SalesService {
     const heldRows = await this.db.listHeldSales(businessId, actorId);
     const items: Array<{
       heldId: string;
-      sale: Pick<DbSale, "id" | "status" | "createdAt" | "registerId" | "branchId" | "customerId" | "customerName" | "totalMinor"> & {
-        items: Array<Pick<DbSaleItem, "position" | "productId" | "name" | "qty" | "priceMinor">>;
+      sale: Pick<DbSale, "id" | "status" | "createdAt" | "registerId" | "branchId" | "customerId" | "customerName" | "discountMinor" | "totalMinor"> & {
+        items: Array<Pick<DbSaleItem, "position" | "productId" | "name" | "qty" | "priceMinor" | "lineDiscountMinor">>;
       };
     }> = [];
 
@@ -211,6 +211,7 @@ export class SalesService {
           branchId: sale.branchId,
           customerId: sale.customerId,
           customerName: sale.customerName,
+          discountMinor: sale.discountMinor,
           totalMinor: sale.totalMinor,
           items: saleItems
             .map((item) => ({
@@ -219,6 +220,7 @@ export class SalesService {
               name: item.name,
               qty: item.qty,
               priceMinor: item.priceMinor,
+              lineDiscountMinor: item.lineDiscountMinor,
             }))
             .sort((a, b) => a.position - b.position),
         },

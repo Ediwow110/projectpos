@@ -201,7 +201,7 @@ describe("phase4 sales permissions, unknown, and cross-tenant", () => {
   it("holds and resumes a draft", async () => {
     const draft = await request(app.getHttpServer()).post("/api/v1/sales/drafts")
       .set("Cookie", cookie).set("X-CSRF-Token", csrf)
-      .send({ lines: [{ productId, qty: 1 }] });
+      .send({ lines: [{ productId, qty: 1, lineDiscountMinor: 500 }], orderDiscountMinor: 200 });
     const held = await request(app.getHttpServer()).post(`/api/v1/sales/${draft.body.id}/hold`)
       .set("Cookie", cookie).set("X-CSRF-Token", csrf)
       .send({});
@@ -215,7 +215,8 @@ describe("phase4 sales permissions, unknown, and cross-tenant", () => {
         sale: expect.objectContaining({
           id: draft.body.id,
           status: "DRAFT",
-          items: [expect.objectContaining({ productId, qty: 1, name: "Coke" })],
+          discountMinor: 200,
+          items: [expect.objectContaining({ productId, qty: 1, name: "Coke", lineDiscountMinor: 500 })],
         }),
       }),
     ]));
@@ -228,6 +229,26 @@ describe("phase4 sales permissions, unknown, and cross-tenant", () => {
       .set("Cookie", cookie);
     expect(afterResume.status).toBe(200);
     expect(afterResume.body.items.some((item: { sale: { id: string } }) => item.sale.id === draft.body.id)).toBe(false);
+  });
+
+  it("returns discounted receipt totals from the authoritative draft", async () => {
+    const draft = await request(app.getHttpServer()).post("/api/v1/sales/drafts")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({
+        lines: [{ productId, qty: 2, lineDiscountMinor: 500 }],
+        orderDiscountMinor: 400,
+      });
+    expect(draft.status).toBe(201);
+    expect(draft.body.subtotalMinor).toBe(4500);
+    expect(draft.body.discountMinor).toBe(400);
+    expect(draft.body.totalMinor).toBe(4100);
+
+    const receipt = await request(app.getHttpServer()).get(`/api/v1/receipts/${draft.body.id}`)
+      .set("Cookie", cookie);
+    expect(receipt.status).toBe(200);
+    expect(receipt.body.discountMinor).toBe(400);
+    expect(receipt.body.totalMinor).toBe(4100);
+    expect(receipt.body.items[0]).toMatchObject({ lineDiscountMinor: 500, lineTotalMinor: 4500 });
   });
 });
 

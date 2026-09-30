@@ -14,9 +14,9 @@ describe("POS payment workspace", () => {
         registerSelected
         now="10:30 AM"
         cart={[
-          { productId: "p-z", name: "Zebra Water", priceMinor: 1000, qty: 1 },
-          { productId: "p-a", name: "Apple Juice", priceMinor: 1000, qty: 1 },
-          { productId: "p-m", name: "Mango Soda", priceMinor: 1000, qty: 1 },
+          { productId: "p-z", name: "Zebra Water", priceMinor: 1000, qty: 1, lineDiscountMinor: 0 },
+          { productId: "p-a", name: "Apple Juice", priceMinor: 1000, qty: 1, lineDiscountMinor: 0 },
+          { productId: "p-m", name: "Mango Soda", priceMinor: 1000, qty: 1, lineDiscountMinor: 0 },
         ]}
         paymentTiles={[{ key: "cash", label: "Cash", tile: "bg-[#f35d3f]" }]}
         offline={false}
@@ -44,7 +44,7 @@ describe("POS payment workspace", () => {
         changeMinor={500}
         registerSelected
         now="10:30 AM"
-        cart={[{ productId: "p1", name: "Coffee", priceMinor: 2500, qty: 2 }]}
+        cart={[{ productId: "p1", name: "Coffee", priceMinor: 2500, qty: 2, lineDiscountMinor: 0 }]}
         paymentTiles={[{ key: "cash", label: "Cash", tile: "bg-[#f35d3f]" }]}
         offline={false}
         effectiveMethod="cash"
@@ -75,7 +75,7 @@ describe("POS payment workspace", () => {
         changeMinor={0}
         registerSelected
         now="10:30 AM"
-        cart={[{ productId: "p1", name: "Coffee", priceMinor: 2500, qty: 1 }]}
+        cart={[{ productId: "p1", name: "Coffee", priceMinor: 2500, qty: 1, lineDiscountMinor: 0 }]}
         paymentTiles={[
           { key: "cash", label: "Cash", tile: "bg-[#f35d3f]" },
           { key: "qrph", label: "QR Ph", tile: "bg-[#6554c0]" },

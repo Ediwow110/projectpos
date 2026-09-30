@@ -40,6 +40,13 @@ export function canPresentPayAction(cartCount: number, canSell: boolean): boolea
   return cartCount > 0 && canSell;
 }
 
+export function posSaleErrorMessage(code: string, message: string, hasDiscount: boolean): string {
+  if (hasDiscount && code === "FORBIDDEN") {
+    return "FORBIDDEN: Discount requires discount.override authorization. Ask an owner or manager to authorize or reduce the discount; manager PIN approval is not available yet.";
+  }
+  return `${code}: ${message}`;
+}
+
 export function productInitials(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) return "?";

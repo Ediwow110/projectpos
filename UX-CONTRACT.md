@@ -70,6 +70,7 @@ No global toast provider is currently canonical. Status, warnings, errors, payme
 |---|---|---|---|---|---|---|---|
 | Complete sale | POS Pay | processing state, duplicate action disabled | receipt/current POS | completed + receipt link | unknown remains PAYMENT_UNKNOWN; no blind retry | payment context remains available | Phase 4 spec |
 | Hold / resume sale | POS Hold / Held sales | hold/resume mutation pending; saved draft remains authoritative | POS | held/resumed inline status | offline resume blocked; branch mismatch requires switch; resume failure leaves current cart untouched | Held sales dialog / restored POS cart | Phase B held-sales baseline |
+| Apply discounts | POS Discounts | local app-owned form; server authorization occurs on Hold/Pay | POS | discounted line/order totals remain visible | invalid amounts stay in dialog; offline disabled; server FORBIDDEN explains discount.override requirement without inventing manager PIN approval | discount dialog → cart/status | Phase B discounts baseline |
 | Offline sale | POS Pay while offline | queued locally | POS + Sync follow-up | provisional receipt + pending-sync copy | Sync page/retry queue | stays in POS context | Phase 9b spec |
 | Close shift | Close shift action | mutation pending | shift history/detail | expected/count/variance snapshot shown | server error with counted values preserved where possible | close form/result | Phase 5 spec |
 | Search/filter | field/filter change + Apply where present | route/query loading | same route | updated list/chart | inline query error | control retains focus | route implementation |
@@ -117,13 +118,14 @@ No global toast provider is currently canonical. Status, warnings, errors, payme
 - Tooltip delay/dismissal: not canonical; do not hide required instructions in tooltips.
 - Unsaved-changes behavior: current route behavior; not globally standardized.
 - Layer/z-index contract: modal/dialog above shell and sticky operational trays.
+- POS discount entry is app-owned, fixed-PHP, and inline-validated. Line discounts may not exceed line gross; order discounts may not exceed the post-line-discount subtotal; discount edits are disabled for offline or resumed/locked drafts.
 
 ## Async and resilience
 
 - Mutation default: pessimistic for server mutations; explicit queued mode only for supported offline sale workflows.
 - Idempotency and duplicate-submit policy: payment/sale commands reuse authoritative idempotency rules from Phase 4.
 - Auto-save/draft recovery: held sale and offline queue behavior only where domain-supported.
-- Offline/read-stale/write behavior: cached catalog may be read; offline sale is cash-only and provisional until sync.
+- Offline/read-stale/write behavior: cached catalog may be read; offline sale is cash-only and provisional until sync. Discounted sales require connectivity because server-side authorization must be evaluated before the sale is accepted.
 - Retry/backoff/timeout behavior: existing sync/reconciliation services remain authoritative.
 - Version conflict and multi-tab behavior: no new visual assumption beyond server responses.
 - Session expiry/re-authentication: authentication/API behavior remains authoritative.

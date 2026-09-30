@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { canPresentPayAction, paymentPresentation, productInitials, productTileClass, saleFromCompleteResponse } from "./pos-view";
+import { canPresentPayAction, paymentPresentation, posSaleErrorMessage, productInitials, productTileClass, saleFromCompleteResponse } from "./pos-view";
 import { registersForBranch } from "./workspace-branch";
 
 describe("POS presentation safety", () => {
@@ -38,6 +38,13 @@ describe("POS presentation safety", () => {
     expect(canPresentPayAction(0, true)).toBe(false);
     expect(canPresentPayAction(2, false)).toBe(false);
     expect(canPresentPayAction(2, true)).toBe(true);
+  });
+
+  it("explains a server-forbidden discounted sale without pretending manager PIN approval exists", () => {
+    expect(posSaleErrorMessage("FORBIDDEN", "Draft creation failed", true)).toBe(
+      "FORBIDDEN: Discount requires discount.override authorization. Ask an owner or manager to authorize or reduce the discount; manager PIN approval is not available yet.",
+    );
+    expect(posSaleErrorMessage("VALIDATION", "Draft creation failed", true)).toBe("VALIDATION: Draft creation failed");
   });
 
   it("unwraps PAYMENT_UNKNOWN completion envelopes without losing the real sale status", () => {

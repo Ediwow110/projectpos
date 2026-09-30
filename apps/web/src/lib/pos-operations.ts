@@ -23,6 +23,7 @@ interface SaleIdentityInput {
   registerId: string;
   customerId: string;
   walkIn: string;
+  orderDiscountMinor: number;
   existingDraftId?: string;
 }
 
@@ -38,7 +39,7 @@ export async function holdPosSale(
         csrfToken: csrf.csrfToken,
         init: {
           method: "POST",
-          body: JSON.stringify(buildDraftSaleInput(input.cart, input.registerId, input.customerId, input.walkIn)),
+          body: JSON.stringify(buildDraftSaleInput(input.cart, input.registerId, input.customerId, input.walkIn, input.orderDiscountMinor)),
         },
       });
   await api("/api/v1/sales/" + draft.id + "/hold", {
@@ -69,6 +70,9 @@ export async function queueOfflinePosSale(
   deps: { uuid?: () => string } = {},
 ): Promise<{ provisionalReceipt: string }> {
   const uuid = deps.uuid ?? (() => crypto.randomUUID());
+  if (input.orderDiscountMinor > 0 || input.cart.some((entry) => entry.lineDiscountMinor > 0)) {
+    throw new Error("DISCOUNT_REQUIRES_CONNECTIVITY");
+  }
   const tendered = resolveTenderedMinor(input.received, input.dueMinor);
   const key = uuid();
   const payload = buildOfflineSalePayload(
@@ -77,6 +81,7 @@ export async function queueOfflinePosSale(
     input.customerId,
     input.walkIn,
     tendered,
+    input.orderDiscountMinor,
   );
   const fingerprint = await fingerprintPayload({ ...payload, key });
   const receipt = provisionalReceipt(key.slice(0, 8));
@@ -113,7 +118,7 @@ export async function completePosSale(
     csrfToken: csrf.csrfToken,
     init: {
       method: "POST",
-      body: JSON.stringify(buildDraftSaleInput(input.cart, input.registerId, input.customerId, input.walkIn)),
+      body: JSON.stringify(buildDraftSaleInput(input.cart, input.registerId, input.customerId, input.walkIn, input.orderDiscountMinor)),
     },
   });
   const key = uuid();

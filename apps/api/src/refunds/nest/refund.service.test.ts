@@ -29,6 +29,37 @@ async function setupRefund() {
 }
 
 describe("phase6 refund service", () => {
+  it("refunds the discounted line amount instead of the pre-discount gross", async () => {
+    const db = createMemoryDb();
+    const shifts = new ShiftService(db);
+    const reg = await shifts.createRegister("b1", "u1", "r0-discount", { name: "Discount Counter" }, "owner");
+    await shifts.openShift("b1", "u1", "r1-discount", reg.id, { openingFloatMinor: 0 }, "cashier");
+    const prod = await db.createProduct({
+      businessId: "b1", categoryId: null, name: "Discount Coke", sku: null, barcode: null,
+      brand: null, unit: "pc", costMinor: 1000, priceMinor: 2500, taxRateBps: null,
+      reorderLevel: 0, trackInventory: true, isActive: true, imageUrl: null,
+    });
+    await db.upsertBalance({ businessId: "b1", productId: prod.id, qtyOnHand: 10 });
+    const sales = new SalesService(db);
+    const draft = await sales.createDraft("b1", "u1", "r2-discount", {
+      lines: [{ productId: prod.id, qty: 2, lineDiscountMinor: 1000 }],
+      orderDiscountMinor: 0,
+      registerId: reg.id,
+    }, ALL);
+    await sales.completeSale("b1", "u1", "r3-discount", draft.id, {
+      payments: [{ method: "cash", amountMinor: draft.totalMinor }],
+      key: "discount-refund-sale",
+      granted: ALL,
+    });
+    const items = await db.listSaleItems(draft.id, "b1");
+    const refunds = new RefundService(db);
+    const out = await refunds.approveRefund("b1", "u1", "r4-discount", draft.id, {
+      items: [{ saleItemId: items[0]!.id, qty: 1 }],
+      key: "discount-refund-approve",
+    }, ALL, "owner");
+    expect(out.refund.totalMinor).toBe(2000);
+  });
+
   it("approves a full refund with all four compensating writes", async () => {
     const { db, svc, saleId, productId } = await setupRefund();
     const items = await db.listSaleItems(saleId, "b1");

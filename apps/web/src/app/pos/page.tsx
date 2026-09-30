@@ -9,13 +9,16 @@ import { ConnectivityBanner } from "../../lib/sync-ui";
 import {
   canPresentPayAction,
   paymentPresentation,
+  posSaleErrorMessage,
 } from "../../lib/pos-view";
 import {
   addProductToCart,
+  applyCartDiscounts,
   changeCartQuantity,
   filterOfflineCatalog,
   heldSaleToCart,
   isPayMongoMethodKey,
+  posDiscountSummary,
   resolveTenderedMinor,
   type PosCartEntry,
   type PosHeldSale,
@@ -28,6 +31,7 @@ import { registersForBranch } from "../../lib/workspace-branch";
 import { AppShell } from "../../components/AppShell";
 import { PosCartPanel } from "../../components/PosCartPanel";
 import { PosCustomerDialog } from "../../components/PosCustomerDialog";
+import { PosDiscountDialog } from "../../components/PosDiscountDialog";
 import { PosHeldSalesDialog } from "../../components/PosHeldSalesDialog";
 import { PosPaymentWorkspace } from "../../components/PosPaymentWorkspace";
 import { PosProductCatalog } from "../../components/PosProductCatalog";
@@ -57,8 +61,10 @@ export default function PosPage(): JSX.Element {
   const [customerQ, setCustomerQ] = useState("");
   const [customerId, setCustomerId] = useState("");
   const [walkIn, setWalkIn] = useState("");
+  const [orderDiscountMinor, setOrderDiscountMinor] = useState(0);
   const [showPay, setShowPay] = useState(false);
   const [showCustomer, setShowCustomer] = useState(false);
+  const [showDiscounts, setShowDiscounts] = useState(false);
   const [showHeldSales, setShowHeldSales] = useState(false);
   const [showTabletCart, setShowTabletCart] = useState(false);
   const [paying, setPaying] = useState(false);
@@ -93,8 +99,9 @@ export default function PosPage(): JSX.Element {
     }
   }, [registerId, scopedRegisters]);
   const canSell = role === "owner" || role === "manager" || role === "cashier";
-  const cartDue = cartTotal(cart.map((c) => ({ qty: c.qty, priceMinor: c.priceMinor, lineDiscountMinor: 0 })));
-  const due = activeDraft?.totalMinor ?? cartDue;
+  const discountSummary = posDiscountSummary(cart, orderDiscountMinor);
+  const cartDue = cartTotal(cart.map((c) => ({ qty: c.qty, priceMinor: c.priceMinor, lineDiscountMinor: c.lineDiscountMinor }))) - discountSummary.orderDiscountMinor;
+  const due = activeDraft?.totalMinor ?? Math.max(0, cartDue);
   const effectiveMethod = offline ? "cash" : method;
   const tenderedMinor = resolveTenderedMinor(received, due);
   const changeMinor = Math.max(0, tenderedMinor - due);
@@ -127,7 +134,11 @@ export default function PosPage(): JSX.Element {
       lockedSaleMessage();
       return;
     }
-    setCart((prev) => changeCartQuantity(prev, productId, delta));
+    setCart((prev) => {
+      const next = changeCartQuantity(prev, productId, delta);
+      setOrderDiscountMinor((current) => posDiscountSummary(next, current).orderDiscountMinor);
+      return next;
+    });
   }
 
   function setSaleRegister(nextRegisterId: string): void {
@@ -144,6 +155,23 @@ export default function PosPage(): JSX.Element {
       return;
     }
     setShowCustomer(true);
+  }
+
+  function openDiscounts(): void {
+    if (offline) {
+      setStatus("Reconnect before applying discounts.");
+      return;
+    }
+    if (resumedSaleLocked) {
+      lockedSaleMessage();
+      return;
+    }
+    if (cart.length === 0) {
+      setStatus("Add an item before applying discounts.");
+      return;
+    }
+    setStatus("");
+    setShowDiscounts(true);
   }
 
   function openHeldSales(): void {
@@ -177,6 +205,7 @@ export default function PosPage(): JSX.Element {
       await resumePosSale(held.sale.id);
       setCart(heldSaleToCart(held.sale));
       setActiveDraft({ id: held.sale.id, totalMinor: held.sale.totalMinor });
+      setOrderDiscountMinor(held.sale.discountMinor);
       setRegisterId(held.sale.registerId ?? "");
       setCustomerId(held.sale.customerId ?? "");
       if (held.sale.customerId) {
@@ -208,17 +237,19 @@ export default function PosPage(): JSX.Element {
         registerId,
         customerId,
         walkIn,
+        orderDiscountMinor,
         existingDraftId: activeDraft?.id,
       });
       setCart([]);
       setActiveDraft(null);
+      setOrderDiscountMinor(0);
       setCustomerId("");
       setCustomerQ("");
       setWalkIn("");
       await heldSalesQuery.refetch();
       setStatus("Sale held. Open Held sales to resume it later.");
     } catch (err) {
-      setStatus(err instanceof ApiError ? err.code + ": " + err.message : "Hold failed");
+      setStatus(err instanceof ApiError ? posSaleErrorMessage(err.code, err.message, discountSummary.totalDiscountMinor > 0) : "Hold failed");
     }
   }
 
@@ -239,6 +270,10 @@ export default function PosPage(): JSX.Element {
       setStatus("Offline selling is unavailable until this signed-in workspace is identified.");
       return;
     }
+    if (discountSummary.totalDiscountMinor > 0) {
+      setStatus("Reconnect before completing a discounted sale. Discount authorization must be checked by the server.");
+      return;
+    }
     try {
       const queued = await queueOfflinePosSale({
         store,
@@ -248,8 +283,10 @@ export default function PosPage(): JSX.Element {
         walkIn,
         received,
         dueMinor: due,
+        orderDiscountMinor,
       });
       setCart([]);
+      setOrderDiscountMinor(0);
       setReceived("");
       setShowPay(false);
       setStatus(
@@ -290,6 +327,7 @@ export default function PosPage(): JSX.Element {
         walkIn,
         received,
         method,
+        orderDiscountMinor,
         existingDraft: activeDraft ?? undefined,
       });
       if (result.kind === "redirect") {
@@ -307,13 +345,20 @@ export default function PosPage(): JSX.Element {
       }
       setCart([]);
       setActiveDraft(null);
+      setOrderDiscountMinor(0);
       setReceived("");
       setShowPay(false);
       setReconcileSaleId(null);
       setReceiptId(result.saleId);
       setStatus("Sale completed.");
     } catch (err) {
-      setStatus(err instanceof ApiError ? err.code + ": " + err.message : "Payment failed");
+      if (err instanceof ApiError) {
+        const message = posSaleErrorMessage(err.code, err.message, discountSummary.totalDiscountMinor > 0);
+        setStatus(message);
+        if (err.code === "FORBIDDEN" && discountSummary.totalDiscountMinor > 0) setShowPay(false);
+      } else {
+        setStatus("Payment failed");
+      }
     } finally {
       setPaying(false);
     }
@@ -324,7 +369,7 @@ export default function PosPage(): JSX.Element {
     : (searchQuery.data?.items ?? []);
   const count = cart.reduce((n, c) => n + c.qty, 0);
   const statusView = paymentPresentation(status);
-  const canPay = canPresentPayAction(cart.length, canSell) && reconcileId === null && !(offline && resumedSaleLocked);
+  const canPay = canPresentPayAction(cart.length, canSell) && due > 0 && reconcileId === null && !(offline && resumedSaleLocked);
   const selectedRegisterName =
     scopedRegisters.find((register) => register.id === registerId)?.name ?? "—";
 
@@ -386,6 +431,8 @@ export default function PosPage(): JSX.Element {
         <PosCartPanel
           cart={cart}
           count={count}
+          subtotalMinor={discountSummary.grossMinor}
+          discountMinor={discountSummary.totalDiscountMinor}
           due={due}
           selectedRegisterName={selectedRegisterName}
           canSell={canSell}
@@ -402,8 +449,9 @@ export default function PosPage(): JSX.Element {
           methodAvailable={methodAvailable}
           onHold={() => void holdCart()}
           onOpenHeldSales={openHeldSales}
-          onClearCart={() => setCart([])}
-          onResetSale={() => { setCart([]); setStatus(''); setReceiptId(null); }}
+          onOpenDiscounts={openDiscounts}
+          onClearCart={() => { setCart([]); setOrderDiscountMinor(0); }}
+          onResetSale={() => { setCart([]); setOrderDiscountMinor(0); setStatus(''); setReceiptId(null); }}
           onSetQty={setQty}
           onAssignCustomer={openCustomerAssignment}
           onOpenPayment={() => { setStatus(''); setShowPay(true); }}
@@ -419,6 +467,7 @@ export default function PosPage(): JSX.Element {
           cart={cart}
           count={count}
           due={due}
+          discountMinor={discountSummary.totalDiscountMinor}
           canPay={canPay}
           saleLocked={resumedSaleLocked}
           heldCount={heldSalesQuery.data?.items.length ?? 0}
@@ -441,6 +490,10 @@ export default function PosPage(): JSX.Element {
             setShowTabletCart(false);
             openHeldSales();
           }}
+          onOpenDiscounts={() => {
+            setShowTabletCart(false);
+            openDiscounts();
+          }}
           onSetQty={setQty}
           onOpenPayment={() => {
             setShowTabletCart(false);
@@ -456,6 +509,21 @@ export default function PosPage(): JSX.Element {
             busySaleId={resumingSaleId}
             onResume={(held) => void resumeHeldSale(held)}
             onClose={() => resumingSaleId === null && setShowHeldSales(false)}
+          />
+        ) : null}
+
+        {showDiscounts ? (
+          <PosDiscountDialog
+            cart={cart}
+            orderDiscountMinor={orderDiscountMinor}
+            onApply={({ orderDiscountMinor: nextOrderDiscount, lineDiscounts }) => {
+              const nextCart = applyCartDiscounts(cart, lineDiscounts);
+              setCart(nextCart);
+              setOrderDiscountMinor(posDiscountSummary(nextCart, nextOrderDiscount).orderDiscountMinor);
+              setShowDiscounts(false);
+              setStatus("Discounts applied. Server authorization will be checked when you hold or pay.");
+            }}
+            onClose={() => setShowDiscounts(false)}
           />
         ) : null}
 
