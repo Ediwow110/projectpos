@@ -15,6 +15,8 @@ class CaptureEmail implements TransactionalEmailPort {
   async sendEmailVerification(input: { to: string; name: string; token: string }): Promise<void> {
     this.verifications.push(input);
   }
+
+  async sendReceiptShare(): Promise<void> {}
 }
 
 describe("auth transactional email delivery", () => {

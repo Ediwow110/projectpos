@@ -5,6 +5,7 @@ import {
   discountApprovalSchema,
   draftCreateSchema,
   paymongoCheckoutSchema,
+  receiptEmailSchema,
   reconcileSchema,
   refundRequestSchema,
   salesQuerySchema,
@@ -582,6 +583,55 @@ export class SalesController {
     } catch (e) {
       const code = e instanceof Error ? e.message : "VALIDATION";
       fail(res, statusFor(code), code, "Receipt share failed", req);
+    }
+  }
+
+  @Post("receipts/:saleId/email")
+  @UseGuards(CsrfGuard)
+  async receiptEmail(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Param("saleId") saleId: string,
+    @Body() body: unknown,
+  ): Promise<void> {
+    const key = idemKey(req);
+    if (!key) {
+      fail(res, 400, "VALIDATION", "Idempotency-Key header required", req);
+      return;
+    }
+    const parsed = receiptEmailSchema.safeParse(body);
+    if (!parsed.success) {
+      fail(res, 400, "VALIDATION", "Invalid receipt email recipient", req);
+      return;
+    }
+    try {
+      const auth = req.auth!;
+      const out = await this.sales.sendReceiptEmail(
+        auth.businessId,
+        auth.userId,
+        rid(req),
+        saleId,
+        parsed.data.to,
+        key,
+      );
+      res.status(out.replayed ? 200 : 201).json(out);
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "VALIDATION";
+      fail(res, statusFor(code), code, "Receipt email delivery failed", req);
+    }
+  }
+
+  @Get("receipts/:saleId/deliveries")
+  async receiptDeliveries(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Param("saleId") saleId: string,
+  ): Promise<void> {
+    try {
+      res.status(200).json(await this.sales.listReceiptDeliveries(req.auth!.businessId, saleId));
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "VALIDATION";
+      fail(res, statusFor(code), code, "Receipt delivery history failed", req);
     }
   }
 }

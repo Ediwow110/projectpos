@@ -66,6 +66,10 @@ export const refundRequestSchema = z.object({
   reason: z.string().trim().min(3, "VALIDATION").max(500, "VALIDATION"),
 });
 
+export const receiptEmailSchema = z.object({
+  to: z.string().trim().email("VALIDATION").max(254, "VALIDATION"),
+}).strict();
+
 export const salesQuerySchema = z.object({
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100, "VALIDATION").default(50),

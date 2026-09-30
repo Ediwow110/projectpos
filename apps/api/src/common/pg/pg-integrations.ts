@@ -1,4 +1,4 @@
-import type { DbApiToken, DbDisplayToken, DbPrintJob, DbPrinter, DbShiftCorrection } from "../db.port";
+import type { DbApiToken, DbDisplayToken, DbPrintJob, DbPrinter, DbReceiptDelivery, DbShiftCorrection } from "../db.port";
 import { nid } from "./context";
 import type { PgContext } from "./context";
 
@@ -19,12 +19,14 @@ import type { PgContext } from "./context";
 //   UPDATE returns no row on status mismatch, which maps to memory's null.
 const API_TOKEN_COLUMNS =
   '"id", "businessId", "name", "tokenHash", "prefix", "scopes", "revokedAt", "expiresAt"';
-const PRINTER_COLUMNS = '"id", "businessId", "branchId", "name", "width", "connection", "agentTokenHash"';
+const PRINTER_COLUMNS = '"id", "businessId", "branchId", "name", "width", "connection", "agentTokenHash", "lastSeenAt"';
 const PRINT_JOB_COLUMNS =
   '"id", "businessId", "printerId", "receiptNo", "layout", "status", "payload", "attempts", "createdAt"';
 const DISPLAY_TOKEN_COLUMNS = '"id", "businessId", "registerId", "tokenHash", "expiresAt"';
 const SHIFT_CORRECTION_COLUMNS =
   '"id", "businessId", "shiftId", "amountMinor", "reason", "actorId", "requestId", "createdAt"';
+const RECEIPT_DELIVERY_COLUMNS =
+  '"id", "businessId", "saleId", "channel", "recipient", "status", "idempotencyKey", "errorCode", "sentAt", "createdAt"';
 
 // Column names come from the typed patch keys (never user input), so quoting
 // them is safe. Keys explicitly set to undefined are skipped.
@@ -116,11 +118,11 @@ export function integrationsFamily(ctx: PgContext) {
       try {
         const row = { ...p, id: nid("prt") };
         await c.query(
-          'INSERT INTO "PrinterDevice" ("id", "businessId", "branchId", "name", "width", "connection", "agentTokenHash")' +
-            ' VALUES ($1, $2, $3, $4, $5, $6, $7)',
-          [row.id, row.businessId, row.branchId, row.name, row.width, row.connection, row.agentTokenHash],
+          'INSERT INTO "PrinterDevice" ("id", "businessId", "branchId", "name", "width", "connection", "agentTokenHash", "lastSeenAt")' +
+            ' VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+          [row.id, row.businessId, row.branchId, row.name, row.width, row.connection, row.agentTokenHash, row.lastSeenAt ?? null],
         );
-        return row;
+        return { ...row, lastSeenAt: row.lastSeenAt ?? null };
       } finally {
         if (ctx.owns()) c.release();
       }
@@ -168,6 +170,26 @@ export function integrationsFamily(ctx: PgContext) {
       }
     },
 
+    async updatePrinter(
+      id: string,
+      businessId: string,
+      patch: Partial<Omit<DbPrinter, "id" | "businessId">>,
+    ): Promise<DbPrinter | null> {
+      const c = await ctx.client();
+      try {
+        const { sets, values } = buildSet(patch);
+        const r = await c.query(
+          `UPDATE "PrinterDevice" SET ${sets.length ? sets.join(", ") : '"id" = "id"'}` +
+            ` WHERE "id" = $${values.length + 1} AND "businessId" = $${values.length + 2}` +
+            ` RETURNING ${PRINTER_COLUMNS}`,
+          [...values, id, businessId],
+        );
+        return (r.rows[0] as DbPrinter | undefined) ?? null;
+      } finally {
+        if (ctx.owns()) c.release();
+      }
+    },
+
     async createPrintJob(j: Omit<DbPrintJob, "id">): Promise<DbPrintJob> {
       const c = await ctx.client();
       try {
@@ -178,6 +200,19 @@ export function integrationsFamily(ctx: PgContext) {
           [row.id, row.businessId, row.printerId, row.receiptNo, row.layout, row.status, row.payload, row.attempts, row.createdAt],
         );
         return row;
+      } finally {
+        if (ctx.owns()) c.release();
+      }
+    },
+
+    async findPrintJobById(id: string, businessId: string): Promise<DbPrintJob | null> {
+      const c = await ctx.client();
+      try {
+        const r = await c.query(
+          `SELECT ${PRINT_JOB_COLUMNS} FROM "PrintJob" WHERE "id" = $1 AND "businessId" = $2`,
+          [id, businessId],
+        );
+        return (r.rows[0] as DbPrintJob | undefined) ?? null;
       } finally {
         if (ctx.owns()) c.release();
       }
@@ -402,6 +437,61 @@ export function integrationsFamily(ctx: PgContext) {
           [tokenHash, new Date()],
         );
         return (r.rows[0] as { id: string; businessId: string; saleId: string; expiresAt: Date } | undefined) ?? null;
+      } finally {
+        if (ctx.owns()) c.release();
+      }
+    },
+
+    async claimReceiptDelivery(d: Omit<DbReceiptDelivery, "id" | "createdAt">): Promise<{ delivery: DbReceiptDelivery; claimed: boolean }> {
+      const c = await ctx.client();
+      try {
+        const row: DbReceiptDelivery = { ...d, id: nid("rdl"), createdAt: new Date() };
+        const inserted = await c.query(
+          'INSERT INTO "ReceiptDelivery" ("id", "businessId", "saleId", "channel", "recipient", "status", "idempotencyKey", "errorCode", "sentAt", "createdAt")' +
+            ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)' +
+            ' ON CONFLICT ("businessId", "idempotencyKey") DO NOTHING' +
+            ` RETURNING ${RECEIPT_DELIVERY_COLUMNS}`,
+          [row.id, row.businessId, row.saleId, row.channel, row.recipient, row.status, row.idempotencyKey, row.errorCode, row.sentAt, row.createdAt],
+        );
+        if (inserted.rows[0]) return { delivery: inserted.rows[0] as DbReceiptDelivery, claimed: true };
+        const existing = await c.query(
+          `SELECT ${RECEIPT_DELIVERY_COLUMNS} FROM "ReceiptDelivery" WHERE "businessId" = $1 AND "idempotencyKey" = $2`,
+          [d.businessId, d.idempotencyKey],
+        );
+        return { delivery: existing.rows[0] as DbReceiptDelivery, claimed: false };
+      } finally {
+        if (ctx.owns()) c.release();
+      }
+    },
+
+    async updateReceiptDelivery(
+      id: string,
+      businessId: string,
+      patch: Partial<Omit<DbReceiptDelivery, "id" | "businessId" | "saleId" | "channel" | "recipient" | "idempotencyKey" | "createdAt">>,
+    ): Promise<DbReceiptDelivery | null> {
+      const c = await ctx.client();
+      try {
+        const { sets, values } = buildSet(patch);
+        const r = await c.query(
+          `UPDATE "ReceiptDelivery" SET ${sets.length ? sets.join(", ") : '"id" = "id"'}` +
+            ` WHERE "id" = $${values.length + 1} AND "businessId" = $${values.length + 2}` +
+            ` RETURNING ${RECEIPT_DELIVERY_COLUMNS}`,
+          [...values, id, businessId],
+        );
+        return (r.rows[0] as DbReceiptDelivery | undefined) ?? null;
+      } finally {
+        if (ctx.owns()) c.release();
+      }
+    },
+
+    async listReceiptDeliveries(businessId: string, saleId: string): Promise<DbReceiptDelivery[]> {
+      const c = await ctx.client();
+      try {
+        const r = await c.query(
+          `SELECT ${RECEIPT_DELIVERY_COLUMNS} FROM "ReceiptDelivery" WHERE "businessId" = $1 AND "saleId" = $2 ORDER BY "createdAt" ASC, "id" ASC`,
+          [businessId, saleId],
+        );
+        return r.rows as DbReceiptDelivery[];
       } finally {
         if (ctx.owns()) c.release();
       }

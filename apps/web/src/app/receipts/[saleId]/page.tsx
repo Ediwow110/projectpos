@@ -2,12 +2,14 @@
 
 import type { JSX } from "react";
 import Link from "next/link";
-import { use } from "react";
+import { use, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { AppShell } from "../../../components/AppShell";
+import { ReceiptDeliveryDialog, type ReceiptDeliveryRow } from "../../../components/ReceiptDeliveryDialog";
+import { ReceiptPrinterDialog, type ReceiptPrinterOption } from "../../../components/ReceiptPrinterDialog";
 import { PageHeader, Panel } from "../../../components/premium";
-import { PrimaryButton, StatusPill } from "../../../components/ui";
+import { GhostButton, PrimaryButton, StatusPill } from "../../../components/ui";
 import { ApiError, apiFetch } from "../../../lib/api";
 
 interface Me {
@@ -31,9 +33,11 @@ interface ReceiptPayment {
 interface Receipt {
   receiptNo: string;
   saleId: string;
+  branchId: string | null;
   currency: string;
   status: string;
   customerName: string | null;
+  customerEmail: string | null;
   items: ReceiptItem[];
   subtotalMinor: number;
   discountMinor: number;
@@ -56,8 +60,104 @@ function methodLabel(method: string): string {
 
 export default function ReceiptPage({ params }: { params: Promise<{ saleId: string }> }): JSX.Element {
   const { saleId } = use(params);
+  const [showDelivery, setShowDelivery] = useState(false);
+  const [deliveryBusy, setDeliveryBusy] = useState(false);
+  const [deliveryError, setDeliveryError] = useState("");
+  const [deliverySuccess, setDeliverySuccess] = useState("");
+  const [showPrinter, setShowPrinter] = useState(false);
+  const [printBusy, setPrintBusy] = useState(false);
+  const [printError, setPrintError] = useState("");
+  const [printSuccess, setPrintSuccess] = useState("");
   const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<Me>("/api/v1/me"), retry: false });
   const receiptQuery = useQuery({ queryKey: ["receipt", saleId], queryFn: () => apiFetch<Receipt>(`/api/v1/receipts/${saleId}`), retry: false });
+  const deliveriesQuery = useQuery({
+    queryKey: ["receipt-deliveries", saleId],
+    queryFn: () => apiFetch<{ items: ReceiptDeliveryRow[] }>(`/api/v1/receipts/${saleId}/deliveries`),
+    retry: false,
+    enabled: Boolean(receiptQuery.data),
+  });
+  const printersQuery = useQuery({
+    queryKey: ["receipt-printers"],
+    queryFn: () => apiFetch<{ items: ReceiptPrinterOption[] }>("/api/v1/printers"),
+    retry: false,
+    enabled: Boolean(receiptQuery.data),
+  });
+  const branchesQuery = useQuery({
+    queryKey: ["receipt-branches"],
+    queryFn: () => apiFetch<{ items: Array<{ id: string; name: string; isActive: boolean }> }>("/api/v1/branches"),
+    retry: false,
+    enabled: Boolean(receiptQuery.data),
+  });
+
+  async function sendEmail(to: string): Promise<void> {
+    if (deliveryBusy) return;
+    setDeliveryBusy(true);
+    setDeliveryError("");
+    setDeliverySuccess("");
+    try {
+      const csrf = await apiFetch<{ csrfToken: string }>("/api/v1/auth/csrf");
+      await apiFetch(`/api/v1/receipts/${saleId}/email`, {
+        csrfToken: csrf.csrfToken,
+        init: {
+          method: "POST",
+          headers: { "Idempotency-Key": `receipt-email-${crypto.randomUUID()}` },
+          body: JSON.stringify({ to }),
+        },
+      });
+      setDeliverySuccess(`Receipt emailed to ${to}.`);
+      await deliveriesQuery.refetch();
+    } catch (err) {
+      setDeliveryError(err instanceof ApiError ? `${err.code}: ${err.message}` : "Could not email receipt.");
+      await deliveriesQuery.refetch();
+    } finally {
+      setDeliveryBusy(false);
+    }
+  }
+
+  async function createShareLink(): Promise<void> {
+    if (deliveryBusy) return;
+    setDeliveryBusy(true);
+    setDeliveryError("");
+    setDeliverySuccess("");
+    try {
+      const csrf = await apiFetch<{ csrfToken: string }>("/api/v1/auth/csrf");
+      const share = await apiFetch<{ token: string; expiresAt: string }>(`/api/v1/receipts/${saleId}/share`, {
+        csrfToken: csrf.csrfToken,
+        init: { method: "POST", body: "{}" },
+      });
+      const url = `${window.location.origin}/receipts/shared/${encodeURIComponent(share.token)}`;
+      await navigator.clipboard.writeText(url);
+      setDeliverySuccess("Secure receipt link copied. It expires in 24 hours.");
+    } catch (err) {
+      setDeliveryError(err instanceof ApiError ? `${err.code}: ${err.message}` : "Could not create receipt share link.");
+    } finally {
+      setDeliveryBusy(false);
+    }
+  }
+
+  async function queueReceiptPrint(printerId: string): Promise<void> {
+    if (!receipt || printBusy) return;
+    setPrintBusy(true);
+    setPrintError("");
+    setPrintSuccess("");
+    try {
+      const csrf = await apiFetch<{ csrfToken: string }>("/api/v1/auth/csrf");
+      await apiFetch("/api/v1/print-jobs", {
+        csrfToken: csrf.csrfToken,
+        init: {
+          method: "POST",
+          body: JSON.stringify({ printerId, receiptNo: receipt.receiptNo }),
+        },
+      });
+      const printer = (printersQuery.data?.items ?? []).find((item) => item.id === printerId);
+      setShowPrinter(false);
+      setPrintSuccess(`Receipt queued to ${printer?.name ?? "printer"}. Sent status later means the printer agent claimed it.`);
+    } catch (err) {
+      setPrintError(err instanceof ApiError ? `${err.code}: ${err.message}` : "Could not queue receipt print.");
+    } finally {
+      setPrintBusy(false);
+    }
+  }
 
   if (receiptQuery.isError || (!receiptQuery.isLoading && !receiptQuery.data)) {
     return (
@@ -85,11 +185,15 @@ export default function ReceiptPage({ params }: { params: Promise<{ saleId: stri
             actions={
               <>
                 <Link href={`/sales/${saleId}`} className="inline-flex min-h-10 items-center rounded-[10px] border border-[#e4d9d0] bg-white px-4 text-sm font-semibold text-[#2a241f] hover:border-[#f35d3f]">← Sale detail</Link>
-                <PrimaryButton type="button" onClick={() => window.print()}>Print receipt</PrimaryButton>
+                <GhostButton type="button" onClick={() => { setDeliveryError(""); setDeliverySuccess(""); setShowDelivery(true); }}>Deliver receipt</GhostButton>
+                <GhostButton type="button" onClick={() => { setPrintError(""); setShowPrinter(true); }}>Print to device</GhostButton>
+                <PrimaryButton type="button" onClick={() => window.print()}>Browser print</PrimaryButton>
               </>
             }
           />
         </div>
+
+        {printSuccess ? <p role="status" className="print:hidden rounded-xl bg-[#edf8f1] px-4 py-3 text-[12px] font-medium text-[#31744c]">{printSuccess}</p> : null}
 
         {receipt ? (
           <article data-ui="printable-receipt" aria-label="Receipt" className="mx-auto w-full max-w-[430px] overflow-hidden rounded-[18px] border border-[#eadfd6] bg-white shadow-[0_18px_48px_-20px_rgb(22_18_14/0.22)] print:max-w-[80mm] print:rounded-none print:border-0 print:shadow-none">
@@ -135,6 +239,33 @@ export default function ReceiptPage({ params }: { params: Promise<{ saleId: stri
             <footer className="border-t border-dashed border-[#d8ccc2] px-6 py-5 text-center"><p className="text-[10px] font-semibold text-[#2a241f]">Thank you.</p><p className="font-data mt-2 text-[8px] text-[#9a8d83]">Sale {receipt.saleId.slice(0, 8)} · {receipt.currency}</p></footer>
           </article>
         ) : <Panel className="p-6 text-sm text-[#73685f]">Loading receipt…</Panel>}
+
+        {showDelivery && receipt ? (
+          <ReceiptDeliveryDialog
+            receiptNo={receipt.receiptNo}
+            customerEmail={receipt.customerEmail}
+            deliveries={deliveriesQuery.data?.items ?? []}
+            busy={deliveryBusy}
+            error={deliveryError}
+            success={deliverySuccess}
+            onEmail={(to) => void sendEmail(to)}
+            onShare={() => void createShareLink()}
+            onClose={() => setShowDelivery(false)}
+          />
+        ) : null}
+
+        {showPrinter && receipt ? (
+          <ReceiptPrinterDialog
+            receiptNo={receipt.receiptNo}
+            receiptBranchId={receipt.branchId}
+            printers={printersQuery.data?.items ?? []}
+            branches={(branchesQuery.data?.items ?? []).filter((branch) => branch.isActive)}
+            busy={printBusy}
+            error={printError}
+            onQueue={(printerId) => void queueReceiptPrint(printerId)}
+            onClose={() => setShowPrinter(false)}
+          />
+        ) : null}
       </main>
       <style>{`@media print { [data-ui="shell-header"], [data-ui="shell-mobile-nav"], [data-ui="shell-sidebar"], [data-ui="shell-footer"] { display: none !important; } [data-ui="shell-body"] { display: block !important; max-width: none !important; } [data-ui="shell-main"] { width: 100% !important; } body { background: #fff !important; } main { padding: 0 !important; } }`}</style>
     </AppShell>

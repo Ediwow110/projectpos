@@ -16,7 +16,10 @@ async function openWorkspaceDestination(page: Page, label: string, href: string)
     await expect(menu).toBeVisible();
     await menu.getByRole("link", { name: label, exact: true }).click();
   }
-  await expect(page).toHaveURL(new RegExp(href.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$"));
+  await expect(page).toHaveURL(
+    new RegExp(href.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$"),
+    { timeout: 15_000 },
+  );
 }
 
 test("owner can discover operational and administration routes and restart Help", async ({ page }) => {

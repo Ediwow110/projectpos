@@ -1,4 +1,4 @@
-import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCashMovement, DbCategory, DbCustomer, DbDevice, DbExchange, DbExpense, DbFeatureFlag, DbHeldSale, DbIdempotency, DbInvoice, DbMovement, DbPayment, DbPlan, DbMembership, DbPort, DbPrinter, DbPrintJob, DbProduct, DbRefund, DbRefundItem, DbRegister, DbResetToken, DbSale, DbSaleItem, DbSession, DbShift, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbDisplayToken, DbUsageCounter, DbUser, DbWebhookEvent } from "../db.port";
+import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCashMovement, DbCategory, DbCustomer, DbDevice, DbExchange, DbExpense, DbFeatureFlag, DbHeldSale, DbIdempotency, DbInvoice, DbMovement, DbPayment, DbPlan, DbMembership, DbPort, DbPrinter, DbPrintJob, DbProduct, DbReceiptDelivery, DbRefund, DbRefundItem, DbRegister, DbResetToken, DbSale, DbSaleItem, DbSession, DbShift, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbDisplayToken, DbUsageCounter, DbUser, DbWebhookEvent } from "../db.port";
 import { PgContext } from "./context";
 import { settingsFamily } from "./pg-settings";
 import { auditFamily } from "./pg-audit";
@@ -295,8 +295,14 @@ export class PgDbPort implements DbPort {
   findPrinterByAgentTokenHash(tokenHash: string): Promise<DbPrinter | null> {
     return this.integrations.findPrinterByAgentTokenHash(tokenHash);
   }
+  updatePrinter(id: string, businessId: string, patch: Partial<Omit<DbPrinter, "id" | "businessId">>): Promise<DbPrinter | null> {
+    return this.integrations.updatePrinter(id, businessId, patch);
+  }
   createPrintJob(j: Omit<DbPrintJob, "id">): Promise<DbPrintJob> {
     return this.integrations.createPrintJob(j);
+  }
+  findPrintJobById(id: string, businessId: string): Promise<DbPrintJob | null> {
+    return this.integrations.findPrintJobById(id, businessId);
   }
   listPrintJobs(businessId: string, status?: string): Promise<DbPrintJob[]> {
     return this.integrations.listPrintJobs(businessId, status);
@@ -339,6 +345,15 @@ export class PgDbPort implements DbPort {
   }
   findValidReceiptShare(tokenHash: string): Promise<{ id: string; businessId: string; saleId: string; expiresAt: Date } | null> {
     return this.integrations.findValidReceiptShare(tokenHash);
+  }
+  claimReceiptDelivery(d: Omit<DbReceiptDelivery, "id" | "createdAt">): Promise<{ delivery: DbReceiptDelivery; claimed: boolean }> {
+    return this.integrations.claimReceiptDelivery(d);
+  }
+  updateReceiptDelivery(id: string, businessId: string, patch: Partial<Omit<DbReceiptDelivery, "id" | "businessId" | "saleId" | "channel" | "recipient" | "idempotencyKey" | "createdAt">>): Promise<DbReceiptDelivery | null> {
+    return this.integrations.updateReceiptDelivery(id, businessId, patch);
+  }
+  listReceiptDeliveries(businessId: string, saleId: string): Promise<DbReceiptDelivery[]> {
+    return this.integrations.listReceiptDeliveries(businessId, saleId);
   }
   // People family.
   createCustomer(c: Omit<DbCustomer, "id">): Promise<DbCustomer> {

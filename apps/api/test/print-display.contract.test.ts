@@ -83,6 +83,60 @@ describe("phase10 printers and display HTTP contract", () => {
     expect(empty.status).toBe(404);
     expect(empty.body.code).toBe("NOT_FOUND");
   });
+  it("administers printer settings, default, test print, queue visibility, presence, and requeue", async () => {
+    const enrolled = await request(app.getHttpServer()).post("/api/v1/printers")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ name: "Admin printer", width: "80", connection: "manual" });
+    expect(enrolled.status).toBe(201);
+    const printerId = enrolled.body.id as string;
+    const agentToken = enrolled.body.agentToken as string;
+
+    const updated = await request(app.getHttpServer()).post(`/api/v1/printers/${printerId}/settings`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ name: "Front Till Printer", width: "58", branchId: null });
+    expect(updated.status).toBe(200);
+    expect(updated.body).toMatchObject({ name: "Front Till Printer", width: "58", branchId: null });
+    expect(updated.body).not.toHaveProperty("agentTokenHash");
+
+    const setDefault = await request(app.getHttpServer()).post(`/api/v1/printers/${printerId}/default`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf).send({});
+    expect(setDefault.status).toBe(200);
+    expect(setDefault.body.isDefault).toBe(true);
+
+    const testPrint = await request(app.getHttpServer()).post(`/api/v1/printers/${printerId}/test`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf).send({});
+    expect(testPrint.status).toBe(201);
+    expect(testPrint.body.status).toBe("QUEUED");
+
+    const beforePickup = await request(app.getHttpServer()).get("/api/v1/print-jobs").set("Cookie", cookie);
+    expect(beforePickup.status).toBe(200);
+    const queuedView = beforePickup.body.items.find((job: { id: string }) => job.id === testPrint.body.id);
+    expect(queuedView).toMatchObject({ status: "QUEUED", printerId });
+    expect(queuedView).not.toHaveProperty("payload");
+
+    const claimed = await request(app.getHttpServer())
+      .get(`/api/v1/print-jobs/next?printerId=${printerId}`)
+      .set("x-printer-agent", agentToken);
+    expect(claimed.status).toBe(200);
+    expect(Buffer.from(claimed.body.payload as string, "base64").toString("ascii")).toContain("NEXPOS PRINTER TEST");
+
+    const printerList = await request(app.getHttpServer()).get("/api/v1/printers").set("Cookie", cookie);
+    const printer = printerList.body.items.find((item: { id: string }) => item.id === printerId);
+    expect(printer).toMatchObject({ isDefault: true, agentStatus: "online" });
+    expect(printer.lastSeenAt).toBeTruthy();
+    expect(printer).not.toHaveProperty("agentTokenHash");
+
+    const retried = await request(app.getHttpServer()).post(`/api/v1/print-jobs/${claimed.body.id}/retry`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf).send({});
+    expect(retried.status).toBe(201);
+    expect(retried.body.id).not.toBe(claimed.body.id);
+    expect(retried.body.status).toBe("QUEUED");
+
+    const afterRetry = await request(app.getHttpServer()).get(`/api/v1/print-jobs?printerId=${printerId}`).set("Cookie", cookie);
+    expect(afterRetry.status).toBe(200);
+    expect(afterRetry.body.items.map((job: { status: string }) => job.status)).toEqual(["QUEUED", "SENT"]);
+    expect(afterRetry.body.items.every((job: Record<string, unknown>) => !("payload" in job))).toBe(true);
+  });
   it("refuses an agent token that belongs to another printer", async () => {
     const first = await request(app.getHttpServer()).post("/api/v1/printers")
       .set("Cookie", cookie).set("X-CSRF-Token", csrf)

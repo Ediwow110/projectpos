@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Inject, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
 import type { Request, Response } from "express";
-import { printerEnrollSchema, printJobSchema } from "@pos/validation";
+import { printerEnrollSchema, printerUpdateSchema, printJobSchema } from "@pos/validation";
 import { SessionGuard } from "../../common/session.guard";
 import { CsrfGuard } from "../../common/csrf.guard";
 import { getCorrelationId } from "../../correlation";
@@ -90,6 +90,94 @@ export class PrintController {
     } catch (e) {
       const code = e instanceof Error ? e.message : "VALIDATION";
       fail(res, statusFor(code), code, "Print queue failed", req);
+    }
+  }
+
+  @Post("printers/:id/settings")
+  @UseGuards(SessionGuard, CsrfGuard)
+  async updatePrinter(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Param("id") id: string,
+    @Body() body: unknown,
+  ): Promise<void> {
+    const parsed = printerUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+      fail(res, 400, "VALIDATION", "Invalid printer settings", req);
+      return;
+    }
+    try {
+      const auth = req.auth!;
+      res.status(200).json(await this.printers.updatePrinter(
+        auth.businessId, auth.userId, rid(req), id, parsed.data, auth.role,
+      ));
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "VALIDATION";
+      fail(res, statusFor(code), code, "Printer update failed", req);
+    }
+  }
+
+  @Post("printers/:id/default")
+  @UseGuards(SessionGuard, CsrfGuard)
+  async setDefault(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Param("id") id: string,
+  ): Promise<void> {
+    try {
+      const auth = req.auth!;
+      res.status(200).json(await this.printers.setDefaultPrinter(auth.businessId, auth.userId, rid(req), id, auth.role));
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "VALIDATION";
+      fail(res, statusFor(code), code, "Default printer update failed", req);
+    }
+  }
+
+  @Post("printers/:id/test")
+  @UseGuards(SessionGuard, CsrfGuard)
+  async testPrint(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Param("id") id: string,
+  ): Promise<void> {
+    try {
+      const auth = req.auth!;
+      res.status(201).json(await this.printers.queueTestJob(auth.businessId, auth.userId, rid(req), id, auth.role));
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "VALIDATION";
+      fail(res, statusFor(code), code, "Test print queue failed", req);
+    }
+  }
+
+  @Get("print-jobs")
+  @UseGuards(SessionGuard)
+  async listJobs(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Query() query: Record<string, string>,
+  ): Promise<void> {
+    try {
+      const auth = req.auth!;
+      res.status(200).json(await this.printers.listJobs(auth.businessId, query["printerId"], auth.role));
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "VALIDATION";
+      fail(res, statusFor(code), code, "Print queue fetch failed", req);
+    }
+  }
+
+  @Post("print-jobs/:id/retry")
+  @UseGuards(SessionGuard, CsrfGuard)
+  async retryJob(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Param("id") id: string,
+  ): Promise<void> {
+    try {
+      const auth = req.auth!;
+      res.status(201).json(await this.printers.retryJob(auth.businessId, auth.userId, rid(req), id, auth.role));
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "VALIDATION";
+      fail(res, statusFor(code), code, "Print requeue failed", req);
     }
   }
 

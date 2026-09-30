@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { draftCreateSchema, completeSchema, discountApprovalSchema, reconcileSchema } from "../src/sales.schema";
+import { draftCreateSchema, completeSchema, discountApprovalSchema, receiptEmailSchema, reconcileSchema } from "../src/sales.schema";
 
 describe("phase4 sales schemas", () => {
   it("rejects empty cart lines", () => {
@@ -68,6 +68,11 @@ describe("phase4 sales schemas", () => {
       idempotencyKey: "key-qrph-1",
     });
     expect(out.payments[0]?.method).toBe("qrph");
+  });
+  it("validates a receipt email recipient without accepting arbitrary delivery payloads", () => {
+    expect(receiptEmailSchema.parse({ to: " Customer@example.com " })).toEqual({ to: "Customer@example.com" });
+    expect(() => receiptEmailSchema.parse({ to: "not-an-email" })).toThrow();
+    expect(() => receiptEmailSchema.parse({ to: "customer@example.com", channel: "sms" })).toThrow();
   });
 });
 

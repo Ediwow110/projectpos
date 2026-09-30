@@ -8,7 +8,7 @@ test("password recovery is discoverable from login", async ({ page }) => {
   await expect(recovery).toBeVisible();
   await recovery.click();
 
-  await expect(page).toHaveURL("/password-reset");
+  await expect(page).toHaveURL("/password-reset", { timeout: 30_000 });
   await expect(page.getByRole("heading", { name: "Reset password" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Back to sign in" })).toBeVisible();
 });

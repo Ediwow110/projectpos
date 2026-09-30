@@ -109,6 +109,7 @@ export interface DbPrinter {
   // Hash of the paired-agent token; null for printers enrolled before agent
   // tokens existed (they simply cannot poll until re-enrolled).
   agentTokenHash: string | null;
+  lastSeenAt?: Date | null;
 }
 
 export interface DbPrintJob {
@@ -120,6 +121,19 @@ export interface DbPrintJob {
   status: string;
   payload: string;
   attempts: number;
+  createdAt: Date;
+}
+
+export interface DbReceiptDelivery {
+  id: string;
+  businessId: string;
+  saleId: string;
+  channel: "email";
+  recipient: string;
+  status: "PENDING" | "SENT" | "FAILED";
+  idempotencyKey: string;
+  errorCode: string | null;
+  sentAt: Date | null;
   createdAt: Date;
 }
 
@@ -527,6 +541,9 @@ export interface DbPort {
   listShiftCorrections(businessId: string, shiftId: string): Promise<DbShiftCorrection[]>;
   createReceiptShare(s: { businessId: string; saleId: string; tokenHash: string; expiresAt: Date }): Promise<{ id: string }>;
   findValidReceiptShare(tokenHash: string): Promise<{ id: string; businessId: string; saleId: string; expiresAt: Date } | null>;
+  claimReceiptDelivery(d: Omit<DbReceiptDelivery, "id" | "createdAt">): Promise<{ delivery: DbReceiptDelivery; claimed: boolean }>;
+  updateReceiptDelivery(id: string, businessId: string, patch: Partial<Omit<DbReceiptDelivery, "id" | "businessId" | "saleId" | "channel" | "recipient" | "idempotencyKey" | "createdAt">>): Promise<DbReceiptDelivery | null>;
+  listReceiptDeliveries(businessId: string, saleId: string): Promise<DbReceiptDelivery[]>;
   getSettings(businessId: string): Promise<Record<string, unknown>>;
   saveSettings(businessId: string, settings: Record<string, unknown>): Promise<void>;
   appendAudit(e: AuditEntry): Promise<void>;
@@ -655,7 +672,9 @@ export interface DbPort {
   listPrinters(businessId: string): Promise<DbPrinter[]>;
   findPrinterById(id: string, businessId: string): Promise<DbPrinter | null>;
   findPrinterByAgentTokenHash(tokenHash: string): Promise<DbPrinter | null>;
+  updatePrinter(id: string, businessId: string, patch: Partial<Omit<DbPrinter, "id" | "businessId">>): Promise<DbPrinter | null>;
   createPrintJob(j: Omit<DbPrintJob, "id">): Promise<DbPrintJob>;
+  findPrintJobById(id: string, businessId: string): Promise<DbPrintJob | null>;
   listPrintJobs(businessId: string, status?: string): Promise<DbPrintJob[]>;
   updatePrintJob(id: string, businessId: string, patch: Partial<Omit<DbPrintJob, "id" | "businessId">>, expectedStatus?: string): Promise<DbPrintJob | null>;
   createDisplayToken(t: Omit<DbDisplayToken, "id">): Promise<DbDisplayToken>;

@@ -15,6 +15,7 @@ describe("workspace navigation", () => {
       "/transfers",
       "/team",
       "/devices",
+      "/printers",
       "/admin",
       "/sync",
     ]));
@@ -28,6 +29,7 @@ describe("workspace navigation", () => {
     expect(hrefs).toContain("/pos");
     expect(hrefs).toContain("/shifts");
     expect(hrefs).not.toContain("/team");
+    expect(hrefs).not.toContain("/printers");
     expect(hrefs).not.toContain("/admin");
     expect(hrefs).not.toContain("/expenses");
     expect(hrefs).not.toContain("/transfers");

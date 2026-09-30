@@ -19,6 +19,7 @@ const OWNER_DESTINATIONS = [
   { href: "/devices", title: "Devices", description: "Register, review, and revoke trusted tills or workstations.", icon: "▦" },
   { href: "/branches", title: "Branches", description: "Manage the store locations used by operational records.", icon: "⌘" },
   { href: "/registers", title: "Registers", description: "Maintain the registers used for shifts and selling.", icon: "▣" },
+  { href: "/printers", title: "Printers", description: "Pair receipt printers, choose defaults, test output, and review print queues.", icon: "▧" },
 ] as const;
 
 export default function AdminPage(): JSX.Element {

@@ -37,6 +37,12 @@ export const printerEnrollSchema = z.object({
   connection: z.enum(["test-double", "manual"]).default("test-double"),
 });
 
+export const printerUpdateSchema = z.object({
+  name: z.string().trim().min(1, "VALIDATION").max(80, "VALIDATION").optional(),
+  branchId: z.string().min(1, "VALIDATION").nullable().optional(),
+  width: z.enum(["58", "80"]).optional(),
+}).strict().refine((value) => Object.keys(value).length > 0, "VALIDATION");
+
 export const printJobSchema = z.object({
   printerId: z.string().min(1, "VALIDATION"),
   receiptNo: z.string().min(1, "VALIDATION").max(32, "VALIDATION").optional(),

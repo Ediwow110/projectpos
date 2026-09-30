@@ -61,6 +61,28 @@ describe("transactional email", () => {
     );
   });
 
+  it("sends a customer receipt link without exposing internal sale data in the URL", async () => {
+    const transport = new CaptureTransport();
+    const service = new TransactionalEmailService(transport, {
+      from: "NexPOS <noreply@example.com>",
+      webUrl: "https://pos.example.com",
+    });
+
+    await service.sendReceiptShare({
+      to: "customer@example.com",
+      customerName: "Ana <Cruz>",
+      receiptNo: "2026-000123",
+      token: "receipt-token/+?&",
+    });
+
+    const message = transport.messages[0]!;
+    expect(message.to).toBe("customer@example.com");
+    expect(message.subject).toContain("2026-000123");
+    expect(message.text).toContain("https://pos.example.com/receipts/shared/receipt-token%2F%2B%3F%26");
+    expect(message.html).toContain("https://pos.example.com/receipts/shared/receipt-token%2F%2B%3F%26");
+    expect(message.html).not.toContain("Ana <Cruz>");
+  });
+
   it("requires complete SMTP configuration in production", () => {
     expect(() => loadEmailConfig({ NODE_ENV: "production" })).toThrow("ENV_MISSING_EMAIL_CONFIG");
     expect(() =>
@@ -82,6 +104,13 @@ describe("transactional email", () => {
         WEB_URL: "http://pos.example.com",
       }),
     ).toThrow("ENV_INVALID_EMAIL_CONFIG");
+  });
+
+  it("keeps email disabled in development when only the shared WEB_URL is configured", () => {
+    expect(loadEmailConfig({
+      NODE_ENV: "development",
+      WEB_URL: "http://localhost:3100",
+    })).toEqual({ enabled: false });
   });
 
   it("accepts authenticated SMTP configuration and normalizes the web URL", () => {

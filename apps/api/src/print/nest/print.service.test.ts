@@ -21,6 +21,59 @@ async function setup() {
 }
 
 describe("phase10 print jobs", () => {
+  it("manages branch/default setup, test prints, agent presence, and explicit requeue", async () => {
+    const db = createMemoryDb();
+    const service = new PrintService(db);
+    const business = await db.createBusiness({ name: "Printer Shop", currency: "PHP" });
+    const branch = await db.createBranch({ businessId: business.id, name: "Mall Branch", type: "STORE", isActive: true });
+
+    const enrolled = await service.enrollPrinter(business.id, "owner-1", "printer-r1", {
+      name: "Front Till",
+      width: "80",
+      connection: "manual",
+    }, "owner");
+    agentSecrets.set(enrolled.id, enrolled.agentToken);
+    expect(enrolled.agentToken).toMatch(/^prn_/);
+    expect((await service.listPrinters(business.id))[0]).toMatchObject({
+      id: enrolled.id,
+      isDefault: false,
+      agentStatus: "never",
+      lastSeenAt: null,
+    });
+
+    await service.updatePrinter(business.id, "owner-1", "printer-r2", enrolled.id, {
+      name: "Mall Front Till",
+      width: "58",
+      branchId: branch.id,
+    }, "owner");
+    await service.setDefaultPrinter(business.id, "owner-1", "printer-r3", enrolled.id, "owner");
+    expect((await service.listPrinters(business.id))[0]).toMatchObject({
+      name: "Mall Front Till",
+      width: "58",
+      branchId: branch.id,
+      isDefault: true,
+    });
+
+    const testJob = await service.queueTestJob(business.id, "owner-1", "printer-r4", enrolled.id, "owner");
+    expect(testJob.status).toBe("QUEUED");
+    expect(Buffer.from(testJob.payload, "base64").toString("ascii")).toContain("NEXPOS PRINTER TEST");
+
+    const sent = await service.claimNextJob(enrolled.id, agentOf(db, enrolled.id));
+    expect(sent.id).toBe(testJob.id);
+    const online = (await service.listPrinters(business.id))[0]!;
+    expect(online.agentStatus).toBe("online");
+    expect(online.lastSeenAt).toBeInstanceOf(Date);
+
+    const retried = await service.retryJob(business.id, "owner-1", "printer-r5", testJob.id, "owner");
+    expect(retried.id).not.toBe(testJob.id);
+    expect(retried.status).toBe("QUEUED");
+    expect(retried.payload).toBe(testJob.payload);
+    const jobs = await service.listJobs(business.id, enrolled.id, "owner");
+    expect(jobs.items.map((job) => job.status)).toEqual(["QUEUED", "SENT"]);
+
+    await expect(service.setDefaultPrinter(business.id, "cashier-1", "printer-r6", enrolled.id, "cashier")).rejects.toThrow("FORBIDDEN");
+  });
+
   it("claims queued jobs in creation order, not id order", async () => {
     const { db, service, printer } = await setup();
     const later = await db.createPrintJob({
@@ -142,5 +195,44 @@ describe("phase10 print jobs", () => {
     const text = Buffer.from(job.payload, "base64").toString("ascii");
     expect(text).toContain("Salamat Shop");
     expect(text).toContain("Salamat ulit kayo");
+  });
+
+  it("rejects a receipt queued to a printer assigned to another branch but allows an unassigned printer", async () => {
+    const db = createMemoryDb();
+    const service = new PrintService(db);
+    const business = await db.createBusiness({ name: "Branch Print Shop", currency: "PHP" });
+    const branchA = await db.createBranch({ businessId: business.id, name: "Branch A", type: "store", isActive: true });
+    const branchB = await db.createBranch({ businessId: business.id, name: "Branch B", type: "store", isActive: true });
+    const { agentTokenHash } = mintAgentToken();
+    const wrongBranchPrinter = await db.createPrinter({
+      businessId: business.id, branchId: branchB.id, name: "Branch B Printer", width: "80",
+      connection: "manual", agentTokenHash,
+    });
+    const unassignedPrinter = await db.createPrinter({
+      businessId: business.id, branchId: null, name: "Shared Printer", width: "80",
+      connection: "manual", agentTokenHash: null,
+    });
+    const product = await db.createProduct({
+      businessId: business.id, categoryId: null, name: "Branch Item", sku: null, barcode: null,
+      brand: null, unit: "pc", costMinor: 500, priceMinor: 1500, taxRateBps: null,
+      reorderLevel: 0, trackInventory: false, isActive: true, imageUrl: null,
+    });
+    const { SalesService } = await import("../../sales/nest/sales.service");
+    const sales = new SalesService(db);
+    const draft = await sales.createDraft(business.id, "u1", "r1", {
+      branchId: branchA.id,
+      lines: [{ productId: product.id, qty: 1, lineDiscountMinor: 0 }],
+      orderDiscountMinor: 0,
+    }, []);
+    const done = await sales.completeSale(business.id, "u1", "r1", draft.id, {
+      payments: [{ method: "cash", amountMinor: draft.totalMinor }], key: "branch-print-sale", granted: [],
+    });
+
+    await expect(service.queueJob(business.id, "u1", "r2", {
+      printerId: wrongBranchPrinter.id, receiptNo: done.sale.receiptNo,
+    }, "owner")).rejects.toThrow("FORBIDDEN");
+    await expect(service.queueJob(business.id, "u1", "r3", {
+      printerId: unassignedPrinter.id, receiptNo: done.sale.receiptNo,
+    }, "owner")).resolves.toMatchObject({ printerId: unassignedPrinter.id });
   });
 });

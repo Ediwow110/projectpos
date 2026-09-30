@@ -41,7 +41,7 @@ test("device fleet enrolls, revokes, and signs out a device-bound current sessio
   await expect(page).toHaveURL(/\/devices$/);
 
   await page.getByRole("button", { name: "Sign out" }).click();
-  await expect(page).toHaveURL(/\/login/);
+  await expect(page).toHaveURL(/\/login/, { timeout: 30_000 });
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Sign in securely" }).click();

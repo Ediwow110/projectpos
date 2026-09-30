@@ -119,8 +119,8 @@ function runtimeDatabaseUrl(): string | undefined {
     InventoryService,
     {
       provide: SalesService,
-      useFactory: (d: DbPort, paymongo: PayMongoPort) => new SalesService(d, paymongo),
-      inject: ["DbPort", PAYMONGO_PORT],
+      useFactory: (d: DbPort, paymongo: PayMongoPort, email: TransactionalEmailPort) => new SalesService(d, paymongo, email),
+      inject: ["DbPort", PAYMONGO_PORT, TRANSACTIONAL_EMAIL_PORT],
     },
     ShiftService,
     CustomerService,
@@ -183,7 +183,7 @@ export class AppModule implements NestModule {
   }
 }
 
-export async function createTestApp(options: { paymongo?: PayMongoPort; humanVerification?: HumanVerificationPort } = {}): Promise<INestApplication> {
+export async function createTestApp(options: { paymongo?: PayMongoPort; humanVerification?: HumanVerificationPort; email?: TransactionalEmailPort } = {}): Promise<INestApplication> {
   // Same store contract as boot: memory unless DATABASE_URL opts into
   // PostgreSQL (used by the load cohorts and any pg-backed contract run).
   const databaseUrl = runtimeDatabaseUrl();
@@ -196,7 +196,7 @@ export async function createTestApp(options: { paymongo?: PayMongoPort; humanVer
       { provide: "DbPort", useValue: db },
       { provide: PAYMONGO_PORT, useValue: options.paymongo ?? createPayMongoFromEnv({}) },
       { provide: HUMAN_VERIFICATION_PORT, useValue: options.humanVerification ?? DISABLED_HUMAN_VERIFICATION },
-      { provide: TRANSACTIONAL_EMAIL_PORT, useValue: NOOP_TRANSACTIONAL_EMAIL },
+      { provide: TRANSACTIONAL_EMAIL_PORT, useValue: options.email ?? NOOP_TRANSACTIONAL_EMAIL },
       {
         provide: AuthService,
         useFactory: (d: DbPort, email: TransactionalEmailPort) => new AuthService(d, email),
@@ -224,8 +224,8 @@ export async function createTestApp(options: { paymongo?: PayMongoPort; humanVer
       },
       {
         provide: SalesService,
-        useFactory: (d: DbPort, paymongo: PayMongoPort) => new SalesService(d, paymongo),
-        inject: ["DbPort", PAYMONGO_PORT],
+        useFactory: (d: DbPort, paymongo: PayMongoPort, email: TransactionalEmailPort) => new SalesService(d, paymongo, email),
+        inject: ["DbPort", PAYMONGO_PORT, TRANSACTIONAL_EMAIL_PORT],
       },
       {
         provide: ShiftService,

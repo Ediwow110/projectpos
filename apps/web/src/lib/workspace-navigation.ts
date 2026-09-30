@@ -27,6 +27,7 @@ const ITEMS = {
   sync: { href: "/sync", label: "Sync", icon: "↻", tour: "sync" },
   team: { href: "/team", label: "Team", icon: "◎", tour: "team" },
   devices: { href: "/devices", label: "Devices", icon: "▦", tour: "devices" },
+  printers: { href: "/printers", label: "Printers", icon: "▧", tour: "printers" },
   admin: { href: "/admin", label: "Administration / Help", icon: "?", tour: "admin" },
 } as const satisfies Record<string, WorkspaceNavigationItem>;
 
@@ -54,7 +55,7 @@ export function workspaceNavigationForRole(role?: string): WorkspaceNavigationGr
       group("Catalog & stock", ["products", "categories", "inventory"]),
       group("Operations", ["registers", "shifts", "transfers", "expenses"]),
       group("Insights", ["reports"]),
-      group("Administration", ["branches", "devices", "sync", "admin"]),
+      group("Administration", ["branches", "devices", "printers", "sync", "admin"]),
     ];
   }
   return [
@@ -62,7 +63,7 @@ export function workspaceNavigationForRole(role?: string): WorkspaceNavigationGr
     group("Catalog & stock", ["products", "categories", "inventory"]),
     group("Operations", ["registers", "shifts", "transfers", "expenses"]),
     group("Insights", ["reports"]),
-    group("Administration", ["branches", "devices", "sync", "team", "admin"]),
+    group("Administration", ["branches", "devices", "printers", "sync", "team", "admin"]),
   ];
 }
 

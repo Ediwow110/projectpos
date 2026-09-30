@@ -25,6 +25,7 @@ import { SalesCompletionService } from "../sale-completion-service";
 import { SalesDraftService } from "../sale-draft-service";
 import { SalesStockService } from "../sale-stock-service";
 import { ShiftService } from "../../shifts/nest/shift.service";
+import { NOOP_TRANSACTIONAL_EMAIL, type TransactionalEmailPort } from "../../email/email.service";
 import type { DraftInput, PaymentInput, SaleDetail, SaleWithLines } from "../sales-types";
 
 export type { DraftInput, PaymentInput, SaleDetail, SaleWithLines } from "../sales-types";
@@ -44,6 +45,7 @@ export class SalesService {
   constructor(
     @Inject("DbPort") private readonly db: DbPort,
     private readonly paymongo: PayMongoPort = new DisabledPayMongo(),
+    private readonly email: TransactionalEmailPort = NOOP_TRANSACTIONAL_EMAIL,
   ) {
     // Same-DbPort instance (not Nest DI) to avoid a Sales<->Shift DI cycle.
     this.shifts = new ShiftService(db);
@@ -52,7 +54,7 @@ export class SalesService {
     this.completion = new SalesCompletionService(db, this.stock, this.shifts);
     this.lifecycle = new SalesLifecycleService(db);
     this.paymongoWebhooks = new SalesPayMongoWebhookService(db, paymongo, this.stock);
-    this.receipts = new SalesReceiptService(db);
+    this.receipts = new SalesReceiptService(db, email);
     this.providers = new SalesPaymentProviderService(db, paymongo, {
       requireSale: (businessId, saleId) => this.requireSale(businessId, saleId),
       embedSale: (sale) => this.embed(sale),
@@ -420,6 +422,21 @@ export class SalesService {
   async createShareToken(businessId: string, actorId: string, requestId: string, saleId: string): Promise<{ token: string; expiresAt: Date }> {
     withScope(businessId, {});
     return this.receipts.createShareToken(businessId, actorId, requestId, saleId);
+  }
+
+  async sendReceiptEmail(
+    businessId: string,
+    actorId: string,
+    requestId: string,
+    saleId: string,
+    recipient: string,
+    idempotencyKey: string,
+  ) {
+    return this.receipts.sendEmailReceipt(businessId, actorId, requestId, saleId, recipient, idempotencyKey);
+  }
+
+  async listReceiptDeliveries(businessId: string, saleId: string) {
+    return this.receipts.listDeliveries(businessId, saleId);
   }
 
   async sharedReceipt(token: string): Promise<{

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createMemoryDb } from "../common/memory.db";
+import type { TransactionalEmailPort } from "../email/email.service";
 import { SalesReceiptService } from "./receipt-service";
 
 async function setupReceipt() {
@@ -94,5 +95,76 @@ describe("sales receipt service", () => {
     expect(projection.tenders).toEqual([{ method: "cash", amountMinor: 3000 }]);
     expect((await db.listAudit()).some((entry) => entry.action === "receipt.shared")).toBe(true);
     await expect(receipts.sharedReceipt("too-short")).rejects.toThrow("NOT_FOUND");
+  });
+
+  it("sends receipt email exactly once per idempotency key and persists delivery status", async () => {
+    const db = createMemoryDb();
+    const sent: Array<{ to: string; receiptNo: string; token: string }> = [];
+    const email: TransactionalEmailPort = {
+      async sendPasswordReset() {},
+      async sendEmailVerification() {},
+      async sendReceiptShare(input) {
+        sent.push({ to: input.to, receiptNo: input.receiptNo, token: input.token });
+      },
+    };
+    const sale = await db.createSale({
+      businessId: "b1", receiptNo: "2026-000900", status: "COMPLETED",
+      subtotalMinor: 1000, discountMinor: 0, taxMinor: 0, totalMinor: 1000,
+      paidMinor: 1000, changeMinor: 0, currency: "PHP", customerId: null,
+      customerName: "Ana", notes: null, actorId: "u1", requestId: "r1",
+      idempotencyKey: "sale-1", registerId: null, branchId: null,
+      createdAt: new Date("2026-09-30T00:00:00.000Z"), completedAt: new Date("2026-09-30T00:01:00.000Z"),
+    });
+    const receipts = new SalesReceiptService(db, email);
+
+    const first = await receipts.sendEmailReceipt("b1", "u1", "req-email-1", sale.id, "ana@example.com", "receipt-email-key-1");
+    const replay = await receipts.sendEmailReceipt("b1", "u1", "req-email-2", sale.id, "ana@example.com", "receipt-email-key-1");
+
+    expect(first.replayed).toBe(false);
+    expect(replay.replayed).toBe(true);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ to: "ana@example.com", receiptNo: "2026-000900" });
+    expect((await receipts.listDeliveries("b1", sale.id)).items).toEqual([
+      expect.objectContaining({
+        channel: "email",
+        recipient: "ana@example.com",
+        status: "SENT",
+        idempotencyKey: "receipt-email-key-1",
+      }),
+    ]);
+  });
+
+  it("records a failed receipt email without retrying it under the same idempotency key", async () => {
+    const db = createMemoryDb();
+    let attempts = 0;
+    const email: TransactionalEmailPort = {
+      async sendPasswordReset() {},
+      async sendEmailVerification() {},
+      async sendReceiptShare() {
+        attempts += 1;
+        throw new Error("EMAIL_DELIVERY_FAILED");
+      },
+    };
+    const sale = await db.createSale({
+      businessId: "b1", receiptNo: "2026-000901", status: "COMPLETED",
+      subtotalMinor: 1000, discountMinor: 0, taxMinor: 0, totalMinor: 1000,
+      paidMinor: 1000, changeMinor: 0, currency: "PHP", customerId: null,
+      customerName: null, notes: null, actorId: "u1", requestId: "r1",
+      idempotencyKey: "sale-2", registerId: null, branchId: null,
+      createdAt: new Date("2026-09-30T00:00:00.000Z"), completedAt: new Date("2026-09-30T00:01:00.000Z"),
+    });
+    const receipts = new SalesReceiptService(db, email);
+
+    await expect(
+      receipts.sendEmailReceipt("b1", "u1", "req-fail-1", sale.id, "ana@example.com", "receipt-email-key-fail"),
+    ).rejects.toThrow("EMAIL_DELIVERY_FAILED");
+    await expect(
+      receipts.sendEmailReceipt("b1", "u1", "req-fail-2", sale.id, "ana@example.com", "receipt-email-key-fail"),
+    ).rejects.toThrow("EMAIL_DELIVERY_FAILED");
+    expect(attempts).toBe(1);
+    expect((await receipts.listDeliveries("b1", sale.id)).items[0]).toMatchObject({
+      status: "FAILED",
+      errorCode: "EMAIL_DELIVERY_FAILED",
+    });
   });
 });

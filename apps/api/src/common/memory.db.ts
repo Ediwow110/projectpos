@@ -1,4 +1,4 @@
-import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbDisplayToken, DbExchange, DbFeatureFlag, DbInvoice, DbMembership, DbMovement, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbResetToken, DbSession, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent } from "./db.port";
+import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbDisplayToken, DbExchange, DbFeatureFlag, DbInvoice, DbMembership, DbMovement, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbReceiptDelivery, DbResetToken, DbSession, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent } from "./db.port";
 
 let n = 0;
 const nid = (p: string): string => `${p}_${Date.now().toString(36)}_${(n += 1)}`;
@@ -52,6 +52,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const managerApprovalGrants = new Map<string, { id: string; businessId: string; requesterId: string; approverId: string; permission: string; fingerprint: string; tokenHash: string; expiresAt: Date; usedAt: Date | null }>();
   const shiftCorrections = new Map<string, DbShiftCorrection>();
   const receiptShares = new Map<string, { id: string; businessId: string; saleId: string; tokenHash: string; expiresAt: Date }>();
+  const receiptDeliveries = new Map<string, DbReceiptDelivery>();
   const audit: AuditEntry[] = [];
 
   const balanceKey = (businessId: string, branchId: string | null | undefined, productId: string): string =>
@@ -259,6 +260,27 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       const r = receiptShares.get(tokenHash);
       if (!r || r.expiresAt.getTime() <= Date.now()) return null;
       return r;
+    },
+    async claimReceiptDelivery(d) {
+      const existing = [...receiptDeliveries.values()].find(
+        (row) => row.businessId === d.businessId && row.idempotencyKey === d.idempotencyKey,
+      );
+      if (existing) return { delivery: existing, claimed: false };
+      const row: DbReceiptDelivery = { ...d, id: nid("rdl"), createdAt: new Date() };
+      receiptDeliveries.set(row.id, row);
+      return { delivery: row, claimed: true };
+    },
+    async updateReceiptDelivery(id, businessId, patch) {
+      const row = receiptDeliveries.get(id) ?? null;
+      if (!row || row.businessId !== businessId) return null;
+      const next = { ...row, ...patch };
+      receiptDeliveries.set(id, next);
+      return next;
+    },
+    async listReceiptDeliveries(businessId, saleId) {
+      return [...receiptDeliveries.values()]
+        .filter((row) => row.businessId === businessId && row.saleId === saleId)
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
     },
     async getSettings(businessId) {
       return settings.get(businessId) ?? {};
@@ -835,10 +857,22 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       }
       return null;
     },
+    async updatePrinter(id, businessId, patch) {
+      const p = printers.get(id) ?? null;
+      if (!p || p.businessId !== businessId) return null;
+      const next = { ...p, ...patch };
+      printers.set(id, next);
+      return next;
+    },
     async createPrintJob(j) {
       const row = { ...j, id: nid("pjob") };
       printJobs.set(row.id, row);
       return row;
+    },
+    async findPrintJobById(id, businessId) {
+      const job = printJobs.get(id) ?? null;
+      if (!job || job.businessId !== businessId) return null;
+      return job;
     },
     async listPrintJobs(businessId, status) {
       return [...printJobs.values()].filter(

@@ -15,6 +15,7 @@ export interface MailTransport {
 export interface TransactionalEmailPort {
   sendPasswordReset(input: { to: string; name: string; token: string }): Promise<void>;
   sendEmailVerification(input: { to: string; name: string; token: string }): Promise<void>;
+  sendReceiptShare(input: { to: string; customerName: string | null; receiptNo: string; token: string }): Promise<void>;
 }
 
 export const TRANSACTIONAL_EMAIL_PORT = "TransactionalEmailPort";
@@ -22,6 +23,7 @@ export const TRANSACTIONAL_EMAIL_PORT = "TransactionalEmailPort";
 export const NOOP_TRANSACTIONAL_EMAIL: TransactionalEmailPort = {
   async sendPasswordReset(): Promise<void> {},
   async sendEmailVerification(): Promise<void> {},
+  async sendReceiptShare(): Promise<void> {},
 };
 
 export type EmailRuntimeConfig =
@@ -80,7 +82,10 @@ export function loadEmailConfig(source: NodeJS.ProcessEnv = process.env): EmailR
   };
   const smtpConfigured = Boolean(values.host || values.port || values.user || values.pass || source["SMTP_SECURE"] !== undefined);
   const apiConfigured = Boolean(values.apiKey);
-  const anyConfigured = apiConfigured || smtpConfigured || Boolean(values.from || values.webUrl);
+  // WEB_URL is shared by the rest of the application, so it must not by
+  // itself opt development into transactional email. A provider or sender
+  // setting does; production still requires a complete email configuration.
+  const anyConfigured = apiConfigured || smtpConfigured || Boolean(values.from);
   if (!anyConfigured && !production) return { enabled: false };
   if (!values.from || !values.webUrl) {
     throw new Error("ENV_MISSING_EMAIL_CONFIG");
@@ -176,6 +181,10 @@ function actionUrl(webUrl: string, path: string, token: string): string {
   return url.toString();
 }
 
+function receiptShareUrl(webUrl: string, token: string): string {
+  return `${webUrl}/receipts/shared/${encodeURIComponent(token)}`;
+}
+
 function htmlShell(input: { eyebrow: string; title: string; body: string; href: string; cta: string; note: string }): string {
   return `<!doctype html>
 <html><body style="margin:0;background:#FCF8F3;font-family:Arial,sans-serif;color:#211814">
@@ -233,6 +242,26 @@ export class TransactionalEmailService implements TransactionalEmailPort {
         href,
         cta: "Verify email",
         note: "This verification link expires in 24 hours. If you did not create this account, you can ignore this email.",
+      }),
+    });
+  }
+
+  async sendReceiptShare(input: { to: string; customerName: string | null; receiptNo: string; token: string }): Promise<void> {
+    const href = receiptShareUrl(this.config.webUrl, input.token);
+    const safeName = escapeHtml(input.customerName || "there");
+    const safeReceiptNo = escapeHtml(input.receiptNo);
+    await this.transport.send({
+      from: this.config.from,
+      to: input.to,
+      subject: `Your NexPOS receipt ${input.receiptNo}`,
+      text: `Hi ${input.customerName || "there"},\n\nView receipt ${input.receiptNo}:\n${href}\n\nThis secure link expires in 24 hours.`,
+      html: htmlShell({
+        eyebrow: "NexPOS receipt",
+        title: `Receipt ${safeReceiptNo}`,
+        body: `Hi ${safeName}. Your receipt is ready to view securely online.`,
+        href,
+        cta: "View receipt",
+        note: "This secure receipt link expires in 24 hours.",
       }),
     });
   }

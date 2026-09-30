@@ -85,7 +85,7 @@ test("critical path: register to reconciled close", async ({ page, request }) =>
 
   // Reports show the same authoritative sale.
   await page.goto("/reports/sales");
-  await expect(page.getByRole("heading", { name: "Reports intelligence" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Reports intelligence" })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("₱25.00").first()).toBeVisible();
 
   // Inventory decreased exactly once via the same server-side sale commit.

@@ -6,6 +6,7 @@ import {
   invoiceIssueSchema,
   platformPlanSchema,
   printerEnrollSchema,
+  printerUpdateSchema,
   printJobSchema,
   webhookEventSchema,
 } from "../src/billing.schema";
@@ -37,5 +38,14 @@ describe("phase10 billing schemas", () => {
   });
   it("accepts print jobs with layout default", () => {
     expect(printJobSchema.parse({ printerId: "pr1" }).layout).toBe("80");
+  });
+  it("accepts printer updates including clearing branch assignment", () => {
+    expect(printerUpdateSchema.parse({ name: "Front Till", width: "58", branchId: null })).toEqual({
+      name: "Front Till",
+      width: "58",
+      branchId: null,
+    });
+    expect(() => printerUpdateSchema.parse({ width: "72" })).toThrow();
+    expect(() => printerUpdateSchema.parse({})).toThrow();
   });
 });

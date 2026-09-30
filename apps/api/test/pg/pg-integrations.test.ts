@@ -238,6 +238,24 @@ describe("phase12 pg integrations: printers", () => {
     expect((await integrations.findPrinterByAgentTokenHash(agentHash))!.id).toBe(paired.id);
     expect(await integrations.findPrinterByAgentTokenHash("agent_none")).toBeNull();
   });
+
+  it("updates printer settings and last-seen state with tenant isolation", async () => {
+    const b1 = await seedBusiness();
+    const b2 = await seedBusiness();
+    const printer = await integrations.createPrinter({
+      businessId: b1.id, branchId: null, name: uniq("Printer"), width: "80",
+      connection: "manual", agentTokenHash: uniq("agent"), lastSeenAt: null,
+    });
+    const seen = new Date("2026-10-01T00:00:00.000Z");
+    expect(await integrations.updatePrinter(printer.id, b2.id, { lastSeenAt: seen })).toBeNull();
+    const updated = await integrations.updatePrinter(printer.id, b1.id, {
+      name: "Updated printer",
+      width: "58",
+      lastSeenAt: seen,
+    });
+    expect(updated).toMatchObject({ name: "Updated printer", width: "58", lastSeenAt: seen });
+    expect(await integrations.findPrinterById(printer.id, b1.id)).toEqual(updated);
+  });
 });
 
 describe("phase12 pg integrations: print jobs", () => {
@@ -321,6 +339,19 @@ describe("phase12 pg integrations: print jobs", () => {
     // Cross-tenant and unknown ids: null, guarded before the status check.
     expect(await integrations.updatePrintJob(j.id, b2.id, { status: "FAILED" })).toBeNull();
     expect(await integrations.updatePrintJob("pjob_none", b.id, { status: "FAILED" })).toBeNull();
+  });
+
+  it("finds a print job by id only inside its business", async () => {
+    const b1 = await seedBusiness();
+    const b2 = await seedBusiness();
+    const p = await seedPrinter(b1.id);
+    const job = await integrations.createPrintJob({
+      businessId: b1.id, printerId: p.id, receiptNo: "R-FIND", layout: "80",
+      status: "QUEUED", payload: "payload", attempts: 0, createdAt: new Date(),
+    });
+    expect(await integrations.findPrintJobById(job.id, b1.id)).toEqual(job);
+    expect(await integrations.findPrintJobById(job.id, b2.id)).toBeNull();
+    expect(await integrations.findPrintJobById("pjob_none", b1.id)).toBeNull();
   });
 });
 
@@ -473,5 +504,36 @@ describe("phase12 pg integrations: receipt shares", () => {
       expiresAt: new Date(Date.now() - 60_000),
     });
     expect(await integrations.findValidReceiptShare(expiredHash)).toBeNull();
+  });
+
+  it("claims receipt email delivery idempotently and persists status transitions", async () => {
+    const business = await seedBusiness();
+    const saleId = `sale_${uniq("receipt")}`;
+    await admin.query(
+      'INSERT INTO "Sale" ("id", "businessId", "receiptNo", "status", "subtotalMinor", "discountMinor", "taxMinor", "totalMinor", "paidMinor", "changeMinor", "currency", "actorId", "requestId", "createdAt", "updatedAt")' +
+        " VALUES ($1,$2,$3,'COMPLETED',1000,0,0,1000,1000,0,'PHP','u1','r1',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
+      [saleId, business.id, uniq("PG-R")],
+    );
+    const input = {
+      businessId: business.id,
+      saleId,
+      channel: "email" as const,
+      recipient: "customer@example.com",
+      status: "PENDING" as const,
+      idempotencyKey: "pg-receipt-delivery-key",
+      errorCode: null,
+      sentAt: null,
+    };
+    const first = await integrations.claimReceiptDelivery(input);
+    const replay = await integrations.claimReceiptDelivery(input);
+    expect(first.claimed).toBe(true);
+    expect(replay.claimed).toBe(false);
+    expect(replay.delivery.id).toBe(first.delivery.id);
+    const sentAt = new Date();
+    const sent = await integrations.updateReceiptDelivery(first.delivery.id, business.id, { status: "SENT", sentAt });
+    expect(sent).toMatchObject({ status: "SENT", recipient: "customer@example.com" });
+    expect(await integrations.listReceiptDeliveries(business.id, saleId)).toEqual([
+      expect.objectContaining({ id: first.delivery.id, status: "SENT" }),
+    ]);
   });
 });

@@ -20,7 +20,7 @@ The product was also benchmarked against current official documentation for Shop
 | Staff management | Retail POS exposes staff roles, PINs/access, and location assignment | Phase A added owner-facing Team management; Phase B adds approval-PIN enrollment for owners/managers | Implemented approval-PIN baseline; branch assignment, workforce PIN/time tracking, and invite/reset UX remain future work |
 | Discounts / overrides | Retail POS applies line/order discounts with permission or manager approval | Phase B adds fixed-PHP line/order discounts plus one-use manager approval by staff PIN or password fallback | Implemented baseline |
 | Device management | Retail POS setup includes device/location readiness and device controls | Phase A added Device Fleet list/enroll/revoke UI and current-device/session-impact handling | Implemented baseline; last-seen/online telemetry is not modeled |
-| Printers / hardware | Setup guides make printer/device configuration discoverable | Printer and print-job APIs exist; no management surface | P1 |
+| Printers / hardware | Setup guides make printer/device configuration discoverable | Phase B adds printer enrollment/settings/default/test/presence/queue/requeue plus branch-aware receipt printing | Implemented baseline; physical print acknowledgement and richer agent installer UX remain future work |
 | Product variants / bundles | Lightspeed/Square/Shopify commonly model variations and richer item structures | Basic product model only | P1 for apparel/retail breadth |
 | Gift card / loyalty | Square/Loyverse/Shopify ecosystems offer stored value and loyalty | Not modeled | P1/P2 depending target market |
 | Offline operation | Leading POS products explicitly explain offline capabilities/limits and sync behavior | Strong cash-only offline queue/reconciliation with visible sync states | Current strength; preserve and simplify messaging |
@@ -39,7 +39,7 @@ NexPOS should not copy every competitor feature. The immediate goal is to comple
 - Customers, sales history, refund request/approval/rejection, receipt/share/download, and multiple operational reports.
 - Role-based permissions for owner, manager, cashier, and inventory staff; server-side authorization remains authoritative.
 - Multi-branch domain and reporting support.
-- Device enrollment/revocation API, printer/print-job API, customer display token API, API-token API, billing/plan API, and platform support controls.
+- Device enrollment/revocation API, customer display token API, API-token API, billing/plan API, and platform support controls. Printer/print-job APIs are now surfaced through the Phase B Printers workspace.
 - Responsive POS/cart/payment surfaces and dedicated desktop/tablet/mobile E2E projects.
 
 ## P0 — necessary product-flow gaps
@@ -90,7 +90,7 @@ Implemented baseline: owners/managers can view the business device fleet; other 
 
 At audit start, Categories, Registers, Expenses, and Transfers were implemented routes but were not first-class shell navigation.
 
-Implemented baseline: role-aware grouped navigation now exposes Categories, Registers, Expenses, Transfers, Team, Devices, Branches, Administration / Help, and existing primary workflows. The new Administration landing links only to implemented destinations and can restart the system tour. Broader business settings such as printers, payments, API tokens, billing, and security sessions remain future work.
+Implemented baseline: role-aware grouped navigation now exposes Categories, Registers, Expenses, Transfers, Team, Devices, Branches, Printers, Administration / Help, and existing primary workflows. The Administration landing links only to implemented destinations and can restart the system tour. Broader business settings such as payments, API tokens, billing, and security sessions remain future work.
 
 ### 9. Purchasing and replenishment
 
@@ -112,8 +112,8 @@ This baseline intentionally accepts only cash-settled source sales. Card, GCash,
 - Barcode label printing and richer scanner-driven receiving/counting.
 - Full/partial physical inventory counts with variance review and approval.
 - Gift cards and store credit; loyalty points/rewards if customer retention is in product scope.
-- Receipt delivery by email/SMS and owner-configurable receipt templates using the existing receipt settings/print APIs.
-- Printer setup UI and print queue visibility using existing printer APIs.
+- SMS receipt delivery remains future provider work; email plus secure share-link delivery is implemented.
+- Physical printer acknowledgement/agent installer polish remains future work; enrollment, branch/default configuration, presence, test prints, receipt queueing, and requeue are implemented.
 - Low-stock notification center / replenishment inbox instead of relying only on inventory/report views.
 - Required customer/contact fields configured per business when a workflow needs them.
 - Separate workforce clock-in/time-tracking PINs if NexPOS will own attendance operations; the new approval PIN is intentionally scoped only to protected POS authorization.
@@ -155,7 +155,7 @@ Implemented during this audit:
 
 ### Discoverability
 
-Phase A closes the hidden-route gap with role-aware grouped navigation and adds a dedicated Administration / Help landing. Phase B now exposes Held sales and Discounts in the cashier workspace and direct cash exchanges from sale detail. Remaining discoverability work is deeper help/settings coverage for future domains and completion of workflows such as purchasing.
+Phase A closes the hidden-route gap with role-aware grouped navigation and adds a dedicated Administration / Help landing. Phase B now exposes Held sales and Discounts in the cashier workspace, direct cash exchanges from sale detail, receipt delivery from the recorded receipt, and printer administration from both navigation and Administration / Help. Remaining discoverability work is deeper help/settings coverage for future domains and completion of workflows such as purchasing.
 
 ### Validation consistency
 
@@ -163,7 +163,7 @@ The app-owned validation cleanup is now complete for audited forms, and the stri
 
 ### Help / administration ownership
 
-Phase A added a dedicated Administration / Help landing with Team, Devices, Branches, Registers, system-tour restart, and a route back to POS. Payment configuration, printers, API tokens, business/receipt settings, billing, and security sessions should be added only when those management surfaces are implemented.
+Phase A added a dedicated Administration / Help landing with Team, Devices, Branches, Registers, system-tour restart, and a route back to POS. Phase B now adds Printers. Payment configuration, API tokens, business/receipt settings, billing, and security sessions should be added only when those management surfaces are implemented.
 
 ## Recommended delivery phases
 
@@ -175,7 +175,9 @@ Verification on 2026-09-30: web unit/component 144/144, API 441/441, PostgreSQL 
 
 ### Phase B — cashier workflow completion
 
-Implemented baselines: Held-sale queue/resume, fixed-PHP POS line/order discounts with server-enforced override thresholds, business-scoped six-digit owner/manager approval PIN enrollment with password fallback, one-use approval grants for over-threshold discounts, and direct cash-settled exchanges with linked return/replacement transactions. Remaining Phase B work: approval expansion to other protected actions, provider-backed electronic-tender exchanges, receipt delivery, and printer setup.
+Implemented baselines: Held-sale queue/resume, fixed-PHP POS line/order discounts with server-enforced override thresholds, business-scoped six-digit owner/manager approval PIN enrollment with password fallback, one-use approval grants for over-threshold discounts, direct cash-settled exchanges with linked return/replacement transactions, email/secure-link receipt delivery, and printer enrollment/branch/default/test/queue/requeue management. Remaining Phase B work: approval expansion to other protected actions, provider-backed electronic-tender exchanges, SMS receipt delivery/provider integration, physical-print acknowledgement/agent installer polish, and broader receipt-template/settings UX.
+
+Receipt/printer verification on 2026-10-01: validation 75/75, web unit/component 167/167, API 463/463, PostgreSQL 141/141, typecheck/lint/build passed, strict premium UI audit reported zero findings, production dependency audit reported no known vulnerabilities, the focused desktop/tablet/mobile receipt+printer matrix passed 6/6, and the final complete Playwright matrix passed 108/108. During verification, one real mobile race was found and fixed: if printer data arrived after the receipt print dialog opened, the native select could visually show the default printer while React still held an empty selection, leaving Queue receipt disabled. Three unrelated 5-second navigation assertions also proved load-sensitive under the parallel dev-server run; each case passed independently and the waits were hardened before the clean 108/108 rerun.
 
 Approval-PIN verification on 2026-09-30: validation 73/73, web unit/component 163/163, API 455/455, PostgreSQL 138/138, typecheck/lint/build passed, strict premium UI audit reported zero findings, production dependency audit reported no known vulnerabilities, PIN persistence/logging anti-pattern scan was clean, and the complete desktop/tablet/mobile Playwright matrix passed 102/102. Browser coverage includes Team PIN enrollment, wrong-PIN recovery, successful PIN approval with automatic sale retry, and confirmation that neither the owner password nor approval PIN appears in browser storage.
 

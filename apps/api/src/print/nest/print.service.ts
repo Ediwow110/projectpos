@@ -15,11 +15,31 @@ export interface PrinterView {
   name: string;
   width: string;
   connection: string;
+  lastSeenAt: Date | null;
+  agentStatus: "online" | "offline" | "never";
+  isDefault: boolean;
+}
+
+export interface PrintJobView {
+  id: string;
+  businessId: string;
+  printerId: string;
+  receiptNo: string | null;
+  layout: string;
+  status: string;
+  attempts: number;
+  createdAt: Date;
 }
 
 // Responses never carry agentTokenHash: it is verifier material, not a field
 // any client needs.
-function printerView(row: DbPrinter): PrinterView {
+function printerView(row: DbPrinter, defaultPrinterId: string | null, now = Date.now()): PrinterView {
+  const lastSeenAt = row.lastSeenAt ?? null;
+  const agentStatus = lastSeenAt === null
+    ? "never"
+    : now - lastSeenAt.getTime() <= 120_000
+      ? "online"
+      : "offline";
   return {
     id: row.id,
     businessId: row.businessId,
@@ -27,6 +47,22 @@ function printerView(row: DbPrinter): PrinterView {
     name: row.name,
     width: row.width,
     connection: row.connection,
+    lastSeenAt,
+    agentStatus,
+    isDefault: row.id === defaultPrinterId,
+  };
+}
+
+function printJobView(row: DbPrintJob): PrintJobView {
+  return {
+    id: row.id,
+    businessId: row.businessId,
+    printerId: row.printerId,
+    receiptNo: row.receiptNo,
+    layout: row.layout,
+    status: row.status,
+    attempts: row.attempts,
+    createdAt: row.createdAt,
   };
 }
 
@@ -63,18 +99,82 @@ export class PrintService {
       branchId = branch.id;
     }
     const { agentToken, agentTokenHash } = mintAgentToken();
-    const row = await this.db.createPrinter({ businessId, branchId, name, width, connection, agentTokenHash });
+    const row = await this.db.createPrinter({ businessId, branchId, name, width, connection, agentTokenHash, lastSeenAt: null });
     await this.db.appendAudit({
       businessId, actorId, action: "printer.enroll",
       entityType: "PrinterDevice", entityId: row.id, requestId,
     });
     // The agent token is returned exactly once; only its hash is stored.
-    return { ...printerView(row), agentToken };
+    return { ...printerView(row, null), agentToken };
   }
 
   async listPrinters(businessId: string): Promise<PrinterView[]> {
     withScope(businessId, {});
-    return (await this.db.listPrinters(businessId)).map(printerView);
+    const settings = await this.db.getSettings(businessId);
+    const defaultPrinterId = typeof settings["defaultPrinterId"] === "string" ? settings["defaultPrinterId"] : null;
+    const now = Date.now();
+    return (await this.db.listPrinters(businessId)).map((row) => printerView(row, defaultPrinterId, now));
+  }
+
+  async updatePrinter(
+    businessId: string,
+    actorId: string,
+    requestId: string,
+    printerId: string,
+    input: { name?: string; branchId?: string | null; width?: string },
+    role: string,
+  ): Promise<PrinterView> {
+    withScope(businessId, {});
+    if (!PRINT_MANAGERS.has(role)) throw new Error("FORBIDDEN");
+    const printer = await this.db.findPrinterById(printerId, businessId);
+    if (!printer) throw new Error("NOT_FOUND");
+    const patch: Partial<Omit<DbPrinter, "id" | "businessId">> = {};
+    if (input.name !== undefined) {
+      const name = input.name.trim();
+      if (!name) throw new Error("VALIDATION");
+      patch.name = name;
+    }
+    if (input.width !== undefined) {
+      if (input.width !== "58" && input.width !== "80") throw new Error("VALIDATION");
+      patch.width = input.width;
+    }
+    if (input.branchId !== undefined) {
+      if (input.branchId === null) patch.branchId = null;
+      else {
+        const branch = await this.db.findBranchById(input.branchId, businessId);
+        if (!branch) throw new Error("VALIDATION");
+        patch.branchId = branch.id;
+      }
+    }
+    const updated = await this.db.updatePrinter(printerId, businessId, patch);
+    if (!updated) throw new Error("NOT_FOUND");
+    await this.db.appendAudit({
+      businessId, actorId, action: "printer.updated", entityType: "PrinterDevice",
+      entityId: printerId, requestId, before: printerView(printer, null), after: printerView(updated, null),
+    });
+    const settings = await this.db.getSettings(businessId);
+    const defaultPrinterId = typeof settings["defaultPrinterId"] === "string" ? settings["defaultPrinterId"] : null;
+    return printerView(updated, defaultPrinterId);
+  }
+
+  async setDefaultPrinter(
+    businessId: string,
+    actorId: string,
+    requestId: string,
+    printerId: string,
+    role: string,
+  ): Promise<PrinterView> {
+    withScope(businessId, {});
+    if (!PRINT_MANAGERS.has(role)) throw new Error("FORBIDDEN");
+    const printer = await this.db.findPrinterById(printerId, businessId);
+    if (!printer) throw new Error("NOT_FOUND");
+    const settings = await this.db.getSettings(businessId);
+    await this.db.saveSettings(businessId, { ...settings, defaultPrinterId: printer.id });
+    await this.db.appendAudit({
+      businessId, actorId, action: "printer.default.updated", entityType: "PrinterDevice",
+      entityId: printer.id, requestId, after: { defaultPrinterId: printer.id },
+    });
+    return printerView(printer, printer.id);
   }
 
   async queueJob(
@@ -100,6 +200,9 @@ export class PrintService {
         (s) => s.receiptNo === receiptNo,
       );
       if (!found) throw new Error("NOT_FOUND");
+      if (printer.branchId !== null && printer.branchId !== (found.branchId ?? null)) {
+        throw new Error("FORBIDDEN");
+      }
       const receipt = await sales.receiptData(businessId, found.id);
       // Receipt customization is a paid feature the business can store; the
       // printed receipt must actually show it.
@@ -138,6 +241,73 @@ export class PrintService {
     return row;
   }
 
+  async queueTestJob(
+    businessId: string,
+    actorId: string,
+    requestId: string,
+    printerId: string,
+    role: string,
+  ): Promise<DbPrintJob> {
+    withScope(businessId, {});
+    if (!PRINT_MANAGERS.has(role)) throw new Error("FORBIDDEN");
+    const printer = await this.db.findPrinterById(printerId, businessId);
+    if (!printer) throw new Error("NOT_FOUND");
+    const text = `\x1b@NEXPOS PRINTER TEST\n${printer.name}\nPaper ${printer.width}mm\n${new Date().toISOString()}\n\n`;
+    const row = await this.db.createPrintJob({
+      businessId,
+      printerId: printer.id,
+      receiptNo: null,
+      layout: printer.width,
+      status: "QUEUED",
+      payload: Buffer.from(text, "binary").toString("base64"),
+      attempts: 0,
+      createdAt: new Date(),
+    });
+    await this.db.appendAudit({
+      businessId, actorId, action: "print.test.queue", entityType: "PrintJob", entityId: row.id, requestId,
+    });
+    return row;
+  }
+
+  async listJobs(businessId: string, printerId: string | undefined, role: string): Promise<{ items: PrintJobView[] }> {
+    withScope(businessId, {});
+    if (!PRINT_MANAGERS.has(role)) throw new Error("FORBIDDEN");
+    if (printerId && !(await this.db.findPrinterById(printerId, businessId))) throw new Error("NOT_FOUND");
+    const rows = (await this.db.listPrintJobs(businessId))
+      .filter((row) => !printerId || row.printerId === printerId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? 1 : -1));
+    return { items: rows.map(printJobView) };
+  }
+
+  async retryJob(
+    businessId: string,
+    actorId: string,
+    requestId: string,
+    jobId: string,
+    role: string,
+  ): Promise<DbPrintJob> {
+    withScope(businessId, {});
+    if (!PRINT_MANAGERS.has(role)) throw new Error("FORBIDDEN");
+    const original = await this.db.findPrintJobById(jobId, businessId);
+    if (!original) throw new Error("NOT_FOUND");
+    if (original.status === "QUEUED") throw new Error("VALIDATION");
+    const row = await this.db.createPrintJob({
+      businessId,
+      printerId: original.printerId,
+      receiptNo: original.receiptNo,
+      layout: original.layout,
+      status: "QUEUED",
+      payload: original.payload,
+      attempts: 0,
+      createdAt: new Date(),
+    });
+    await this.db.appendAudit({
+      businessId, actorId, action: "print.requeue", entityType: "PrintJob", entityId: row.id,
+      requestId, reason: `requeue of ${original.id}`,
+    });
+    return row;
+  }
+
   // Pickup is a device operation: the caller proves it holds this printer's
   // agent token, not merely some staff session in the same business.
   async claimNextJob(printerId: string, agentToken: string | undefined): Promise<DbPrintJob> {
@@ -146,6 +316,7 @@ export class PrintService {
     if (!printer || printer.id !== printerId) throw new Error("TENANT_REQUIRED");
     const businessId = printer.businessId;
     withScope(businessId, {});
+    await this.db.updatePrinter(printer.id, businessId, { lastSeenAt: new Date() });
     const queued = (await this.db.listPrintJobs(businessId, "QUEUED"))
       .filter((j) => j.printerId === printerId)
       .sort((a, b) =>

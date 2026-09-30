@@ -87,6 +87,7 @@ model Business {
   displayTokens DisplayToken[]
   corrections ShiftCorrection[]
   receiptShares ReceiptShare[]
+  receiptDeliveries ReceiptDelivery[]
   activeSessions Session[] @relation("SessionActiveBusiness")
 }
 
@@ -293,6 +294,7 @@ model Sale {
   business       Business   @relation(fields: [businessId], references: [id])
   items          SaleItem[]
   payments       Payment[]
+  receiptDeliveries ReceiptDelivery[]
   @@unique([businessId, receiptNo])
   @@unique([businessId, idempotencyKey])
   @@index([businessId, status, createdAt])
@@ -668,6 +670,7 @@ model PrinterDevice {
   width          String   @default("80")
   connection     String   @default("test-double")
   agentTokenHash String?  @unique
+  lastSeenAt     DateTime?
   business       Business  @relation(fields: [businessId], references: [id])
   jobs           PrintJob[]
 }
@@ -750,6 +753,24 @@ model ReceiptShare {
   business   Business @relation(fields: [businessId], references: [id])
 
   @@index([businessId, saleId])
+}
+
+model ReceiptDelivery {
+  id             String   @id @default(cuid())
+  businessId     String
+  saleId         String
+  channel        String
+  recipient      String
+  status         String   @default("PENDING")
+  idempotencyKey String
+  errorCode      String?
+  sentAt         DateTime?
+  createdAt      DateTime @default(now())
+  business       Business @relation(fields: [businessId], references: [id])
+  sale           Sale     @relation(fields: [saleId], references: [id])
+
+  @@unique([businessId, idempotencyKey])
+  @@index([businessId, saleId, createdAt])
 }
 
 model ReceiptCounter {
