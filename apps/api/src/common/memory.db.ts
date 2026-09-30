@@ -48,6 +48,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const displayTokens = new Map<string, DbDisplayToken>();
   const emailVerifications = new Map<string, { id: string; userId: string; tokenHash: string; expiresAt: Date; usedAt: Date | null }>();
   const supportGrants = new Map<string, { id: string; purpose: string; actorId: string; tokenHash: string; expiresAt: Date; usedAt: Date | null }>();
+  const managerApprovalGrants = new Map<string, { id: string; businessId: string; requesterId: string; approverId: string; permission: string; fingerprint: string; tokenHash: string; expiresAt: Date; usedAt: Date | null }>();
   const shiftCorrections = new Map<string, DbShiftCorrection>();
   const receiptShares = new Map<string, { id: string; businessId: string; saleId: string; tokenHash: string; expiresAt: Date }>();
   const audit: AuditEntry[] = [];
@@ -214,6 +215,28 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     async markSupportGrantUsed(id) {
       for (const g of supportGrants.values()) {
         if (g.id === id) supportGrants.set(g.tokenHash, { ...g, usedAt: new Date() });
+      }
+    },
+    async createManagerApprovalGrant(g) {
+      const row = { ...g, usedAt: null, id: nid("mag") };
+      managerApprovalGrants.set(row.tokenHash, row);
+      return { id: row.id };
+    },
+    async findValidManagerApprovalGrant(tokenHash, businessId, requesterId, permission) {
+      const g = managerApprovalGrants.get(tokenHash);
+      if (
+        !g ||
+        g.usedAt !== null ||
+        g.expiresAt.getTime() <= Date.now() ||
+        g.businessId !== businessId ||
+        g.requesterId !== requesterId ||
+        g.permission !== permission
+      ) return null;
+      return { id: g.id, approverId: g.approverId, fingerprint: g.fingerprint, expiresAt: g.expiresAt };
+    },
+    async markManagerApprovalGrantUsed(id) {
+      for (const g of managerApprovalGrants.values()) {
+        if (g.id === id) managerApprovalGrants.set(g.tokenHash, { ...g, usedAt: new Date() });
       }
     },
     async createShiftCorrection(c) {

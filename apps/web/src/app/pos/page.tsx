@@ -24,7 +24,7 @@ import {
   type PosHeldSale,
   type PosProduct,
 } from "../../lib/pos-sale-model";
-import { completePosSale, holdPosSale, queueOfflinePosSale, resumePosSale } from "../../lib/pos-operations";
+import { authorizePosDiscount, completePosSale, holdPosSale, queueOfflinePosSale, resumePosSale } from "../../lib/pos-operations";
 import { usePosData } from "../../lib/use-pos-data";
 import { usePosOffline } from "../../lib/use-pos-offline";
 import { registersForBranch } from "../../lib/workspace-branch";
@@ -33,6 +33,7 @@ import { PosCartPanel } from "../../components/PosCartPanel";
 import { PosCustomerDialog } from "../../components/PosCustomerDialog";
 import { PosDiscountDialog } from "../../components/PosDiscountDialog";
 import { PosHeldSalesDialog } from "../../components/PosHeldSalesDialog";
+import { PosManagerApprovalDialog } from "../../components/PosManagerApprovalDialog";
 import { PosPaymentWorkspace } from "../../components/PosPaymentWorkspace";
 import { PosProductCatalog } from "../../components/PosProductCatalog";
 import { PosResponsiveCart } from "../../components/PosResponsiveCart";
@@ -67,6 +68,9 @@ export default function PosPage(): JSX.Element {
   const [showDiscounts, setShowDiscounts] = useState(false);
   const [showHeldSales, setShowHeldSales] = useState(false);
   const [showTabletCart, setShowTabletCart] = useState(false);
+  const [approvalRequest, setApprovalRequest] = useState<"pay" | "hold" | null>(null);
+  const [approvalBusy, setApprovalBusy] = useState(false);
+  const [approvalError, setApprovalError] = useState("");
   const [paying, setPaying] = useState(false);
   const [resumingSaleId, setResumingSaleId] = useState<string | null>(null);
   const [activeDraft, setActiveDraft] = useState<{ id: string; totalMinor: number } | null>(null);
@@ -225,11 +229,22 @@ export default function PosPage(): JSX.Element {
     }
   }
 
-  async function holdCart(): Promise<void> {
+  function requireManagerApproval(action: "pay" | "hold", retrying: boolean): void {
+    setApprovalRequest(action);
+    setApprovalError(
+      retrying
+        ? "That approval expired or no longer matches this sale. Ask an owner or manager to approve again."
+        : "",
+    );
+    if (action === "pay") setShowPay(false);
+    setStatus("Manager approval is required for this discount.");
+  }
+
+  async function holdCart(approvalToken?: string): Promise<boolean> {
     setStatus("");
     if (offline) {
       setStatus("Holding carts requires connectivity.");
-      return;
+      return false;
     }
     try {
       await holdPosSale({
@@ -238,6 +253,7 @@ export default function PosPage(): JSX.Element {
         customerId,
         walkIn,
         orderDiscountMinor,
+        approvalToken,
         existingDraftId: activeDraft?.id,
       });
       setCart([]);
@@ -248,8 +264,14 @@ export default function PosPage(): JSX.Element {
       setWalkIn("");
       await heldSalesQuery.refetch();
       setStatus("Sale held. Open Held sales to resume it later.");
+      return true;
     } catch (err) {
-      setStatus(err instanceof ApiError ? posSaleErrorMessage(err.code, err.message, discountSummary.totalDiscountMinor > 0) : "Hold failed");
+      if (err instanceof ApiError && err.code === "FORBIDDEN" && discountSummary.totalDiscountMinor > 0) {
+        requireManagerApproval("hold", Boolean(approvalToken));
+      } else {
+        setStatus(err instanceof ApiError ? posSaleErrorMessage(err.code, err.message, discountSummary.totalDiscountMinor > 0) : "Hold failed");
+      }
+      return false;
     }
   }
 
@@ -297,26 +319,26 @@ export default function PosPage(): JSX.Element {
     }
   }
 
-  async function pay(): Promise<void> {
+  async function pay(approvalToken?: string): Promise<boolean> {
     setStatus("");
     setReceiptId(null);
     setReconcileId(null);
     setReconcileSaleId(null);
     if (cart.length === 0) {
       setStatus("Cart is empty.");
-      return;
+      return false;
     }
     if (offline) {
       if (activeDraft) {
         setStatus("Reconnect before completing this resumed held sale.");
-        return;
+        return false;
       }
       await payOffline();
-      return;
+      return true;
     }
     if (isPayMongoMethodKey(method) && !methodAvailable(method)) {
       setStatus("PayMongo is not configured for this payment method yet.");
-      return;
+      return false;
     }
     setPaying(true);
     try {
@@ -328,12 +350,13 @@ export default function PosPage(): JSX.Element {
         received,
         method,
         orderDiscountMinor,
+        approvalToken,
         existingDraft: activeDraft ?? undefined,
       });
       if (result.kind === "redirect") {
         setStatus("Redirecting to PayMongo secure checkout…");
         window.location.assign(result.checkoutUrl);
-        return;
+        return true;
       }
       if (result.kind === "unknown") {
         setActiveDraft(null);
@@ -341,7 +364,7 @@ export default function PosPage(): JSX.Element {
         setReconcileSaleId(result.saleId);
         setShowPay(false);
         setStatus("Payment status unknown. Do not retry blindly — reconcile payment " + (result.paymentId ?? "") + " when the provider responds.");
-        return;
+        return true;
       }
       setCart([]);
       setActiveDraft(null);
@@ -351,16 +374,53 @@ export default function PosPage(): JSX.Element {
       setReconcileSaleId(null);
       setReceiptId(result.saleId);
       setStatus("Sale completed.");
+      return true;
     } catch (err) {
       if (err instanceof ApiError) {
-        const message = posSaleErrorMessage(err.code, err.message, discountSummary.totalDiscountMinor > 0);
-        setStatus(message);
-        if (err.code === "FORBIDDEN" && discountSummary.totalDiscountMinor > 0) setShowPay(false);
+        if (err.code === "FORBIDDEN" && discountSummary.totalDiscountMinor > 0) {
+          requireManagerApproval("pay", Boolean(approvalToken));
+        } else {
+          setStatus(posSaleErrorMessage(err.code, err.message, discountSummary.totalDiscountMinor > 0));
+        }
       } else {
         setStatus("Payment failed");
       }
+      return false;
     } finally {
       setPaying(false);
+    }
+  }
+
+  async function approveDiscount(input: { email: string; password: string }): Promise<void> {
+    if (!approvalRequest || approvalBusy) return;
+    const action = approvalRequest;
+    setApprovalBusy(true);
+    setApprovalError("");
+    try {
+      const approval = await authorizePosDiscount({
+        cart,
+        orderDiscountMinor,
+        email: input.email,
+        password: input.password,
+      });
+      setStatus(`${approval.approver.name} approved this discount. Continuing ${action === "pay" ? "payment" : "hold"}…`);
+      const completed = action === "pay"
+        ? await pay(approval.token)
+        : await holdCart(approval.token);
+      if (completed) {
+        setApprovalRequest(null);
+        setApprovalError("");
+      }
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "AUTH_INVALID_CREDENTIALS") {
+        setApprovalError("Manager credentials could not be verified. Use an active owner or manager account for this business.");
+      } else if (err instanceof ApiError && err.code === "RATE_LIMITED") {
+        setApprovalError("Too many approval attempts. Try again shortly.");
+      } else {
+        setApprovalError(err instanceof ApiError ? `${err.code}: ${err.message}` : "Could not verify manager approval.");
+      }
+    } finally {
+      setApprovalBusy(false);
     }
   }
 
@@ -524,6 +584,22 @@ export default function PosPage(): JSX.Element {
               setStatus("Discounts applied. Server authorization will be checked when you hold or pay.");
             }}
             onClose={() => setShowDiscounts(false)}
+          />
+        ) : null}
+
+        {approvalRequest ? (
+          <PosManagerApprovalDialog
+            action={approvalRequest}
+            discountMinor={discountSummary.totalDiscountMinor}
+            busy={approvalBusy}
+            error={approvalError}
+            onApprove={(input) => void approveDiscount(input)}
+            onClose={() => {
+              if (approvalBusy) return;
+              setApprovalRequest(null);
+              setApprovalError("");
+              setStatus("Manager approval was canceled. The sale is still in the cart.");
+            }}
           />
         ) : null}
 

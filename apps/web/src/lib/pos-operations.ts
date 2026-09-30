@@ -24,7 +24,37 @@ interface SaleIdentityInput {
   customerId: string;
   walkIn: string;
   orderDiscountMinor: number;
+  approvalToken?: string;
   existingDraftId?: string;
+}
+
+export async function authorizePosDiscount(
+  input: {
+    cart: PosCartEntry[];
+    orderDiscountMinor: number;
+    email: string;
+    password: string;
+  },
+  deps: { api?: PosApiCall } = {},
+): Promise<{ token: string; expiresAt: string; approver: { name: string; role: string } }> {
+  const api = deps.api ?? apiFetch;
+  const csrf = await api<{ csrfToken: string }>("/api/v1/auth/csrf");
+  return api("/api/v1/sales/discount-approval", {
+    csrfToken: csrf.csrfToken,
+    init: {
+      method: "POST",
+      body: JSON.stringify({
+        lines: input.cart.map((entry) => ({
+          productId: entry.productId,
+          qty: entry.qty,
+          lineDiscountMinor: entry.lineDiscountMinor,
+        })),
+        orderDiscountMinor: input.orderDiscountMinor,
+        email: input.email.trim().toLowerCase(),
+        password: input.password,
+      }),
+    },
+  });
 }
 
 export async function holdPosSale(
@@ -39,7 +69,14 @@ export async function holdPosSale(
         csrfToken: csrf.csrfToken,
         init: {
           method: "POST",
-          body: JSON.stringify(buildDraftSaleInput(input.cart, input.registerId, input.customerId, input.walkIn, input.orderDiscountMinor)),
+          body: JSON.stringify(buildDraftSaleInput(
+            input.cart,
+            input.registerId,
+            input.customerId,
+            input.walkIn,
+            input.orderDiscountMinor,
+            input.approvalToken,
+          )),
         },
       });
   await api("/api/v1/sales/" + draft.id + "/hold", {
@@ -118,7 +155,14 @@ export async function completePosSale(
     csrfToken: csrf.csrfToken,
     init: {
       method: "POST",
-      body: JSON.stringify(buildDraftSaleInput(input.cart, input.registerId, input.customerId, input.walkIn, input.orderDiscountMinor)),
+      body: JSON.stringify(buildDraftSaleInput(
+        input.cart,
+        input.registerId,
+        input.customerId,
+        input.walkIn,
+        input.orderDiscountMinor,
+        input.approvalToken,
+      )),
     },
   });
   const key = uuid();

@@ -21,6 +21,7 @@ describe("POS discount dialog", () => {
     expect(html).toContain("10%");
     expect(html).toContain("20%");
     expect(html).toContain("discount.override");
+    expect(html).toContain("request an owner or manager approval");
     expect(html).toContain("Apply discounts");
     expect(html).toContain("Clear all");
   });

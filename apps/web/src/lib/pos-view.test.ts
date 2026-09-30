@@ -40,9 +40,9 @@ describe("POS presentation safety", () => {
     expect(canPresentPayAction(2, true)).toBe(true);
   });
 
-  it("explains a server-forbidden discounted sale without pretending manager PIN approval exists", () => {
+  it("explains a protected discount as an in-context manager approval", () => {
     expect(posSaleErrorMessage("FORBIDDEN", "Draft creation failed", true)).toBe(
-      "FORBIDDEN: Discount requires discount.override authorization. Ask an owner or manager to authorize or reduce the discount; manager PIN approval is not available yet.",
+      "FORBIDDEN: Manager approval is required for this discount.",
     );
     expect(posSaleErrorMessage("VALIDATION", "Draft creation failed", true)).toBe("VALIDATION: Draft creation failed");
   });

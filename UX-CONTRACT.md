@@ -70,7 +70,8 @@ No global toast provider is currently canonical. Status, warnings, errors, payme
 |---|---|---|---|---|---|---|---|
 | Complete sale | POS Pay | processing state, duplicate action disabled | receipt/current POS | completed + receipt link | unknown remains PAYMENT_UNKNOWN; no blind retry | payment context remains available | Phase 4 spec |
 | Hold / resume sale | POS Hold / Held sales | hold/resume mutation pending; saved draft remains authoritative | POS | held/resumed inline status | offline resume blocked; branch mismatch requires switch; resume failure leaves current cart untouched | Held sales dialog / restored POS cart | Phase B held-sales baseline |
-| Apply discounts | POS Discounts | local app-owned form; server authorization occurs on Hold/Pay | POS | discounted line/order totals remain visible | invalid amounts stay in dialog; offline disabled; server FORBIDDEN explains discount.override requirement without inventing manager PIN approval | discount dialog → cart/status | Phase B discounts baseline |
+| Apply discounts | POS Discounts | local app-owned form; server authorization occurs on Hold/Pay | POS | discounted line/order totals remain visible | invalid amounts stay in dialog; offline disabled; protected cashier discounts transition into the manager approval flow | discount dialog → cart/status | Phase B discounts baseline |
+| Approve protected POS discount | Cashier Hold/Pay receives discount FORBIDDEN | app-owned manager credential dialog; credentials are never persisted; server mints a 2-minute one-use grant bound to the exact discounted cart | original Hold/Pay action retries automatically | approver name may be shown in transient workflow status; sale audit records approver separately from cashier | invalid credentials stay in dialog with generic recovery; expired/mismatched/used grant requires fresh approval | manager approval dialog → original POS action | Phase B manager approval baseline |
 | Offline sale | POS Pay while offline | queued locally | POS + Sync follow-up | provisional receipt + pending-sync copy | Sync page/retry queue | stays in POS context | Phase 9b spec |
 | Close shift | Close shift action | mutation pending | shift history/detail | expected/count/variance snapshot shown | server error with counted values preserved where possible | close form/result | Phase 5 spec |
 | Search/filter | field/filter change + Apply where present | route/query loading | same route | updated list/chart | inline query error | control retains focus | route implementation |
@@ -119,6 +120,7 @@ No global toast provider is currently canonical. Status, warnings, errors, payme
 - Unsaved-changes behavior: current route behavior; not globally standardized.
 - Layer/z-index contract: modal/dialog above shell and sticky operational trays.
 - POS discount entry is app-owned, fixed-PHP, and inline-validated. Line discounts may not exceed line gross; order discounts may not exceed the post-line-discount subtotal; discount edits are disabled for offline or resumed/locked drafts.
+- A cashier never receives `discount.override`. For an over-threshold discount, an active owner/manager authenticates in an app-owned overlay using their existing NexPOS account password. The server issues an opaque, hashed-at-rest, 2-minute, one-use approval grant scoped to the business, cashier, permission, and exact discounted cart fingerprint. The grant is consumed by draft creation and cannot be replayed on another cart. Dedicated staff PIN/passcode enrollment is not yet modeled.
 
 ## Async and resilience
 
@@ -129,6 +131,7 @@ No global toast provider is currently canonical. Status, warnings, errors, payme
 - Retry/backoff/timeout behavior: existing sync/reconciliation services remain authoritative.
 - Version conflict and multi-tab behavior: no new visual assumption beyond server responses.
 - Session expiry/re-authentication: authentication/API behavior remains authoritative.
+- Sensitive in-context approval: manager passwords use `current-password` semantics, remain masked by default, are not written to URL/localStorage/sessionStorage/query cache, and invalid credentials use a generic server response. The pending cashier task remains intact after a recoverable approval failure.
 - Long-running progress and return path: keep pending state close to the originating control.
 - Stale-request cancellation/invalidation and pending-state ownership: TanStack Query owns route query lifecycle.
 - Dialog/form preservation and retry after mutation failure: payment uncertainty does not discard sale context.

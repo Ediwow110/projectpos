@@ -12,7 +12,7 @@ The product was also benchmarked against current official documentation for Shop
 | --- | --- | --- | --- |
 | First login / guided setup | Shopify shows POS introduction screens; Square exposes a reusable Setup Guide | Previously missing after business onboarding; implemented in this audit | Necessary for discoverability and training reduction |
 | Saved/open carts | Shopify POS exposes saved/recent carts with staff permissions; Loyverse exposes open tickets | Phase B adds a cashier-facing Held sales queue that resumes the original draft | Implemented baseline; labels/search/cancel handoff remain future refinements |
-| Manager approval | Shopify can require manager approval/PIN for returns and other protected POS actions | Permissions exist, but no in-context supervisor approval UX | P0 flow gap |
+| Manager approval | Shopify can require manager approval/PIN for returns and other protected POS actions | Phase B adds in-context owner/manager approval for over-threshold POS discounts | Implemented discount baseline; dedicated staff PIN and other protected actions remain future work |
 | Returns and exchanges | Mature retail POS supports return/exchange directly from order context | Refund request/approve/reject exists; exchange does not | Add exchange as P0/P1 cashier flow |
 | Purchase orders / vendors | Square, Lightspeed, and Loyverse make supplier/vendor ordering and receiving first-class inventory workflows | No supplier/vendor/PO schema | Largest inventory lifecycle gap; P0 |
 | Receiving / stock counts | Retail POS systems support bulk receiving, partial PO receive, and physical counts | Manual inventory movements exist; transfer receiving exists; no PO receiving/count sessions | P0/P1 |
@@ -60,11 +60,13 @@ At audit start, membership list/create/deactivate APIs already existed without a
 
 Implemented baseline: owner-facing Team screen with active memberships, role assignment, temporary credential handoff for new users, deactivation confirmation, and permission explanation. Branch assignment and secure invite/reset remain future work.
 
-### 4. Fast manager approval at POS
+### 4. Fast manager approval at POS — discount baseline implemented in Phase B
 
-Granular permissions exist for discount override, refund/void, inventory adjustment, shift close override, and settings/user management. What is missing is an in-context supervisor approval interaction for high-risk register actions.
+Granular permissions exist for discount override, refund/void, inventory adjustment, shift close override, and settings/user management. Phase B now provides the first in-context supervisor approval path for over-threshold POS discounts without transferring the manager's permission to the cashier.
 
-Recommended flow: cashier triggers protected action → manager PIN/passcode/reauth overlay → action executes as approved-by manager → audit records cashier, approver, reason, amount/threshold.
+Implemented flow: cashier triggers a protected discount → app-owned Manager approval overlay → active owner/manager authenticates with their existing NexPOS account password → server issues a two-minute, one-use approval grant bound to that business, cashier, permission, and exact discounted cart → original Hold/Pay retries automatically → audit records the cashier sale plus a separate approving-manager row.
+
+The grant token is opaque and hashed at rest; it cannot be replayed on a different cart and is consumed on use. Wrong credentials do not reveal whether an account or role exists. Credentials are not persisted in browser storage. A dedicated staff PIN/passcode model and equivalent in-context approval for void/refund/other protected actions remain explicit follow-up work rather than being marked complete.
 
 ### 5. POS discounts — implemented baseline in Phase B
 
@@ -169,7 +171,9 @@ Verification on 2026-09-30: web unit/component 144/144, API 441/441, PostgreSQL 
 
 ### Phase B — cashier workflow completion
 
-Implemented baselines: Held-sale queue/resume and fixed-PHP POS line/order discounts with server-enforced override thresholds. Remaining Phase B work: manager approval/passcode, direct exchange flow, receipt delivery, and printer setup.
+Implemented baselines: Held-sale queue/resume, fixed-PHP POS line/order discounts with server-enforced override thresholds, and one-use owner/manager approval for over-threshold discounts. Remaining Phase B work: dedicated staff PIN/passcode enrollment, approval expansion to other protected actions, direct exchange flow, receipt delivery, and printer setup.
+
+Manager-approval verification on 2026-09-30: validation 70/70, web unit/component 159/159, API 447/447, PostgreSQL 136/136, typecheck/lint/build passed, strict premium UI audit reported zero findings, production dependency audit reported no known vulnerabilities, approval anti-pattern grep was clean, and the complete desktop/tablet/mobile Playwright matrix passed 99/99. The browser test covers wrong-manager-credential recovery, successful one-use owner approval, automatic retry of the original cashier payment, and confirmation that the manager password is absent from browser storage.
 
 Discount verification on 2026-09-30: web unit/component 155/155, API 443/443, PostgreSQL 135/135, typecheck/lint/build passed, strict premium UI audit reported zero findings, production dependency audit reported no known vulnerabilities, and the complete desktop/tablet/mobile Playwright matrix passed 99/99. Browser coverage includes both an exactly-at-threshold discounted sale and a cashier over-threshold denial from the authoritative server.
 

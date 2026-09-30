@@ -25,6 +25,14 @@ export const draftCreateSchema = z.object({
   orderDiscountMinor: moneyMinorSchema.default(0),
   registerId: z.string().min(1, "VALIDATION").optional(),
   branchId: z.string().min(1, "VALIDATION").optional(),
+  approvalToken: z.string().trim().min(20, "VALIDATION").max(160, "VALIDATION").optional(),
+});
+
+export const discountApprovalSchema = z.object({
+  email: z.string().trim().email("VALIDATION").max(254, "VALIDATION"),
+  password: z.string().min(1, "VALIDATION").max(256, "VALIDATION"),
+  lines: draftLineSchema.array().min(1, "VALIDATION").max(100, "VALIDATION"),
+  orderDiscountMinor: moneyMinorSchema.default(0),
 });
 
 export const paymentInputSchema = z.object({

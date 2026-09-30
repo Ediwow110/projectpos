@@ -129,6 +129,18 @@ export interface DbDisplayToken {
   expiresAt: Date;
 }
 
+export interface DbManagerApprovalGrant {
+  id: string;
+  businessId: string;
+  requesterId: string;
+  approverId: string;
+  permission: string;
+  fingerprint: string;
+  tokenHash: string;
+  expiresAt: Date;
+  usedAt: Date | null;
+}
+
 export interface DbSession {
   id: string;
   userId: string;
@@ -481,6 +493,14 @@ export interface DbPort {
   createSupportGrant(g: { purpose: string; actorId: string; tokenHash: string; expiresAt: Date }): Promise<{ id: string }>;
   findValidSupportGrant(tokenHash: string): Promise<{ id: string; purpose: string; actorId: string; expiresAt: Date } | null>;
   markSupportGrantUsed(id: string): Promise<void>;
+  createManagerApprovalGrant(g: Omit<DbManagerApprovalGrant, "id" | "usedAt">): Promise<{ id: string }>;
+  findValidManagerApprovalGrant(
+    tokenHash: string,
+    businessId: string,
+    requesterId: string,
+    permission: string,
+  ): Promise<Pick<DbManagerApprovalGrant, "id" | "approverId" | "fingerprint" | "expiresAt"> | null>;
+  markManagerApprovalGrantUsed(id: string): Promise<void>;
   createShiftCorrection(c: { businessId: string; shiftId: string; amountMinor: number; reason: string; actorId: string; requestId: string }): Promise<DbShiftCorrection>;
   listShiftCorrections(businessId: string, shiftId: string): Promise<DbShiftCorrection[]>;
   createReceiptShare(s: { businessId: string; saleId: string; tokenHash: string; expiresAt: Date }): Promise<{ id: string }>;

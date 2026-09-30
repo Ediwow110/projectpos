@@ -688,6 +688,22 @@ model PlatformSupportGrant {
   createdAt DateTime  @default(now())
 }
 
+model ManagerApprovalGrant {
+  id          String    @id @default(cuid())
+  businessId  String
+  requesterId String
+  approverId  String
+  permission  String
+  fingerprint String
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([businessId, requesterId, permission])
+  @@index([expiresAt])
+}
+
 model ShiftCorrection {
   id          String   @id @default(cuid())
   businessId  String

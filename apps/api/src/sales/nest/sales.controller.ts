@@ -2,6 +2,7 @@ import { Body, Controller, Get, Inject, Param, Post, Query, Req, Res, UseGuards 
 import type { Request, Response } from "express";
 import {
   completeSchema,
+  discountApprovalSchema,
   draftCreateSchema,
   paymongoCheckoutSchema,
   reconcileSchema,
@@ -21,6 +22,7 @@ import type { DbPort } from "../../common/db.port";
 import { ApiTokenGuard } from "../../apitokens/api-token.guard";
 import { Scopes } from "../../apitokens/scopes.decorator";
 import { isPayMongoMethod } from "../../payments/paymongo";
+import { discountApprovalFingerprint } from "../discount-approval";
 
 function rid(req: Request): string {
   const headers: Record<string, string | undefined> = {};
@@ -44,6 +46,7 @@ const SELL_ROLES = new Set(["owner", "manager", "cashier"]);
 // (An earlier 60/min value tripped the Phase 8 load harness — see the
 // performance audit — so the ceiling was raised with headroom.)
 const moneyLimiter = createRateLimiter(1000, 60_000);
+const approvalLimiter = createRateLimiter(5, 60_000);
 
 @Controller("api/v1")
 @UseGuards(ApiTokenGuard, SessionGuard)
@@ -56,6 +59,51 @@ export class SalesController {
 
   private perms(req: Request): string[] {
     return this.auth.rolePermissions(req.auth!.role);
+  }
+
+  @Post("sales/discount-approval")
+  @UseGuards(CsrfGuard)
+  async discountApproval(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Body() body: unknown,
+  ): Promise<void> {
+    const parsed = discountApprovalSchema.safeParse(body);
+    if (!parsed.success) {
+      fail(res, 400, "VALIDATION", "Invalid manager approval payload", req);
+      return;
+    }
+    const granted = this.perms(req);
+    if (!SELL_ROLES.has(req.auth!.role) || granted.includes("discount.override")) {
+      fail(res, 403, "FORBIDDEN", "Manager approval is not available for this session", req);
+      return;
+    }
+    try {
+      const auth = req.auth!;
+      if (await approvalLimiter.hit(`${auth.businessId}:discount-approval:${auth.userId}`)) {
+        fail(res, 429, "RATE_LIMITED", "Too many approval attempts", req);
+        return;
+      }
+      const out = await this.auth.mintManagerApproval(
+        auth.businessId,
+        auth.userId,
+        rid(req),
+        {
+          email: parsed.data.email,
+          password: parsed.data.password,
+          permission: "discount.override",
+          fingerprint: discountApprovalFingerprint(parsed.data),
+        },
+      );
+      res.status(201).json({
+        token: out.token,
+        expiresAt: out.expiresAt,
+        approver: { name: out.approver.name, role: out.approver.role },
+      });
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "AUTH_INVALID_CREDENTIALS";
+      fail(res, statusFor(code), code, "Manager approval failed", req);
+    }
   }
 
   @Post("sales/drafts")
@@ -72,6 +120,19 @@ export class SalesController {
     }
     try {
       const auth = req.auth!;
+      let granted = this.perms(req);
+      let approval: { approverId: string; permission: "discount.override" } | undefined;
+      if (parsed.data.approvalToken && !granted.includes("discount.override")) {
+        const consumed = await this.auth.consumeManagerApproval(
+          auth.businessId,
+          auth.userId,
+          "discount.override",
+          discountApprovalFingerprint(parsed.data),
+          parsed.data.approvalToken,
+        );
+        granted = [...granted, "discount.override"];
+        approval = { approverId: consumed.approverId, permission: "discount.override" };
+      }
       const sale = await this.sales.createDraft(
         auth.businessId,
         auth.userId,
@@ -85,7 +146,8 @@ export class SalesController {
           registerId: parsed.data.registerId,
           branchId: parsed.data.branchId,
         },
-        this.perms(req),
+        granted,
+        approval,
       );
       res.status(201).json(sale);
     } catch (e) {

@@ -8,6 +8,10 @@ let cookie: string;
 let csrf: string;
 let productId: string;
 let businessId: string;
+let ownerUserId: string;
+
+const OWNER_EMAIL = "ana-sale@example.com";
+const OWNER_PASSWORD = "correct-horse-12";
 
 function jar(h: unknown): string {
   const arr = Array.isArray(h) ? h : [String(h ?? "")];
@@ -17,13 +21,14 @@ function jar(h: unknown): string {
 beforeAll(async () => {
   app = await createTestApp();
   const reg = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
-    ownerName: "Ana", email: "ana-sale@example.com",
-    password: "correct-horse-12", businessName: "Sari Store",
+    ownerName: "Ana", email: OWNER_EMAIL,
+    password: OWNER_PASSWORD, businessName: "Sari Store",
   });
   cookie = jar(reg.headers["set-cookie"]);
   csrf = reg.body.csrfToken;
   const me = await request(app.getHttpServer()).get("/api/v1/me").set("Cookie", cookie);
   businessId = me.body.businessId as string;
+  ownerUserId = me.body.userId as string;
   const prod = await request(app.getHttpServer()).post("/api/v1/products")
     .set("Cookie", cookie).set("X-CSRF-Token", csrf)
     .send({ name: "Coke", priceMinor: 2500, costMinor: 1000 });
@@ -119,6 +124,66 @@ describe("phase4 sales HTTP contract", () => {
 });
 
 describe("phase4 sales permissions, unknown, and cross-tenant", () => {
+  it("lets a cashier use one exact owner-approved over-threshold discount", async () => {
+    const inviteEmail = `approval-cashier-${Date.now()}@example.com`;
+    const invited = await request(app.getHttpServer()).post("/api/v1/memberships")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ name: "Approval Cashier", email: inviteEmail, role: "cashier" });
+    expect(invited.status).toBe(201);
+
+    const cashierLogin = await request(app.getHttpServer()).post("/api/v1/auth/login").send({
+      email: inviteEmail,
+      password: invited.body.tempPassword,
+    });
+    expect(cashierLogin.status).toBe(201);
+    const cashierCookie = jar(cashierLogin.headers["set-cookie"]);
+    const cashierCsrf = cashierLogin.body.csrfToken as string;
+    const cashierMe = await request(app.getHttpServer()).get("/api/v1/me").set("Cookie", cashierCookie);
+    const cashierUserId = cashierMe.body.userId as string;
+    const discounted = { lines: [{ productId, qty: 1, lineDiscountMinor: 0 }], orderDiscountMinor: 1000 };
+
+    const denied = await request(app.getHttpServer()).post("/api/v1/sales/drafts")
+      .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf).send(discounted);
+    expect(denied.status).toBe(403);
+
+    const badApproval = await request(app.getHttpServer()).post("/api/v1/sales/discount-approval")
+      .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf)
+      .send({ ...discounted, email: OWNER_EMAIL, password: "not-the-owner-password" });
+    expect(badApproval.status).toBe(401);
+
+    const approval = await request(app.getHttpServer()).post("/api/v1/sales/discount-approval")
+      .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf)
+      .send({ ...discounted, email: OWNER_EMAIL, password: OWNER_PASSWORD });
+    expect(approval.status).toBe(201);
+    expect(approval.body.token).toMatch(/^mgr_/);
+    expect(approval.body.approver).toMatchObject({ name: "Ana", role: "owner" });
+
+    const approved = await request(app.getHttpServer()).post("/api/v1/sales/drafts")
+      .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf)
+      .send({ ...discounted, approvalToken: approval.body.token });
+    expect(approved.status).toBe(201);
+    expect(approved.body.discountMinor).toBe(1000);
+
+    const replay = await request(app.getHttpServer()).post("/api/v1/sales/drafts")
+      .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf)
+      .send({ ...discounted, approvalToken: approval.body.token });
+    expect(replay.status).toBe(403);
+
+    const db = app.get<{ listAudit: () => Promise<Array<{ actorId: string; action: string; entityId: string; after?: unknown }>> }>("DbPort");
+    const applied = (await db.listAudit()).find((entry) =>
+      entry.action === "manager.approval.applied" && entry.entityId === approved.body.id,
+    );
+    expect(applied).toMatchObject({
+      actorId: ownerUserId,
+      after: {
+        requesterId: cashierUserId,
+        permission: "discount.override",
+        orderDiscountMinor: 1000,
+        lineDiscountMinor: 0,
+      },
+    });
+  });
+
   it("cashier role lacks sale.void and sale.refund", async () => {
     const { AuthService } = await import("../src/auth/nest/auth.service");
     const svc = new AuthService({} as never);

@@ -19,6 +19,7 @@ describe("phase8 observability", () => {
       password: "secret",
       passwordHash: "hash",
       token: "tok",
+      approvalToken: "mgr_secret",
       csrfToken: "csrf",
       message: "hello",
     });
@@ -27,6 +28,7 @@ describe("phase8 observability", () => {
       password: "[redacted]",
       passwordHash: "[redacted]",
       token: "[redacted]",
+      approvalToken: "[redacted]",
       csrfToken: "[redacted]",
       message: "hello",
     });

@@ -109,7 +109,7 @@ test("seller applies line and order discounts at the non-override thresholds and
   });
 });
 
-test("cashier over-threshold discount is rejected by server and POS shows the authorization state", async ({ page, request }) => {
+test("cashier completes an over-threshold discount after one-use owner approval", async ({ page, request }) => {
   test.setTimeout(150_000);
   const stamp = Date.now();
   const ownerPassword = "correct-horse-12";
@@ -157,9 +157,28 @@ test("cashier over-threshold discount is rejected by server and POS shows the au
   await clickPosPay(page, "22.00");
   await expect(page.getByRole("dialog", { name: "Payment" })).toBeVisible();
   await page.getByRole("button", { name: "Complete Payment" }).click();
-  await expectPosStatus(
-    page,
-    "FORBIDDEN: Discount requires discount.override authorization. Ask an owner or manager to authorize or reduce the discount; manager PIN approval is not available yet.",
-  );
   await expect(page.getByRole("dialog", { name: "Payment" })).toHaveCount(0);
+
+  const approvalDialog = page.getByRole("dialog", { name: "Manager approval" });
+  await expect(approvalDialog).toBeVisible();
+  await approvalDialog.getByLabel("Manager email").fill(ownerEmail);
+  await approvalDialog.getByLabel(/Manager password/).fill("wrong-owner-password");
+  await approvalDialog.getByRole("button", { name: "Approve & continue" }).click();
+  await expect(approvalDialog.getByRole("alert")).toContainText("Manager credentials could not be verified");
+  await expect(approvalDialog).toBeVisible();
+
+  await approvalDialog.getByLabel(/Manager password/).fill(ownerPassword);
+  await approvalDialog.getByRole("button", { name: "Approve & continue" }).click();
+  await expect(approvalDialog).toBeHidden({ timeout: 30_000 });
+  await expectPosStatus(page, "Sale completed.");
+
+  const { headers: cashierHeaders } = await apiAuthedContext(request, cashierEmail, tempPassword, page);
+  const sales = await request.get(`${API}/api/v1/sales?limit=20`, { headers: cashierHeaders });
+  expect(sales.ok()).toBe(true);
+  const completed = ((await sales.json()) as { items: Array<{ status: string; totalMinor: number }> }).items
+    .find((sale) => sale.status === "COMPLETED" && sale.totalMinor === 2200);
+  expect(completed).toBeTruthy();
+
+  const browserStorage = await page.evaluate(() => `${JSON.stringify(localStorage)} ${JSON.stringify(sessionStorage)}`);
+  expect(browserStorage).not.toContain(ownerPassword);
 });

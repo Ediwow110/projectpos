@@ -313,6 +313,80 @@ export class AuthService {
     return true;
   }
 
+  async mintManagerApproval(
+    businessId: string,
+    requesterId: string,
+    requestId: string,
+    input: { email: string; password: string; permission: string; fingerprint: string },
+  ): Promise<{ token: string; expiresAt: Date; approver: { id: string; name: string; role: string } }> {
+    const approver = await this.db.findUserByEmail(input.email.trim().toLowerCase());
+    const membership = approver ? await this.db.findMembership(approver.id, businessId) : null;
+    const eligibleRole = membership?.role === "owner" || membership?.role === "manager";
+    const eligiblePermission = membership ? this.rolePermissions(membership.role).includes(input.permission) : false;
+    const valid =
+      approver !== null &&
+      membership !== null &&
+      membership.deactivatedAt == null &&
+      approver.emailVerified !== false &&
+      approver.id !== requesterId &&
+      eligibleRole &&
+      eligiblePermission &&
+      await verifyPassword(approver.passwordHash, input.password);
+    if (!valid || !approver || !membership) throw new Error("AUTH_INVALID_CREDENTIALS");
+
+    const token = `mgr_${randomBytes(24).toString("hex")}`;
+    const expiresAt = new Date(Date.now() + 2 * 60 * 1000);
+    const grant = await this.db.createManagerApprovalGrant({
+      businessId,
+      requesterId,
+      approverId: approver.id,
+      permission: input.permission,
+      fingerprint: input.fingerprint,
+      tokenHash: hashToken(token),
+      expiresAt,
+    });
+    await this.db.appendAudit({
+      businessId,
+      actorId: approver.id,
+      action: "manager.approval.granted",
+      entityType: "ManagerApprovalGrant",
+      entityId: grant.id,
+      requestId,
+      reason: input.permission,
+      after: { requesterId },
+    });
+    return {
+      token,
+      expiresAt,
+      approver: { id: approver.id, name: approver.name, role: membership.role },
+    };
+  }
+
+  async consumeManagerApproval(
+    businessId: string,
+    requesterId: string,
+    permission: string,
+    fingerprint: string,
+    token: string,
+  ): Promise<{ approverId: string; approverName: string; approverRole: string }> {
+    const tokenHash = hashToken(token);
+    return this.db.withLock(`manager-approval:${tokenHash}`, async () => {
+      const grant = await this.db.findValidManagerApprovalGrant(tokenHash, businessId, requesterId, permission);
+      if (!grant || grant.fingerprint !== fingerprint) throw new Error("FORBIDDEN");
+      const approver = await this.db.findUserById(grant.approverId);
+      const membership = approver ? await this.db.findMembership(approver.id, businessId) : null;
+      if (
+        !approver ||
+        !membership ||
+        membership.deactivatedAt != null ||
+        (membership.role !== "owner" && membership.role !== "manager") ||
+        !this.rolePermissions(membership.role).includes(permission)
+      ) throw new Error("FORBIDDEN");
+      await this.db.markManagerApprovalGrantUsed(grant.id);
+      return { approverId: approver.id, approverName: approver.name, approverRole: membership.role };
+    });
+  }
+
   rolePermissions(role: string): string[] {
     return ROLE_SEED[role as keyof typeof ROLE_SEED] ?? [];
   }

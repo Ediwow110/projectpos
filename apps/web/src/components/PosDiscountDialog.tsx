@@ -116,7 +116,7 @@ export function PosDiscountDialog({
         <div className="rounded-xl border border-[#f0e2d7] bg-[#fff8f3] p-4 text-[11px] leading-5 text-[#6d6057]">
           Order discounts above <strong>10%</strong> or line discounts above <strong>20%</strong> require
           <code className="mx-1 rounded bg-white px-1.5 py-0.5 font-data text-[10px] text-[#b94832]">discount.override</code>.
-          The server checks authorization when the sale is held or paid; manager PIN approval is not available yet.
+          Cashiers can request an owner or manager approval in context when the sale is held or paid.
         </div>
 
         <label className="block text-[11px] font-semibold text-[#655b53]">

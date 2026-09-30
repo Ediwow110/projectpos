@@ -46,6 +46,7 @@ export interface PosDraftInput {
   registerId?: string;
   customerId?: string;
   customerName?: string;
+  approvalToken?: string;
 }
 
 export interface PosDiscountSummary {
@@ -73,6 +74,7 @@ export function buildDraftSaleInput(
   customerId: string,
   walkIn: string,
   orderDiscountMinor = 0,
+  approvalToken?: string,
 ): PosDraftInput {
   return {
     lines: cart.map((entry) => ({
@@ -84,6 +86,7 @@ export function buildDraftSaleInput(
     ...(registerId !== "" ? { registerId } : {}),
     ...(customerId !== "" ? { customerId } : {}),
     ...(customerId === "" && walkIn.trim() !== "" ? { customerName: walkIn.trim() } : {}),
+    ...(approvalToken?.trim() ? { approvalToken: approvalToken.trim() } : {}),
   };
 }
 

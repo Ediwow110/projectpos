@@ -41,6 +41,17 @@ describe("POS sale model", () => {
     });
   });
 
+  it("includes a manager approval token only when one is supplied", () => {
+    const cart = [{ productId: "p1", name: "Coffee", priceMinor: 2500, qty: 1, lineDiscountMinor: 500 }];
+    expect(buildDraftSaleInput(cart, "reg1", "", "", 300, "mgr_token-12345678901234567890")).toMatchObject({
+      lines: [{ productId: "p1", qty: 1, lineDiscountMinor: 500 }],
+      orderDiscountMinor: 300,
+      registerId: "reg1",
+      approvalToken: "mgr_token-12345678901234567890",
+    });
+    expect(buildDraftSaleInput(cart, "reg1", "", "", 300)).not.toHaveProperty("approvalToken");
+  });
+
   it("uses the due total when cash received is blank and builds an offline cash payload", () => {
     const cart = [{ productId: "p1", name: "Coffee", priceMinor: 2500, qty: 1, lineDiscountMinor: 0 }];
     expect(resolveTenderedMinor("", 2500)).toBe(2500);

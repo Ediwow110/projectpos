@@ -42,7 +42,7 @@ export function canPresentPayAction(cartCount: number, canSell: boolean): boolea
 
 export function posSaleErrorMessage(code: string, message: string, hasDiscount: boolean): string {
   if (hasDiscount && code === "FORBIDDEN") {
-    return "FORBIDDEN: Discount requires discount.override authorization. Ask an owner or manager to authorize or reduce the discount; manager PIN approval is not available yet.";
+    return "FORBIDDEN: Manager approval is required for this discount.";
   }
   return `${code}: ${message}`;
 }

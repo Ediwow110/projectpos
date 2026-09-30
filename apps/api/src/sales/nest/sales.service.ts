@@ -92,9 +92,28 @@ export class SalesService {
     requestId: string,
     input: DraftInput,
     granted: string[],
+    approval?: { approverId: string; permission: "discount.override" },
   ): Promise<DbSale> {
     withScope(businessId, {});
-    return this.drafts.createDraft(businessId, actorId, requestId, input, granted);
+    const sale = await this.drafts.createDraft(businessId, actorId, requestId, input, granted);
+    if (approval) {
+      await this.db.appendAudit({
+        businessId,
+        actorId: approval.approverId,
+        action: "manager.approval.applied",
+        entityType: "Sale",
+        entityId: sale.id,
+        requestId,
+        reason: approval.permission,
+        after: {
+          requesterId: actorId,
+          permission: approval.permission,
+          orderDiscountMinor: input.orderDiscountMinor ?? 0,
+          lineDiscountMinor: input.lines.reduce((sum, line) => sum + (line.lineDiscountMinor ?? 0), 0),
+        },
+      });
+    }
+    return sale;
   }
 
   async completeSale(

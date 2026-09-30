@@ -295,6 +295,58 @@ export function integrationsFamily(ctx: PgContext) {
       }
     },
 
+    async createManagerApprovalGrant(g: {
+      businessId: string;
+      requesterId: string;
+      approverId: string;
+      permission: string;
+      fingerprint: string;
+      tokenHash: string;
+      expiresAt: Date;
+    }): Promise<{ id: string }> {
+      const c = await ctx.client();
+      try {
+        const id = nid("mag");
+        await c.query(
+          'INSERT INTO "ManagerApprovalGrant" ("id", "businessId", "requesterId", "approverId", "permission", "fingerprint", "tokenHash", "expiresAt", "usedAt", "createdAt")' +
+            ' VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL, CURRENT_TIMESTAMP)',
+          [id, g.businessId, g.requesterId, g.approverId, g.permission, g.fingerprint, g.tokenHash, g.expiresAt],
+        );
+        return { id };
+      } finally {
+        if (ctx.owns()) c.release();
+      }
+    },
+
+    async findValidManagerApprovalGrant(
+      tokenHash: string,
+      businessId: string,
+      requesterId: string,
+      permission: string,
+    ): Promise<{ id: string; approverId: string; fingerprint: string; expiresAt: Date } | null> {
+      const c = await ctx.client();
+      try {
+        const r = await c.query(
+          'SELECT "id", "approverId", "fingerprint", "expiresAt" FROM "ManagerApprovalGrant"' +
+            ' WHERE "tokenHash" = $1 AND "businessId" = $2 AND "requesterId" = $3 AND "permission" = $4' +
+            ' AND "usedAt" IS NULL AND "expiresAt" > $5',
+          [tokenHash, businessId, requesterId, permission, new Date()],
+        );
+        return (r.rows[0] as { id: string; approverId: string; fingerprint: string; expiresAt: Date } | undefined) ?? null;
+      } finally {
+        if (ctx.owns()) c.release();
+      }
+    },
+
+    async markManagerApprovalGrantUsed(id: string): Promise<void> {
+      const c = await ctx.client();
+      try {
+        await c.query('UPDATE "ManagerApprovalGrant" SET "usedAt" = $1 WHERE "id" = $2', [new Date(), id]);
+      } finally {
+        if (ctx.owns()) c.release();
+      }
+    },
+
     async createShiftCorrection(c: { businessId: string; shiftId: string; amountMinor: number; reason: string; actorId: string; requestId: string }): Promise<DbShiftCorrection> {
       const client = await ctx.client();
       try {

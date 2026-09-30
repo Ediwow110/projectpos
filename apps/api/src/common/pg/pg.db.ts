@@ -319,6 +319,15 @@ export class PgDbPort implements DbPort {
   markSupportGrantUsed(id: string): Promise<void> {
     return this.integrations.markSupportGrantUsed(id);
   }
+  createManagerApprovalGrant(g: { businessId: string; requesterId: string; approverId: string; permission: string; fingerprint: string; tokenHash: string; expiresAt: Date }): Promise<{ id: string }> {
+    return this.integrations.createManagerApprovalGrant(g);
+  }
+  findValidManagerApprovalGrant(tokenHash: string, businessId: string, requesterId: string, permission: string): Promise<{ id: string; approverId: string; fingerprint: string; expiresAt: Date } | null> {
+    return this.integrations.findValidManagerApprovalGrant(tokenHash, businessId, requesterId, permission);
+  }
+  markManagerApprovalGrantUsed(id: string): Promise<void> {
+    return this.integrations.markManagerApprovalGrantUsed(id);
+  }
   createShiftCorrection(c: { businessId: string; shiftId: string; amountMinor: number; reason: string; actorId: string; requestId: string }): Promise<DbShiftCorrection> {
     return this.integrations.createShiftCorrection(c);
   }

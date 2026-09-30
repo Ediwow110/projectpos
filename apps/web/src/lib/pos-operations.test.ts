@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { MemorySyncStore } from "./sync-store";
 import {
+  authorizePosDiscount,
   completePosSale,
   holdPosSale,
   queueOfflinePosSale,
@@ -13,6 +14,35 @@ const cart = [{ productId: "p1", name: "Coffee", priceMinor: 2500, qty: 2, lineD
 const undiscountedCart = [{ productId: "p1", name: "Coffee", priceMinor: 2500, qty: 2, lineDiscountMinor: 0 }];
 
 describe("POS operations", () => {
+  it("requests a one-use manager approval without sending customer or register data", async () => {
+    const calls: Array<{ path: string; body?: string | null }> = [];
+    const api: PosApiCall = async <T>(path: string, options?: { init?: RequestInit }) => {
+      calls.push({ path, body: options?.init?.body as string | null | undefined });
+      if (path === "/api/v1/auth/csrf") return { csrfToken: "csrf" } as T;
+      if (path === "/api/v1/sales/discount-approval") {
+        return {
+          token: "mgr_token-12345678901234567890",
+          expiresAt: "2026-09-30T13:00:00.000Z",
+          approver: { name: "Store Manager", role: "manager" },
+        } as T;
+      }
+      throw new Error("unexpected path " + path);
+    };
+    const out = await authorizePosDiscount({
+      cart,
+      orderDiscountMinor: 300,
+      email: "manager@example.com",
+      password: "manager-password",
+    }, { api });
+    expect(out.token).toMatch(/^mgr_/);
+    expect(calls[1]?.body).toBe(JSON.stringify({
+      lines: [{ productId: "p1", qty: 2, lineDiscountMinor: 500 }],
+      orderDiscountMinor: 300,
+      email: "manager@example.com",
+      password: "manager-password",
+    }));
+  });
+
   it("holds a draft through csrf + draft + hold without leaking UI state", async () => {
     const calls: Array<{ path: string; method?: string; body?: string | null }> = [];
     const api: PosApiCall = async <T>(path: string, options?: { init?: RequestInit }) => {
@@ -38,6 +68,31 @@ describe("POS operations", () => {
       }) },
       { path: "/api/v1/sales/sale-1/hold", method: "POST", body: "{}" },
     ]);
+  });
+
+  it("passes a manager approval token only to the draft creation call", async () => {
+    const calls: Array<{ path: string; body?: string | null }> = [];
+    const api: PosApiCall = async <T>(path: string, options?: { init?: RequestInit }) => {
+      calls.push({ path, body: options?.init?.body as string | null | undefined });
+      if (path === "/api/v1/auth/csrf") return { csrfToken: "csrf" } as T;
+      if (path === "/api/v1/sales/drafts") return { id: "sale-approved", totalMinor: 4200 } as T;
+      if (path === "/api/v1/sales/complete") return { id: "sale-approved", status: "COMPLETED", payments: [] } as T;
+      throw new Error("unexpected path " + path);
+    };
+    await completePosSale({
+      cart,
+      registerId: "reg-1",
+      customerId: "",
+      walkIn: "",
+      received: "42",
+      method: "cash",
+      orderDiscountMinor: 300,
+      approvalToken: "mgr_token-12345678901234567890",
+    }, { api, uuid: () => "approved-complete-key" });
+    expect(JSON.parse(calls.find((call) => call.path === "/api/v1/sales/drafts")!.body!)).toMatchObject({
+      approvalToken: "mgr_token-12345678901234567890",
+    });
+    expect(calls.find((call) => call.path === "/api/v1/sales/complete")!.body).not.toContain("approvalToken");
   });
 
   it("re-holds an existing resumed draft without creating a duplicate draft", async () => {

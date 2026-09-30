@@ -373,6 +373,43 @@ describe("phase12 pg integrations: support grants", () => {
     expect(await integrations.findValidSupportGrant(hash)).toBeNull();
   });
 
+  it("manager approval grants are tenant/requester/scope bound and one-use", async () => {
+    const business = await seedBusiness();
+    const tokenHash = `mgr-hash-${Date.now()}`;
+    const grant = await integrations.createManagerApprovalGrant({
+      businessId: business.id,
+      requesterId: "cashier-1",
+      approverId: "manager-1",
+      permission: "discount.override",
+      fingerprint: "cart-fingerprint",
+      tokenHash,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    expect(await integrations.findValidManagerApprovalGrant(
+      tokenHash,
+      business.id,
+      "cashier-1",
+      "discount.override",
+    )).toEqual(expect.objectContaining({
+      id: grant.id,
+      approverId: "manager-1",
+      fingerprint: "cart-fingerprint",
+    }));
+    expect(await integrations.findValidManagerApprovalGrant(
+      tokenHash,
+      business.id,
+      "other-cashier",
+      "discount.override",
+    )).toBeNull();
+    await integrations.markManagerApprovalGrantUsed(grant.id);
+    expect(await integrations.findValidManagerApprovalGrant(
+      tokenHash,
+      business.id,
+      "cashier-1",
+      "discount.override",
+    )).toBeNull();
+  });
+
   it("atomically claims a one-time grant under concurrent PostgreSQL requests", async () => {
     const service = new SupportGrantService(new PgDbPort(ctx));
     const grant = await service.mint(
