@@ -7,6 +7,7 @@ import type { RequestHandler } from "express";
 import cookieParser from "cookie-parser";
 import { AuthController } from "./auth/nest/auth.controller";
 import { AuthService } from "./auth/nest/auth.service";
+import { ManagerApprovalPolicyService } from "./auth/nest/manager-approval-policy.service";
 import { TenantController } from "./tenant/nest/tenant.controller";
 import { TenantService } from "./tenant/nest/tenant.service";
 import { BusinessController } from "./business/nest/business.controller";
@@ -113,6 +114,7 @@ function runtimeDatabaseUrl(): string | undefined {
       useFactory: (d: DbPort, email: TransactionalEmailPort) => new AuthService(d, email),
       inject: ["DbPort", TRANSACTIONAL_EMAIL_PORT],
     },
+    ManagerApprovalPolicyService,
     TenantService,
     BusinessService,
     CatalogService,
@@ -202,6 +204,7 @@ export async function createTestApp(options: { paymongo?: PayMongoPort; humanVer
         useFactory: (d: DbPort, email: TransactionalEmailPort) => new AuthService(d, email),
         inject: ["DbPort", TRANSACTIONAL_EMAIL_PORT],
       },
+      ManagerApprovalPolicyService,
       {
         provide: TenantService,
         useFactory: (d: DbPort) => new TenantService(d),
