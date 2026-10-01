@@ -62,6 +62,14 @@ export default function InventoryPage(): JSX.Element {
     enabled: meQuery.data !== undefined,
   });
 
+  // The manager authorizes the exact (product, type, quantity, reason) tuple
+  // the server fingerprints, so the dialog must name the product and show the
+  // reason — not the raw product id, which is both unreadable and an internal
+  // identifier. Falls back to "Selected product" when the typed id is not in
+  // the loaded balances page.
+  const approvalProductName = (balancesQuery.data?.items ?? [])
+    .find((row) => row.productId === productId.trim())?.productName;
+
   async function submitMovement(approvalToken?: string): Promise<boolean> {
     const delta = Number(qty);
     if (!productId.trim()) {
@@ -266,8 +274,9 @@ export default function InventoryPage(): JSX.Element {
         open={approvalOpen}
         permission="inventory.adjust"
         action={{ kind: "inventory_movement", productId: productId.trim(), movementType: type, qtyDelta: Number(qty), ...(reason.trim() ? { reason: reason.trim() } : {}), ...(meQuery.data?.activeBranchId ? { branchId: meQuery.data.activeBranchId } : {}) }}
+        title={`Manager approval · approve ${type.replaceAll("_", " ")} of ${Math.abs(Number(qty) || 0)} units`}
         description="This stock movement requires manager authorization before it is written to the inventory ledger."
-        summary={`Product ${productId.trim() || "—"} · ${type.replaceAll("_", " ")} · ${qty || "0"} units`}
+        summary={`${approvalProductName ?? "Selected product"} · ${type.replaceAll("_", " ")} · ${qty || "0"} units${reason.trim() ? ` · Reason: ${reason.trim()}` : ""}`}
         onApproved={(grant) => submitMovement(grant.token)}
         onClose={() => setApprovalOpen(false)}
       />
