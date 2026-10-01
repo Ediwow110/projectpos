@@ -11,6 +11,11 @@ export interface ManagerApprovalRequirement {
   requireDistinctApprover: boolean;
 }
 
+export interface AppliedManagerApproval {
+  approverId: string;
+  permission: ManagerApprovalPermission;
+}
+
 function trimOrNull(value: string | undefined): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;

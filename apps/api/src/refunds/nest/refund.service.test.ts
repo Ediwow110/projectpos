@@ -84,6 +84,15 @@ describe("phase6 refund service", () => {
     ).rejects.toThrow("REFUND_EXCEEDS_LIMIT");
     expect(await db.listRefundsBySale(saleId, "b1")).toEqual([]);
   });
+  it("rejects duplicate line entries whose combined quantity exceeds the refundable amount", async () => {
+    const { db, svc, saleId } = await setupRefund();
+    const items = await db.listSaleItems(saleId, "b1");
+    await expect(svc.approveRefund("b1", "u1", "r-duplicate-lines", saleId, {
+      items: [{ saleItemId: items[0].id, qty: 2 }, { saleItemId: items[0].id, qty: 1 }],
+      key: "ref-duplicate-lines",
+    }, ALL, "owner")).rejects.toThrow("REFUND_EXCEEDS_LIMIT");
+    expect(await db.listRefundsBySale(saleId, "b1")).toHaveLength(0);
+  });
   it("rejects self-approval by non-owners", async () => {
     const { db, svc, saleId } = await setupRefund();
     const sales = new SalesService(db);

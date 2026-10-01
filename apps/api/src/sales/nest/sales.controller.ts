@@ -9,6 +9,7 @@ import {
   reconcileSchema,
   refundRequestSchema,
   salesQuerySchema,
+  voidSaleSchema,
 } from "@pos/validation";
 import { SessionGuard } from "../../common/session.guard";
 import { CsrfGuard } from "../../common/csrf.guard";
@@ -17,6 +18,7 @@ import { fail, statusFor } from "../../common/http-helpers";
 import { toCsv } from "../../common/csv";
 import { createRateLimiter } from "../../common/rate-limit";
 import { AuthService } from "../../auth/nest/auth.service";
+import { ManagerApprovalPolicyService, type AppliedManagerApproval } from "../../auth/nest/manager-approval-policy.service";
 import { SalesService } from "./sales.service";
 import { resolvePaymentMethods } from "../payment-methods";
 import type { DbPort } from "../../common/db.port";
@@ -55,6 +57,7 @@ export class SalesController {
   constructor(
     @Inject(SalesService) private readonly sales: SalesService,
     @Inject(AuthService) private readonly auth: AuthService,
+    @Inject(ManagerApprovalPolicyService) private readonly approvalPolicy: ManagerApprovalPolicyService,
     @Inject("DbPort") private readonly db: DbPort,
   ) {}
 
@@ -406,15 +409,29 @@ export class SalesController {
     @Param("id") id: string,
     @Body() body: unknown,
   ): Promise<void> {
-    const reason = (body as { reason?: unknown } | null)?.reason;
-    if (typeof reason !== "string" || reason.trim().length < 3) {
+    const parsed = voidSaleSchema.safeParse(body);
+    if (!parsed.success) {
       fail(res, 400, "VALIDATION", "Void reason required", req);
       return;
     }
     try {
       const auth = req.auth!;
-      res.json(
-        await this.sales.voidSale(auth.businessId, auth.userId, rid(req), id, reason, this.perms(req)),
+      const requirement = await this.approvalPolicy.resolveRequirement(auth.businessId, auth.userId, {
+        kind: "sale_void", saleId: id, reason: parsed.data.reason,
+      });
+      if (!requirement) throw new Error("FORBIDDEN");
+      let granted = this.perms(req);
+      let approval: AppliedManagerApproval | undefined;
+      if (!granted.includes(requirement.permission)) {
+        if (!parsed.data.approvalToken) throw new Error("FORBIDDEN");
+        const consumed = await this.auth.consumeManagerApproval(
+          auth.businessId, auth.userId, requirement.permission, requirement.fingerprint, parsed.data.approvalToken,
+        );
+        granted = [...granted, requirement.permission];
+        approval = { approverId: consumed.approverId, permission: requirement.permission };
+      }
+      res.status(200).json(
+        await this.sales.voidSale(auth.businessId, auth.userId, rid(req), id, parsed.data.reason, granted, approval),
       );
     } catch (e) {
       const code = e instanceof Error ? e.message : "VALIDATION";
@@ -442,6 +459,10 @@ export class SalesController {
     }
     try {
       const auth = req.auth!;
+      if (!SELL_ROLES.has(auth.role)) {
+        fail(res, 403, "FORBIDDEN", "Refund requests are not available for this role", req);
+        return;
+      }
       res.status(201).json(
         await this.sales.requestRefund(
           auth.businessId,
@@ -450,7 +471,7 @@ export class SalesController {
           id,
           parsed.data.reason,
           key,
-          this.perms(req),
+          ["sale.refund"],
         ),
       );
     } catch (e) {

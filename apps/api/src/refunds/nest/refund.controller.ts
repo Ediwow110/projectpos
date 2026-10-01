@@ -7,8 +7,10 @@ import { getCorrelationId } from "../../correlation";
 import { fail, statusFor } from "../../common/http-helpers";
 import { createRateLimiter } from "../../common/rate-limit";
 import { AuthService } from "../../auth/nest/auth.service";
+import { ManagerApprovalPolicyService, type AppliedManagerApproval } from "../../auth/nest/manager-approval-policy.service";
 import { ExchangeService } from "./exchange.service";
 import { RefundService } from "./refund.service";
+import type { DbPort } from "../../common/db.port";
 
 function rid(req: Request): string {
   const headers: Record<string, string | undefined> = {};
@@ -32,6 +34,8 @@ export class RefundController {
     @Inject(RefundService) private readonly refunds: RefundService,
     @Inject(ExchangeService) private readonly exchanges: ExchangeService,
     @Inject(AuthService) private readonly auth: AuthService,
+    @Inject(ManagerApprovalPolicyService) private readonly approvalPolicy: ManagerApprovalPolicyService,
+    @Inject("DbPort") private readonly db: DbPort,
   ) {}
 
   private perms(req: Request): string[] {
@@ -110,6 +114,33 @@ export class RefundController {
         fail(res, 429, "RATE_LIMITED", "Too many attempts", req);
         return;
       }
+      // A completed idempotent command must replay its authoritative result,
+      // not be reclassified against the sale's later terminal state.
+      const existing = await this.db.findIdempotency(auth.businessId, key, "refund.approve");
+      if (existing) {
+        const replay = await this.refunds.approveRefund(
+          auth.businessId, auth.userId, rid(req), id,
+          { items: parsed.data.items, reason: parsed.data.reason, key },
+          this.perms(req), auth.role,
+        );
+        res.status(200).json({ refund: replay.refund, sale: replay.sale, replayed: true });
+        return;
+      }
+      const requirement = await this.approvalPolicy.resolveRequirement(auth.businessId, auth.userId, {
+        kind: "refund", saleId: id, items: parsed.data.items, reason: parsed.data.reason,
+      });
+      if (!requirement) throw new Error("FORBIDDEN");
+      let granted = this.perms(req);
+      let approval: AppliedManagerApproval | undefined;
+      if (!granted.includes(requirement.permission) || requirement.requireDistinctApprover) {
+        if (!parsed.data.approvalToken) throw new Error("FORBIDDEN");
+        const consumed = await this.auth.consumeManagerApproval(
+          auth.businessId, auth.userId, requirement.permission, requirement.fingerprint, parsed.data.approvalToken,
+          requirement.requireDistinctApprover,
+        );
+        granted = [...new Set([...granted, "sale.refund", requirement.permission])];
+        approval = { approverId: consumed.approverId, permission: requirement.permission };
+      }
       const { refund, sale, replayed } = await this.refunds.approveRefund(
         auth.businessId,
         auth.userId,
@@ -120,8 +151,9 @@ export class RefundController {
           reason: parsed.data.reason,
           key,
         },
-        this.perms(req),
+        granted,
         auth.role,
+        approval,
       );
       res.status(replayed ? 200 : 201).json(replayed ? { refund, sale, replayed } : { refund, sale });
     } catch (e) {

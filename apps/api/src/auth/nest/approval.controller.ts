@@ -61,6 +61,7 @@ export class ApprovalController {
         ...(parsed.data.password ? { password: parsed.data.password } : {}),
         permission: requirement.permission,
         fingerprint: requirement.fingerprint,
+        requireDistinctApprover: requirement.requireDistinctApprover,
       });
       res.status(201).json({
         token: result.token,

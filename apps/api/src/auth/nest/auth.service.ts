@@ -318,7 +318,7 @@ export class AuthService {
     businessId: string,
     requesterId: string,
     requestId: string,
-    input: { email: string; password?: string; pin?: string; permission: string; fingerprint: string },
+    input: { email: string; password?: string; pin?: string; permission: string; fingerprint: string; requireDistinctApprover?: boolean },
   ): Promise<{ token: string; expiresAt: Date; approver: { id: string; name: string; role: string } }> {
     const approver = await this.db.findUserByEmail(input.email.trim().toLowerCase());
     const membership = approver ? await this.db.findMembership(approver.id, businessId) : null;
@@ -336,7 +336,9 @@ export class AuthService {
       eligibleRole &&
       eligiblePermission &&
       credentialValid;
-    if (!valid || !approver || !membership) throw new Error("AUTH_INVALID_CREDENTIALS");
+    if (!valid || !approver || !membership || (input.requireDistinctApprover && approver.id === requesterId)) {
+      throw new Error("AUTH_INVALID_CREDENTIALS");
+    }
 
     const token = `mgr_${randomBytes(24).toString("hex")}`;
     const expiresAt = new Date(Date.now() + 2 * 60 * 1000);
@@ -372,6 +374,7 @@ export class AuthService {
     permission: string,
     fingerprint: string,
     token: string,
+    requireDistinctApprover = false,
   ): Promise<{ approverId: string; approverName: string; approverRole: string }> {
     const tokenHash = hashToken(token);
     return this.db.withLock(`manager-approval:${tokenHash}`, async () => {
@@ -384,7 +387,8 @@ export class AuthService {
         !membership ||
         membership.deactivatedAt != null ||
         (membership.role !== "owner" && membership.role !== "manager") ||
-        !this.rolePermissions(membership.role).includes(permission)
+        !this.rolePermissions(membership.role).includes(permission) ||
+        (requireDistinctApprover && approver.id === requesterId)
       ) throw new Error("FORBIDDEN");
       await this.db.markManagerApprovalGrantUsed(grant.id);
       return { approverId: approver.id, approverName: approver.name, approverRole: membership.role };

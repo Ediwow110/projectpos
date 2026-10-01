@@ -2,6 +2,7 @@ import type { DbPort, DbSale } from "../common/db.port";
 import { fingerprintPayload } from "./idempotency";
 import { transitionSale } from "./state-machine";
 import { refundLockKey } from "../refunds/refund-lock";
+import type { AppliedManagerApproval } from "../auth/nest/manager-approval-policy.service";
 
 export class SalesLifecycleService {
   constructor(private readonly db: DbPort) {}
@@ -73,6 +74,7 @@ export class SalesLifecycleService {
     saleId: string,
     reason: string,
     granted: string[],
+    approval?: AppliedManagerApproval,
   ): Promise<DbSale> {
     if (!granted.includes("sale.void")) throw new Error("FORBIDDEN");
     if (!reason || reason.trim().length < 3) throw new Error("VALIDATION");
@@ -89,6 +91,7 @@ export class SalesLifecycleService {
         entityType: "Sale",
         entityId: sale.id,
         requestId,
+        ...(approval ? { after: { approval } } : {}),
       });
       return updated;
     });

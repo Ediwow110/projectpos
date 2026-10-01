@@ -83,4 +83,37 @@ describe("generic manager approval contract", () => {
     expect(response.status).toBe(400);
     expect(response.body.code).toBe("VALIDATION");
   });
+
+  it("consumes an exact void grant once and preserves the operational actor in its audit", async () => {
+    const saleId = await draftId();
+    const otherSaleId = await draftId();
+    const denied = await request(app.getHttpServer()).post(`/api/v1/sales/${saleId}/void`)
+      .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf)
+      .send({ reason: "Duplicate order" });
+    expect(denied.status).toBe(403);
+
+    const approval = await request(app.getHttpServer()).post("/api/v1/approvals/manager")
+      .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf)
+      .send({
+        email: "approval-owner-contract@example.com", pin: "482615", permission: "sale.void",
+        action: { kind: "sale_void", saleId, reason: "Duplicate order" },
+      });
+    const wrongSale = await request(app.getHttpServer()).post(`/api/v1/sales/${otherSaleId}/void`)
+      .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf)
+      .send({ reason: "Duplicate order", approvalToken: approval.body.token });
+    expect(wrongSale.status).toBe(403);
+
+    const applied = await request(app.getHttpServer()).post(`/api/v1/sales/${saleId}/void`)
+      .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf)
+      .send({ reason: "Duplicate order", approvalToken: approval.body.token });
+    expect(applied.status).toBe(200);
+    expect(applied.body.status).toBe("VOIDED");
+
+    const cashier = await request(app.getHttpServer()).get("/api/v1/me").set("Cookie", cashierCookie);
+    const db = app.get<{ listAudit: () => Promise<Array<{ action: string; actorId: string; entityId: string; after?: unknown }>> }>("DbPort");
+    expect((await db.listAudit()).find((entry) => entry.action === "sale.void" && entry.entityId === saleId)).toMatchObject({
+      actorId: cashier.body.userId,
+      after: { approval: { permission: "sale.void" } },
+    });
+  });
 });

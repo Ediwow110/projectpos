@@ -17,6 +17,7 @@ import {
   type PayMongoPort,
 } from "../../payments/paymongo";
 import { SalesLifecycleService } from "../sale-lifecycle-service";
+import type { AppliedManagerApproval } from "../../auth/nest/manager-approval-policy.service";
 import { SalesPayMongoWebhookService } from "../paymongo-webhook-service";
 import { SalesPaymentProviderService } from "../payment-provider-service";
 import { SalesPaymentReconciliationService } from "../payment-reconciliation-service";
@@ -269,6 +270,7 @@ export class SalesService {
     saleId: string,
     reason: string,
     granted: string[],
+    approval?: AppliedManagerApproval,
   ): Promise<DbSale> {
     withScope(businessId, {});
     return this.lifecycle.voidSale(
@@ -278,6 +280,7 @@ export class SalesService {
       saleId,
       reason,
       granted,
+      approval,
     );
   }
 

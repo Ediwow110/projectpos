@@ -7,6 +7,7 @@ import { ShiftService } from "../../shifts/nest/shift.service";
 import { withInventoryLocks } from "../../inventory/inventory-locks";
 import { lineRefundAmount, refundableQty } from "../refund-math";
 import { refundLockKey } from "../refund-lock";
+import type { AppliedManagerApproval } from "../../auth/nest/manager-approval-policy.service";
 
 export interface RefundItemInput {
   saleItemId: string;
@@ -46,11 +47,19 @@ export class RefundService {
     input: { items: RefundItemInput[]; reason?: string; key: string },
     granted: string[],
     role: string,
+    approval?: AppliedManagerApproval,
   ): Promise<{ refund: DbRefund; sale: DbSale; replayed: boolean }> {
     withScope(businessId, {});
     if (!granted.includes("sale.refund")) throw new Error("FORBIDDEN");
     return this.db.withLock(refundLockKey(businessId, saleId), async () => {
-      const fingerprint = fingerprintPayload({ saleId, items: input.items, reason: input.reason ?? null });
+      const requestedByLine = new Map<string, number>();
+      for (const item of input.items) {
+        requestedByLine.set(item.saleItemId, (requestedByLine.get(item.saleItemId) ?? 0) + item.qty);
+      }
+      const requestedItems = [...requestedByLine.entries()]
+        .map(([saleItemId, qty]) => ({ saleItemId, qty }))
+        .sort((left, right) => left.saleItemId.localeCompare(right.saleItemId));
+      const fingerprint = fingerprintPayload({ saleId, items: requestedItems, reason: input.reason ?? null });
       const existing = await this.db.findIdempotency(businessId, input.key, "refund.approve");
       if (existing) {
         if (existing.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
@@ -66,7 +75,7 @@ export class RefundService {
       const singleStep = sale.status !== "REFUND_REQUESTED";
       if (!singleStep) {
         const requester = await this.findRequester(businessId, saleId);
-        if (requester === actorId && role !== "owner") {
+        if (requester === actorId && role !== "owner" && !approval) {
           throw new Error("FORBIDDEN");
         }
       }
@@ -76,7 +85,7 @@ export class RefundService {
       for (const ri of prior) {
         refundedByLine.set(ri.saleItemId, (refundedByLine.get(ri.saleItemId) ?? 0) + ri.qty);
       }
-      const resolved = input.items.map((req) => {
+      const resolved = requestedItems.map((req) => {
         const line = lines.find((l) => l.id === req.saleItemId);
         if (!line) throw new Error("VALIDATION");
         if (!Number.isInteger(req.qty) || req.qty <= 0) throw new Error("VALIDATION");
@@ -227,6 +236,7 @@ export class RefundService {
         entityType: "Refund",
         entityId: refund.id,
         requestId,
+        ...(approval ? { after: { approval } } : {}),
       });
       if (singleStep) {
         await this.db.appendAudit({
