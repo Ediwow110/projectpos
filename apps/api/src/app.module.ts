@@ -6,6 +6,7 @@ import type { NestExpressApplication } from "@nestjs/platform-express";
 import type { RequestHandler } from "express";
 import cookieParser from "cookie-parser";
 import { AuthController } from "./auth/nest/auth.controller";
+import { ApprovalController } from "./auth/nest/approval.controller";
 import { AuthService } from "./auth/nest/auth.service";
 import { ManagerApprovalPolicyService } from "./auth/nest/manager-approval-policy.service";
 import { TenantController } from "./tenant/nest/tenant.controller";
@@ -95,7 +96,7 @@ function runtimeDatabaseUrl(): string | undefined {
 }
 
 @Module({
-    controllers: [HealthController, AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, MetricsController],
+    controllers: [HealthController, AuthController, ApprovalController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, MetricsController],
   providers: [
     {
       provide: HUMAN_VERIFICATION_PORT,
@@ -193,7 +194,7 @@ export async function createTestApp(options: { paymongo?: PayMongoPort; humanVer
     ? new PgDbPort(new PgContext(databaseUrl))
     : createMemoryDb();
   const moduleRef = await Test.createTestingModule({
-  controllers: [HealthController, AuthController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, MetricsController],
+  controllers: [HealthController, AuthController, ApprovalController, TenantController, BusinessController, CatalogController, InventoryController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, MetricsController],
     providers: [
       { provide: "DbPort", useValue: db },
       { provide: PAYMONGO_PORT, useValue: options.paymongo ?? createPayMongoFromEnv({}) },
