@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DbPort } from "../../common/db.port";
 import { createMemoryDb } from "../../common/memory.db";
+import { discountApprovalFingerprint } from "../../sales/discount-approval";
 import { ManagerApprovalPolicyService } from "./manager-approval-policy.service";
 
 async function setup(): Promise<{ db: DbPort; policy: ManagerApprovalPolicyService; businessId: string; requesterId: string; saleId: string; itemId: string; productId: string; branchId: string; shiftId: string }> {
@@ -102,5 +103,44 @@ describe("ManagerApprovalPolicyService", () => {
     const after = await policy.resolveRequirement(businessId, requesterId, action);
     expect(after?.stateFingerprint).not.toBe(before?.stateFingerprint);
     expect(after?.fingerprint).not.toBe(before?.fingerprint);
+  });
+
+  // Regression: a discount grant is minted by POST /api/v1/approvals/manager
+  // (this service) but consumed by POST /api/v1/sales/drafts through
+  // discountApprovalFingerprint(). If those two payload shapes ever diverge the
+  // consumption raises FORBIDDEN and no cashier can ever complete an
+  // over-threshold discount, so the parity is asserted directly.
+  it("keeps the discount fingerprint identical to the sales draft consumption fingerprint", async () => {
+    const { policy, businessId, requesterId } = await setup();
+    const lines = [
+      { productId: "prod-b", qty: 1, lineDiscountMinor: 1000 },
+      { productId: "prod-a", qty: 3, lineDiscountMinor: 250 },
+    ];
+    const requirement = await policy.resolveRequirement(businessId, requesterId, {
+      kind: "discount",
+      orderDiscountMinor: 500,
+      lines,
+    });
+    expect(requirement?.permission).toBe("discount.override");
+    expect(requirement?.fingerprint).toBe(
+      discountApprovalFingerprint({ lines, orderDiscountMinor: 500 }),
+    );
+  });
+
+  it("keeps the discount fingerprint order-independent against the draft consumption fingerprint", async () => {
+    const { policy, businessId, requesterId } = await setup();
+    const forward = [
+      { productId: "prod-a", qty: 2, lineDiscountMinor: 10 },
+      { productId: "prod-b", qty: 1, lineDiscountMinor: 20 },
+    ];
+    const reversed = [...forward].reverse();
+    const requirement = await policy.resolveRequirement(businessId, requesterId, {
+      kind: "discount",
+      orderDiscountMinor: 0,
+      lines: forward,
+    });
+    expect(requirement?.fingerprint).toBe(
+      discountApprovalFingerprint({ lines: reversed, orderDiscountMinor: 0 }),
+    );
   });
 });

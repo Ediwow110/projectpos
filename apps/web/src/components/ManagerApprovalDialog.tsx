@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 
 import { ApiError, apiFetch } from "../lib/api";
@@ -54,6 +54,10 @@ export function ManagerApprovalDialog({
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // `busy` only disables the button after React re-renders, so two Enter
+  // presses in the same tick could still mint two grants. A ref closes that
+  // window without relying on render timing.
+  const inFlightRef = useRef(false);
 
   useEffect(() => {
     if (open) return;
@@ -66,6 +70,7 @@ export function ManagerApprovalDialog({
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+    if (inFlightRef.current) return;
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail.includes("@")) {
       setError("Enter the owner or manager email address.");
@@ -79,6 +84,7 @@ export function ManagerApprovalDialog({
       setError("Enter the owner or manager password.");
       return;
     }
+    inFlightRef.current = true;
     setBusy(true);
     setError("");
     try {
@@ -105,6 +111,7 @@ export function ManagerApprovalDialog({
         setError(cause instanceof ApiError ? `${cause.code}: ${cause.message}` : "Could not verify manager approval.");
       }
     } finally {
+      inFlightRef.current = false;
       setBusy(false);
     }
   }

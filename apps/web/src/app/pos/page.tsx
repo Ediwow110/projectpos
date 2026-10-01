@@ -2,7 +2,7 @@
 
 import type { JSX } from "react";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ApiError } from "../../lib/api";
 import { cartTotal } from "../../lib/sales";
 import { ConnectivityBanner } from "../../lib/sync-ui";
@@ -69,6 +69,10 @@ export default function PosPage(): JSX.Element {
   const [showHeldSales, setShowHeldSales] = useState(false);
   const [showTabletCart, setShowTabletCart] = useState(false);
   const [approvalRequest, setApprovalRequest] = useState<"pay" | "hold" | null>(null);
+  // ManagerApprovalDialog calls onClose() after a successful approval as well as
+  // after a cancellation. Without this flag the cancel message would overwrite
+  // the real "Sale completed."/"Sale held." status the sale just produced.
+  const discountApprovedRef = useRef(false);
   const [paying, setPaying] = useState(false);
   const [resumingSaleId, setResumingSaleId] = useState<string | null>(null);
   const [activeDraft, setActiveDraft] = useState<{ id: string; totalMinor: number } | null>(null);
@@ -228,6 +232,7 @@ export default function PosPage(): JSX.Element {
   }
 
   function requireManagerApproval(action: "pay" | "hold", retrying: boolean): void {
+    discountApprovedRef.current = false;
     setApprovalRequest(action);
     if (retrying) setStatus("That approval expired or no longer matches this sale. Ask an owner or manager to approve again.");
     if (action === "pay") setShowPay(false);
@@ -390,7 +395,10 @@ export default function PosPage(): JSX.Element {
     const action = approvalRequest;
     setStatus(`Manager approved this discount. Continuing ${action === "pay" ? "payment" : "hold"}…`);
     const completed = action === "pay" ? await pay(token) : await holdCart(token);
-    if (completed) setApprovalRequest(null);
+    if (completed) {
+      discountApprovedRef.current = true;
+      setApprovalRequest(null);
+    }
     return completed;
   }
 
@@ -562,12 +570,16 @@ export default function PosPage(): JSX.Element {
             open
             permission="discount.override"
             action={{ kind: "discount", lines: cart.map((entry) => ({ productId: entry.productId, qty: entry.qty, lineDiscountMinor: entry.lineDiscountMinor })), orderDiscountMinor }}
+            title={`Manager approval · approve ₱${(discountSummary.totalDiscountMinor / 100).toFixed(2)} discount`}
             description={`This ${approvalRequest === "pay" ? "payment" : "held sale"} includes discounts above the cashier threshold.`}
             summary={`Discount total ₱${(discountSummary.totalDiscountMinor / 100).toFixed(2)} · exact current cart`}
             onApproved={(grant) => approveDiscount(grant.token)}
             onClose={() => {
               setApprovalRequest(null);
-              setStatus("Manager approval was canceled. The sale is still in the cart.");
+              if (!discountApprovedRef.current) {
+                setStatus("Manager approval was canceled. The sale is still in the cart.");
+              }
+              discountApprovedRef.current = false;
             }}
           />
         ) : null}

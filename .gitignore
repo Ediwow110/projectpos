@@ -1,5 +1,9 @@
 node_modules/
 .next/
+# `next build` and the Playwright webServer both write into apps/web/.next; a
+# run that needs to preserve the previous build moves it aside instead. Those
+# moved-aside trees are build output, never sources.
+.next-*/
 dist/
 build/
 .turbo/
@@ -12,3 +16,8 @@ coverage/
 worktrees/
 .superpowers/
 *.tsbuildinfo
+# Playwright artifacts.
+test-results/
+test-results-*/
+playwright-report/
+.playwright-mcp/
