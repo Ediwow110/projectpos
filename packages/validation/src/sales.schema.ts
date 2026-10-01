@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { moneyMinorSchema } from "./money.schema";
+import { managerApprovalTokenSchema } from "./approvals.schema";
 
 export const PAYMENT_METHODS = [
   "cash",
@@ -25,7 +26,7 @@ export const draftCreateSchema = z.object({
   orderDiscountMinor: moneyMinorSchema.default(0),
   registerId: z.string().min(1, "VALIDATION").optional(),
   branchId: z.string().min(1, "VALIDATION").optional(),
-  approvalToken: z.string().trim().min(20, "VALIDATION").max(160, "VALIDATION").optional(),
+  approvalToken: managerApprovalTokenSchema.optional(),
 });
 
 export const discountApprovalSchema = z.object({
@@ -65,6 +66,11 @@ export const paymongoCheckoutSchema = z.object({
 export const refundRequestSchema = z.object({
   reason: z.string().trim().min(3, "VALIDATION").max(500, "VALIDATION"),
 });
+
+export const voidSaleSchema = z.object({
+  reason: z.string().trim().min(3, "VALIDATION").max(500, "VALIDATION"),
+  approvalToken: managerApprovalTokenSchema.optional(),
+}).strict();
 
 export const receiptEmailSchema = z.object({
   to: z.string().trim().email("VALIDATION").max(254, "VALIDATION"),

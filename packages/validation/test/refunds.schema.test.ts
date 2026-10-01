@@ -18,6 +18,19 @@ describe("phase6 refund schemas", () => {
     expect(out.items.length).toBe(1);
   });
 
+  it("accepts only a sufficiently opaque approval token", () => {
+    expect(refundApproveSchema.parse({
+      saleId: "s1",
+      items: [{ saleItemId: "i1", qty: 1 }],
+      approvalToken: "mgr_12345678901234567890",
+    }).approvalToken).toBe("mgr_12345678901234567890");
+    expect(() => refundApproveSchema.parse({
+      saleId: "s1",
+      items: [{ saleItemId: "i1", qty: 1 }],
+      approvalToken: "short",
+    })).toThrow();
+  });
+
   it("accepts a cash-register exchange with returns and replacements", () => {
     const out = exchangeCreateSchema.parse({
       saleId: "s1",

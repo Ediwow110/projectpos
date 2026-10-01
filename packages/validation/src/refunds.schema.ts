@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { managerApprovalTokenSchema } from "./approvals.schema";
 
 export const refundItemSchema = z.object({
   saleItemId: z.string().min(1, "VALIDATION"),
@@ -9,6 +10,7 @@ export const refundApproveSchema = z.object({
   saleId: z.string().min(1, "VALIDATION"),
   items: refundItemSchema.array().min(1, "VALIDATION").max(100, "VALIDATION"),
   reason: z.string().trim().max(500, "VALIDATION").optional(),
+  approvalToken: managerApprovalTokenSchema.optional(),
 });
 
 export const refundRejectSchema = z.object({

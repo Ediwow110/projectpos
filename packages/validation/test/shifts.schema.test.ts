@@ -23,4 +23,10 @@ describe("phase5 shift schemas", () => {
     const out = cashInputSchema.parse({ kind: "paid_out", amountMinor: 500, reason: "ice delivery" });
     expect(out.kind).toBe("paid_out");
   });
+  it("accepts only a sufficiently opaque close approval token", () => {
+    expect(closeShiftSchema.parse({
+      countedCashMinor: 100, approvalToken: "mgr_12345678901234567890",
+    }).approvalToken).toBe("mgr_12345678901234567890");
+    expect(() => closeShiftSchema.parse({ countedCashMinor: 100, approvalToken: "short" })).toThrow();
+  });
 });

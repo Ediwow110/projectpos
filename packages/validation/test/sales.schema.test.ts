@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { draftCreateSchema, completeSchema, discountApprovalSchema, receiptEmailSchema, reconcileSchema } from "../src/sales.schema";
+import { draftCreateSchema, completeSchema, discountApprovalSchema, receiptEmailSchema, reconcileSchema, voidSaleSchema } from "../src/sales.schema";
 
 describe("phase4 sales schemas", () => {
   it("rejects empty cart lines", () => {
@@ -73,6 +73,13 @@ describe("phase4 sales schemas", () => {
     expect(receiptEmailSchema.parse({ to: " Customer@example.com " })).toEqual({ to: "Customer@example.com" });
     expect(() => receiptEmailSchema.parse({ to: "not-an-email" })).toThrow();
     expect(() => receiptEmailSchema.parse({ to: "customer@example.com", channel: "sms" })).toThrow();
+  });
+  it("requires a meaningful reason and opaque token for protected voids", () => {
+    expect(voidSaleSchema.parse({ reason: "Duplicate order", approvalToken: "mgr_12345678901234567890" })).toEqual({
+      reason: "Duplicate order", approvalToken: "mgr_12345678901234567890",
+    });
+    expect(() => voidSaleSchema.parse({ reason: "no" })).toThrow();
+    expect(() => voidSaleSchema.parse({ reason: "Duplicate order", approvalToken: "short" })).toThrow();
   });
 });
 

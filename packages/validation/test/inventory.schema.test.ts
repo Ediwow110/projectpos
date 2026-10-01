@@ -24,4 +24,10 @@ describe("phase3 inventory schemas", () => {
     const out = movementCreateSchema.parse({ productId: "p1", type: "receive", qtyDelta: 10 });
     expect(out.qtyDelta).toBe(10);
   });
+  it("accepts only a sufficiently opaque approval token", () => {
+    expect(movementCreateSchema.parse({
+      productId: "p1", type: "receive", qtyDelta: 10, approvalToken: "mgr_12345678901234567890",
+    }).approvalToken).toBe("mgr_12345678901234567890");
+    expect(() => movementCreateSchema.parse({ productId: "p1", type: "receive", qtyDelta: 10, approvalToken: "short" })).toThrow();
+  });
 });

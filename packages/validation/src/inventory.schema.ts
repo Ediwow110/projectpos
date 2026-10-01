@@ -1,16 +1,7 @@
 import { z } from "zod";
+import { APPROVAL_MOVEMENT_TYPES, managerApprovalTokenSchema } from "./approvals.schema";
 
-export const MOVEMENT_TYPES = [
-  "opening_stock",
-  "receive",
-  "sale",
-  "return",
-  "damage",
-  "adjustment",
-  "transfer_in",
-  "transfer_out",
-  "stock_count",
-] as const;
+export const MOVEMENT_TYPES = APPROVAL_MOVEMENT_TYPES;
 
 export const movementTypeSchema = z.enum(MOVEMENT_TYPES);
 
@@ -22,6 +13,7 @@ export const movementCreateSchema = z.object({
   referenceType: z.string().trim().max(64, "VALIDATION").optional(),
   referenceId: z.string().min(1, "VALIDATION").max(128, "VALIDATION").optional(),
   branchId: z.string().min(1, "VALIDATION").optional(),
+  approvalToken: managerApprovalTokenSchema.optional(),
 });
 
 const pageQuery = z.object({

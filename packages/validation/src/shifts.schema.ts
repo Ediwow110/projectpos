@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { moneyMinorSchema } from "./money.schema";
+import { managerApprovalTokenSchema } from "./approvals.schema";
 
 export const CASH_KINDS = ["paid_out", "cash_deposit", "cash_withdrawal", "adjustment"] as const;
 
@@ -31,6 +32,7 @@ export const cashInputSchema = z.object({
 export const closeShiftSchema = z.object({
   countedCashMinor: moneyMinorSchema,
   closeNotes: z.string().trim().max(500, "VALIDATION").optional(),
+  approvalToken: managerApprovalTokenSchema.optional(),
 });
 
 export const shiftsQuerySchema = z.object({
