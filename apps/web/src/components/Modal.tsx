@@ -1,7 +1,8 @@
 "use client";
 
+import React from "react";
 import type { JSX, ReactNode } from "react";
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 
 const FOCUSABLE_SELECTOR = [
   'a[href]',
@@ -31,6 +32,12 @@ export function Modal({
   const onCloseRef = useRef(onClose);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const wasOpenRef = useRef(open);
+  // A hard-coded "modal-title" id collides whenever two modals are open at
+  // once (for example the manager-approval dialog stacked over the shift-close
+  // dialog): both sections then point aria-labelledby at the first match in the
+  // DOM, so the inner dialog announces the outer dialog's title to assistive
+  // technology. useId gives every instance its own label target.
+  const titleId = useId();
   onCloseRef.current = onClose;
 
   if (open && !wasOpenRef.current && typeof document !== "undefined") {
@@ -114,14 +121,14 @@ export function Modal({
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="modal-title"
+        aria-labelledby={titleId}
         tabIndex={-1}
         className="relative z-10 flex max-h-[calc(100vh-2rem)] w-full max-w-[760px] flex-col overflow-hidden rounded-[18px] border border-[#eadfd6] bg-[#fcf8f3] shadow-[0_30px_80px_-24px_rgb(23_19_15/0.48)] sm:max-h-[calc(100vh-3rem)]"
       >
         <header className="flex items-start justify-between gap-4 border-b border-[#eadfd6] bg-white px-5 py-4 sm:px-6">
           <div>
             <p className="font-data text-[9px] font-medium uppercase tracking-[0.14em] text-[#e44e34]">Workspace action</p>
-            <h2 id="modal-title" className="font-display mt-1 text-[22px] font-bold text-[#17130f]">{title}</h2>
+            <h2 id={titleId} className="font-display mt-1 text-[22px] font-bold text-[#17130f]">{title}</h2>
             {description ? <p className="mt-1 max-w-2xl text-[12px] leading-5 text-[#73685f]">{description}</p> : null}
           </div>
           <button
