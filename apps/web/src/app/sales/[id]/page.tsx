@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { AppShell } from "../../../components/AppShell";
 import { ConfirmDialog } from "../../../components/ConfirmDialog";
+import { ManagerApprovalDialog } from "../../../components/ManagerApprovalDialog";
 import { Modal } from "../../../components/Modal";
 import { SaleExchangeDialog } from "../../../components/SaleExchangeDialog";
 import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "../../../components/premium";
@@ -129,6 +130,9 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
   const [exchangeOpen, setExchangeOpen] = useState(false);
   const [exchangeSearch, setExchangeSearch] = useState("");
   const [exchangeError, setExchangeError] = useState("");
+  const [approvalKind, setApprovalKind] = useState<"refund" | "void" | null>(null);
+  const [voidOpen, setVoidOpen] = useState(false);
+  const [voidReason, setVoidReason] = useState("");
 
   const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<Me>("/api/v1/me"), retry: false });
   const detailQuery = useQuery({
@@ -158,7 +162,7 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
   });
 
   const role = meQuery.data?.role ?? "cashier";
-  const canRefund = role === "owner" || role === "manager" || role === "inventory";
+  const canRefund = role === "owner" || role === "manager" || role === "inventory" || role === "cashier";
   const canReconcile = role === "owner" || role === "manager";
   const sale = detailQuery.data;
   const successfulPayments = sale?.payments.filter((payment) => payment.status === "SUCCEEDED") ?? [];
@@ -216,8 +220,8 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
     }
   }
 
-  async function refundAction(mode: RefundMode): Promise<void> {
-    if (!sale) return;
+  async function refundAction(mode: RefundMode, approvalToken?: string): Promise<boolean> {
+    if (!sale) return false;
     setStatusMessage("");
     setBusy(true);
     try {
@@ -235,6 +239,7 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
         init: {
           method: "POST",
           body: JSON.stringify(body),
+          ...(approvalToken ? { body: JSON.stringify({ ...body, approvalToken }) } : {}),
           ...(mode !== "reject" ? { headers: { "Idempotency-Key": crypto.randomUUID() } } : {}),
         },
       });
@@ -243,8 +248,40 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
       setRefundMode(null);
       setReason("");
       setQtyByLine({});
+      return true;
     } catch (err) {
-      setStatusMessage(err instanceof ApiError ? `${err.code}: ${err.message}` : "Refund action failed");
+      if (err instanceof ApiError && err.code === "FORBIDDEN" && mode === "approve" && !approvalToken) {
+        setRefundMode(null);
+        setApprovalKind("refund");
+      } else {
+        setStatusMessage(err instanceof ApiError ? `${err.code}: ${err.message}` : "Refund action failed");
+      }
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function voidSale(approvalToken?: string): Promise<boolean> {
+    if (!sale) return false;
+    setBusy(true);
+    setStatusMessage("");
+    try {
+      const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
+      await apiFetch(`/api/v1/sales/${sale.id}/void`, { csrfToken: csrf.csrfToken, init: { method: "POST", body: JSON.stringify({ reason: voidReason.trim(), ...(approvalToken ? { approvalToken } : {}) }) } });
+      await detailQuery.refetch();
+      setVoidOpen(false);
+      setVoidReason("");
+      setStatusMessage("Sale voided.");
+      return true;
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "FORBIDDEN" && !approvalToken) {
+        setVoidOpen(false);
+        setApprovalKind("void");
+      } else {
+        setStatusMessage(err instanceof ApiError ? `${err.code}: ${err.message}` : "Could not void sale.");
+      }
+      return false;
     } finally {
       setBusy(false);
     }
@@ -303,6 +340,15 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
   }
   const taxSetting = businessQuery.data?.settings?.["taxRateBps"];
   const businessTaxRateBps = typeof taxSetting === "number" ? taxSetting : null;
+  const selectedRefundItems = sale?.items
+    .filter((line) => Number(qtyByLine[line.id] ?? 0) > 0)
+    .map((line) => ({ saleItemId: line.id, qty: Number(qtyByLine[line.id]) })) ?? [];
+  const refundTotalMinor = selectedRefundItems.reduce((total, item) => {
+    const line = sale?.items.find((candidate) => candidate.id === item.saleItemId);
+    return total + (line ? Math.round((line.lineTotalMinor / line.qty) * item.qty) : 0);
+  }, 0);
+  const threshold = businessQuery.data?.settings?.["refundApprovalThresholdMinor"];
+  const refundPermission = typeof threshold === "number" && refundTotalMinor > threshold ? "refund.override" : "sale.refund";
 
   return (
     <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role}>
@@ -314,6 +360,7 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
           actions={
             <>
               <Link href="/sales" className="inline-flex min-h-10 items-center rounded-[10px] border border-[#e4d9d0] bg-white px-4 text-sm font-semibold text-[#2a241f] hover:border-[#f35d3f]">← Sales</Link>
+              {sale && ["DRAFT", "PENDING_PAYMENT", "PAYMENT_FAILED", "PAYMENT_UNKNOWN"].includes(sale.status) ? <DangerButton type="button" onClick={() => { setVoidReason(""); setVoidOpen(true); }}>Void sale</DangerButton> : null}
               {sale && ["COMPLETED", "PARTIALLY_REFUNDED", "REFUNDED"].includes(sale.status) ? <Link href={`/receipts/${sale.id}`} className="inline-flex min-h-10 items-center rounded-[10px] bg-[#f35d3f] px-4 text-sm font-semibold text-white hover:bg-[#d94a30]">View receipt</Link> : null}
             </>
           }
@@ -482,6 +529,11 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
           {statusMessage.includes(":") ? <p role="alert" className="rounded-xl bg-[#fff0f0] px-3 py-2.5 text-[12px] font-medium text-[#c43e3e]">{statusMessage}</p> : null}
         </div>
       </Modal>
+
+      <Modal open={voidOpen && sale !== undefined} onClose={() => !busy && setVoidOpen(false)} title="Void sale" description="Voiding prevents this unsettled sale from continuing. The reason is retained in the audit trail." footer={<div className="flex justify-end gap-2"><GhostButton type="button" onClick={() => setVoidOpen(false)} disabled={busy}>Cancel</GhostButton><DangerButton type="button" disabled={busy || voidReason.trim().length < 3} onClick={() => void voidSale()}>{busy ? "Voiding…" : "Void sale"}</DangerButton></div>}><label className="block text-[11px] font-semibold text-[#655b53]">Reason<textarea autoFocus value={voidReason} onChange={(event) => setVoidReason(event.target.value)} rows={3} className="field mt-1.5 resize-none" placeholder="Why this sale is being voided" /></label>{statusMessage.includes(":") ? <p role="alert" className="mt-3 rounded-xl bg-[#fff0f0] px-3 py-2.5 text-[12px] font-medium text-[#c43e3e]">{statusMessage}</p> : null}</Modal>
+
+      {sale && approvalKind === "refund" ? <ManagerApprovalDialog open permission={refundPermission} action={{ kind: "refund", saleId: sale.id, items: selectedRefundItems, ...(reason.trim() ? { reason: reason.trim() } : {}) }} description="Approving this refund requires a manager authorization for the exact selected items." summary={`${selectedRefundItems.length} item line(s) · ₱${money(refundTotalMinor)}`} onApproved={(grant) => refundAction("approve", grant.token)} onClose={() => setApprovalKind(null)} /> : null}
+      {sale && approvalKind === "void" ? <ManagerApprovalDialog open permission="sale.void" action={{ kind: "sale_void", saleId: sale.id, reason: voidReason.trim() }} description="Voiding an unsettled sale requires manager authorization for this exact sale and reason." summary={`Sale ${sale.receiptNo} · ${voidReason.trim()}`} onApproved={(grant) => voidSale(grant.token)} onClose={() => setApprovalKind(null)} /> : null}
 
       {exchangeOpen && sale ? (
         <SaleExchangeDialog

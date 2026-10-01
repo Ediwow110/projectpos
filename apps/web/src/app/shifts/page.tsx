@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { AppShell } from "../../components/AppShell";
 import { Modal } from "../../components/Modal";
+import { ManagerApprovalDialog } from "../../components/ManagerApprovalDialog";
 import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "../../components/premium";
 import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { ApiError, apiFetch } from "../../lib/api";
@@ -28,6 +29,7 @@ interface ShiftRow {
   countedCashMinor: number | null;
   varianceMinor: number | null;
   expectedCashMinor: number;
+  closeCandidate?: true;
 }
 
 const KINDS = ["paid_out", "cash_deposit", "cash_withdrawal", "adjustment"] as const;
@@ -56,11 +58,12 @@ export default function ShiftsPage(): JSX.Element {
   const [counted, setCounted] = useState("");
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+  const [closeApprovalOpen, setCloseApprovalOpen] = useState(false);
 
   const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<Me>("/api/v1/me"), retry: false });
   const registersQuery = useQuery({ queryKey: ["registers"], queryFn: () => apiFetch<{ items: RegisterRow[] }>("/api/v1/registers"), retry: false });
   const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: () => apiFetch<{ items: BranchRow[] }>("/api/v1/branches"), retry: false });
-  const openQuery = useQuery({ queryKey: ["shifts-open"], queryFn: () => apiFetch<{ items: ShiftRow[] }>("/api/v1/shifts?status=OPEN&limit=50"), retry: false });
+  const openQuery = useQuery({ queryKey: ["shifts-open", meQuery.data?.role], queryFn: () => apiFetch<{ items: ShiftRow[] }>(`/api/v1/shifts?status=OPEN&limit=50${meQuery.data?.role === "cashier" ? "&includeCloseCandidates=true" : ""}`), retry: false, enabled: meQuery.data !== undefined });
   const historyQuery = useQuery({ queryKey: ["shifts-history"], queryFn: () => apiFetch<{ items: ShiftRow[] }>("/api/v1/shifts?limit=20"), retry: false });
 
   async function mutate(path: string, init: RequestInit): Promise<{ id: string } & Record<string, unknown>> {
@@ -124,27 +127,37 @@ export default function ShiftsPage(): JSX.Element {
     }
   }
 
-  async function closeShift(event: React.FormEvent): Promise<void> {
-    event.preventDefault();
-    if (!closeTarget) return;
+  async function submitClose(approvalToken?: string): Promise<boolean> {
+    if (!closeTarget) return false;
     setStatus("");
     const countedCashMinor = amountToMinor(counted);
     if (countedCashMinor === null) {
       setStatus("VALIDATION: Counted cash must be a non-negative amount.");
-      return;
+      return false;
     }
     setBusy(true);
     try {
-      const out = await mutate(`/api/v1/shifts/${closeTarget.id}/close`, { method: "POST", body: JSON.stringify({ countedCashMinor }) });
+      const out = await mutate(`/api/v1/shifts/${closeTarget.id}/close`, { method: "POST", body: JSON.stringify({ countedCashMinor, ...(approvalToken ? { approvalToken } : {}) }) });
       const report = (out as { report?: { variance?: number } }).report;
       setStatus(`Shift closed. Variance: ${typeof report?.variance === "number" ? varianceLabel(report.variance) : "unknown"}`);
       setCloseTarget(null);
       setCounted("");
+      return true;
     } catch (err) {
-      setStatus(err instanceof ApiError ? `${err.code}: ${err.message}` : "Close failed");
+      if (err instanceof ApiError && err.code === "FORBIDDEN" && !approvalToken) {
+        setCloseApprovalOpen(true);
+      } else {
+        setStatus(err instanceof ApiError ? `${err.code}: ${err.message}` : "Close failed");
+      }
+      return false;
     } finally {
       setBusy(false);
     }
+  }
+
+  async function closeShift(event: React.FormEvent): Promise<void> {
+    event.preventDefault();
+    await submitClose();
   }
 
   const registers = (registersQuery.data?.items ?? []).filter((register) => register.isActive);
@@ -152,7 +165,9 @@ export default function ShiftsPage(): JSX.Element {
   const history = historyQuery.data?.items ?? [];
   const branchName = (branchId: string | null | undefined): string => branchId == null ? "No branch" : (branchesQuery.data?.items ?? []).find((branch) => branch.id === branchId)?.name ?? "Unknown branch";
   const registerName = (id: string): string => (registersQuery.data?.items ?? []).find((register) => register.id === id)?.name ?? id.slice(0, 8);
-  const expectedOpenCash = openShifts.reduce((sum, shift) => sum + shift.expectedCashMinor, 0);
+  const ownOpenShifts = openShifts.filter((shift) => !shift.closeCandidate);
+  const closeCandidates = openShifts.filter((shift) => shift.closeCandidate);
+  const expectedOpenCash = ownOpenShifts.reduce((sum, shift) => sum + (shift.expectedCashMinor ?? 0), 0);
   const closedVisible = history.filter((shift) => shift.status === "CLOSED").length;
   const reviewVisible = history.filter((shift) => shift.varianceMinor !== null && shift.varianceMinor !== 0).length;
 
@@ -167,7 +182,7 @@ export default function ShiftsPage(): JSX.Element {
         />
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Shift summary">
-          <MetricCard label="Active shifts" value={openShifts.length} icon="▤" tone="info" meta="Open register shifts" />
+          <MetricCard label="Active shifts" value={ownOpenShifts.length} icon="▤" tone="info" meta="Open register shifts" />
           <MetricCard label="Expected open cash" value={money(expectedOpenCash)} icon="▦" meta="Across open shifts" />
           <MetricCard label="Visible variance reviews" value={reviewVisible} icon="!" tone={reviewVisible > 0 ? "warning" : "success"} meta="Recent shift history" />
           <MetricCard label="Visible closed" value={closedVisible} icon="✓" tone="success" meta="Recent shift history" />
@@ -176,14 +191,15 @@ export default function ShiftsPage(): JSX.Element {
         {status ? <div role={status.includes(":") ? "alert" : "status"} className={`rounded-xl border px-4 py-3 text-sm font-medium ${status.includes(":") ? "border-[#efb9b9] bg-[#fff0f0] text-[#c43e3e]" : "border-[#cfe9dc] bg-[#eaf7f0] text-[#1f8a5b]"}`}>{status}</div> : null}
 
         <section aria-label="Active shifts" className="grid gap-4 xl:grid-cols-2">
-          {openShifts.length === 0 ? <Panel className="p-6"><SectionHeader title="No open shifts" description="Open a register shift when a cashier is ready to begin." /></Panel> : null}
-          {openShifts.map((shift) => (
+          {ownOpenShifts.length === 0 && closeCandidates.length === 0 ? <Panel className="p-6"><SectionHeader title="No open shifts" description="Open a register shift when a cashier is ready to begin." /></Panel> : null}
+          {ownOpenShifts.map((shift) => (
             <Panel key={shift.id} className="p-5">
               <div className="flex items-start justify-between gap-3"><div><p className="font-data text-[9px] uppercase tracking-[0.12em] text-[#9a8d83]">Shift {shift.id.slice(0, 8)}</p><h2 className="font-display mt-1 text-lg font-semibold"><Link href={`/shifts/${shift.id}`} className="hover:text-[#d94a30]">{registerName(shift.registerId)}</Link></h2><p className="mt-1 text-[11px] text-[#73685f]">{branchName(shift.branchId)}</p></div><StatusPill tone="info">Open</StatusPill></div>
               <dl className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-[#fcf8f3] p-3"><dt className="text-[10px] text-[#73685f]">Opening float</dt><dd className="font-data mt-1 text-sm font-semibold">{money(shift.openingFloatMinor)}</dd></div><div className="rounded-xl bg-[#fcf8f3] p-3"><dt className="text-[10px] text-[#73685f]">Expected cash</dt><dd className="font-data mt-1 text-sm font-semibold">{money(shift.expectedCashMinor)}</dd></div></dl>
               <div className="mt-4 flex flex-wrap gap-2 border-t border-[#eee6de] pt-4"><GhostButton type="button" onClick={() => { setStatus(""); setCashTarget(shift); setAmount(""); setReason(""); }}>Cash movement</GhostButton><PrimaryButton type="button" onClick={() => { setStatus(""); setCloseTarget(shift); setCounted(""); }}>Close shift</PrimaryButton><Link href={`/shifts/${shift.id}`} className="ml-auto inline-flex min-h-10 items-center text-[11px] font-semibold text-[#e44e34]">View report →</Link></div>
             </Panel>
           ))}
+          {closeCandidates.map((shift) => <Panel key={shift.id} className="border-[#efd6a5] bg-[#fffdf8] p-5"><div className="flex items-start justify-between gap-3"><div><p className="font-data text-[9px] uppercase tracking-[0.12em] text-[#9a8d83]">Manager review</p><h2 className="font-display mt-1 text-lg font-semibold">{registerName(shift.registerId)}</h2><p className="mt-1 text-[11px] text-[#73685f]">{branchName(shift.branchId)} · financial totals are intentionally hidden</p></div><StatusPill tone="warn">Approval required</StatusPill></div><div className="mt-4 border-t border-[#eee6de] pt-4"><PrimaryButton type="button" onClick={() => { setStatus(""); setCloseTarget(shift); setCounted(""); }}>Request close approval</PrimaryButton></div></Panel>)}
         </section>
 
         <DataTableFrame>
@@ -201,8 +217,9 @@ export default function ShiftsPage(): JSX.Element {
       </Modal>
 
       <Modal open={closeTarget !== null} onClose={() => !busy && setCloseTarget(null)} title="Close & reconcile shift" description="Count physical cash before confirming. The system compares counted cash with expected cash and records the variance." footer={<div className="flex justify-end gap-2"><GhostButton type="button" onClick={() => setCloseTarget(null)} disabled={busy}>Cancel</GhostButton><PrimaryButton type="submit" form="close-shift-form" disabled={busy || !counted.trim()}>{busy ? "Closing…" : "Close shift"}</PrimaryButton></div>}>
-        <form id="close-shift-form" noValidate onSubmit={(event) => void closeShift(event)} className="space-y-4">{closeTarget ? <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-xl bg-[#f7f1ea] p-4"><p className="text-[10px] text-[#73685f]">Register</p><p className="mt-1 text-sm font-semibold text-[#2a241f]">{registerName(closeTarget.registerId)}</p></div><div className="rounded-xl bg-[#f7f1ea] p-4"><p className="text-[10px] text-[#73685f]">Expected cash</p><p className="font-data mt-1 text-sm font-semibold text-[#2a241f]">{money(closeTarget.expectedCashMinor)}</p></div></div> : null}<label className="block text-[11px] font-semibold text-[#655b53]">Counted cash (PHP)<input autoFocus value={counted} onChange={(event) => setCounted(event.target.value)} inputMode="decimal" className="field font-data mt-1.5" placeholder="0.00" /></label><div className="rounded-xl bg-[#fff4df] p-3 text-[11px] leading-5 text-[#8a5606]">Closing a shift is consequential. The counted amount and resulting variance remain part of the audit trail.</div>{status.includes(":") ? <p role="alert" className="rounded-xl bg-[#fff0f0] px-3 py-2.5 text-[12px] font-medium text-[#c43e3e]">{status}</p> : null}</form>
+        <form id="close-shift-form" noValidate onSubmit={(event) => void closeShift(event)} className="space-y-4">{closeTarget ? <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-xl bg-[#f7f1ea] p-4"><p className="text-[10px] text-[#73685f]">Register</p><p className="mt-1 text-sm font-semibold text-[#2a241f]">{registerName(closeTarget.registerId)}</p></div><div className="rounded-xl bg-[#f7f1ea] p-4"><p className="text-[10px] text-[#73685f]">Expected cash</p><p className="font-data mt-1 text-sm font-semibold text-[#2a241f]">{closeTarget.closeCandidate ? "Shown after approval" : money(closeTarget.expectedCashMinor ?? 0)}</p></div></div> : null}<label className="block text-[11px] font-semibold text-[#655b53]">Counted cash (PHP)<input autoFocus value={counted} onChange={(event) => setCounted(event.target.value)} inputMode="decimal" className="field font-data mt-1.5" placeholder="0.00" /></label><div className="rounded-xl bg-[#fff4df] p-3 text-[11px] leading-5 text-[#8a5606]">Closing a shift is consequential. The counted amount and resulting variance remain part of the audit trail.</div>{status.includes(":") ? <p role="alert" className="rounded-xl bg-[#fff0f0] px-3 py-2.5 text-[12px] font-medium text-[#c43e3e]">{status}</p> : null}</form>
       </Modal>
+      {closeTarget ? <ManagerApprovalDialog open={closeApprovalOpen} permission="shift.close.override" action={{ kind: "shift_close", shiftId: closeTarget.id, countedCashMinor: amountToMinor(counted) ?? 0 }} description="Closing a shift opened by another staff member requires a current manager approval." summary={`${registerName(closeTarget.registerId)} · counted cash ${counted || "0.00"} PHP`} onApproved={(grant) => submitClose(grant.token)} onClose={() => setCloseApprovalOpen(false)} /> : null}
     </AppShell>
   );
 }

@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { AppShell } from "../../components/AppShell";
+import { ManagerApprovalDialog } from "../../components/ManagerApprovalDialog";
 import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "../../components/premium";
 import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { ApiError, apiFetch } from "../../lib/api";
@@ -47,6 +48,7 @@ export default function InventoryPage(): JSX.Element {
   const [qty, setQty] = useState("");
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
+  const [approvalOpen, setApprovalOpen] = useState(false);
   const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<Me>("/api/v1/me"), retry: false });
   const balancesQuery = useQuery({
     queryKey: ["balances", view, page, meQuery.data?.activeBranchId ?? null],
@@ -60,17 +62,15 @@ export default function InventoryPage(): JSX.Element {
     enabled: meQuery.data !== undefined,
   });
 
-  async function recordMovement(event: React.FormEvent): Promise<void> {
-    event.preventDefault();
-    setError("");
+  async function submitMovement(approvalToken?: string): Promise<boolean> {
     const delta = Number(qty);
     if (!productId.trim()) {
       setError("VALIDATION: product id is required");
-      return;
+      return false;
     }
     if (!Number.isInteger(delta) || delta === 0) {
       setError("VALIDATION: quantity must be a non-zero integer");
-      return;
+      return false;
     }
     try {
       const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
@@ -84,6 +84,7 @@ export default function InventoryPage(): JSX.Element {
             qtyDelta: delta,
             reason: reason.trim() ? reason.trim() : undefined,
             branchId: meQuery.data?.activeBranchId ?? undefined,
+            ...(approvalToken ? { approvalToken } : {}),
           }),
         },
       });
@@ -91,9 +92,21 @@ export default function InventoryPage(): JSX.Element {
       setQty("");
       setReason("");
       await balancesQuery.refetch();
+      return true;
     } catch (err) {
-      setError(err instanceof ApiError ? err.code + ": " + err.message : "Record failed");
+      if (err instanceof ApiError && err.code === "FORBIDDEN" && !approvalToken) {
+        setApprovalOpen(true);
+      } else {
+        setError(err instanceof ApiError ? err.code + ": " + err.message : "Record failed");
+      }
+      return false;
     }
+  }
+
+  async function recordMovement(event: React.FormEvent): Promise<void> {
+    event.preventDefault();
+    setError("");
+    await submitMovement();
   }
 
   if (meQuery.isLoading || balancesQuery.isPending) {
@@ -125,7 +138,7 @@ export default function InventoryPage(): JSX.Element {
   const data = balancesQuery.data!;
   const pages = Math.max(1, Math.ceil(data.total / data.pageSize));
   const role = meQuery.data?.role ?? "cashier";
-  const adjustable = canAdjustInventory(role);
+  const adjustable = canAdjustInventory(role) || role === "cashier";
   const visibleLow = data.items.filter((item) => inventoryStatus(item.qtyOnHand, item.reorderLevel) === "low").length;
   const visibleOut = data.items.filter((item) => inventoryStatus(item.qtyOnHand, item.reorderLevel) === "out").length;
   const visibleHealthy = data.items.filter((item) => inventoryStatus(item.qtyOnHand, item.reorderLevel) === "healthy").length;
@@ -249,6 +262,15 @@ export default function InventoryPage(): JSX.Element {
           </Panel>
         ) : null}
       </main>
+      <ManagerApprovalDialog
+        open={approvalOpen}
+        permission="inventory.adjust"
+        action={{ kind: "inventory_movement", productId: productId.trim(), movementType: type, qtyDelta: Number(qty), ...(reason.trim() ? { reason: reason.trim() } : {}), ...(meQuery.data?.activeBranchId ? { branchId: meQuery.data.activeBranchId } : {}) }}
+        description="This stock movement requires manager authorization before it is written to the inventory ledger."
+        summary={`Product ${productId.trim() || "—"} · ${type.replaceAll("_", " ")} · ${qty || "0"} units`}
+        onApproved={(grant) => submitMovement(grant.token)}
+        onClose={() => setApprovalOpen(false)}
+      />
     </AppShell>
   );
 }

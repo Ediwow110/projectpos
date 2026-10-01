@@ -24,7 +24,7 @@ import {
   type PosHeldSale,
   type PosProduct,
 } from "../../lib/pos-sale-model";
-import { authorizePosDiscount, completePosSale, holdPosSale, queueOfflinePosSale, resumePosSale } from "../../lib/pos-operations";
+import { completePosSale, holdPosSale, queueOfflinePosSale, resumePosSale } from "../../lib/pos-operations";
 import { usePosData } from "../../lib/use-pos-data";
 import { usePosOffline } from "../../lib/use-pos-offline";
 import { registersForBranch } from "../../lib/workspace-branch";
@@ -33,7 +33,7 @@ import { PosCartPanel } from "../../components/PosCartPanel";
 import { PosCustomerDialog } from "../../components/PosCustomerDialog";
 import { PosDiscountDialog } from "../../components/PosDiscountDialog";
 import { PosHeldSalesDialog } from "../../components/PosHeldSalesDialog";
-import { PosManagerApprovalDialog } from "../../components/PosManagerApprovalDialog";
+import { ManagerApprovalDialog } from "../../components/ManagerApprovalDialog";
 import { PosPaymentWorkspace } from "../../components/PosPaymentWorkspace";
 import { PosProductCatalog } from "../../components/PosProductCatalog";
 import { PosResponsiveCart } from "../../components/PosResponsiveCart";
@@ -69,8 +69,6 @@ export default function PosPage(): JSX.Element {
   const [showHeldSales, setShowHeldSales] = useState(false);
   const [showTabletCart, setShowTabletCart] = useState(false);
   const [approvalRequest, setApprovalRequest] = useState<"pay" | "hold" | null>(null);
-  const [approvalBusy, setApprovalBusy] = useState(false);
-  const [approvalError, setApprovalError] = useState("");
   const [paying, setPaying] = useState(false);
   const [resumingSaleId, setResumingSaleId] = useState<string | null>(null);
   const [activeDraft, setActiveDraft] = useState<{ id: string; totalMinor: number } | null>(null);
@@ -231,11 +229,7 @@ export default function PosPage(): JSX.Element {
 
   function requireManagerApproval(action: "pay" | "hold", retrying: boolean): void {
     setApprovalRequest(action);
-    setApprovalError(
-      retrying
-        ? "That approval expired or no longer matches this sale. Ask an owner or manager to approve again."
-        : "",
-    );
+    if (retrying) setStatus("That approval expired or no longer matches this sale. Ask an owner or manager to approve again.");
     if (action === "pay") setShowPay(false);
     setStatus("Manager approval is required for this discount.");
   }
@@ -391,36 +385,13 @@ export default function PosPage(): JSX.Element {
     }
   }
 
-  async function approveDiscount(input: { email: string; pin?: string; password?: string }): Promise<void> {
-    if (!approvalRequest || approvalBusy) return;
+  async function approveDiscount(token: string): Promise<boolean> {
+    if (!approvalRequest) return false;
     const action = approvalRequest;
-    setApprovalBusy(true);
-    setApprovalError("");
-    try {
-      const approval = await authorizePosDiscount(
-        input.pin
-          ? { cart, orderDiscountMinor, email: input.email, pin: input.pin }
-          : { cart, orderDiscountMinor, email: input.email, password: input.password ?? "" },
-      );
-      setStatus(`${approval.approver.name} approved this discount. Continuing ${action === "pay" ? "payment" : "hold"}…`);
-      const completed = action === "pay"
-        ? await pay(approval.token)
-        : await holdCart(approval.token);
-      if (completed) {
-        setApprovalRequest(null);
-        setApprovalError("");
-      }
-    } catch (err) {
-      if (err instanceof ApiError && err.code === "AUTH_INVALID_CREDENTIALS") {
-        setApprovalError("Manager credentials could not be verified. Use an active owner or manager account for this business.");
-      } else if (err instanceof ApiError && err.code === "RATE_LIMITED") {
-        setApprovalError("Too many approval attempts. Try again shortly.");
-      } else {
-        setApprovalError(err instanceof ApiError ? `${err.code}: ${err.message}` : "Could not verify manager approval.");
-      }
-    } finally {
-      setApprovalBusy(false);
-    }
+    setStatus(`Manager approved this discount. Continuing ${action === "pay" ? "payment" : "hold"}…`);
+    const completed = action === "pay" ? await pay(token) : await holdCart(token);
+    if (completed) setApprovalRequest(null);
+    return completed;
   }
 
   const items = offline
@@ -587,16 +558,15 @@ export default function PosPage(): JSX.Element {
         ) : null}
 
         {approvalRequest ? (
-          <PosManagerApprovalDialog
-            action={approvalRequest}
-            discountMinor={discountSummary.totalDiscountMinor}
-            busy={approvalBusy}
-            error={approvalError}
-            onApprove={(input) => void approveDiscount(input)}
+          <ManagerApprovalDialog
+            open
+            permission="discount.override"
+            action={{ kind: "discount", lines: cart.map((entry) => ({ productId: entry.productId, qty: entry.qty, lineDiscountMinor: entry.lineDiscountMinor })), orderDiscountMinor }}
+            description={`This ${approvalRequest === "pay" ? "payment" : "held sale"} includes discounts above the cashier threshold.`}
+            summary={`Discount total ₱${(discountSummary.totalDiscountMinor / 100).toFixed(2)} · exact current cart`}
+            onApproved={(grant) => approveDiscount(grant.token)}
             onClose={() => {
-              if (approvalBusy) return;
               setApprovalRequest(null);
-              setApprovalError("");
               setStatus("Manager approval was canceled. The sale is still in the cart.");
             }}
           />
