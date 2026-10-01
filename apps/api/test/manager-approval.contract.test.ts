@@ -116,4 +116,47 @@ describe("generic manager approval contract", () => {
       after: { approval: { permission: "sale.void" } },
     });
   });
+
+  it("allows an exact manager-approved inventory movement once and records its approval", async () => {
+    const movement = { productId, type: "receive", qtyDelta: 5, reason: "Vendor delivery" };
+    const denied = await request(app.getHttpServer()).post("/api/v1/inventory/movements")
+      .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf).send(movement);
+    expect(denied.status).toBe(403);
+
+    const approval = await request(app.getHttpServer()).post("/api/v1/approvals/manager")
+      .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf)
+      .send({
+        email: "approval-owner-contract@example.com", pin: "482615", permission: "inventory.adjust",
+        action: {
+          kind: "inventory_movement",
+          productId: movement.productId,
+          movementType: movement.type,
+          qtyDelta: movement.qtyDelta,
+          reason: movement.reason,
+        },
+      });
+    expect(approval.status).toBe(201);
+
+    const mismatch = await request(app.getHttpServer()).post("/api/v1/inventory/movements")
+      .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf)
+      .send({ ...movement, qtyDelta: 6, approvalToken: approval.body.token });
+    expect(mismatch.status).toBe(403);
+
+    const applied = await request(app.getHttpServer()).post("/api/v1/inventory/movements")
+      .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf)
+      .send({ ...movement, approvalToken: approval.body.token });
+    expect(applied.status).toBe(201);
+
+    const reused = await request(app.getHttpServer()).post("/api/v1/inventory/movements")
+      .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf)
+      .send({ ...movement, approvalToken: approval.body.token });
+    expect(reused.status).toBe(403);
+
+    const cashier = await request(app.getHttpServer()).get("/api/v1/me").set("Cookie", cashierCookie);
+    const db = app.get<{ listAudit: () => Promise<Array<{ action: string; actorId: string; entityId: string; after?: unknown }>> }>("DbPort");
+    expect((await db.listAudit()).find((entry) => entry.action === "inventory.adjust" && entry.entityId === applied.body.id)).toMatchObject({
+      actorId: cashier.body.userId,
+      after: { approval: { permission: "inventory.adjust" } },
+    });
+  });
 });

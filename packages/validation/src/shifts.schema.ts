@@ -40,4 +40,5 @@ export const shiftsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100, "VALIDATION").default(50),
   status: z.enum(["OPEN", "CLOSED"]).optional(),
   registerId: z.string().min(1, "VALIDATION").optional(),
+  includeCloseCandidates: z.enum(["true", "false"]).optional().transform((value) => value === "true"),
 });

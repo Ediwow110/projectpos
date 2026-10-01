@@ -2,6 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { withScope } from "@pos/database";
 import type { DbCashMovement, DbPort, DbRegister, DbShift, DbShiftCorrection } from "../../common/db.port";
 import { BillingService } from "../../billing/nest/billing.service";
+import { shiftCashStateFingerprint, type AppliedManagerApproval } from "../../auth/nest/manager-approval-policy.service";
 import {
   computeExpectedCash,
   computeVariance,
@@ -38,6 +39,17 @@ export interface ShiftReport {
   expectedCash: number;
   variance: number;
 }
+
+export interface ShiftCloseCandidate {
+  id: string;
+  registerId: string;
+  branchId: string | null;
+  status: "OPEN";
+  openedBy: string;
+  closeCandidate: true;
+}
+
+export type ShiftListItem = DbShift | ShiftCloseCandidate;
 
 function kindToType(kind: CashKind): CashMovementType {
   return kind;
@@ -278,6 +290,7 @@ export class ShiftService {
     shiftId: string,
     input: { countedCashMinor: number; closeNotes?: string },
     granted: string[],
+    approval?: AppliedManagerApproval,
   ): Promise<{ shift: DbShift; report: ShiftReport }> {
     withScope(businessId, {});
     return this.db.withLock(`shift:${businessId}:${shiftId}`, async () => {
@@ -287,6 +300,12 @@ export class ShiftService {
         throw new Error("FORBIDDEN");
       }
       const movements = await this.db.listCashMovementsByShift(shift.id, businessId);
+      if (
+        approval?.permission === "shift.close.override"
+        && approval.stateFingerprint !== shiftCashStateFingerprint(movements)
+      ) {
+        throw new Error("FORBIDDEN");
+      }
       const sums = sumCashComponents(movements);
       const expectedCash = computeExpectedCash({ openingFloat: shift.openingFloatMinor, ...sums });
       const variance = computeVariance(input.countedCashMinor, expectedCash);
@@ -312,6 +331,15 @@ export class ShiftService {
         entityType: "Shift",
         entityId: shift.id,
         requestId,
+        after: {
+          shiftId: shift.id,
+          branchId: shift.branchId ?? null,
+          countedCashMinor: input.countedCashMinor,
+          closeNotes: input.closeNotes?.trim() || null,
+          expectedCash,
+          variance,
+          ...(approval ? { approval } : {}),
+        },
       });
       const report: ShiftReport = {
         shiftId: updated.id,
@@ -415,23 +443,41 @@ export class ShiftService {
 
   async listShifts(
     businessId: string,
-    opts: { cursor?: string; limit?: number; status?: string; registerId?: string },
+    opts: { cursor?: string; limit?: number; status?: string; registerId?: string; includeCloseCandidates?: boolean },
     role: string,
     actorId: string,
-  ): Promise<{ items: DbShift[]; nextCursor: string | null }> {
+  ): Promise<{ items: ShiftListItem[]; nextCursor: string | null }> {
     withScope(businessId, {});
     const limit = Math.min(Math.max(opts.limit ?? 50, 1), 100);
     let rows = await this.db.listShiftsByBusiness(businessId);
     if (opts.status) rows = rows.filter((s) => s.status === opts.status);
     if (opts.registerId) rows = rows.filter((s) => s.registerId === opts.registerId);
-    if (role === "cashier") rows = rows.filter((s) => s.openedBy === actorId);
+    const candidateIds = new Set<string>();
+    if (role === "cashier") {
+      if (opts.includeCloseCandidates) {
+        for (const row of rows) {
+          if (row.status === "OPEN" && row.openedBy !== actorId) candidateIds.add(row.id);
+        }
+      }
+      rows = rows.filter((row) => row.openedBy === actorId || candidateIds.has(row.id));
+    }
     rows = [...rows].sort((a, b) => (a.id < b.id ? 1 : -1));
     let start = 0;
     if (opts.cursor) {
       const idx = rows.findIndex((s) => s.id === opts.cursor);
       start = idx === -1 ? 0 : idx + 1;
     }
-    const items = rows.slice(start, start + limit);
+    const items = rows.slice(start, start + limit).map((row): ShiftListItem => {
+      if (!candidateIds.has(row.id)) return row;
+      return {
+        id: row.id,
+        registerId: row.registerId,
+        branchId: row.branchId ?? null,
+        status: "OPEN",
+        openedBy: row.openedBy,
+        closeCandidate: true,
+      };
+    });
     const nextCursor = start + limit < rows.length ? items[items.length - 1].id : null;
     return { items, nextCursor };
   }

@@ -1,6 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { ManagerApprovalAction, ManagerApprovalPermission } from "@pos/validation";
-import type { DbPort } from "../../common/db.port";
+import type { DbCashMovement, DbPort } from "../../common/db.port";
 import { fingerprintPayload } from "../../sales/idempotency";
 import { VALID_TRANSITIONS } from "../../sales/state-machine";
 import { lineRefundAmount, refundableQty } from "../../refunds/refund-math";
@@ -9,11 +9,21 @@ export interface ManagerApprovalRequirement {
   permission: ManagerApprovalPermission;
   fingerprint: string;
   requireDistinctApprover: boolean;
+  stateFingerprint?: string;
 }
 
 export interface AppliedManagerApproval {
   approverId: string;
   permission: ManagerApprovalPermission;
+  stateFingerprint?: string;
+}
+
+export function shiftCashStateFingerprint(movements: readonly DbCashMovement[]): string {
+  return fingerprintPayload(
+    movements
+      .map((movement) => ({ id: movement.id, type: movement.type, amountMinor: movement.amountMinor }))
+      .sort((left, right) => left.id.localeCompare(right.id)),
+  );
 }
 
 function trimOrNull(value: string | undefined): string | null {
@@ -160,6 +170,9 @@ export class ManagerApprovalPolicyService {
         if (!shift) throw new Error("NOT_FOUND");
         if (shift.status !== "OPEN") throw new Error("SHIFT_ALREADY_CLOSED");
         if (shift.openedBy === requesterId) return null;
+        const stateFingerprint = shiftCashStateFingerprint(
+          await this.db.listCashMovementsByShift(shift.id, businessId),
+        );
         return {
           permission: "shift.close.override",
           fingerprint: fingerprintPayload({
@@ -167,8 +180,12 @@ export class ManagerApprovalPolicyService {
             shiftId: action.shiftId,
             countedCashMinor: action.countedCashMinor,
             closeNotes: trimOrNull(action.closeNotes),
+            branchId: shift.branchId ?? null,
+            registerId: shift.registerId,
+            stateFingerprint,
           }),
           requireDistinctApprover: false,
+          stateFingerprint,
         };
       }
     }

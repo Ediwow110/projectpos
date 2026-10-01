@@ -14,6 +14,7 @@ import { CsrfGuard } from "../../common/csrf.guard";
 import { getCorrelationId } from "../../correlation";
 import { fail, failFromError } from "../../common/http-helpers";
 import { AuthService } from "../../auth/nest/auth.service";
+import { ManagerApprovalPolicyService, type AppliedManagerApproval } from "../../auth/nest/manager-approval-policy.service";
 import { ShiftService } from "./shift.service";
 import type { CashKind } from "../cash";
 
@@ -33,6 +34,7 @@ export class ShiftController {
   constructor(
     @Inject(ShiftService) private readonly shifts: ShiftService,
     @Inject(AuthService) private readonly auth: AuthService,
+    @Inject(ManagerApprovalPolicyService) private readonly approvalPolicy: ManagerApprovalPolicyService,
   ) {}
 
   private perms(req: Request): string[] {
@@ -158,6 +160,7 @@ export class ShiftController {
           limit: parsed.data.limit,
           status: parsed.data.status,
           registerId: parsed.data.registerId,
+          includeCloseCandidates: parsed.data.includeCloseCandidates,
         }, auth.role, auth.userId),
       );
     } catch (e) {
@@ -224,11 +227,32 @@ export class ShiftController {
     }
     try {
       const auth = req.auth!;
+      let granted = this.perms(req);
+      let approval: AppliedManagerApproval | undefined;
+      const requirement = await this.approvalPolicy.resolveRequirement(auth.businessId, auth.userId, {
+        kind: "shift_close",
+        shiftId: id,
+        countedCashMinor: parsed.data.countedCashMinor,
+        ...(parsed.data.closeNotes ? { closeNotes: parsed.data.closeNotes } : {}),
+      });
+      if (requirement && !granted.includes(requirement.permission)) {
+        if (!parsed.data.approvalToken) throw new Error("FORBIDDEN");
+        const consumed = await this.auth.consumeManagerApproval(
+          auth.businessId, auth.userId, requirement.permission, requirement.fingerprint, parsed.data.approvalToken,
+          requirement.requireDistinctApprover,
+        );
+        granted = [...new Set([...granted, requirement.permission])];
+        approval = {
+          approverId: consumed.approverId,
+          permission: requirement.permission,
+          ...(requirement.stateFingerprint ? { stateFingerprint: requirement.stateFingerprint } : {}),
+        };
+      }
       const { shift, report } = await this.shifts.closeShift(
         auth.businessId, auth.userId, rid(req), id, {
           countedCashMinor: parsed.data.countedCashMinor,
           closeNotes: parsed.data.closeNotes,
-        }, this.perms(req),
+        }, granted, approval,
       );
       res.status(200).json({ shift, report });
     } catch (e) {

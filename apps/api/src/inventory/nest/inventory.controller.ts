@@ -10,6 +10,7 @@ import { CsrfGuard } from "../../common/csrf.guard";
 import { getCorrelationId } from "../../correlation";
 import { fail, statusFor } from "../../common/http-helpers";
 import { AuthService } from "../../auth/nest/auth.service";
+import { ManagerApprovalPolicyService, type AppliedManagerApproval } from "../../auth/nest/manager-approval-policy.service";
 import { InventoryService } from "./inventory.service";
 import { ApiTokenGuard } from "../../apitokens/api-token.guard";
 import { Scopes } from "../../apitokens/scopes.decorator";
@@ -29,6 +30,7 @@ export class InventoryController {
   constructor(
     @Inject(InventoryService) private readonly inventory: InventoryService,
     @Inject(AuthService) private readonly auth: AuthService,
+    @Inject(ManagerApprovalPolicyService) private readonly approvalPolicy: ManagerApprovalPolicyService,
   ) {}
 
   private canAdjust(req: Request): boolean {
@@ -50,7 +52,6 @@ export class InventoryController {
     @Res() res: Response,
     @Body() body: unknown,
   ): Promise<void> {
-    if (!this.adjustGuard(req, res)) return;
     const parsed = movementCreateSchema.safeParse(body);
     if (!parsed.success) {
       fail(res, 400, "VALIDATION", "Invalid movement payload", req);
@@ -58,6 +59,25 @@ export class InventoryController {
     }
     try {
       const auth = req.auth!;
+      const branchId = parsed.data.branchId ?? auth.activeBranchId ?? undefined;
+      let approval: AppliedManagerApproval | undefined;
+      if (!this.canAdjust(req)) {
+        if (!parsed.data.approvalToken) throw new Error("FORBIDDEN");
+        const requirement = await this.approvalPolicy.resolveRequirement(auth.businessId, auth.userId, {
+          kind: "inventory_movement",
+          productId: parsed.data.productId,
+          movementType: parsed.data.type,
+          qtyDelta: parsed.data.qtyDelta,
+          ...(parsed.data.reason ? { reason: parsed.data.reason } : {}),
+          ...(branchId ? { branchId } : {}),
+        });
+        if (!requirement) throw new Error("FORBIDDEN");
+        const consumed = await this.auth.consumeManagerApproval(
+          auth.businessId, auth.userId, requirement.permission, requirement.fingerprint, parsed.data.approvalToken,
+          requirement.requireDistinctApprover,
+        );
+        approval = { approverId: consumed.approverId, permission: requirement.permission };
+      }
       const row = await this.inventory.recordMovement(auth.businessId, auth.userId, rid(req), {
         productId: parsed.data.productId,
         type: parsed.data.type as MovementType,
@@ -65,8 +85,8 @@ export class InventoryController {
         reason: parsed.data.reason,
         referenceType: parsed.data.referenceType,
         referenceId: parsed.data.referenceId,
-        branchId: parsed.data.branchId ?? auth.activeBranchId ?? undefined,
-      });
+        branchId,
+      }, approval);
       res.status(201).json(row);
     } catch (e) {
       const code = e instanceof Error ? e.message : "VALIDATION";

@@ -77,7 +77,7 @@ describe("phase3 inventory permissions and rebuild", () => {
     const { InventoryService } = await import("../src/inventory/nest/inventory.service");
     const { createMemoryDb } = await import("../src/common/memory.db");
     const fakeAuth = { rolePermissions: (_r: string) => [] as string[] };
-    const ctrl = new InventoryController(new InventoryService(createMemoryDb()), fakeAuth as never);
+    const ctrl = new InventoryController(new InventoryService(createMemoryDb()), fakeAuth as never, {} as never);
     let status = 0;
     let body: unknown = null;
     const res = {

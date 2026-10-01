@@ -9,6 +9,7 @@ import {
   type StockStatus,
 } from "../projection";
 import { withInventoryLocks } from "../inventory-locks";
+import type { AppliedManagerApproval } from "../../auth/nest/manager-approval-policy.service";
 
 export interface MovementInput {
   productId: string;
@@ -69,6 +70,7 @@ export class InventoryService {
     actorId: string,
     requestId: string,
     input: MovementInput,
+    approval?: AppliedManagerApproval,
   ): Promise<DbMovement> {
     const branchId = input.branchId ?? null;
     return withInventoryLocks(
@@ -113,6 +115,14 @@ export class InventoryService {
       entityType: "InventoryMovement",
       entityId: movement.id,
       requestId,
+      after: {
+        productId: input.productId,
+        movementType: input.type,
+        qtyDelta: input.qtyDelta,
+        reason: input.reason?.trim() || null,
+        branchId,
+        ...(approval ? { approval } : {}),
+      },
     });
     return movement;
     });

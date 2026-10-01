@@ -6,6 +6,8 @@ import { createTestApp } from "../src/app.module";
 let app: INestApplication;
 let cookie: string;
 let csrf: string;
+let cashierCookie: string;
+let cashierCsrf: string;
 let registerId: string;
 let productId: string;
 
@@ -22,6 +24,16 @@ beforeAll(async () => {
   });
   cookie = jar(reg.headers["set-cookie"]);
   csrf = reg.body.csrfToken;
+  const memberships = await request(app.getHttpServer()).get("/api/v1/memberships").set("Cookie", cookie);
+  await request(app.getHttpServer()).post(`/api/v1/memberships/${memberships.body.items[0].id}/approval-pin`)
+    .set("Cookie", cookie).set("X-CSRF-Token", csrf).send({ pin: "482615" });
+  const invitation = await request(app.getHttpServer()).post("/api/v1/memberships")
+    .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+    .send({ name: "Shift Cashier", email: "cashier-shift@example.com", role: "cashier" });
+  const cashier = await request(app.getHttpServer()).post("/api/v1/auth/login")
+    .send({ email: "cashier-shift@example.com", password: invitation.body.tempPassword });
+  cashierCookie = jar(cashier.headers["set-cookie"]);
+  cashierCsrf = cashier.body.csrfToken;
   const created = await request(app.getHttpServer()).post("/api/v1/registers")
     .set("Cookie", cookie).set("X-CSRF-Token", csrf)
     .send({ name: "Counter 1" });
@@ -102,6 +114,64 @@ describe("phase5 shift HTTP contract", () => {
 });
 
 describe("phase5 shift permissions and immutability", () => {
+  it("lists minimal foreign close candidates and requires a fresh exact manager grant", async () => {
+    const register = await request(app.getHttpServer()).post("/api/v1/registers")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf).send({ name: "Approval Counter" });
+    const opened = await request(app.getHttpServer()).post(`/api/v1/registers/${register.body.id}/open`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ registerId: register.body.id, openingFloatMinor: 100 });
+    expect(opened.status).toBe(201);
+    const shiftId = opened.body.id as string;
+
+    const candidates = await request(app.getHttpServer()).get("/api/v1/shifts?status=OPEN&includeCloseCandidates=true")
+      .set("Cookie", cashierCookie);
+    expect(candidates.status).toBe(200);
+    expect(candidates.body.items).toContainEqual(expect.objectContaining({ id: shiftId, closeCandidate: true }));
+    const candidate = candidates.body.items.find((item: { id: string }) => item.id === shiftId);
+    expect(candidate.openingFloatMinor).toBeUndefined();
+
+    const denied = await request(app.getHttpServer()).post(`/api/v1/shifts/${shiftId}/close`)
+      .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf).send({ countedCashMinor: 100 });
+    expect(denied.status).toBe(403);
+
+    const approval = await request(app.getHttpServer()).post("/api/v1/approvals/manager")
+      .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf)
+      .send({
+        email: "ana-shift@example.com", pin: "482615", permission: "shift.close.override",
+        action: { kind: "shift_close", shiftId, countedCashMinor: 100 },
+      });
+    expect(approval.status).toBe(201);
+
+    const stale = await request(app.getHttpServer()).post(`/api/v1/shifts/${shiftId}/cash`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf).send({ kind: "cash_deposit", amountMinor: 10 });
+    expect(stale.status).toBe(200);
+    const staleClose = await request(app.getHttpServer()).post(`/api/v1/shifts/${shiftId}/close`)
+      .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf)
+      .send({ countedCashMinor: 100, approvalToken: approval.body.token });
+    expect(staleClose.status).toBe(403);
+
+    const freshApproval = await request(app.getHttpServer()).post("/api/v1/approvals/manager")
+      .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf)
+      .send({
+        email: "ana-shift@example.com", pin: "482615", permission: "shift.close.override",
+        action: { kind: "shift_close", shiftId, countedCashMinor: 110 },
+      });
+    expect(freshApproval.status).toBe(201);
+    const applied = await request(app.getHttpServer()).post(`/api/v1/shifts/${shiftId}/close`)
+      .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf)
+      .send({ countedCashMinor: 110, approvalToken: freshApproval.body.token });
+    expect(applied.status).toBe(200);
+    const reused = await request(app.getHttpServer()).post(`/api/v1/shifts/${shiftId}/close`)
+      .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf)
+      .send({ countedCashMinor: 110, approvalToken: freshApproval.body.token });
+    expect(reused.status).toBe(409);
+
+    const db = app.get<{ listAudit: () => Promise<Array<{ action: string; entityId: string; after?: unknown }>> }>("DbPort");
+    expect((await db.listAudit()).find((entry) => entry.action === "shift.close" && entry.entityId === shiftId)).toMatchObject({
+      after: { approval: { permission: "shift.close.override" } },
+    });
+  });
+
   it("cashier role cannot manage registers (unit: role gate)", async () => {
     expect(["owner", "manager"]).toContain("manager");
     expect(["owner", "manager"]).not.toContain("cashier");

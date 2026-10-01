@@ -80,4 +80,27 @@ describe("ManagerApprovalPolicyService", () => {
       kind: "shift_close", shiftId, countedCashMinor: 0,
     })).resolves.toMatchObject({ permission: "shift.close.override" });
   });
+
+  it("changes a foreign-shift requirement when its cash ledger changes", async () => {
+    const { db, policy, businessId, requesterId, shiftId } = await setup();
+    const action = { kind: "shift_close" as const, shiftId, countedCashMinor: 0 };
+    const before = await policy.resolveRequirement(businessId, requesterId, action);
+    const shift = await db.findShiftById(shiftId, businessId);
+    await db.createCashMovement({
+      businessId,
+      shiftId,
+      registerId: shift!.registerId,
+      branchId: shift!.branchId ?? null,
+      type: "cash_deposit",
+      amountMinor: 100,
+      reason: null,
+      referenceType: null,
+      referenceId: null,
+      actorId: "someone-else",
+      requestId: "cash-change",
+    });
+    const after = await policy.resolveRequirement(businessId, requesterId, action);
+    expect(after?.stateFingerprint).not.toBe(before?.stateFingerprint);
+    expect(after?.fingerprint).not.toBe(before?.fingerprint);
+  });
 });
