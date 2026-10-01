@@ -36,6 +36,11 @@ export default defineConfig({
         API_PORT: "3101",
         WEB_URL: "http://localhost:3100",
         REGISTRATION_RATE_LIMIT: "1000",
+        // The login brake counts every attempt per IP, successful ones
+        // included. A full e2e run creates many disposable identities and
+        // signs them in from one loopback address, so the production 5/min
+        // would be spent before the flows under test even start.
+        LOGIN_RATE_LIMIT: "1000",
         AUTH_REQUIRE_EMAIL_VERIFICATION: "0",
         BILLING_ENABLED: "0",
         // Platform routes are key-authed, not session-authed: the e2e suite

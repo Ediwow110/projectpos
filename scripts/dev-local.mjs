@@ -65,6 +65,10 @@ const devEnv = {
   // Local test/dev runs create many disposable businesses from one loopback
   // address; production retains the controller's stricter default of 10/min.
   REGISTRATION_RATE_LIMIT: process.env.REGISTRATION_RATE_LIMIT ?? "1000",
+  // Same headroom for logins: the brake counts every attempt per IP, so a dev
+  // session signing into many disposable accounts over loopback would
+  // otherwise lock itself out. Production keeps the 5/min default.
+  LOGIN_RATE_LIMIT: process.env.LOGIN_RATE_LIMIT ?? "1000",
 };
 
 const child = process.platform === "win32"

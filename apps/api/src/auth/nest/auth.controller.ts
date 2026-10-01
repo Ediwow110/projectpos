@@ -23,13 +23,22 @@ import {
 } from "../../common/human-verification";
 import { AuthService } from "./auth.service";
 
-const loginLimiter = createRateLimiter(5, 60_000);
 const resetLimiter = createRateLimiter(5, 60_000);
 const verificationLimiter = createRateLimiter(5, 60_000);
 const defaultRegistrationLimit = (process.env["NODE_ENV"] ?? "development") === "production" ? 10 : 1000;
 const registrationLimit = Number(process.env["REGISTRATION_RATE_LIMIT"] ?? defaultRegistrationLimit);
 const registrationLimiter = createRateLimiter(
   Number.isInteger(registrationLimit) && registrationLimit > 0 ? registrationLimit : 10,
+  60_000,
+);
+// Production keeps the 5/min login brake. The limiter counts every attempt from
+// an IP — successful ones included — so a dev machine or an e2e run that signs
+// in many disposable accounts over loopback spends the entire budget before it
+// reaches the flows under test. dev-local.mjs and playwright.config.ts raise
+// LOGIN_RATE_LIMIT for exactly that reason; production leaves it unset.
+const loginLimit = Number(process.env["LOGIN_RATE_LIMIT"] ?? 5);
+const loginLimiter = createRateLimiter(
+  Number.isInteger(loginLimit) && loginLimit > 0 ? loginLimit : 5,
   60_000,
 );
 
