@@ -115,6 +115,153 @@ export async function apiAuthedContext(
   return { headers: { Cookie: cookies.join("; "), "X-CSRF-Token": body.csrfToken }, csrf: body.csrfToken };
 }
 
+/** Creates a staff membership through the owner API and returns its temp password. */
+export async function createStaffMember(
+  request: APIRequestContext,
+  headers: Record<string, string>,
+  input: { email: string; name: string; role: "manager" | "cashier" | "inventory" },
+): Promise<{ membershipId: string; tempPassword: string }> {
+  const created = await request.post(`${API}/api/v1/memberships`, { headers, data: input });
+  expect(created.ok()).toBe(true);
+  const body = (await created.json()) as { membershipId?: string; tempPassword?: string };
+  expect(body.membershipId).toBeTruthy();
+  expect(body.tempPassword).toBeTruthy();
+  return { membershipId: body.membershipId as string, tempPassword: body.tempPassword as string };
+}
+
+/** Sets the six-digit approval PIN the manager-approval dialog authenticates with. */
+export async function setApprovalPin(
+  request: APIRequestContext,
+  headers: Record<string, string>,
+  membershipId: string,
+  pin: string,
+): Promise<void> {
+  const set = await request.post(`${API}/api/v1/memberships/${membershipId}/approval-pin`, {
+    headers,
+    data: { pin },
+  });
+  expect(set.ok()).toBe(true);
+}
+
+export async function findMembershipByEmail(
+  request: APIRequestContext,
+  headers: Record<string, string>,
+  email: string,
+): Promise<{ id: string; role: string }> {
+  const list = await request.get(`${API}/api/v1/memberships`, { headers });
+  expect(list.ok()).toBe(true);
+  const body = (await list.json()) as { items: Array<{ id: string; email: string; role: string }> };
+  const found = body.items.find((member) => member.email === email);
+  expect(found, `membership for ${email} exists`).toBeTruthy();
+  return { id: found!.id, role: found!.role };
+}
+
+/** Signs into the workspace from a clean cookie jar and clears the first-run tour. */
+export async function signIn(page: Page, email: string, password: string): Promise<void> {
+  await page.context().clearCookies();
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill(password);
+  await page.getByRole("button", { name: "Sign in securely" }).click();
+  await expect(page).toHaveURL(/\/$/, { timeout: 30_000 });
+  const tour = page.getByRole("dialog", { name: "Welcome to NexPOS" });
+  await expect(tour).toBeVisible({ timeout: 30_000 });
+  await tour.getByRole("button", { name: "Skip tour" }).click();
+  await expect(tour).toBeHidden();
+}
+
+export async function signOut(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/login/);
+}
+
+/** Fills the shared manager-approval dialog and submits it. */
+export async function approveWithPin(
+  page: Page,
+  email: string,
+  pin: string,
+): Promise<ReturnType<Page["getByRole"]>> {
+  const dialog = page.getByRole("dialog", { name: "Manager approval" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel("Manager email").fill(email);
+  await dialog.getByLabel("Approval PIN").fill(pin);
+  await dialog.getByRole("button", { name: "Approve & continue" }).click();
+  return dialog;
+}
+
+/** Creates a register and opens a shift on it so POS can take payments. */
+export async function createCounterWithOpenShift(page: Page, name: string): Promise<void> {
+  await page.goto("/registers");
+  await page.getByRole("button", { name: "+ Create register", exact: true }).click();
+  const registerDialog = page.getByRole("dialog", { name: "Create register" });
+  await registerDialog.getByLabel("Register name").fill(name);
+  await registerDialog.getByRole("button", { name: "Create register", exact: true }).click();
+  await expect(page.getByText(name, { exact: true })).toBeVisible();
+
+  await page.goto("/shifts");
+  await page.getByRole("button", { name: "+ Open shift", exact: true }).click();
+  const shiftDialog = page.getByRole("dialog", { name: "Open shift" });
+  await shiftDialog.getByLabel("Register").selectOption({ label: name });
+  await shiftDialog.getByRole("button", { name: "Open shift", exact: true }).click();
+  await expect(page.getByText("Shift opened.")).toBeVisible();
+}
+
+export async function selectPosRegister(page: Page, name: string): Promise<void> {
+  const width = page.viewportSize()?.width ?? 1440;
+  if (width < 768) {
+    await page.getByLabel("Mobile register").selectOption({ label: name });
+  } else {
+    await page.getByLabel("Register", { exact: true }).selectOption({ label: name });
+  }
+}
+
+export async function openDiscounts(page: Page): Promise<Locator> {
+  const width = page.viewportSize()?.width ?? 1440;
+  if (width >= 1280) {
+    await posCartRegion(page).getByRole("button", { name: "Discounts", exact: true }).click();
+  } else {
+    await posCartRegion(page).getByRole("button", { name: "View cart", exact: true }).click();
+    await page.getByRole("dialog", { name: "Tablet cart details" }).getByRole("button", { name: "Discounts", exact: true }).click();
+  }
+  const dialog = page.getByRole("dialog", { name: "Sale discounts" });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+export async function expectPosStatus(page: Page, text: string): Promise<void> {
+  const width = page.viewportSize()?.width ?? 1440;
+  if (width < 1280) {
+    await expect(page.getByRole("region", { name: "Tablet payment status" }).getByText(text, { exact: true })).toBeVisible();
+  } else {
+    await expect(page.getByRole("complementary", { name: "Cart" }).getByText(text, { exact: true })).toBeVisible();
+  }
+}
+
+/** Sells one product through the POS UI and returns the completed sale id. */
+export async function completePosSale(
+  page: Page,
+  request: APIRequestContext,
+  headers: Record<string, string>,
+  input: { productName: string; productPriceLabel: string; register: string; payAmount: string },
+): Promise<string> {
+  await page.goto("/pos");
+  await selectPosRegister(page, input.register);
+  await page.getByLabel("Search product, SKU or scan barcode").fill(input.productName);
+  await page.getByRole("button", { name: `${input.productName} ₱${input.productPriceLabel}` }).click();
+  await expectOnePosCartItem(page);
+  await clickPosPay(page, input.payAmount);
+  await expect(page.getByRole("dialog", { name: "Payment" })).toBeVisible();
+  await page.getByRole("button", { name: "Complete Payment" }).click();
+  await expectPosStatus(page, "Sale completed.");
+
+  const sales = await request.get(`${API}/api/v1/sales?limit=20`, { headers });
+  expect(sales.ok()).toBe(true);
+  const completed = ((await sales.json()) as { items: Array<{ id: string; status: string }> }).items
+    .find((sale) => sale.status === "COMPLETED");
+  expect(completed).toBeTruthy();
+  return completed!.id;
+}
+
 export async function seedProduct(
   request: APIRequestContext,
   headers: Record<string, string>,
