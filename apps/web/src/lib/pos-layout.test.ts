@@ -61,8 +61,18 @@ describe("premium POS shell", () => {
     expect(productSource).toContain("lg:max-xl:px-7 lg:max-xl:pb-7 lg:max-xl:pt-6");
     expect(productSource).toContain("lg:max-xl:mt-[18px]");
     expect(productSource).toContain("lg:max-xl:grid-cols-[repeat(3,280px)]");
-    expect(productSource).toContain("xl:grid-cols-[repeat(4,176px)]");
+    // The xl catalog reflows 4-to-3 columns so the two-pane grid never
+    // overflows the content column at 1280-1440px viewports (see
+    // e2e/pos-responsive.spec.ts for the native-click regression).
+    expect(productSource).toContain("xl:grid-cols-[repeat(auto-fill,minmax(164px,1fr))]");
     expect(productSource).toContain("xl:gap-2");
+  });
+
+  it("keeps the xl two-pane grid fluid so the cart column never overflows", () => {
+    const posSource = readFileSync(resolve(process.cwd(), "src/app/pos/page.tsx"), "utf8");
+
+    expect(posSource).toContain("xl:grid-cols-[minmax(0,1fr)_452px]");
+    expect(posSource).not.toContain("xl:grid-cols-[760px_452px]");
   });
 
   it("uses API-backed category tabs instead of hardcoded category labels", () => {
