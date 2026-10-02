@@ -164,8 +164,15 @@ export function AppShell({
     return () => window.clearTimeout(timer);
   }, [pendingHref]);
 
+  // Redirect exactly once per signed-out denial. Clearing the ["me"] query
+  // forces an immediate refetch, which settles back into the same denial;
+  // without this guard the effect would clear + replace on every cycle,
+  // starving the in-flight navigation to /login.
+  const signInRedirected = React.useRef(false);
   React.useEffect(() => {
     if (signInRequired) {
+      if (signInRedirected.current) return;
+      signInRedirected.current = true;
       clearActiveSyncScope();
       queryClient.clear();
       router.replace("/login");
