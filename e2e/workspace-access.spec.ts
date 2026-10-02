@@ -18,6 +18,7 @@ test("signed-out workspace routes redirect to login without rendering a fallback
 
 for (const status of [401, 403]) {
   test(`cached workspace identity is cleared after authorization denial (${status})`, async ({ page }) => {
+    await page.clock.install();
     let denied = false;
     await page.route("**/api/v1/me", (route) => route.fulfill({
       status: denied ? status : 200,
@@ -35,6 +36,8 @@ for (const status of [401, 403]) {
     await expect(page.getByRole("heading", { name: "Team", exact: true })).toBeVisible();
     await page.evaluate(() => localStorage.setItem("nexpos-active-sync-scope-v1", JSON.stringify({ userId: "qa-user", businessId: "qa-business" })));
     denied = true;
+    // The identity query is fresh for 60 seconds; focus only refetches stale data.
+    await page.clock.fastForward(61_000);
     await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     await expect(page).toHaveURL(/\/login$/);
     await expect.poll(() => page.evaluate(() => localStorage.getItem("nexpos-active-sync-scope-v1"))).toBeNull();
