@@ -103,6 +103,7 @@ export function AppShell({
     }>("/api/v1/me"),
     retry: false,
   });
+  const signInRequired = shellMe.error instanceof ApiError && (shellMe.error.status === 401 || shellMe.error.status === 403);
   const branchesQuery = useQuery({
     queryKey: ["branches"],
     queryFn: () => apiFetch<{ items: Array<{ id: string; name: string; isActive: boolean }> }>("/api/v1/branches"),
@@ -163,11 +164,22 @@ export function AppShell({
     return () => window.clearTimeout(timer);
   }, [pendingHref]);
 
+  // Redirect exactly once per signed-out denial. Clearing the ["me"] query
+  // forces an immediate refetch, which settles back into the same denial;
+  // without this guard the effect would clear + replace on every cycle,
+  // starving the in-flight navigation to /login.
+  const signInRedirected = React.useRef(false);
   React.useEffect(() => {
-    if (shellMe.data?.onboardingRequired) {
+    if (signInRequired) {
+      if (signInRedirected.current) return;
+      signInRedirected.current = true;
+      clearActiveSyncScope();
+      queryClient.clear();
+      router.replace("/login");
+    } else if (shellMe.data?.onboardingRequired) {
       router.replace("/onboarding");
     }
-  }, [router, shellMe.data?.onboardingRequired]);
+  }, [queryClient, router, signInRequired, shellMe.data?.onboardingRequired]);
 
   React.useEffect(() => {
     const profile = shellMe.data;
@@ -246,7 +258,7 @@ export function AppShell({
     }
   }
 
-  if (shellMe.isLoading || shellMe.data?.onboardingRequired) {
+  if (shellMe.isLoading || signInRequired || shellMe.data?.onboardingRequired) {
     return (
       <main
         data-ui="workspace-access-check"
@@ -257,12 +269,13 @@ export function AppShell({
             <span className="navigation-progress-bar block h-full w-[42%] bg-[#f35d3f]" />
           </span>
           <p role="status" className="mt-4 text-sm font-medium text-[#73685f]">
-            {shellMe.data?.onboardingRequired ? "Returning to business setup…" : "Checking workspace…"}
+            {signInRequired ? "Returning to sign in…" : shellMe.data?.onboardingRequired ? "Returning to business setup…" : "Checking workspace…"}
           </p>
         </div>
       </main>
     );
   }
+
 
   return (
     <div className="relative flex min-h-screen flex-col overflow-x-clip bg-[#fcf8f3]">
