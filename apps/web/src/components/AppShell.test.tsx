@@ -39,6 +39,25 @@ describe("workspace access failures", () => {
     expect(html).toContain("Cached workspace content");
   });
 
+  it("shows a bounded reconnect card instead of children when identity is unavailable", () => {
+    fixture.data = undefined;
+    fixture.error = new ApiError("NETWORK_TIMEOUT", "Timed out", "", 0);
+    const html = renderToStaticMarkup(<AppShell><p>Protected content</p></AppShell>);
+    expect(html).toContain("Connecting to your workspace");
+    expect(html).toContain("Try again");
+    expect(html).not.toContain("Protected content");
+    expect(html).not.toContain("Workspace navigation");
+    expect(html).not.toContain("All branches");
+  });
+
+  it("treats a 503 identity response as transient, not a sign-out", () => {
+    fixture.data = undefined;
+    fixture.error = new ApiError("UNAVAILABLE", "Server woke slowly", "", 503);
+    const html = renderToStaticMarkup(<AppShell><p>Protected content</p></AppShell>);
+    expect(html).toContain("Connecting to your workspace");
+    expect(html).not.toContain("Protected content");
+  });
+
   it("preserves the existing cold offline POS rendering path", () => {
     fixture.error = new ApiError("NETWORK_ERROR", "Offline", "", 0);
     const html = renderToStaticMarkup(<AppShell posMode offline><p>Cached POS content</p></AppShell>);

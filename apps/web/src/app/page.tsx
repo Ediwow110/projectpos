@@ -21,6 +21,7 @@ import {
   persistActiveSyncScope,
 } from "../lib/sync-store";
 import { ConnectivityBanner, SyncAttentionItems } from "../lib/sync-ui";
+import { workspaceMeRetry, workspaceMeRetryDelay } from "../lib/workspace-me-retry";
 
 interface Me {
   userId: string;
@@ -102,7 +103,8 @@ export default function DashboardPage(): JSX.Element {
   const meQuery = useQuery({
     queryKey: ["me"],
     queryFn: () => apiFetch<Me>("/api/v1/me"),
-    retry: false,
+    retry: workspaceMeRetry,
+    retryDelay: workspaceMeRetryDelay,
   });
   const unauthorized = meQuery.error instanceof ApiError && (meQuery.error.status === 401 || meQuery.error.status === 403);
 
