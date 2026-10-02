@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { ApiError, apiFetch } from "../../lib/api";
+import { loginWithReadiness } from "../../lib/login-flow";
+import { isTransientReadinessError } from "../../lib/login-readiness";
 import { persistActiveSyncScope } from "../../lib/sync-store";
 
 const FEATURES = [
@@ -30,6 +32,8 @@ export default function LoginPage(): JSX.Element {
   const [showPassword, setShowPassword] = useState(false);
   const [verifiedNotice, setVerifiedNotice] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [submitState, setSubmitState] = useState<"idle" | "connecting" | "signing-in">("idle");
+  const submitLabel = submitting ? "Signing in…" : "Sign in securely";
 
   useEffect(() => {
     setVerifiedNotice(new URLSearchParams(window.location.search).get("verified") === "1");
@@ -40,21 +44,38 @@ export default function LoginPage(): JSX.Element {
     if (submitting) return;
     setError("");
     setSubmitting(true);
+    setSubmitState("connecting");
+    let readinessComplete = false;
     try {
       const deviceId = window.localStorage.getItem("pos-device-id");
-      const result = await apiFetch<{ userId: string; businessId: string; onboardingRequired: boolean }>("/api/v1/auth/login", {
-        init: {
-          method: "POST",
-          body: JSON.stringify({ email, password, ...(deviceId ? { deviceId } : {}) }),
+      const result = await loginWithReadiness({
+        onReady: () => {
+          readinessComplete = true;
+          setSubmitState("signing-in");
         },
+        login: () => apiFetch<{ userId: string; businessId: string; onboardingRequired: boolean }>("/api/v1/auth/login", {
+          init: {
+            method: "POST",
+            body: JSON.stringify({ email, password, ...(deviceId ? { deviceId } : {}) }),
+          },
+        }),
       });
       persistActiveSyncScope({ userId: result.userId, businessId: result.businessId });
       queryClient.clear();
       router.push(result.onboardingRequired ? "/onboarding" : "/");
     } catch (err) {
-      setError(err instanceof ApiError ? err.code + ": " + err.message : "Login failed");
-      setPassword("");
+      if (!readinessComplete) {
+        setError(isTransientReadinessError(err) ? "The service is still starting. Try again." : err instanceof ApiError ? err.code + ": " + err.message : "Could not reach the service. Try again.");
+      } else if (err instanceof ApiError && isTransientReadinessError(err)) {
+        setError("Sign-in response was interrupted. Try again.");
+      } else {
+        setError(err instanceof ApiError ? err.code + ": " + err.message : "Login failed");
+      }
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403 || err.code === "AUTH_INVALID_CREDENTIALS")) {
+        setPassword("");
+      }
       setSubmitting(false);
+      setSubmitState("idle");
     }
   }
 
@@ -192,7 +213,7 @@ export default function LoginPage(): JSX.Element {
               aria-busy={submitting}
               className="auth-interactive min-h-[52px] w-full rounded-[9px] bg-[#f35d3f] px-4 text-[13px] font-semibold text-white shadow-[0_8px_20px_-8px_rgb(243_93_63/0.55)] hover:bg-[#d94a30] disabled:cursor-not-allowed disabled:opacity-65"
             >
-              {submitting ? "Signing in…" : "Sign in securely"}
+              {submitState === "connecting" ? "Connecting…" : submitLabel}
             </button>
             <div className="flex items-center gap-3 py-1" aria-hidden>
               <span className="h-px flex-1 bg-[#eee4db]" />
