@@ -269,19 +269,6 @@ export function AppShell({
     );
   }
 
-  if (!shellMe.data) {
-    return (
-      <main className="grid min-h-screen place-items-center bg-[#fcf8f3] px-6 text-center">
-        <div role="alert">
-          <p className="text-sm font-medium text-[#73685f]">Could not load your workspace.</p>
-          <button type="button" className="mt-4 min-h-[44px] rounded-lg bg-[#f35d3f] px-5 py-3 font-semibold text-white" onClick={() => void shellMe.refetch()}>
-            Try again
-          </button>
-          <Link href="/login" className="ml-4 inline-flex min-h-[44px] items-center text-sm font-semibold text-[#b94029]">Sign in</Link>
-        </div>
-      </main>
-    );
-  }
 
   return (
     <div className="relative flex min-h-screen flex-col overflow-x-clip bg-[#fcf8f3]">
