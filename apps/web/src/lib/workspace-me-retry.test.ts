@@ -10,8 +10,8 @@ describe("workspace me bounded retry", () => {
 
   it("retries transient failures up to a bounded budget", () => {
     expect(workspaceMeRetry(0, new ApiError("DOWN", "down", "", 503))).toBe(true);
-    expect(workspaceMeRetry(5, new ApiError("DOWN", "down", "", 503))).toBe(true);
-    expect(workspaceMeRetry(6, new ApiError("DOWN", "down", "", 503))).toBe(false);
+    expect(workspaceMeRetry(7, new ApiError("DOWN", "down", "", 503))).toBe(true);
+    expect(workspaceMeRetry(8, new ApiError("DOWN", "down", "", 503))).toBe(false);
     expect(workspaceMeRetry(0, new ApiError("NETWORK_ERROR", "offline", "", 0))).toBe(true);
   });
 
