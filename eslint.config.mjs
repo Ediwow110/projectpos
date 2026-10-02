@@ -6,10 +6,14 @@ export default tseslint.config(
   {
     ignores: [
       "**/node_modules/**",
-      "**/.next/**",
-      "**/.next-e2e/**",
+      // Covers `.next` plus the trees a build/test run moves aside
+      // (`.next-bak-*`, `.next-b2-*`, `.next-e2e-bak-*`); they are generated
+      // output and must not be measured as source.
+      "**/.next*/**",
       "**/dist/**",
       "test-results/**",
+      "test-results-*/**",
+      "playwright-report/**",
       ".playwright-mcp/**",
     ],
   },

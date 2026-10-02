@@ -330,8 +330,9 @@ test("approval PIN enrolment is an owner/manager capability and is refused for o
   expect((await enrol(cashier.membershipId, "111111")).status()).toBe(400);
   expect((await enrol(inventory.membershipId, "222222")).status()).toBe(400);
 
-  // The two enrolable approver roles are accepted.
+  // Both enrolable approver roles are accepted, owner included.
   expect((await enrol(manager.membershipId, "333333")).status()).toBe(200);
+  expect((await enrol(owner.id, "444444")).status()).toBe(200);
 
   // A malformed credential is rejected before it is hashed.
   expect((await enrol(manager.membershipId, "12ab")).status()).toBe(400);
