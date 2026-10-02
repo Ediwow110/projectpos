@@ -28,6 +28,12 @@ try {
   locked = true;
 
   await client.query('CREATE TABLE IF NOT EXISTS "_migrations" ("name" TEXT PRIMARY KEY)');
+  // Every application table runs with RLS enabled and no policies (deny-all for
+  // non-owner roles) — see 0017_supabase_data_api_lockdown. This ledger is
+  // created here rather than by a migration, so it needs the same treatment or
+  // it is the one public table the Data API could read. The runner connects as
+  // the table owner, which bypasses RLS.
+  await client.query('ALTER TABLE "_migrations" ENABLE ROW LEVEL SECURITY');
   const applied = new Set(
     (await client.query('SELECT "name" FROM "_migrations"')).rows.map((r) => r.name),
   );
