@@ -442,7 +442,13 @@ export default function PosPage(): JSX.Element {
         <main
           className={
             "mx-auto grid max-w-[1212px] overflow-hidden rounded-[20px] bg-[#191816] text-white shadow-[0_14px_34px_-12px_rgb(26_18_13/0.20)] xl:ml-0 xl:mr-auto " +
-            "lg:max-xl:h-[1090px] lg:max-xl:min-h-[1090px] xl:min-h-[866px] xl:grid-cols-[760px_452px] xl:gap-0 " +
+            // Fluid products track: at 1280-1440px viewports the workspace
+            // sidebar leaves less than 760+452px for this grid. Fixed tracks
+            // overflowed and main's overflow-hidden clipped cart actions
+            // (native clicks intercepted). The products pane absorbs the
+            // shrink (cards reflow via auto-fill); the 452px cart column keeps
+            // its pixel-positioned interior intact at every xl width.
+            "lg:max-xl:h-[1090px] lg:max-xl:min-h-[1090px] xl:min-h-[866px] xl:grid-cols-[minmax(0,1fr)_452px] xl:gap-0 " +
             (showPay ? "xl:hidden" : "")
           }
         >

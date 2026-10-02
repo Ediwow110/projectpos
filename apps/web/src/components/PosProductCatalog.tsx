@@ -158,7 +158,7 @@ export function PosProductCatalog({
       {!offline && !loading && products.length === 0 ? (
         <p className="mt-4 rounded-xl border border-white/10 bg-white/[0.04] p-6 text-center text-sm text-white/50">No products found.</p>
       ) : null}
-      <ul className="mt-5 grid content-start grid-cols-2 gap-3 sm:grid-cols-3 lg:max-xl:mt-[22px] lg:max-xl:min-h-0 lg:max-xl:flex-1 lg:max-xl:grid-cols-[repeat(3,280px)] lg:max-xl:overflow-y-auto lg:max-xl:pb-4 xl:min-h-0 xl:flex-1 xl:grid-cols-[repeat(4,176px)] xl:gap-2 xl:overflow-y-auto xl:pb-24">
+      <ul className="mt-5 grid content-start grid-cols-2 gap-3 sm:grid-cols-3 lg:max-xl:mt-[22px] lg:max-xl:min-h-0 lg:max-xl:flex-1 lg:max-xl:grid-cols-[repeat(3,280px)] lg:max-xl:overflow-y-auto lg:max-xl:pb-4 xl:min-h-0 xl:flex-1 xl:grid-cols-[repeat(auto-fill,minmax(164px,1fr))] xl:gap-2 xl:overflow-y-auto xl:pb-24">
         {products.map((product, index) => {
           const selected = selectedProductIds.has(product.id);
           return (

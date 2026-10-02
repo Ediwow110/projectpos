@@ -69,7 +69,7 @@ export function PosCartPanel({
   onSelectShortcut,
 }: PosCartPanelProps) {
   return (
-    <aside id="pos-cart" aria-label="Cart" className="lg:max-xl:hidden xl:h-full xl:bg-[#171614] xl:p-5">
+    <aside id="pos-cart" aria-label="Cart" className="min-w-0 lg:max-xl:hidden xl:h-full xl:bg-[#171614] xl:p-5">
       <div className="relative h-full overflow-hidden bg-[#171614]">
         <h2 aria-label={`Cart (${count})`} className="absolute left-0 top-0 font-display text-[18px] font-semibold">Current sale</h2>
         <button
