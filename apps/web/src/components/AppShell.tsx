@@ -103,6 +103,7 @@ export function AppShell({
     }>("/api/v1/me"),
     retry: false,
   });
+  const signInRequired = shellMe.error instanceof ApiError && (shellMe.error.status === 401 || shellMe.error.status === 403);
   const branchesQuery = useQuery({
     queryKey: ["branches"],
     queryFn: () => apiFetch<{ items: Array<{ id: string; name: string; isActive: boolean }> }>("/api/v1/branches"),
@@ -164,10 +165,14 @@ export function AppShell({
   }, [pendingHref]);
 
   React.useEffect(() => {
-    if (shellMe.data?.onboardingRequired) {
+    if (signInRequired) {
+      clearActiveSyncScope();
+      queryClient.clear();
+      router.replace("/login");
+    } else if (shellMe.data?.onboardingRequired) {
       router.replace("/onboarding");
     }
-  }, [router, shellMe.data?.onboardingRequired]);
+  }, [queryClient, router, signInRequired, shellMe.data?.onboardingRequired]);
 
   React.useEffect(() => {
     const profile = shellMe.data;
@@ -246,7 +251,7 @@ export function AppShell({
     }
   }
 
-  if (shellMe.isLoading || shellMe.data?.onboardingRequired) {
+  if (shellMe.isLoading || signInRequired || shellMe.data?.onboardingRequired) {
     return (
       <main
         data-ui="workspace-access-check"
@@ -257,8 +262,22 @@ export function AppShell({
             <span className="navigation-progress-bar block h-full w-[42%] bg-[#f35d3f]" />
           </span>
           <p role="status" className="mt-4 text-sm font-medium text-[#73685f]">
-            {shellMe.data?.onboardingRequired ? "Returning to business setup…" : "Checking workspace…"}
+            {signInRequired ? "Returning to sign in…" : shellMe.data?.onboardingRequired ? "Returning to business setup…" : "Checking workspace…"}
           </p>
+        </div>
+      </main>
+    );
+  }
+
+  if (!shellMe.data) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-[#fcf8f3] px-6 text-center">
+        <div role="alert">
+          <p className="text-sm font-medium text-[#73685f]">Could not load your workspace.</p>
+          <button type="button" className="mt-4 min-h-[44px] rounded-lg bg-[#f35d3f] px-5 py-3 font-semibold text-white" onClick={() => void shellMe.refetch()}>
+            Try again
+          </button>
+          <Link href="/login" className="ml-4 inline-flex min-h-[44px] items-center text-sm font-semibold text-[#b94029]">Sign in</Link>
         </div>
       </main>
     );
