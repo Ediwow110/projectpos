@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DecorativeBackdrop } from "./premium";
 import { ApiError, apiFetch } from "../lib/api";
 import { clearActiveSyncScope } from "../lib/sync-store";
+import { workspaceMeRetry, workspaceMeRetryDelay } from "../lib/workspace-me-retry";
 import {
   workspaceNavigationForRole,
   type WorkspaceNavigationItem,
@@ -101,9 +102,11 @@ export function AppShell({
       activeBranchId: string | null;
       activeBranchName: string | null;
     }>("/api/v1/me"),
-    retry: false,
+    retry: workspaceMeRetry,
+    retryDelay: workspaceMeRetryDelay,
   });
   const signInRequired = shellMe.error instanceof ApiError && (shellMe.error.status === 401 || shellMe.error.status === 403);
+  const meUnavailable = shellMe.isError && !signInRequired && shellMe.data === undefined && !(posMode && offline);
   const branchesQuery = useQuery({
     queryKey: ["branches"],
     queryFn: () => apiFetch<{ items: Array<{ id: string; name: string; isActive: boolean }> }>("/api/v1/branches"),
@@ -256,6 +259,31 @@ export function AppShell({
     } finally {
       setSwitchingBranch(false);
     }
+  }
+
+  if (meUnavailable) {
+    return (
+      <main
+        data-ui="workspace-reconnect"
+        className="grid min-h-screen place-items-center bg-[#fcf8f3] px-6 text-center"
+      >
+        <div>
+          <p role="status" className="text-sm font-medium text-[#73685f]">
+            Connecting to your workspace…
+          </p>
+          <p className="mt-2 text-xs text-[#8b8077]">
+            The service is starting. We will retry automatically.
+          </p>
+          <button
+            type="button"
+            onClick={() => void shellMe.refetch()}
+            className="mt-5 inline-flex items-center justify-center rounded-[10px] bg-[#f35d3f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#d94a30]"
+          >
+            Try again
+          </button>
+        </div>
+      </main>
+    );
   }
 
   if (shellMe.isLoading || signInRequired || shellMe.data?.onboardingRequired) {
