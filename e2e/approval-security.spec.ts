@@ -140,6 +140,18 @@ test("a grant is bound to its exact action: changed quantity and changed product
     headers: fx.cashierHeaders, data: movementBody(fx.productB, 3, { approvalToken: grantForA }),
   });
   expect(changedProduct.status()).toBe(403);
+
+  // `reason` is part of the fingerprinted action too, so a substituted reason
+  // must not spend a grant the manager authorized under a different one.
+  const grantForReason = await mintInventoryGrant(request, fx.cashierHeaders, fx.ownerEmail, {
+    kind: "inventory_movement", productId: fx.productA, movementType: "receive",
+    qtyDelta: 7, reason: "cycle count correction",
+  });
+  const changedReason = await request.post(`${API}/api/v1/inventory/movements`, {
+    headers: fx.cashierHeaders,
+    data: movementBody(fx.productA, 7, { reason: "written off for spoilage", approvalToken: grantForReason }),
+  });
+  expect(changedReason.status()).toBe(403);
 });
 
 test("a grant stays bound to its requesting cashier and is not consumed by another session", async ({ page, request }) => {
