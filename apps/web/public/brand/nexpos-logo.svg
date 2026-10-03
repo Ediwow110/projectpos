@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 56" role="img" aria-label="NexPOS — Retail operations">
+  <!-- mark -->
+  <g>
+    <rect x="2" y="4" width="48" height="48" rx="11" fill="#F35D3F"/>
+    <rect x="2" y="4" width="48" height="22" rx="11" fill="#FFFFFF" opacity="0.09"/>
+    <path d="M16 16.5h6.6v11.8L30.4 16.5H36v23h-6.6V27.7L21.6 39.5H16V16.5Z" fill="#FFFFFF"/>
+    <path d="M22.6 16.5 29.4 27.7v3.4l-8.5-13.2 1.7-1.4Z" fill="#D94A30" opacity="0.85"/>
+    <path d="M17.6 16.5 19.3 19 21 16.5h-3.4Z" fill="#F35D3F"/>
+    <path d="M32 16.5l1.7 2.5 1.7-2.5H32Z" fill="#F35D3F"/>
+    <circle cx="36" cy="39.5" r="3.4" fill="#FFFFFF"/>
+    <circle cx="36" cy="39.5" r="1.5" fill="#F35D3F"/>
+  </g>
+  <!-- wordmark -->
+  <g font-family="Sora, 'Avenir Next', ui-sans-serif, system-ui, sans-serif">
+    <text x="62" y="32" font-size="24" font-weight="700" letter-spacing="-0.5" fill="#17130F">NEXPOS</text>
+    <text x="63" y="46" font-size="8.5" font-weight="500" letter-spacing="2.1" fill="#9A8D83" font-family="'IBM Plex Mono', ui-monospace, monospace">RETAIL OPERATIONS</text>
+  </g>
+</svg>

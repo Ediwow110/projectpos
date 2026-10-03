@@ -6,6 +6,7 @@ import { use, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { AppShell } from "../../../components/AppShell";
+import { NexposLogo } from "../../../components/brand/NexposLogo";
 import { ReceiptDeliveryDialog, type ReceiptDeliveryRow } from "../../../components/ReceiptDeliveryDialog";
 import { ReceiptPrinterDialog, type ReceiptPrinterOption } from "../../../components/ReceiptPrinterDialog";
 import { PageHeader, Panel } from "../../../components/premium";
@@ -198,7 +199,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ saleId: stri
         {receipt ? (
           <article data-ui="printable-receipt" aria-label="Receipt" className="mx-auto w-full max-w-[430px] overflow-hidden rounded-[18px] border border-[#eadfd6] bg-white shadow-[0_18px_48px_-20px_rgb(22_18_14/0.22)] print:max-w-[80mm] print:rounded-none print:border-0 print:shadow-none">
             <header className="border-b border-dashed border-[#d8ccc2] px-6 py-6 text-center">
-              <p className="font-display text-xl font-bold tracking-[-0.03em] text-[#17130f]">NEXPOS</p>
+              <NexposLogo variant="light" size="md" className="mx-auto" />
               <p className="font-data mt-1 text-[8px] uppercase tracking-[0.16em] text-[#9a8d83]">Retail operations receipt</p>
               <p className="font-data mt-4 text-sm font-semibold text-[#2a241f]">{receipt.receiptNo}</p>
               <div className="mt-3"><StatusPill tone={receipt.status === "COMPLETED" ? "ok" : "info"}>{receipt.status}</StatusPill></div>

@@ -6,6 +6,11 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "NexPOS — Retail operations, under control.",
   description: "Premium point-of-sale and retail operations workspace.",
+  icons: {
+    icon: "/brand/nexpos-mark.svg",
+    shortcut: "/brand/nexpos-mark.svg",
+    apple: "/brand/nexpos-mark.svg",
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }): JSX.Element {

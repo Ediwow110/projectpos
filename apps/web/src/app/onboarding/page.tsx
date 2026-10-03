@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
 import { Panel } from "../../components/premium";
+import { NexposLogo } from "../../components/brand/NexposLogo";
 import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { ApiError, apiFetch } from "../../lib/api";
 
@@ -109,8 +110,7 @@ export default function OnboardingPage(): JSX.Element {
       <div aria-hidden className="pointer-events-none absolute right-[-5rem] top-32 h-[22rem] w-[22rem] rounded-full bg-[#ff8061]/20" />
 
       <header className="relative z-10 mx-auto flex max-w-[1360px] items-center rounded-2xl border border-white/80 bg-white px-5 py-4 shadow-[0_4px_14px_-6px_rgb(28_20_15/0.08)]">
-        <p className="font-display text-xl font-bold">NEXPOS</p>
-        <p className="font-data ml-4 hidden text-[8px] tracking-[0.14em] text-[#9b8f85] sm:block">RETAIL OPERATIONS</p>
+        <NexposLogo variant="light" size="md" />
         <div className="ml-auto flex items-center gap-3">
           <span className="font-data text-[9px] text-[#7a6f66]">SETUP {String(currentIndex + 1).padStart(2, "0")} / 05</span>
           <StatusPill tone="ok">● Saved</StatusPill>

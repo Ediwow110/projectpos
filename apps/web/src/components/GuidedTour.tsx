@@ -2,6 +2,7 @@
 
 import React from "react";
 import type { JSX } from "react";
+import { NexposMark } from "./brand/NexposLogo";
 
 export interface GuidedTourStep {
   title: string;
@@ -235,7 +236,7 @@ export function GuidedTour({
         }
       >
         <div className="flex items-start gap-4">
-          <div className="font-display grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#f35d3f] text-sm font-bold text-white">N</div>
+          <NexposMark size={40} className="rounded-xl" />
           <div className="min-w-0 flex-1">
             <p className="font-data text-[9px] font-semibold uppercase tracking-[0.14em] text-[#e44e34]">
               System tour · {index + 1} of {steps.length}
