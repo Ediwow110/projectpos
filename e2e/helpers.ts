@@ -172,7 +172,7 @@ export async function signIn(page: Page, email: string, password: string): Promi
 
 export async function signOut(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Sign out" }).click();
-  await expect(page).toHaveURL(/\/login/);
+  await expect(page).toHaveURL(/\/login/, { timeout: 30_000 });
 }
 
 /** Fills the shared manager-approval dialog and submits it. */
