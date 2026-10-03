@@ -81,7 +81,6 @@ describe("phase16 product-supplier schemas", () => {
   it("accepts a full relationship", () => {
     const parsed = productSupplierCreateSchema.parse({
       productId: "p1",
-      supplierId: "s1",
       supplierSku: "SKU-9",
       unitCostMinor: 12500,
       leadTimeDays: 3,
@@ -168,5 +167,9 @@ describe("phase16 purchase order schemas", () => {
     expect(parsed.status).toBe("all");
     expect(parsed.page).toBe(1);
     expect(() => purchaseOrderListSchema.parse({ status: "RECEIVED" })).toThrow();
+  });
+  it("rejects client-owned totals and relationship foreign keys", () => {
+    expect(() => purchaseOrderCreateSchema.parse({ supplierId: "s1", lines: [], subtotalMinor: 999 })).toThrow();
+    expect(() => productSupplierCreateSchema.parse({ productId: "p1", supplierId: "s1" })).toThrow();
   });
 });

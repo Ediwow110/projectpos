@@ -83,7 +83,7 @@ CREATE TABLE "PurchaseOrder" (
   "branchId" TEXT,
   "poNumber" TEXT NOT NULL,
   "status" TEXT NOT NULL DEFAULT 'DRAFT',
-  "expectedDate" DATE,
+  "expectedDate" TIMESTAMP(3),
   "notes" TEXT,
   "subtotalMinor" INTEGER NOT NULL DEFAULT 0,
   "taxMinor" INTEGER NOT NULL DEFAULT 0,

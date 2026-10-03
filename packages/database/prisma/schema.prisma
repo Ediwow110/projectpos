@@ -231,6 +231,8 @@ model Product {
   preventOversell Boolean   @default(true)
   movements      InventoryMovement[]
   balances       InventoryBalance[]
+  productSuppliers ProductSupplier[]
+  purchaseOrderLines PurchaseOrderLine[]
   @@index([businessId, isActive])
   @@index([businessId, categoryId])
 }
@@ -537,6 +539,7 @@ model Branch {
   updatedAt  DateTime   @updatedAt
   business   Business   @relation(fields: [businessId], references: [id])
   registers  Register[]
+  purchaseOrders PurchaseOrder[]
   activeSessions Session[] @relation("SessionActiveBranch")
   @@unique([businessId, name])
   @@index([businessId])
@@ -818,6 +821,8 @@ model Supplier {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   business     Business @relation(fields: [businessId], references: [id])
+  productSuppliers ProductSupplier[]
+  purchaseOrders PurchaseOrder[]
 
   @@index([businessId, isActive, name])
 }
@@ -834,6 +839,8 @@ model ProductSupplier {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   business      Business  @relation(fields: [businessId], references: [id])
+  product       Product   @relation(fields: [productId], references: [id])
+  supplier      Supplier  @relation(fields: [supplierId], references: [id])
 
   @@unique([businessId, productId, supplierId])
   @@index([businessId, supplierId])
@@ -868,6 +875,8 @@ model PurchaseOrder {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   business      Business  @relation(fields: [businessId], references: [id])
+  supplier      Supplier  @relation(fields: [supplierId], references: [id])
+  branch        Branch?   @relation(fields: [branchId], references: [id])
   lines         PurchaseOrderLine[]
 
   @@unique([businessId, poNumber])
@@ -892,6 +901,7 @@ model PurchaseOrderLine {
   updatedAt           DateTime      @updatedAt
   business            Business      @relation(fields: [businessId], references: [id])
   order               PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  product             Product       @relation(fields: [productId], references: [id])
 
   @@unique([businessId, purchaseOrderId, productId])
   @@index([businessId, purchaseOrderId, position])

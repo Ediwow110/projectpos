@@ -12,6 +12,12 @@ export const SENSITIVE_ACTIONS = [
   "settings.write",
   "export.run",
   "shift.close.override",
+  // Phase 16 procurement foundation. These permissions intentionally do not
+  // grant any receiving or inventory mutation capability.
+  "supplier.write",
+  "purchase_order.write",
+  "purchase_order.order",
+  "purchase_order.cancel",
 ] as const;
 
 export function hasPermission(

@@ -18,6 +18,8 @@ describe("workspace navigation", () => {
       "/printers",
       "/admin",
       "/sync",
+      "/suppliers",
+      "/purchase-orders",
     ]));
   });
 
@@ -33,6 +35,8 @@ describe("workspace navigation", () => {
     expect(hrefs).not.toContain("/admin");
     expect(hrefs).not.toContain("/expenses");
     expect(hrefs).not.toContain("/transfers");
+    expect(hrefs).not.toContain("/suppliers");
+    expect(hrefs).not.toContain("/purchase-orders");
   });
 
   it.each(["owner", "manager", "cashier", "inventory"])("does not duplicate routes for %s", (role) => {

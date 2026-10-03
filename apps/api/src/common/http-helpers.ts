@@ -58,6 +58,11 @@ export const CODE_STATUS: Record<string, number> = {
   PAYLOAD_TOO_LARGE: 413,
   TRANSFER_INVALID_STATE: 409,
   PLAN_LIMIT: 402,
+  SUPPLIER_INACTIVE: 409,
+  SUPPLIER_CODE_DUPLICATE: 409,
+  PRODUCT_SUPPLIER_DUPLICATE: 409,
+  PURCHASE_ORDER_INVALID_STATE: 409,
+  STALE_VERSION: 409,
 };
 
 export function statusFor(code: string, fallback = 400): number {

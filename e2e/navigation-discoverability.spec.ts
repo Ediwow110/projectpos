@@ -35,6 +35,8 @@ test("owner can discover operational and administration routes and restart Help"
     ["Registers", "/registers"],
     ["Transfers", "/transfers"],
     ["Expenses", "/expenses"],
+    ["Suppliers", "/suppliers"],
+    ["Purchase Orders", "/purchase-orders"],
     ["Team", "/team"],
     ["Devices", "/devices"],
     ["Administration / Help", "/admin"],
@@ -82,6 +84,8 @@ test("cashier navigation hides owner management destinations", async ({ page, re
   await expect(firstRunTour).toBeHidden();
 
   await expect(page.getByRole("link", { name: "Team", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Suppliers", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Purchase Orders", exact: true })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Administration / Help", exact: true })).toHaveCount(0);
   const width = page.viewportSize()?.width ?? 1440;
   if (width >= 1280) {

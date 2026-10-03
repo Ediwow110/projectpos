@@ -24,7 +24,7 @@ export const supplierCreateSchema = z.object({
   country: trimmed(2).length(2, "VALIDATION").optional(),
   paymentTerms: trimmed(80).optional(),
   notes: trimmed(500).optional(),
-});
+}).strict();
 
 export const supplierUpdateSchema = supplierCreateSchema
   .partial()
@@ -43,7 +43,7 @@ export const productSupplierCreateSchema = z.object({
   unitCostMinor: moneyMinorSchema.optional(),
   leadTimeDays: z.number().int("VALIDATION").min(0, "VALIDATION").max(3650, "VALIDATION").optional(),
   isPreferred: z.boolean().optional(),
-});
+}).strict();
 
 export const productSupplierUpdateSchema = z
   .object({
@@ -52,6 +52,7 @@ export const productSupplierUpdateSchema = z
     leadTimeDays: z.number().int("VALIDATION").min(0, "VALIDATION").max(3650, "VALIDATION").nullable().optional(),
     isPreferred: z.boolean().optional(),
   })
+  .strict()
   .refine((v) => Object.keys(v).length > 0, { message: "VALIDATION" });
 
 const poLineSchema = z.object({
@@ -61,7 +62,7 @@ const poLineSchema = z.object({
   // mapping, then Product.costMinor. Snapshots are always server-derived.
   unitCostMinor: moneyMinorSchema.optional(),
   notes: trimmed(200).optional(),
-});
+}).strict();
 
 const poLinesSchema = z
   .array(poLineSchema)
@@ -86,7 +87,7 @@ export const purchaseOrderCreateSchema = z.object({
   expectedDate: expectedDateSchema.optional(),
   notes: trimmed(500).optional(),
   lines: poLinesSchema,
-});
+}).strict();
 
 export const purchaseOrderUpdateSchema = z
   .object({
@@ -97,6 +98,7 @@ export const purchaseOrderUpdateSchema = z
     notes: trimmed(500).nullable().optional(),
     lines: poLinesSchema.optional(),
   })
+  .strict()
   .superRefine((v, ctx) => {
     if (
       v.supplierId === undefined &&
@@ -123,13 +125,13 @@ export const purchaseOrderListSchema = z.object({
 export const purchaseOrderCancelSchema = z.object({
   reason: z.string().trim().min(3, "VALIDATION").max(500, "VALIDATION"),
   expectedVersion: z.number().int("VALIDATION").min(1, "VALIDATION"),
-});
+}).strict();
 
 // order carries no body fields beyond concurrency; expectedVersion arrives in
 // the JSON body so fetch callers without a body still get schema enforcement.
 export const purchaseOrderOrderSchema = z.object({
   expectedVersion: z.number().int("VALIDATION").min(1, "VALIDATION"),
-});
+}).strict();
 
 export type SupplierCreateInput = z.infer<typeof supplierCreateSchema>;
 export type SupplierUpdateInput = z.infer<typeof supplierUpdateSchema>;
