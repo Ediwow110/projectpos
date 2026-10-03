@@ -8,8 +8,9 @@ export function readinessDelay(attempt: number): number {
 
 export function isTransientReadinessError(error: unknown): boolean {
   if (!(error instanceof ApiError)) return false;
-  return error.status === 0 || error.status === 502 || error.status === 503 || error.status === 504 ||
-    error.code === "NETWORK_ERROR" || error.code === "NETWORK_TIMEOUT" || error.code === "SERVICE_UNAVAILABLE";
+  if (error.code === "AUTH_INVALID_CREDENTIALS" || error.status === 401 || error.status === 403) return false;
+  if (error.code === "NETWORK_ERROR" || error.code === "NETWORK_TIMEOUT") return error.status === 0;
+  return error.status === 502 || error.status === 503 || error.status === 504;
 }
 
 export interface ReadinessOptions<T = unknown> {
@@ -23,9 +24,12 @@ function defaultSleep(milliseconds: number): Promise<void> {
 }
 
 export async function waitForApiReady<T = { ok: boolean }>(options: ReadinessOptions<T> = {}): Promise<T> {
-  const probe = options.probe ?? (() => apiFetch<T>("/readyz"));
+  const probe = options.probe ?? (() => apiFetch<T>("/readyz", { init: { method: "GET" } }));
   const sleep = options.sleep ?? defaultSleep;
-  const maxRetries = options.maxRetries ?? MAX_READINESS_RETRIES;
+  const requestedRetries = options.maxRetries ?? MAX_READINESS_RETRIES;
+  const maxRetries = Number.isFinite(requestedRetries)
+    ? Math.min(Math.max(Math.floor(requestedRetries), 0), MAX_READINESS_RETRIES)
+    : MAX_READINESS_RETRIES;
 
   for (let attempt = 0; ; attempt += 1) {
     try {

@@ -25,7 +25,10 @@ describe("web api wrapper", () => {
       }),
     );
     await expect(apiFetch("/api/v1/me", {})).rejects.toMatchObject({
+      status: 401,
       code: "TENANT_REQUIRED",
+      message: "x",
+      correlationId: "r1",
     });
     vi.unstubAllGlobals();
   });
