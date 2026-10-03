@@ -88,6 +88,11 @@ model Business {
   corrections ShiftCorrection[]
   receiptShares ReceiptShare[]
   receiptDeliveries ReceiptDelivery[]
+  suppliers Supplier[]
+  productSuppliers ProductSupplier[]
+  purchaseOrders PurchaseOrder[]
+  purchaseOrderLines PurchaseOrderLine[]
+  poCounters POCounter[]
   activeSessions Session[] @relation("SessionActiveBusiness")
 }
 
@@ -786,4 +791,108 @@ model RateLimitHit {
   at  DateTime
 
   @@index([key, at])
+}
+
+// Phase 16: procurement foundation. Commercial records only; the migration
+// (0028_procurement) owns the partial-unique semantics Prisma DSL cannot
+// express: Supplier.code unique per business WHERE code IS NOT NULL, and at
+// most one preferred ProductSupplier per product via a partial index WHERE
+// "isPreferred".
+model Supplier {
+  id           String   @id @default(cuid())
+  businessId   String
+  name         String
+  code         String?
+  contactName  String?
+  email        String?
+  phone        String?
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  province     String?
+  postalCode   String?
+  country      String   @default("PH")
+  paymentTerms String?
+  notes        String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  business     Business @relation(fields: [businessId], references: [id])
+
+  @@index([businessId, isActive, name])
+}
+
+model ProductSupplier {
+  id            String    @id @default(cuid())
+  businessId    String
+  productId     String
+  supplierId    String
+  supplierSku   String?
+  unitCostMinor Int?
+  leadTimeDays  Int?
+  isPreferred   Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  business      Business  @relation(fields: [businessId], references: [id])
+
+  @@unique([businessId, productId, supplierId])
+  @@index([businessId, supplierId])
+}
+
+model POCounter {
+  id         String   @id @default(cuid())
+  businessId String   @unique
+  seq        Int
+  business   Business @relation(fields: [businessId], references: [id])
+}
+
+model PurchaseOrder {
+  id            String    @id @default(cuid())
+  businessId    String
+  supplierId    String
+  branchId      String?
+  poNumber      String
+  status        String    @default("DRAFT")
+  expectedDate  DateTime?
+  notes         String?
+  subtotalMinor Int       @default(0)
+  taxMinor      Int       @default(0)
+  totalMinor    Int       @default(0)
+  version       Int       @default(1)
+  createdBy     String
+  orderedBy     String?
+  orderedAt     DateTime?
+  cancelledBy   String?
+  cancelledAt   DateTime?
+  cancelReason  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  business      Business  @relation(fields: [businessId], references: [id])
+  lines         PurchaseOrderLine[]
+
+  @@unique([businessId, poNumber])
+  @@index([businessId, status, createdAt])
+  @@index([businessId, supplierId])
+  @@index([businessId, branchId, status])
+}
+
+model PurchaseOrderLine {
+  id                  String        @id @default(cuid())
+  businessId          String
+  purchaseOrderId     String
+  productId           String
+  position            Int           @default(0)
+  supplierSkuSnapshot String?
+  productNameSnapshot String
+  quantity            Int
+  unitCostMinor       Int
+  lineTotalMinor      Int
+  notes               String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  business            Business      @relation(fields: [businessId], references: [id])
+  order               PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+
+  @@unique([businessId, purchaseOrderId, productId])
+  @@index([businessId, purchaseOrderId, position])
 }
