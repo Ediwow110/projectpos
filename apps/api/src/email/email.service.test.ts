@@ -197,6 +197,7 @@ describe("transactional email", () => {
       sender: { name: "NexPOS", email: "noreply@example.com" },
       to: [{ email: "owner@example.com" }],
       subject: "Verify your NexPOS email",
+      textContent: "plain fallback",
       htmlContent: "<p>Verify</p>",
     });
   });

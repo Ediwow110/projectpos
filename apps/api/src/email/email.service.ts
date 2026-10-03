@@ -158,6 +158,7 @@ export class BrevoApiTransport implements MailTransport {
         sender,
         to: [{ email: message.to }],
         subject: message.subject,
+        textContent: message.text,
         htmlContent: message.html,
       }),
       signal: AbortSignal.timeout(10_000),
