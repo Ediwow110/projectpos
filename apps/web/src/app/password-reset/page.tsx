@@ -13,6 +13,8 @@ const RECOVERY_STEPS = [
   ["03", "Set a new password", "Use at least 12 characters before signing in again"],
 ] as const;
 
+const RESET_RESEND_COOLDOWN_SECONDS = 60;
+
 export default function PasswordResetPage(): JSX.Element {
   const [email, setEmail] = useState("");
   const [token, setToken] = useState("");
@@ -20,8 +22,17 @@ export default function PasswordResetPage(): JSX.Element {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [requesting, setRequesting] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
   const [confirming, setConfirming] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setInterval(() => {
+      setResendCooldown((remaining) => Math.max(remaining - 1, 0));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [resendCooldown]);
 
   useEffect(() => {
     const fromLink = new URLSearchParams(window.location.search).get("token");
@@ -39,6 +50,7 @@ export default function PasswordResetPage(): JSX.Element {
         init: { method: "POST", body: JSON.stringify({ email }) },
       });
       setMessage(res.message);
+      setResendCooldown(RESET_RESEND_COOLDOWN_SECONDS);
     } catch (err) {
       setError(err instanceof ApiError ? `${err.code}: ${err.message}` : "Request failed");
     } finally {
@@ -136,10 +148,14 @@ export default function PasswordResetPage(): JSX.Element {
               <button
                 className="auth-interactive min-h-[52px] w-full rounded-[9px] bg-[#f35d3f] px-5 py-3 font-semibold text-white shadow-[0_8px_20px_-8px_rgb(243_93_63/0.55)] hover:bg-[#d94a30] disabled:cursor-not-allowed disabled:opacity-65"
                 type="submit"
-                disabled={requesting}
+                disabled={requesting || resendCooldown > 0}
                 aria-busy={requesting}
               >
-                {requesting ? "Sending reset link…" : "Send reset link"}
+                {requesting
+                  ? "Sending reset link…"
+                  : resendCooldown > 0
+                    ? `Resend available in ${resendCooldown}s`
+                    : "Send reset link"}
               </button>
             </form>
           ) : (

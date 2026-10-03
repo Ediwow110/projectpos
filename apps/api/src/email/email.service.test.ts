@@ -37,9 +37,11 @@ describe("transactional email", () => {
     expect(message.text).toContain(
       "https://pos.example.com/password-reset?token=reset+token%2F%2B%3F%26",
     );
+    expect(message.text).toContain("This link expires in 15 minutes.");
     expect(message.html).toContain(
       "https://pos.example.com/password-reset?token=reset+token%2F%2B%3F%26",
     );
+    expect(message.html).toContain("This link expires in 15 minutes.");
     expect(message.html).not.toContain("Owner <script>");
   });
 

@@ -35,7 +35,7 @@ Create a transactional sender/domain with the selected provider and publish the 
 
 ## Security and failure behavior
 
-- Password-reset tokens expire after one hour and are single-use.
+- Password-reset tokens expire after 15 minutes and are single-use. A new reset email can be requested once per minute per IP.
 - Email-verification tokens expire after 24 hours.
 - Public reset/resend routes do not reveal whether an account exists.
 - Tokens are stored hashed and are not written to the HTTP response or audit log.

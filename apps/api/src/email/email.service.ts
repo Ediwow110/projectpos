@@ -216,14 +216,14 @@ export class TransactionalEmailService implements TransactionalEmailPort {
       from: this.config.from,
       to: input.to,
       subject: "Reset your NexPOS password",
-      text: `Hi ${input.name || "there"},\n\nReset your NexPOS password using this link:\n${href}\n\nThis link expires in 1 hour. If you did not request this, you can ignore this email.`,
+      text: `Hi ${input.name || "there"},\n\nReset your NexPOS password using this link:\n${href}\n\nThis link expires in 15 minutes. If you did not request this, you can ignore this email.`,
       html: htmlShell({
         eyebrow: "NexPOS security",
         title: "Reset your password",
         body: `Hi ${safeName}. We received a request to reset your NexPOS password.`,
         href,
         cta: "Reset password",
-        note: "This link expires in 1 hour. If you did not request this reset, no action is needed.",
+        note: "This link expires in 15 minutes. If you did not request this reset, no action is needed.",
       }),
     });
   }

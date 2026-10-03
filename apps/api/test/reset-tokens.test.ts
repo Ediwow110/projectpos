@@ -4,9 +4,9 @@ import { AuthService } from "../src/auth/nest/auth.service";
 import { createMemoryDb } from "../src/common/memory.db";
 
 describe("single-use reset tokens", () => {
-  it("creates a 1-hour token", () => {
+  it("creates a 15-minute token", () => {
     const rec = createResetToken({ userId: "u1", requestId: "r1", ip: null });
-    expect(rec.expiresAt.getTime() - rec.createdAt.getTime()).toBe(3600_000);
+    expect(rec.expiresAt.getTime() - rec.createdAt.getTime()).toBe(15 * 60_000);
     expect(rec.usedAt).toBeNull();
   });
   it("consumes a fresh token once", () => {
