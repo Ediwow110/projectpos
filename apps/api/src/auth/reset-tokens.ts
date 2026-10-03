@@ -1,6 +1,6 @@
 import { createSessionToken, hashToken } from "./sessions";
 
-export const RESET_TTL_MS = 3600_000;
+export const RESET_TTL_MS = 15 * 60_000;
 
 export interface ResetRecord {
   userId: string;

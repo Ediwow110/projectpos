@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { ApiError, apiFetch } from "../../lib/api";
+import { NexposLogo } from "../../components/brand/NexposLogo";
 import { loginWithReadiness } from "../../lib/login-flow";
 import { isTransientReadinessError } from "../../lib/login-readiness";
 import { persistActiveSyncScope } from "../../lib/sync-store";
@@ -85,11 +86,7 @@ export default function LoginPage(): JSX.Element {
         <span aria-hidden className="absolute inset-y-0 left-0 w-2.5 bg-[#f35d3f]" />
 
         <div className="relative z-10 flex items-center gap-4">
-          <div className="font-display grid h-11 w-11 place-items-center rounded-[9px] bg-[#f35d3f] text-lg font-bold">N</div>
-          <div>
-            <p className="font-display text-[22px] font-bold leading-none">NEXPOS</p>
-            <p className="font-data mt-2 text-[9px] font-medium tracking-[0.14em] text-[#a79e94]">RETAIL OPERATIONS</p>
-          </div>
+          <NexposLogo variant="dark" size="lg" withWordmark />
         </div>
 
         <div className="animate-auth-copy relative z-10 mx-auto mt-16 max-w-[650px] lg:mt-28">

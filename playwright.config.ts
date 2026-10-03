@@ -3,6 +3,12 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
   timeout: 120_000,
+  expect: {
+    // CI runs the full suite against Next dev servers with two workers. The
+    // first request to a route may include compilation and API warm-up, so
+    // keep locator assertions aligned with the suite's cold-start tolerance.
+    timeout: 15_000,
+  },
   workers: 2,
   use: {
     baseURL: "http://localhost:3100",

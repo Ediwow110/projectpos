@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { TurnstileWidget } from "../../components/TurnstileWidget";
+import { NexposLogo } from "../../components/brand/NexposLogo";
 import { ApiError, apiFetch } from "../../lib/api";
 
 type ChallengeConfig = { enabled: boolean; siteKey?: string };
@@ -99,12 +100,8 @@ export default function VerifyEmailPage(): JSX.Element {
         <span aria-hidden className="absolute inset-y-0 left-0 w-2.5 bg-[#f35d3f]" />
         <div aria-hidden className="animate-auth-glow absolute -right-24 top-24 h-72 w-72 rounded-full bg-[#f35d3f]/10 blur-3xl" />
 
-        <div className="relative z-10 flex items-center gap-4">
-          <div className="font-display grid h-11 w-11 place-items-center rounded-[9px] bg-[#f35d3f] text-lg font-bold">N</div>
-          <div>
-            <p className="font-display text-[22px] font-bold leading-none">NEXPOS</p>
-            <p className="font-data mt-2 text-[9px] font-medium tracking-[0.14em] text-[#a79e94]">ACCOUNT SECURITY</p>
-          </div>
+        <div className="relative z-10">
+          <NexposLogo variant="dark" size="lg" subtitle="ACCOUNT SECURITY" />
         </div>
 
         <div className="animate-auth-copy relative z-10 mx-auto mt-20 max-w-[650px] lg:mt-32">

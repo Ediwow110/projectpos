@@ -99,6 +99,8 @@ describe("pre-auth privacy presentation", () => {
     expect(reset).toContain("animate-auth-copy");
     expect(reset).toContain("animate-auth-card");
     expect(reset).toContain("const [requesting, setRequesting] = useState(false)");
+    expect(reset).toContain("const [resendCooldown, setResendCooldown] = useState(0)");
+    expect(reset).toContain("`Resend available in ${resendCooldown}s`");
     expect(reset).toContain("const [confirming, setConfirming] = useState(false)");
     expect(reset).toContain("Sending reset link…");
     expect(reset).toContain("Updating password…");

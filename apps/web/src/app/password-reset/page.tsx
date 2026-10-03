@@ -5,6 +5,7 @@ import type { JSX } from "react";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
+import { NexposLogo } from "../../components/brand/NexposLogo";
 import { ApiError, apiFetch } from "../../lib/api";
 
 const RECOVERY_STEPS = [
@@ -13,6 +14,8 @@ const RECOVERY_STEPS = [
   ["03", "Set a new password", "Use at least 12 characters before signing in again"],
 ] as const;
 
+const RESET_RESEND_COOLDOWN_SECONDS = 60;
+
 export default function PasswordResetPage(): JSX.Element {
   const [email, setEmail] = useState("");
   const [token, setToken] = useState("");
@@ -20,8 +23,17 @@ export default function PasswordResetPage(): JSX.Element {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [requesting, setRequesting] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
   const [confirming, setConfirming] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setInterval(() => {
+      setResendCooldown((remaining) => Math.max(remaining - 1, 0));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [resendCooldown]);
 
   useEffect(() => {
     const fromLink = new URLSearchParams(window.location.search).get("token");
@@ -39,6 +51,7 @@ export default function PasswordResetPage(): JSX.Element {
         init: { method: "POST", body: JSON.stringify({ email }) },
       });
       setMessage(res.message);
+      setResendCooldown(RESET_RESEND_COOLDOWN_SECONDS);
     } catch (err) {
       setError(err instanceof ApiError ? `${err.code}: ${err.message}` : "Request failed");
     } finally {
@@ -71,12 +84,8 @@ export default function PasswordResetPage(): JSX.Element {
         <span aria-hidden className="absolute inset-y-0 left-0 w-2.5 bg-[#f35d3f]" />
         <div aria-hidden className="animate-auth-glow absolute -right-24 top-24 h-72 w-72 rounded-full bg-[#f35d3f]/10 blur-3xl" />
 
-        <div className="relative z-10 flex items-center gap-4">
-          <div className="font-display grid h-11 w-11 place-items-center rounded-[9px] bg-[#f35d3f] text-lg font-bold">N</div>
-          <div>
-            <p className="font-display text-[22px] font-bold leading-none">NEXPOS</p>
-            <p className="font-data mt-2 text-[9px] font-medium tracking-[0.14em] text-[#a79e94]">ACCOUNT SECURITY</p>
-          </div>
+        <div className="relative z-10">
+          <NexposLogo variant="dark" size="lg" subtitle="ACCOUNT SECURITY" />
         </div>
 
         <div className="animate-auth-copy relative z-10 mx-auto mt-16 max-w-[650px] lg:mt-28">
@@ -136,10 +145,14 @@ export default function PasswordResetPage(): JSX.Element {
               <button
                 className="auth-interactive min-h-[52px] w-full rounded-[9px] bg-[#f35d3f] px-5 py-3 font-semibold text-white shadow-[0_8px_20px_-8px_rgb(243_93_63/0.55)] hover:bg-[#d94a30] disabled:cursor-not-allowed disabled:opacity-65"
                 type="submit"
-                disabled={requesting}
+                disabled={requesting || resendCooldown > 0}
                 aria-busy={requesting}
               >
-                {requesting ? "Sending reset link…" : "Send reset link"}
+                {requesting
+                  ? "Sending reset link…"
+                  : resendCooldown > 0
+                    ? `Resend available in ${resendCooldown}s`
+                    : "Send reset link"}
               </button>
             </form>
           ) : (

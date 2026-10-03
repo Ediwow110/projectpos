@@ -4,6 +4,7 @@ import type { JSX } from "react";
 import { use } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { NexposLogo } from "../../../../components/brand/NexposLogo";
 import { apiBase } from "../../../../lib/api";
 
 interface SharedReceipt {
@@ -39,7 +40,7 @@ export default function SharedReceiptPage({ params }: { params: Promise<{ token:
     <main className="min-h-screen bg-[#f3eee8] px-4 py-8 sm:py-12">
       <div className="mx-auto max-w-[430px]">
         <div className="mb-5 text-center">
-          <p className="font-display text-xl font-bold tracking-[-0.03em] text-[#17130f]">NEXPOS</p>
+          <NexposLogo variant="light" size="md" className="mx-auto" />
           <p className="font-data mt-1 text-[9px] uppercase tracking-[0.16em] text-[#9a8d83]">Secure shared receipt</p>
         </div>
         {query.isLoading ? <div className="rounded-2xl border border-[#eadfd6] bg-white p-6 text-center text-sm text-[#73685f]">Loading receipt…</div> : null}

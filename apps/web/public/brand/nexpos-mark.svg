@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="NexPOS mark">
+  <rect x="0" y="0" width="48" height="48" rx="11" fill="#F35D3F"/>
+  <rect x="0" y="0" width="48" height="22" rx="11" fill="#FFFFFF" opacity="0.09"/>
+  <rect x="0" y="16" width="48" height="6" fill="#D94A30" opacity="0.22"/>
+  <!-- Receipt-N: bold N built from receipt strips -->
+  <path d="M14 12.5h6.6v11.8L28.4 12.5H34v23H27.4V23.7L19.6 35.5H14V12.5Z" fill="#FFFFFF"/>
+  <!-- fold shadow on the diagonal -->
+  <path d="M20.6 12.5 27.4 23.7v3.4l-8.5-13.2 1.7-1.4Z" fill="#D94A30" opacity="0.85"/>
+  <!-- receipt teeth: two coral notches cut from the top of the stems -->
+  <path d="M15.6 12.5 17.3 15 19 12.5H15.6Z" fill="#F35D3F"/>
+  <path d="M30 12.5l1.7 2.5 1.7-2.5H30Z" fill="#F35D3F"/>
+  <!-- transaction dot: peso / completed-sale point -->
+  <circle cx="34" cy="35.5" r="3.4" fill="#FFFFFF"/>
+  <circle cx="34" cy="35.5" r="1.5" fill="#F35D3F"/>
+</svg>

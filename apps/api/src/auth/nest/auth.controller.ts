@@ -23,7 +23,9 @@ import {
 } from "../../common/human-verification";
 import { AuthService } from "./auth.service";
 
-const resetLimiter = createRateLimiter(5, 60_000);
+export const RESET_REQUEST_LIMIT = 1;
+export const RESET_REQUEST_WINDOW_MS = 60_000;
+const resetLimiter = createRateLimiter(RESET_REQUEST_LIMIT, RESET_REQUEST_WINDOW_MS);
 const verificationLimiter = createRateLimiter(5, 60_000);
 const defaultRegistrationLimit = (process.env["NODE_ENV"] ?? "development") === "production" ? 10 : 1000;
 const registrationLimit = Number(process.env["REGISTRATION_RATE_LIMIT"] ?? defaultRegistrationLimit);

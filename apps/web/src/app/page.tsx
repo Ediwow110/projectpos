@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { AppShell } from "../components/AppShell";
+import { NexposMark } from "../components/brand/NexposLogo";
 import { MetricCard, PageHeader, Panel, SectionHeader } from "../components/premium";
 import { Card, Delta, Peso, StatusPill } from "../components/ui";
 import { ApiError, apiFetch } from "../lib/api";
@@ -147,7 +148,7 @@ export default function DashboardPage(): JSX.Element {
     return (
       <main className="grid min-h-screen place-items-center bg-[#fcf8f3] p-8">
         <Card className="w-full max-w-md p-8 text-center">
-          <div className="font-display mx-auto grid h-12 w-12 place-items-center rounded-xl bg-[#f35d3f] text-xl font-bold text-white">N</div>
+          <NexposMark size={48} className="mx-auto" />
           <h1 className="font-display mt-4 text-xl font-bold">Could not load your workspace</h1>
           <p className="mt-1 text-sm text-[#73685f]">Check your connection and try again.</p>
           <button type="button" onClick={() => void meQuery.refetch()} className="mt-5 inline-flex w-full items-center justify-center rounded-[10px] bg-[#f35d3f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#d94a30]">

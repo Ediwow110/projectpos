@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DecorativeBackdrop } from "./premium";
+import { NexposLogo, NexposMark } from "./brand/NexposLogo";
 import { ApiError, apiFetch } from "../lib/api";
 import { clearActiveSyncScope } from "../lib/sync-store";
 import { workspaceMeRetry, workspaceMeRetryDelay } from "../lib/workspace-me-retry";
@@ -226,7 +227,6 @@ export function AppShell({
     clearActiveSyncScope();
     queryClient.clear();
     router.replace("/login");
-    router.refresh();
   }
 
   async function switchBranch(branchId: string): Promise<void> {
@@ -318,13 +318,12 @@ export function AppShell({
           }
         >
           <div className="mx-auto flex min-h-[64px] w-full max-w-[1480px] items-center gap-4">
-            <Link href="/" className="flex min-w-0 shrink-0 items-center gap-3" aria-label="NexPOS dashboard">
-              <span className="font-display grid h-9 w-9 place-items-center rounded-xl bg-[#f35d3f] text-sm font-bold text-white shadow-[0_8px_18px_-10px_rgb(243_93_63/0.75)]">
-                N
-              </span>
+            <Link href="/" className="flex min-w-0 shrink-0 items-center" aria-label="NexPOS dashboard">
               <span className="hidden sm:block">
-                <span className="font-display block text-[18px] font-bold leading-none text-[#17130f]">NEXPOS</span>
-                <span className="font-data mt-1 block text-[7px] font-medium tracking-[0.17em] text-[#9a8d83]">RETAIL OPERATIONS</span>
+                <NexposLogo variant="light" size="md" withWordmark />
+              </span>
+              <span className="sm:hidden">
+                <NexposMark size={36} />
               </span>
             </Link>
 

@@ -1,4 +1,5 @@
 import React from "react";
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { ApiError } from "../lib/api";
@@ -62,5 +63,21 @@ describe("workspace access failures", () => {
     fixture.error = new ApiError("NETWORK_ERROR", "Offline", "", 0);
     const html = renderToStaticMarkup(<AppShell posMode offline><p>Cached POS content</p></AppShell>);
     expect(html).toContain("Cached POS content");
+  });
+
+  it("keeps the workspace header compact on mobile while showing the full logo on desktop", () => {
+    fixture.data = { role: "cashier", onboardingRequired: false };
+    fixture.error = new ApiError("NETWORK_TIMEOUT", "Timed out", "", 0);
+    const html = renderToStaticMarkup(<AppShell><p>Cached workspace content</p></AppShell>);
+    expect(html).toContain('class="hidden sm:block"');
+    expect(html).toContain('class="sm:hidden"');
+    expect(html).toContain('src="/brand/nexpos-logo.svg"');
+    expect(html).toContain('src="/brand/nexpos-mark.svg"');
+  });
+
+  it("uses one redirect when signing out", () => {
+    const source = readFileSync(new URL("./AppShell.tsx", import.meta.url), "utf8");
+    expect(source).toContain('router.replace("/login");');
+    expect(source).not.toContain('router.refresh();');
   });
 });

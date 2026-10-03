@@ -49,7 +49,7 @@ Password policy `[SPEC-DEFAULT]`: minimum 12 characters, maximum 128, no other c
 
 ### Login / Logout (FR-AUTH-01)
 
-`POST /api/v1/auth/login` accepts `{ email, password }`, verifies the argon2id hash in constant time, creates a `Session` row (random 32-byte opaque token, sha256 `tokenHash`, `expiresAt` 30 days `[SPEC-DEFAULT]`, IP/user-agent metadata), and sets the session cookie. Wrong credentials return `AUTH_INVALID_CREDENTIALS` with no indication of which field failed. Rate limit `[SPEC-DEFAULT]`: 5 attempts per minute per IP on login and reset endpoints (PLAN.md 7 requires rate limiting; number is spec-chosen).
+`POST /api/v1/auth/login` accepts `{ email, password }`, verifies the argon2id hash in constant time, creates a `Session` row (random 32-byte opaque token, sha256 `tokenHash`, `expiresAt` 30 days `[SPEC-DEFAULT]`, IP/user-agent metadata), and sets the session cookie. Wrong credentials return `AUTH_INVALID_CREDENTIALS` with no indication of which field failed. Rate limit `[SPEC-DEFAULT]`: 5 login attempts per minute per IP; password-reset requests are limited to one per minute per IP (PLAN.md 7 requires rate limiting; numbers are spec-chosen).
 
 `POST /api/v1/auth/logout` sets `revokedAt` and clears the cookie.
 
@@ -59,7 +59,7 @@ Password policy `[SPEC-DEFAULT]`: minimum 12 characters, maximum 128, no other c
 
 ### Password Reset (FR-AUTH-01)
 
-`POST /api/v1/auth/password-reset/request` accepts `{ email }`, issues a single-use token (hashed, 1-hour expiry `[SPEC-DEFAULT]`), and always returns the same success message whether or not the email exists (no user enumeration). `POST /api/v1/auth/password-reset/confirm` accepts `{ token, newPassword }`, sets the new hash, marks the token used, and revokes all other sessions for the user. Token reuse returns `AUTH_TOKEN_USED`.
+`POST /api/v1/auth/password-reset/request` accepts `{ email }`, issues a single-use token (hashed, 15-minute expiry `[SPEC-DEFAULT]`), and permits one new reset request per IP every 60 seconds. It always returns the same success message whether or not the email exists (no user enumeration). `POST /api/v1/auth/password-reset/confirm` accepts `{ token, newPassword }`, sets the new hash, marks the token used, and revokes all other sessions for the user. Token reuse returns `AUTH_TOKEN_USED`.
 
 ### Cookies and CSRF (PLAN.md 7)
 
@@ -149,4 +149,4 @@ No catalog, inventory ledger, POS UI, payments, shifts, reports, branches, offli
 
 - TypeScript strict end-to-end; NestJS modular monolith before any service split.
 - Tenant isolation and authorization remain backend invariants; nothing in Phase 1 trusts client claims.
-- `[SPEC-DEFAULT]` numbers (password 12-128, 30-day sessions, 15-minute re-auth, 5/min rate limit, 1-hour reset tokens, argon2id params) are changeable without breaking the design; they are recorded here so implementers use exact values.
+- `[SPEC-DEFAULT]` numbers (password 12-128, 30-day sessions, 15-minute re-auth, 5/min rate limit, 15-minute reset tokens, 60-second reset resend cooldown, argon2id params) are changeable without breaking the design; they are recorded here so implementers use exact values.
