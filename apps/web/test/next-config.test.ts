@@ -36,6 +36,10 @@ describe("Next.js web runtime configuration", () => {
         source: "/api/:path*",
         destination: "https://nexpos-api.onrender.com/api/:path*",
       },
+      {
+        source: "/readyz",
+        destination: "https://nexpos-api.onrender.com/readyz",
+      },
     ]);
   });
 
@@ -49,6 +53,10 @@ describe("Next.js web runtime configuration", () => {
       {
         source: "/api/:path*",
         destination: "http://nexpos-api:10000/api/:path*",
+      },
+      {
+        source: "/readyz",
+        destination: "http://nexpos-api:10000/readyz",
       },
     ]);
   });

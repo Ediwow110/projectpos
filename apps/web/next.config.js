@@ -64,6 +64,10 @@ const nextConfig = {
         source: "/api/:path*",
         destination: `${target}/api/:path*`,
       },
+      {
+        source: "/readyz",
+        destination: `${target}/readyz`,
+      },
     ];
   },
   async headers() {
