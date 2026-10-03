@@ -63,4 +63,14 @@ describe("workspace access failures", () => {
     const html = renderToStaticMarkup(<AppShell posMode offline><p>Cached POS content</p></AppShell>);
     expect(html).toContain("Cached POS content");
   });
+
+  it("keeps the workspace header compact on mobile while showing the full logo on desktop", () => {
+    fixture.data = { role: "cashier", onboardingRequired: false };
+    fixture.error = new ApiError("NETWORK_TIMEOUT", "Timed out", "", 0);
+    const html = renderToStaticMarkup(<AppShell><p>Cached workspace content</p></AppShell>);
+    expect(html).toContain('class="hidden sm:block"');
+    expect(html).toContain('class="sm:hidden"');
+    expect(html).toContain('src="/brand/nexpos-logo.svg"');
+    expect(html).toContain('src="/brand/nexpos-mark.svg"');
+  });
 });

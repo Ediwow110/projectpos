@@ -6,7 +6,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DecorativeBackdrop } from "./premium";
-import { NexposLogo } from "./brand/NexposLogo";
+import { NexposLogo, NexposMark } from "./brand/NexposLogo";
 import { ApiError, apiFetch } from "../lib/api";
 import { clearActiveSyncScope } from "../lib/sync-store";
 import { workspaceMeRetry, workspaceMeRetryDelay } from "../lib/workspace-me-retry";
@@ -320,7 +320,12 @@ export function AppShell({
         >
           <div className="mx-auto flex min-h-[64px] w-full max-w-[1480px] items-center gap-4">
             <Link href="/" className="flex min-w-0 shrink-0 items-center" aria-label="NexPOS dashboard">
-              <NexposLogo variant="light" size="md" withWordmark />
+              <span className="hidden sm:block">
+                <NexposLogo variant="light" size="md" withWordmark />
+              </span>
+              <span className="sm:hidden">
+                <NexposMark size={36} />
+              </span>
             </Link>
 
             <div className={posMode ? "hidden items-center gap-2 lg:flex" : "hidden items-center gap-2 md:flex"}>
