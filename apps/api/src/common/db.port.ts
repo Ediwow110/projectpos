@@ -488,6 +488,82 @@ export interface DbDevice {
   revokedAt: Date | null;
 }
 
+// Phase 16: procurement foundation. Supplier/ProductSupplier/PurchaseOrder
+// are commercial records only — nothing in this family touches inventory.
+export interface DbSupplier {
+  id: string;
+  businessId: string;
+  name: string;
+  code: string | null;
+  contactName: string | null;
+  email: string | null;
+  phone: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  province: string | null;
+  postalCode: string | null;
+  country: string;
+  paymentTerms: string | null;
+  notes: string | null;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DbProductSupplier {
+  id: string;
+  businessId: string;
+  productId: string;
+  supplierId: string;
+  supplierSku: string | null;
+  unitCostMinor: number | null;
+  leadTimeDays: number | null;
+  isPreferred: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DbPurchaseOrder {
+  id: string;
+  businessId: string;
+  supplierId: string;
+  // null = head-office/all-branch scope (existing three-mode branch design).
+  branchId: string | null;
+  poNumber: string;
+  status: string;
+  expectedDate: Date | null;
+  notes: string | null;
+  subtotalMinor: number;
+  taxMinor: number;
+  totalMinor: number;
+  version: number;
+  createdBy: string;
+  orderedBy: string | null;
+  orderedAt: Date | null;
+  cancelledBy: string | null;
+  cancelledAt: Date | null;
+  cancelReason: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DbPurchaseOrderLine {
+  id: string;
+  businessId: string;
+  purchaseOrderId: string;
+  productId: string;
+  position: number;
+  supplierSkuSnapshot: string | null;
+  productNameSnapshot: string;
+  quantity: number;
+  unitCostMinor: number;
+  lineTotalMinor: number;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface DbPort {
   // Phase 12: the critical-section primitives. Memory serializes per key with
   // a promise chain (atomic by construction); PostgreSQL takes a
@@ -679,4 +755,46 @@ export interface DbPort {
   updatePrintJob(id: string, businessId: string, patch: Partial<Omit<DbPrintJob, "id" | "businessId">>, expectedStatus?: string): Promise<DbPrintJob | null>;
   createDisplayToken(t: Omit<DbDisplayToken, "id">): Promise<DbDisplayToken>;
   findDisplayToken(tokenHash: string): Promise<DbDisplayToken | null>;
+
+  // Phase 16: procurement. Every method is tenant-scoped by businessId; a
+  // lookup miss (including a foreign tenant's id) returns null so callers map
+  // it to NOT_FOUND. updatePurchaseOrder is the optimistic-concurrency CAS:
+  // expectedVersion mismatch returns null without writing.
+  createSupplier(s: Omit<DbSupplier, "id" | "createdAt" | "updatedAt">): Promise<DbSupplier>;
+  listSuppliersByBusiness(businessId: string): Promise<DbSupplier[]>;
+  findSupplierById(id: string, businessId: string): Promise<DbSupplier | null>;
+  updateSupplier(
+    id: string,
+    businessId: string,
+    patch: Partial<Omit<DbSupplier, "id" | "businessId" | "createdAt">>,
+  ): Promise<DbSupplier | null>;
+
+  createProductSupplier(r: Omit<DbProductSupplier, "id" | "createdAt" | "updatedAt">): Promise<DbProductSupplier>;
+  listProductSuppliersBySupplier(supplierId: string, businessId: string): Promise<DbProductSupplier[]>;
+  listProductSuppliersByBusiness(businessId: string): Promise<DbProductSupplier[]>;
+  findProductSupplierById(id: string, businessId: string): Promise<DbProductSupplier | null>;
+  updateProductSupplier(
+    id: string,
+    businessId: string,
+    patch: Partial<Omit<DbProductSupplier, "id" | "businessId" | "productId" | "supplierId" | "createdAt">>,
+  ): Promise<DbProductSupplier | null>;
+  clearPreferredProductSuppliers(businessId: string, productId: string, exceptId?: string): Promise<void>;
+  deleteProductSupplier(id: string, businessId: string): Promise<boolean>;
+
+  createPurchaseOrder(p: Omit<DbPurchaseOrder, "id" | "createdAt" | "updatedAt" | "version"> & { version?: number }): Promise<DbPurchaseOrder>;
+  findPurchaseOrderById(id: string, businessId: string): Promise<DbPurchaseOrder | null>;
+  listPurchaseOrdersByBusiness(businessId: string): Promise<DbPurchaseOrder[]>;
+  updatePurchaseOrder(
+    id: string,
+    businessId: string,
+    patch: Partial<Omit<DbPurchaseOrder, "id" | "businessId" | "createdAt" | "version">>,
+    expectedVersion: number,
+  ): Promise<DbPurchaseOrder | null>;
+  nextPoNo(businessId: string): Promise<string>;
+
+  createPurchaseOrderLine(l: Omit<DbPurchaseOrderLine, "id" | "createdAt" | "updatedAt">): Promise<DbPurchaseOrderLine>;
+  listPurchaseOrderLines(purchaseOrderId: string, businessId: string): Promise<DbPurchaseOrderLine[]>;
+  deletePurchaseOrderLines(purchaseOrderId: string, businessId: string): Promise<void>;
+
+  listAuditFor(businessId: string, entityType: string, entityId: string): Promise<AuditEntry[]>;
 }

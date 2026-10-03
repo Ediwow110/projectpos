@@ -1,4 +1,4 @@
-import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbDisplayToken, DbExchange, DbFeatureFlag, DbInvoice, DbMembership, DbMovement, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbReceiptDelivery, DbResetToken, DbSession, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent } from "./db.port";
+import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbDisplayToken, DbExchange, DbFeatureFlag, DbInvoice, DbMembership, DbMovement, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbReceiptDelivery, DbResetToken, DbSession, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine } from "./db.port";
 
 let n = 0;
 const nid = (p: string): string => `${p}_${Date.now().toString(36)}_${(n += 1)}`;
@@ -53,6 +53,11 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const shiftCorrections = new Map<string, DbShiftCorrection>();
   const receiptShares = new Map<string, { id: string; businessId: string; saleId: string; tokenHash: string; expiresAt: Date }>();
   const receiptDeliveries = new Map<string, DbReceiptDelivery>();
+  const suppliers = new Map<string, DbSupplier>();
+  const productSuppliers = new Map<string, DbProductSupplier>();
+  const purchaseOrders = new Map<string, DbPurchaseOrder>();
+  const purchaseOrderLines = new Map<string, DbPurchaseOrderLine>();
+  const poSeq = new Map<string, number>();
   const audit: AuditEntry[] = [];
 
   const balanceKey = (businessId: string, branchId: string | null | undefined, productId: string): string =>
@@ -895,6 +900,136 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     async findDisplayToken(tokenHash) {
       for (const t of displayTokens.values()) if (t.tokenHash === tokenHash) return t;
       return null;
+    },
+
+    // Phase 16: procurement. Commercial records only — these stores never
+    // touch movements/balances, mirroring the service-level invariant.
+    async createSupplier(s) {
+      const now = new Date();
+      const row = { ...s, id: nid("spr"), createdAt: now, updatedAt: now };
+      suppliers.set(row.id, row);
+      return row;
+    },
+    async listSuppliersByBusiness(businessId) {
+      return [...suppliers.values()].filter((s) => s.businessId === businessId);
+    },
+    async findSupplierById(id, businessId) {
+      const s = suppliers.get(id) ?? null;
+      if (!s || s.businessId !== businessId) return null;
+      return s;
+    },
+    async updateSupplier(id, businessId, patch) {
+      const s = suppliers.get(id) ?? null;
+      if (!s || s.businessId !== businessId) return null;
+      const next = { ...s, ...patch, updatedAt: new Date() };
+      suppliers.set(id, next);
+      return next;
+    },
+
+    async createProductSupplier(r) {
+      const now = new Date();
+      const row = { ...r, id: nid("psup"), createdAt: now, updatedAt: now };
+      productSuppliers.set(row.id, row);
+      return row;
+    },
+    async listProductSuppliersBySupplier(supplierId, businessId) {
+      return [...productSuppliers.values()].filter(
+        (r) => r.supplierId === supplierId && r.businessId === businessId,
+      );
+    },
+    async listProductSuppliersByBusiness(businessId) {
+      return [...productSuppliers.values()].filter((r) => r.businessId === businessId);
+    },
+    async findProductSupplierById(id, businessId) {
+      const r = productSuppliers.get(id) ?? null;
+      if (!r || r.businessId !== businessId) return null;
+      return r;
+    },
+    async updateProductSupplier(id, businessId, patch) {
+      const r = productSuppliers.get(id) ?? null;
+      if (!r || r.businessId !== businessId) return null;
+      const next = { ...r, ...patch, updatedAt: new Date() };
+      productSuppliers.set(id, next);
+      return next;
+    },
+    async clearPreferredProductSuppliers(businessId, productId, exceptId) {
+      for (const [id, r] of productSuppliers) {
+        if (r.businessId === businessId && r.productId === productId && r.isPreferred && id !== exceptId) {
+          productSuppliers.set(id, { ...r, isPreferred: false, updatedAt: new Date() });
+        }
+      }
+    },
+    async deleteProductSupplier(id, businessId) {
+      const r = productSuppliers.get(id) ?? null;
+      if (!r || r.businessId !== businessId) return false;
+      productSuppliers.delete(id);
+      return true;
+    },
+
+    async createPurchaseOrder(p) {
+      const now = new Date();
+      const row = {
+        ...p,
+        id: nid("po"),
+        version: p.version ?? 1,
+        createdAt: now,
+        updatedAt: now,
+      };
+      purchaseOrders.set(row.id, row);
+      return row;
+    },
+    async findPurchaseOrderById(id, businessId) {
+      const p = purchaseOrders.get(id) ?? null;
+      if (!p || p.businessId !== businessId) return null;
+      return p;
+    },
+    async listPurchaseOrdersByBusiness(businessId) {
+      return [...purchaseOrders.values()].filter((p) => p.businessId === businessId);
+    },
+    async updatePurchaseOrder(id, businessId, patch, expectedVersion) {
+      const p = purchaseOrders.get(id) ?? null;
+      if (!p || p.businessId !== businessId) return null;
+      // Optimistic-concurrency CAS: a stale expectedVersion never writes.
+      if (p.version !== expectedVersion) return null;
+      const next = { ...p, ...patch, version: expectedVersion + 1, updatedAt: new Date() };
+      purchaseOrders.set(id, next);
+      return next;
+    },
+    async nextPoNo(businessId) {
+      const year = new Date().getUTCFullYear();
+      const seq = (poSeq.get(businessId) ?? 0) + 1;
+      poSeq.set(businessId, seq);
+      return `PO-${year}-${String(seq).padStart(6, "0")}`;
+    },
+
+    async createPurchaseOrderLine(l) {
+      const now = new Date();
+      const row = {
+        ...l,
+        id: nid("pol"),
+        createdAt: now,
+        updatedAt: now,
+      };
+      purchaseOrderLines.set(row.id, row);
+      return row;
+    },
+    async listPurchaseOrderLines(purchaseOrderId, businessId) {
+      return [...purchaseOrderLines.values()].filter(
+        (l) => l.purchaseOrderId === purchaseOrderId && l.businessId === businessId,
+      );
+    },
+    async deletePurchaseOrderLines(purchaseOrderId, businessId) {
+      for (const [id, l] of purchaseOrderLines) {
+        if (l.purchaseOrderId === purchaseOrderId && l.businessId === businessId) {
+          purchaseOrderLines.delete(id);
+        }
+      }
+    },
+
+    async listAuditFor(businessId, entityType, entityId) {
+      return audit.filter(
+        (e) => e.businessId === businessId && e.entityType === entityType && e.entityId === entityId,
+      );
     },
   };
   return memoryDb;

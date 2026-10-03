@@ -263,6 +263,80 @@
   listTransferLines(transferId: string, businessId: string): Promise<DbStockTransferLine[]> {
     return this.branches.listTransferLines(transferId, businessId);
   }
+  // Procurement family.
+  createSupplier(s: Omit<DbSupplier, "id" | "createdAt" | "updatedAt">): Promise<DbSupplier> {
+    return this.procurement.createSupplier(s);
+  }
+  listSuppliersByBusiness(businessId: string): Promise<DbSupplier[]> {
+    return this.procurement.listSuppliersByBusiness(businessId);
+  }
+  findSupplierById(id: string, businessId: string): Promise<DbSupplier | null> {
+    return this.procurement.findSupplierById(id, businessId);
+  }
+  updateSupplier(
+    id: string,
+    businessId: string,
+    patch: Partial<Omit<DbSupplier, "id" | "businessId" | "createdAt">>,
+  ): Promise<DbSupplier | null> {
+    return this.procurement.updateSupplier(id, businessId, patch);
+  }
+  createProductSupplier(r: Omit<DbProductSupplier, "id" | "createdAt" | "updatedAt">): Promise<DbProductSupplier> {
+    return this.procurement.createProductSupplier(r);
+  }
+  listProductSuppliersBySupplier(supplierId: string, businessId: string): Promise<DbProductSupplier[]> {
+    return this.procurement.listProductSuppliersBySupplier(supplierId, businessId);
+  }
+  listProductSuppliersByBusiness(businessId: string): Promise<DbProductSupplier[]> {
+    return this.procurement.listProductSuppliersByBusiness(businessId);
+  }
+  findProductSupplierById(id: string, businessId: string): Promise<DbProductSupplier | null> {
+    return this.procurement.findProductSupplierById(id, businessId);
+  }
+  updateProductSupplier(
+    id: string,
+    businessId: string,
+    patch: Partial<Omit<DbProductSupplier, "id" | "businessId" | "productId" | "supplierId" | "createdAt">>,
+  ): Promise<DbProductSupplier | null> {
+    return this.procurement.updateProductSupplier(id, businessId, patch);
+  }
+  clearPreferredProductSuppliers(businessId: string, productId: string, exceptId?: string): Promise<void> {
+    return this.procurement.clearPreferredProductSuppliers(businessId, productId, exceptId);
+  }
+  deleteProductSupplier(id: string, businessId: string): Promise<boolean> {
+    return this.procurement.deleteProductSupplier(id, businessId);
+  }
+  createPurchaseOrder(p: Omit<DbPurchaseOrder, "id" | "createdAt" | "updatedAt" | "version"> & { version?: number }): Promise<DbPurchaseOrder> {
+    return this.procurement.createPurchaseOrder(p);
+  }
+  findPurchaseOrderById(id: string, businessId: string): Promise<DbPurchaseOrder | null> {
+    return this.procurement.findPurchaseOrderById(id, businessId);
+  }
+  listPurchaseOrdersByBusiness(businessId: string): Promise<DbPurchaseOrder[]> {
+    return this.procurement.listPurchaseOrdersByBusiness(businessId);
+  }
+  updatePurchaseOrder(
+    id: string,
+    businessId: string,
+    patch: Partial<Omit<DbPurchaseOrder, "id" | "businessId" | "createdAt" | "version">>,
+    expectedVersion: number,
+  ): Promise<DbPurchaseOrder | null> {
+    return this.procurement.updatePurchaseOrder(id, businessId, patch, expectedVersion);
+  }
+  nextPoNo(businessId: string): Promise<string> {
+    return this.procurement.nextPoNo(businessId);
+  }
+  createPurchaseOrderLine(l: Omit<DbPurchaseOrderLine, "id" | "createdAt" | "updatedAt">): Promise<DbPurchaseOrderLine> {
+    return this.procurement.createPurchaseOrderLine(l);
+  }
+  listPurchaseOrderLines(purchaseOrderId: string, businessId: string): Promise<DbPurchaseOrderLine[]> {
+    return this.procurement.listPurchaseOrderLines(purchaseOrderId, businessId);
+  }
+  deletePurchaseOrderLines(purchaseOrderId: string, businessId: string): Promise<void> {
+    return this.procurement.deletePurchaseOrderLines(purchaseOrderId, businessId);
+  }
+  listAuditFor(businessId: string, entityType: string, entityId: string): Promise<AuditEntry[]> {
+    return this.procurement.listAuditFor(businessId, entityType, entityId);
+  }
   // Sales family.
   createSale(s: Omit<DbSale, "id">): Promise<DbSale> {
     return this.sales.createSale(s);
@@ -279,7 +353,9 @@
   updateSale(id: string, businessId: string, patch: Partial<Omit<DbSale, "id" | "businessId">>): Promise<DbSale | null> {
     return this.sales.updateSale(id, businessId, patch);
   }
-  createSaleItem(i: Omit<DbSaleItem, "id">): Promise<DbSaleItem> {
+  createSaleItem(
+    i: Omit<DbSaleItem, "id" | "position"> & { position?: number },
+  ): Promise<DbSaleItem> {
     return this.sales.createSaleItem(i);
   }
   listSaleItems(saleId: string, businessId: string): Promise<DbSaleItem[]> {

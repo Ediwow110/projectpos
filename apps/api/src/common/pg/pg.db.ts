@@ -1,4 +1,4 @@
-import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCashMovement, DbCategory, DbCustomer, DbDevice, DbExchange, DbExpense, DbFeatureFlag, DbHeldSale, DbIdempotency, DbInvoice, DbMovement, DbPayment, DbPlan, DbMembership, DbPort, DbPrinter, DbPrintJob, DbProduct, DbReceiptDelivery, DbRefund, DbRefundItem, DbRegister, DbResetToken, DbSale, DbSaleItem, DbSession, DbShift, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbDisplayToken, DbUsageCounter, DbUser, DbWebhookEvent } from "../db.port";
+import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCashMovement, DbCategory, DbCustomer, DbDevice, DbExchange, DbExpense, DbFeatureFlag, DbHeldSale, DbIdempotency, DbInvoice, DbMovement, DbPayment, DbPlan, DbMembership, DbPort, DbPrinter, DbPrintJob, DbProduct, DbReceiptDelivery, DbRefund, DbRefundItem, DbRegister, DbResetToken, DbSale, DbSaleItem, DbSession, DbShift, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbDisplayToken, DbUsageCounter, DbUser, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine } from "../db.port";
 import { PgContext } from "./context";
 import { settingsFamily } from "./pg-settings";
 import { auditFamily } from "./pg-audit";
@@ -12,6 +12,7 @@ import { branchesFamily } from "./pg-branches";
 import { devicesFamily } from "./pg-devices";
 import { billingFamily } from "./pg-billing";
 import { integrationsFamily } from "./pg-integrations";
+import { procurementFamily } from "./pg-procurement";
 
 // Phase 12: the PostgreSQL-backed DbPort. Composed from per-family modules
 // over one PgContext; `implements DbPort` makes the compiler enforce that the
@@ -29,6 +30,7 @@ export class PgDbPort implements DbPort {
   private readonly devices: ReturnType<typeof devicesFamily>;
   private readonly billing: ReturnType<typeof billingFamily>;
   private readonly integrations: ReturnType<typeof integrationsFamily>;
+  private readonly procurement: ReturnType<typeof procurementFamily>;
 
   constructor(private readonly ctx: PgContext) {
     this.settings = settingsFamily(ctx);
@@ -43,6 +45,7 @@ export class PgDbPort implements DbPort {
     this.devices = devicesFamily(ctx);
     this.billing = billingFamily(ctx);
     this.integrations = integrationsFamily(ctx);
+    this.procurement = procurementFamily(ctx);
   }
 
   // withLock/withTransaction come straight from the context so every family
@@ -552,5 +555,67 @@ export class PgDbPort implements DbPort {
   }
   hasShiftForRegister(businessId: string, registerId: string): Promise<boolean> {
     return this.shifts.hasShiftForRegister(businessId, registerId);
+  }
+
+  // Procurement family.
+  createSupplier(s: Omit<DbSupplier, "id" | "createdAt" | "updatedAt">): Promise<DbSupplier> {
+    return this.procurement.createSupplier(s);
+  }
+  listSuppliersByBusiness(businessId: string): Promise<DbSupplier[]> {
+    return this.procurement.listSuppliersByBusiness(businessId);
+  }
+  findSupplierById(id: string, businessId: string): Promise<DbSupplier | null> {
+    return this.procurement.findSupplierById(id, businessId);
+  }
+  updateSupplier(id: string, businessId: string, patch: Partial<Omit<DbSupplier, "id" | "businessId" | "createdAt">>): Promise<DbSupplier | null> {
+    return this.procurement.updateSupplier(id, businessId, patch);
+  }
+  createProductSupplier(r: Omit<DbProductSupplier, "id" | "createdAt" | "updatedAt">): Promise<DbProductSupplier> {
+    return this.procurement.createProductSupplier(r);
+  }
+  listProductSuppliersBySupplier(supplierId: string, businessId: string): Promise<DbProductSupplier[]> {
+    return this.procurement.listProductSuppliersBySupplier(supplierId, businessId);
+  }
+  listProductSuppliersByBusiness(businessId: string): Promise<DbProductSupplier[]> {
+    return this.procurement.listProductSuppliersByBusiness(businessId);
+  }
+  findProductSupplierById(id: string, businessId: string): Promise<DbProductSupplier | null> {
+    return this.procurement.findProductSupplierById(id, businessId);
+  }
+  updateProductSupplier(id: string, businessId: string, patch: Partial<Omit<DbProductSupplier, "id" | "businessId" | "productId" | "supplierId" | "createdAt">>): Promise<DbProductSupplier | null> {
+    return this.procurement.updateProductSupplier(id, businessId, patch);
+  }
+  clearPreferredProductSuppliers(businessId: string, productId: string, exceptId?: string): Promise<void> {
+    return this.procurement.clearPreferredProductSuppliers(businessId, productId, exceptId);
+  }
+  deleteProductSupplier(id: string, businessId: string): Promise<boolean> {
+    return this.procurement.deleteProductSupplier(id, businessId);
+  }
+  createPurchaseOrder(p: Omit<DbPurchaseOrder, "id" | "createdAt" | "updatedAt" | "version"> & { version?: number }): Promise<DbPurchaseOrder> {
+    return this.procurement.createPurchaseOrder(p);
+  }
+  findPurchaseOrderById(id: string, businessId: string): Promise<DbPurchaseOrder | null> {
+    return this.procurement.findPurchaseOrderById(id, businessId);
+  }
+  listPurchaseOrdersByBusiness(businessId: string): Promise<DbPurchaseOrder[]> {
+    return this.procurement.listPurchaseOrdersByBusiness(businessId);
+  }
+  updatePurchaseOrder(id: string, businessId: string, patch: Partial<Omit<DbPurchaseOrder, "id" | "businessId" | "createdAt" | "version">>, expectedVersion: number): Promise<DbPurchaseOrder | null> {
+    return this.procurement.updatePurchaseOrder(id, businessId, patch, expectedVersion);
+  }
+  nextPoNo(businessId: string): Promise<string> {
+    return this.procurement.nextPoNo(businessId);
+  }
+  createPurchaseOrderLine(l: Omit<DbPurchaseOrderLine, "id" | "createdAt" | "updatedAt">): Promise<DbPurchaseOrderLine> {
+    return this.procurement.createPurchaseOrderLine(l);
+  }
+  listPurchaseOrderLines(purchaseOrderId: string, businessId: string): Promise<DbPurchaseOrderLine[]> {
+    return this.procurement.listPurchaseOrderLines(purchaseOrderId, businessId);
+  }
+  deletePurchaseOrderLines(purchaseOrderId: string, businessId: string): Promise<void> {
+    return this.procurement.deletePurchaseOrderLines(purchaseOrderId, businessId);
+  }
+  listAuditFor(businessId: string, entityType: string, entityId: string): Promise<AuditEntry[]> {
+    return this.procurement.listAuditFor(businessId, entityType, entityId);
   }
 }

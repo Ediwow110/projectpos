@@ -33,6 +33,8 @@ const MAP = {
   DbWebhookEvent: "BillingWebhookEvent", DbApiToken: "ApiToken",
   DbPrinter: "PrinterDevice", DbPrintJob: "PrintJob", DbDisplayToken: "DisplayToken",
   DbShiftCorrection: "ShiftCorrection",
+  DbSupplier: "Supplier", DbProductSupplier: "ProductSupplier",
+  DbPurchaseOrder: "PurchaseOrder", DbPurchaseOrderLine: "PurchaseOrderLine",
 };
 
 const gaps = [];
