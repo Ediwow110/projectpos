@@ -1,4 +1,5 @@
 import React from "react";
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { ApiError } from "../lib/api";
@@ -72,5 +73,11 @@ describe("workspace access failures", () => {
     expect(html).toContain('class="sm:hidden"');
     expect(html).toContain('src="/brand/nexpos-logo.svg"');
     expect(html).toContain('src="/brand/nexpos-mark.svg"');
+  });
+
+  it("uses one redirect when signing out", () => {
+    const source = readFileSync(new URL("./AppShell.tsx", import.meta.url), "utf8");
+    expect(source).toContain('router.replace("/login");');
+    expect(source).not.toContain('router.refresh();');
   });
 });

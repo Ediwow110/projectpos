@@ -227,7 +227,6 @@ export function AppShell({
     clearActiveSyncScope();
     queryClient.clear();
     router.replace("/login");
-    router.refresh();
   }
 
   async function switchBranch(branchId: string): Promise<void> {
