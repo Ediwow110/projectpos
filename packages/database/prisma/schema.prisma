@@ -93,6 +93,12 @@ model Business {
   purchaseOrders PurchaseOrder[]
   purchaseOrderLines PurchaseOrderLine[]
   poCounters POCounter[]
+  purchaseReceipts PurchaseReceipt[]
+  purchaseReceiptLines PurchaseReceiptLine[]
+  supplierReturns SupplierReturn[]
+  supplierReturnLines SupplierReturnLine[]
+  purchaseReceiptCounters PurchaseReceiptCounter[]
+  supplierReturnCounters SupplierReturnCounter[]
   activeSessions Session[] @relation("SessionActiveBusiness")
 }
 
@@ -233,6 +239,8 @@ model Product {
   balances       InventoryBalance[]
   productSuppliers ProductSupplier[]
   purchaseOrderLines PurchaseOrderLine[]
+  purchaseReceiptLines PurchaseReceiptLine[]
+  supplierReturnLines SupplierReturnLine[]
   @@index([businessId, isActive])
   @@index([businessId, categoryId])
 }
@@ -823,6 +831,7 @@ model Supplier {
   business     Business @relation(fields: [businessId], references: [id])
   productSuppliers ProductSupplier[]
   purchaseOrders PurchaseOrder[]
+  supplierReturns SupplierReturn[]
 
   @@index([businessId, isActive, name])
 }
@@ -878,6 +887,8 @@ model PurchaseOrder {
   supplier      Supplier  @relation(fields: [supplierId], references: [id])
   branch        Branch?   @relation(fields: [branchId], references: [id])
   lines         PurchaseOrderLine[]
+  receipts      PurchaseReceipt[]
+  supplierReturns SupplierReturn[]
 
   @@unique([businessId, poNumber])
   @@index([businessId, status, createdAt])
@@ -902,7 +913,106 @@ model PurchaseOrderLine {
   business            Business      @relation(fields: [businessId], references: [id])
   order               PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
   product             Product       @relation(fields: [productId], references: [id])
+  receiptLines        PurchaseReceiptLine[]
+  supplierReturnLines SupplierReturnLine[]
 
   @@unique([businessId, purchaseOrderId, productId])
   @@index([businessId, purchaseOrderId, position])
+}
+
+model PurchaseReceiptCounter {
+  id         String   @id @default(cuid())
+  businessId String   @unique
+  seq        Int
+  business   Business @relation(fields: [businessId], references: [id])
+}
+
+model PurchaseReceipt {
+  id             String   @id @default(cuid())
+  businessId     String
+  purchaseOrderId String
+  branchId       String?
+  receiptNumber  String
+  status         String   @default("POSTED")
+  receivedBy    String
+  receivedAt    DateTime
+  notes         String?
+  createdAt     DateTime @default(now())
+  business      Business @relation(fields: [businessId], references: [id])
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  lines         PurchaseReceiptLine[]
+  @@unique([businessId, receiptNumber])
+  @@index([businessId, purchaseOrderId, createdAt])
+}
+
+model PurchaseReceiptLine {
+  id                    String   @id @default(cuid())
+  businessId            String
+  purchaseReceiptId     String
+  purchaseOrderLineId   String
+  productId             String
+  quantityReceived      Int
+  unitCostMinorSnapshot Int
+  productNameSnapshot   String
+  supplierSkuSnapshot   String?
+  createdAt             DateTime @default(now())
+  business              Business @relation(fields: [businessId], references: [id])
+  receipt               PurchaseReceipt @relation(fields: [purchaseReceiptId], references: [id])
+  purchaseOrderLine     PurchaseOrderLine @relation(fields: [purchaseOrderLineId], references: [id])
+  product               Product @relation(fields: [productId], references: [id])
+  @@index([businessId, purchaseReceiptId])
+  @@index([businessId, purchaseOrderLineId])
+}
+
+model SupplierReturnCounter {
+  id         String   @id @default(cuid())
+  businessId String   @unique
+  seq        Int
+  business   Business @relation(fields: [businessId], references: [id])
+}
+
+model SupplierReturn {
+  id              String   @id @default(cuid())
+  businessId      String
+  supplierId      String
+  purchaseOrderId String
+  branchId        String?
+  returnNumber    String
+  status          String   @default("DRAFT")
+  reason          String
+  createdBy       String
+  postedBy        String?
+  postedAt        DateTime?
+  cancelledBy     String?
+  cancelledAt     DateTime?
+  version         Int      @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  business        Business @relation(fields: [businessId], references: [id])
+  supplier        Supplier @relation(fields: [supplierId], references: [id])
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  lines           SupplierReturnLine[]
+  @@unique([businessId, returnNumber])
+  @@index([businessId, purchaseOrderId, createdAt])
+  @@index([businessId, status, createdAt])
+}
+
+model SupplierReturnLine {
+  id                    String   @id @default(cuid())
+  businessId            String
+  supplierReturnId      String
+  purchaseOrderLineId   String
+  productId             String
+  quantity              Int
+  unitCostMinorSnapshot Int
+  productNameSnapshot   String
+  supplierSkuSnapshot   String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  business              Business @relation(fields: [businessId], references: [id])
+  supplierReturn        SupplierReturn @relation(fields: [supplierReturnId], references: [id])
+  purchaseOrderLine     PurchaseOrderLine @relation(fields: [purchaseOrderLineId], references: [id])
+  product               Product @relation(fields: [productId], references: [id])
+  @@index([businessId, supplierReturnId])
+  @@index([businessId, purchaseOrderLineId])
 }

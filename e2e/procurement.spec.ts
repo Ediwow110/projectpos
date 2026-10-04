@@ -39,7 +39,7 @@ test("owner completes procurement foundation flow without changing stock", async
   await expect(page.getByRole("heading", { name: "Purchase orders", exact: true })).toBeVisible();
   await expect(page.getByText(draft.poNumber, { exact: true })).toBeVisible();
   await page.goto(`/purchase-orders/${draft.id}`);
-  await expect(page.getByText("Commercial procurement record.")).toBeVisible();
+  await expect(page.getByText("Receiving creates exact-once stock movements.")).toBeVisible();
 
   const ordered = await request.post(`${API}/api/v1/purchase-orders/${draft.id}/order`, {
     headers: { ...auth.headers, "Idempotency-Key": "e2e-po-order" },
@@ -47,7 +47,7 @@ test("owner completes procurement foundation flow without changing stock", async
   });
   expect(ordered.ok()).toBe(true);
   await page.reload();
-  await expect(page.getByText("This order is locked until the future receiving phase.")).toBeVisible();
+  await expect(page.getByText("Receiving lines")).toBeVisible();
 
   const after = await request.get(`${API}/api/v1/inventory/balances`, { headers: auth.headers });
   expect(after.ok()).toBe(true);

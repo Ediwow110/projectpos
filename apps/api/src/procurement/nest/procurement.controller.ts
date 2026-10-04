@@ -8,6 +8,11 @@ import {
   purchaseOrderListSchema,
   purchaseOrderOrderSchema,
   purchaseOrderUpdateSchema,
+  purchaseReceiptCreateSchema,
+  supplierReturnCreateSchema,
+  supplierReturnUpdateSchema,
+  supplierReturnPostSchema,
+  supplierReturnCancelSchema,
   supplierCreateSchema,
   supplierListSchema,
   supplierUpdateSchema,
@@ -204,5 +209,73 @@ export class ProcurementController {
   async purchaseOrderEvents(@Req() req: Request, @Res() res: Response, @Param("id") id: string): Promise<void> {
     try { res.json({ items: await this.procurement.listPurchaseOrderEvents(req.auth!.businessId, id) }); }
     catch (e) { failFromError(res, e, "Purchase-order history fetch failed", req); }
+  }
+
+  @Post("purchase-orders/:id/receipts")
+  @UseGuards(CsrfGuard)
+  async receivePurchaseOrder(@Req() req: Request, @Res() res: Response, @Param("id") id: string, @Body() body: unknown): Promise<void> {
+    const parsed = purchaseReceiptCreateSchema.safeParse(body);
+    if (!parsed.success) { fail(res, 400, "VALIDATION", "Invalid receipt payload", req); return; }
+    const key = this.requireKey(req, res); if (!key) return;
+    try { const auth = req.auth!; const result = await this.procurement.receivePurchaseOrder(auth.businessId, auth.userId, rid(req), id, key, parsed.data, this.perms(req)); res.status(result.replayed ? 200 : 201).json(result); }
+    catch (e) { failFromError(res, e, "Purchase receipt failed", req); }
+  }
+
+  @Get("purchase-orders/:id/receipts")
+  async listPurchaseReceipts(@Req() req: Request, @Res() res: Response, @Param("id") id: string): Promise<void> {
+    try { res.json({ items: await this.procurement.listPurchaseReceipts(req.auth!.businessId, id) }); }
+    catch (e) { failFromError(res, e, "Purchase receipt history fetch failed", req); }
+  }
+
+  @Get("purchase-receipts/:id")
+  async getPurchaseReceipt(@Req() req: Request, @Res() res: Response, @Param("id") id: string): Promise<void> {
+    try { res.json(await this.procurement.getPurchaseReceipt(req.auth!.businessId, id)); }
+    catch (e) { failFromError(res, e, "Purchase receipt fetch failed", req); }
+  }
+
+  @Get("supplier-returns")
+  async listSupplierReturns(@Req() req: Request, @Res() res: Response): Promise<void> {
+    try { res.json({ items: await this.procurement.listSupplierReturns(req.auth!.businessId) }); }
+    catch (e) { failFromError(res, e, "Supplier return fetch failed", req); }
+  }
+
+  @Post("supplier-returns")
+  @UseGuards(CsrfGuard)
+  async createSupplierReturn(@Req() req: Request, @Res() res: Response, @Body() body: unknown): Promise<void> {
+    const parsed = supplierReturnCreateSchema.safeParse(body); if (!parsed.success) { fail(res, 400, "VALIDATION", "Invalid supplier return payload", req); return; }
+    const key = this.requireKey(req, res); if (!key) return;
+    try { const auth = req.auth!; const result = await this.procurement.createSupplierReturn(auth.businessId, auth.userId, rid(req), key, parsed.data, this.perms(req)); res.status(result.replayed ? 200 : 201).json(result); }
+    catch (e) { failFromError(res, e, "Supplier return creation failed", req); }
+  }
+
+  @Get("supplier-returns/:id")
+  async getSupplierReturn(@Req() req: Request, @Res() res: Response, @Param("id") id: string): Promise<void> {
+    try { res.json(await this.procurement.getSupplierReturn(req.auth!.businessId, id)); }
+    catch (e) { failFromError(res, e, "Supplier return fetch failed", req); }
+  }
+
+  @Patch("supplier-returns/:id")
+  @UseGuards(CsrfGuard)
+  async updateSupplierReturn(@Req() req: Request, @Res() res: Response, @Param("id") id: string, @Body() body: unknown): Promise<void> {
+    const parsed = supplierReturnUpdateSchema.safeParse(body); if (!parsed.success) { fail(res, 400, "VALIDATION", "Invalid supplier return payload", req); return; }
+    try { const auth = req.auth!; const { expectedVersion, ...input } = parsed.data; res.json(await this.procurement.updateSupplierReturn(auth.businessId, auth.userId, rid(req), id, expectedVersion, input, this.perms(req))); }
+    catch (e) { failFromError(res, e, "Supplier return update failed", req); }
+  }
+
+  @Post("supplier-returns/:id/post")
+  @UseGuards(CsrfGuard)
+  async postSupplierReturn(@Req() req: Request, @Res() res: Response, @Param("id") id: string, @Body() body: unknown): Promise<void> {
+    const parsed = supplierReturnPostSchema.safeParse(body); if (!parsed.success) { fail(res, 400, "VALIDATION", "Invalid supplier return post payload", req); return; }
+    const key = this.requireKey(req, res); if (!key) return;
+    try { const auth = req.auth!; res.json(await this.procurement.postSupplierReturn(auth.businessId, auth.userId, rid(req), id, key, parsed.data.expectedVersion, this.perms(req))); }
+    catch (e) { failFromError(res, e, "Supplier return posting failed", req); }
+  }
+
+  @Post("supplier-returns/:id/cancel")
+  @UseGuards(CsrfGuard)
+  async cancelSupplierReturn(@Req() req: Request, @Res() res: Response, @Param("id") id: string, @Body() body: unknown): Promise<void> {
+    const parsed = supplierReturnCancelSchema.safeParse(body); if (!parsed.success) { fail(res, 400, "VALIDATION", "Invalid supplier return cancellation payload", req); return; }
+    try { const auth = req.auth!; res.json(await this.procurement.cancelSupplierReturn(auth.businessId, auth.userId, rid(req), id, parsed.data.expectedVersion, this.perms(req))); }
+    catch (e) { failFromError(res, e, "Supplier return cancellation failed", req); }
   }
 }

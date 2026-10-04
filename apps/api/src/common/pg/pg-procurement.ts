@@ -3,7 +3,11 @@ import type {
   DbProductSupplier,
   DbPurchaseOrder,
   DbPurchaseOrderLine,
+  DbPurchaseReceipt,
+  DbPurchaseReceiptLine,
   DbSupplier,
+  DbSupplierReturn,
+  DbSupplierReturnLine,
 } from "../db.port";
 import { nid } from "./context";
 import type { PgContext } from "./context";
@@ -39,6 +43,10 @@ const PURCHASE_ORDER_LINE_COLUMNS =
   '"id", "businessId", "purchaseOrderId", "productId", "position", "supplierSkuSnapshot", ' +
   '"productNameSnapshot", "quantity", "unitCostMinor", "lineTotalMinor", "notes", ' +
   '"createdAt", "updatedAt"';
+const PURCHASE_RECEIPT_COLUMNS = '"id", "businessId", "purchaseOrderId", "branchId", "receiptNumber", "status", "receivedBy", "receivedAt", "notes", "createdAt"';
+const PURCHASE_RECEIPT_LINE_COLUMNS = '"id", "businessId", "purchaseReceiptId", "purchaseOrderLineId", "productId", "quantityReceived", "unitCostMinorSnapshot", "productNameSnapshot", "supplierSkuSnapshot", "createdAt"';
+const SUPPLIER_RETURN_COLUMNS = '"id", "businessId", "supplierId", "purchaseOrderId", "branchId", "returnNumber", "status", "reason", "createdBy", "postedBy", "postedAt", "cancelledBy", "cancelledAt", "version", "createdAt", "updatedAt"';
+const SUPPLIER_RETURN_LINE_COLUMNS = '"id", "businessId", "supplierReturnId", "purchaseOrderLineId", "productId", "quantity", "unitCostMinorSnapshot", "productNameSnapshot", "supplierSkuSnapshot", "createdAt", "updatedAt"';
 
 function buildSet(patch: Record<string, unknown>): { sets: string[]; values: unknown[] } {
   const sets: string[] = [];
@@ -130,6 +138,22 @@ function purchaseOrderLineRow(r: Record<string, unknown>): DbPurchaseOrderLine {
     createdAt: r["createdAt"] as Date,
     updatedAt: r["updatedAt"] as Date,
   };
+}
+
+function purchaseReceiptRow(r: Record<string, unknown>): DbPurchaseReceipt {
+  return { id: r["id"] as string, businessId: r["businessId"] as string, purchaseOrderId: r["purchaseOrderId"] as string, branchId: (r["branchId"] as string | null) ?? null, receiptNumber: r["receiptNumber"] as string, status: r["status"] as string, receivedBy: r["receivedBy"] as string, receivedAt: r["receivedAt"] as Date, notes: (r["notes"] as string | null) ?? null, createdAt: r["createdAt"] as Date };
+}
+
+function purchaseReceiptLineRow(r: Record<string, unknown>): DbPurchaseReceiptLine {
+  return { id: r["id"] as string, businessId: r["businessId"] as string, purchaseReceiptId: r["purchaseReceiptId"] as string, purchaseOrderLineId: r["purchaseOrderLineId"] as string, productId: r["productId"] as string, quantityReceived: r["quantityReceived"] as number, unitCostMinorSnapshot: r["unitCostMinorSnapshot"] as number, productNameSnapshot: r["productNameSnapshot"] as string, supplierSkuSnapshot: (r["supplierSkuSnapshot"] as string | null) ?? null, createdAt: r["createdAt"] as Date };
+}
+
+function supplierReturnRow(r: Record<string, unknown>): DbSupplierReturn {
+  return { id: r["id"] as string, businessId: r["businessId"] as string, supplierId: r["supplierId"] as string, purchaseOrderId: r["purchaseOrderId"] as string, branchId: (r["branchId"] as string | null) ?? null, returnNumber: r["returnNumber"] as string, status: r["status"] as string, reason: r["reason"] as string, createdBy: r["createdBy"] as string, postedBy: (r["postedBy"] as string | null) ?? null, postedAt: (r["postedAt"] as Date | null) ?? null, cancelledBy: (r["cancelledBy"] as string | null) ?? null, cancelledAt: (r["cancelledAt"] as Date | null) ?? null, version: r["version"] as number, createdAt: r["createdAt"] as Date, updatedAt: r["updatedAt"] as Date };
+}
+
+function supplierReturnLineRow(r: Record<string, unknown>): DbSupplierReturnLine {
+  return { id: r["id"] as string, businessId: r["businessId"] as string, supplierReturnId: r["supplierReturnId"] as string, purchaseOrderLineId: r["purchaseOrderLineId"] as string, productId: r["productId"] as string, quantity: r["quantity"] as number, unitCostMinorSnapshot: r["unitCostMinorSnapshot"] as number, productNameSnapshot: r["productNameSnapshot"] as string, supplierSkuSnapshot: (r["supplierSkuSnapshot"] as string | null) ?? null, createdAt: r["createdAt"] as Date, updatedAt: r["updatedAt"] as Date };
 }
 
 export function procurementFamily(ctx: PgContext) {
@@ -463,6 +487,74 @@ export function procurementFamily(ctx: PgContext) {
       } finally {
         if (ctx.owns()) c.release();
       }
+    },
+
+    async nextPurchaseReceiptNo(businessId: string): Promise<string> {
+      const year = new Date().getUTCFullYear();
+      const c = await ctx.client();
+      try {
+        const r = await c.query('INSERT INTO "PurchaseReceiptCounter" ("id", "businessId", "seq") VALUES ($1, $2, 1) ON CONFLICT ("businessId") DO UPDATE SET "seq" = "PurchaseReceiptCounter"."seq" + 1 RETURNING "seq"', [nid("grnctr"), businessId]);
+        return `GRN-${year}-${String(r.rows[0]!["seq"] as number).padStart(6, "0")}`;
+      } finally { if (ctx.owns()) c.release(); }
+    },
+    async createPurchaseReceipt(r0: Omit<DbPurchaseReceipt, "id" | "createdAt">): Promise<DbPurchaseReceipt> {
+      const c = await ctx.client();
+      try {
+        const row = { ...r0, id: nid("grn"), createdAt: new Date() };
+        await c.query('INSERT INTO "PurchaseReceipt" ("id", "businessId", "purchaseOrderId", "branchId", "receiptNumber", "status", "receivedBy", "receivedAt", "notes", "createdAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,CURRENT_TIMESTAMP)', [row.id,row.businessId,row.purchaseOrderId,row.branchId,row.receiptNumber,row.status,row.receivedBy,row.receivedAt,row.notes]);
+        return row;
+      } finally { if (ctx.owns()) c.release(); }
+    },
+    async findPurchaseReceiptById(id: string, businessId: string): Promise<DbPurchaseReceipt | null> {
+      const c = await ctx.client();
+      try { const r = await c.query(`SELECT ${PURCHASE_RECEIPT_COLUMNS} FROM "PurchaseReceipt" WHERE "id" = $1 AND "businessId" = $2`, [id,businessId]); const row = r.rows[0] as Record<string, unknown> | undefined; return row ? purchaseReceiptRow(row) : null; }
+      finally { if (ctx.owns()) c.release(); }
+    },
+    async listPurchaseReceiptsByOrder(purchaseOrderId: string, businessId: string): Promise<DbPurchaseReceipt[]> {
+      const c = await ctx.client();
+      try { const r = await c.query(`SELECT ${PURCHASE_RECEIPT_COLUMNS} FROM "PurchaseReceipt" WHERE "purchaseOrderId" = $1 AND "businessId" = $2 ORDER BY "createdAt" ASC, "id" ASC`, [purchaseOrderId,businessId]); return r.rows.map((row) => purchaseReceiptRow(row as Record<string, unknown>)); }
+      finally { if (ctx.owns()) c.release(); }
+    },
+    async createPurchaseReceiptLine(l0: Omit<DbPurchaseReceiptLine, "id" | "createdAt">): Promise<DbPurchaseReceiptLine> {
+      const c = await ctx.client();
+      try { const row = { ...l0, id: nid("grnl"), createdAt: new Date() }; await c.query('INSERT INTO "PurchaseReceiptLine" ("id","businessId","purchaseReceiptId","purchaseOrderLineId","productId","quantityReceived","unitCostMinorSnapshot","productNameSnapshot","supplierSkuSnapshot","createdAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,CURRENT_TIMESTAMP)', [row.id,row.businessId,row.purchaseReceiptId,row.purchaseOrderLineId,row.productId,row.quantityReceived,row.unitCostMinorSnapshot,row.productNameSnapshot,row.supplierSkuSnapshot]); return row; }
+      finally { if (ctx.owns()) c.release(); }
+    },
+    async listPurchaseReceiptLines(receiptId: string, businessId: string): Promise<DbPurchaseReceiptLine[]> {
+      const c = await ctx.client();
+      try { const r = await c.query(`SELECT ${PURCHASE_RECEIPT_LINE_COLUMNS} FROM "PurchaseReceiptLine" WHERE "purchaseReceiptId" = $1 AND "businessId" = $2 ORDER BY "id" ASC`, [receiptId,businessId]); return r.rows.map((row) => purchaseReceiptLineRow(row as Record<string, unknown>)); }
+      finally { if (ctx.owns()) c.release(); }
+    },
+    async nextSupplierReturnNo(businessId: string): Promise<string> {
+      const year = new Date().getUTCFullYear(); const c = await ctx.client();
+      try { const r = await c.query('INSERT INTO "SupplierReturnCounter" ("id", "businessId", "seq") VALUES ($1,$2,1) ON CONFLICT ("businessId") DO UPDATE SET "seq" = "SupplierReturnCounter"."seq" + 1 RETURNING "seq"', [nid("sretctr"),businessId]); return `SRT-${year}-${String(r.rows[0]!["seq"] as number).padStart(6, "0")}`; }
+      finally { if (ctx.owns()) c.release(); }
+    },
+    async createSupplierReturn(r0: Omit<DbSupplierReturn, "id" | "createdAt" | "updatedAt">): Promise<DbSupplierReturn> {
+      const c = await ctx.client();
+      try { const now = new Date(); const row = { ...r0, id: nid("sret"), createdAt: now, updatedAt: now }; await c.query('INSERT INTO "SupplierReturn" ("id","businessId","supplierId","purchaseOrderId","branchId","returnNumber","status","reason","createdBy","postedBy","postedAt","cancelledBy","cancelledAt","version","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)', [row.id,row.businessId,row.supplierId,row.purchaseOrderId,row.branchId,row.returnNumber,row.status,row.reason,row.createdBy,row.postedBy,row.postedAt,row.cancelledBy,row.cancelledAt,row.version]); return row; }
+      finally { if (ctx.owns()) c.release(); }
+    },
+    async findSupplierReturnById(id: string, businessId: string): Promise<DbSupplierReturn | null> {
+      const c = await ctx.client(); try { const r = await c.query(`SELECT ${SUPPLIER_RETURN_COLUMNS} FROM "SupplierReturn" WHERE "id"=$1 AND "businessId"=$2`, [id,businessId]); const row = r.rows[0] as Record<string, unknown> | undefined; return row ? supplierReturnRow(row) : null; } finally { if (ctx.owns()) c.release(); }
+    },
+    async listSupplierReturnsByBusiness(businessId: string): Promise<DbSupplierReturn[]> {
+      const c = await ctx.client(); try { const r = await c.query(`SELECT ${SUPPLIER_RETURN_COLUMNS} FROM "SupplierReturn" WHERE "businessId"=$1 ORDER BY "createdAt" ASC, "id" ASC`, [businessId]); return r.rows.map((row) => supplierReturnRow(row as Record<string, unknown>)); } finally { if (ctx.owns()) c.release(); }
+    },
+    async listSupplierReturnsByOrder(purchaseOrderId: string, businessId: string): Promise<DbSupplierReturn[]> {
+      const c = await ctx.client(); try { const r = await c.query(`SELECT ${SUPPLIER_RETURN_COLUMNS} FROM "SupplierReturn" WHERE "purchaseOrderId"=$1 AND "businessId"=$2 ORDER BY "createdAt" ASC, "id" ASC`, [purchaseOrderId,businessId]); return r.rows.map((row) => supplierReturnRow(row as Record<string, unknown>)); } finally { if (ctx.owns()) c.release(); }
+    },
+    async updateSupplierReturn(id: string, businessId: string, patch: Partial<Omit<DbSupplierReturn, "id" | "businessId" | "createdAt" | "version">>, expectedVersion: number): Promise<DbSupplierReturn | null> {
+      const c = await ctx.client(); try { const { sets, values } = buildSet(patch); const r = await c.query(`UPDATE "SupplierReturn" SET ${sets.length ? sets.join(", ") + ", " : ""}"version"="version"+1,"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$${values.length+1} AND "businessId"=$${values.length+2} AND "version"=$${values.length+3} RETURNING ${SUPPLIER_RETURN_COLUMNS}`, [...values,id,businessId,expectedVersion]); const row = r.rows[0] as Record<string, unknown> | undefined; return row ? supplierReturnRow(row) : null; } finally { if (ctx.owns()) c.release(); }
+    },
+    async createSupplierReturnLine(l0: Omit<DbSupplierReturnLine, "id" | "createdAt" | "updatedAt">): Promise<DbSupplierReturnLine> {
+      const c = await ctx.client(); try { const row = { ...l0, id: nid("sretl"), createdAt: new Date(), updatedAt: new Date() }; await c.query('INSERT INTO "SupplierReturnLine" ("id","businessId","supplierReturnId","purchaseOrderLineId","productId","quantity","unitCostMinorSnapshot","productNameSnapshot","supplierSkuSnapshot","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)', [row.id,row.businessId,row.supplierReturnId,row.purchaseOrderLineId,row.productId,row.quantity,row.unitCostMinorSnapshot,row.productNameSnapshot,row.supplierSkuSnapshot]); return row; } finally { if (ctx.owns()) c.release(); }
+    },
+    async listSupplierReturnLines(returnId: string, businessId: string): Promise<DbSupplierReturnLine[]> {
+      const c = await ctx.client(); try { const r = await c.query(`SELECT ${SUPPLIER_RETURN_LINE_COLUMNS} FROM "SupplierReturnLine" WHERE "supplierReturnId"=$1 AND "businessId"=$2 ORDER BY "id" ASC`, [returnId,businessId]); return r.rows.map((row) => supplierReturnLineRow(row as Record<string, unknown>)); } finally { if (ctx.owns()) c.release(); }
+    },
+    async deleteSupplierReturnLines(returnId: string, businessId: string): Promise<void> {
+      const c = await ctx.client(); try { await c.query('DELETE FROM "SupplierReturnLine" WHERE "supplierReturnId"=$1 AND "businessId"=$2', [returnId,businessId]); } finally { if (ctx.owns()) c.release(); }
     },
 
     async listAuditFor(businessId: string, entityType: string, entityId: string): Promise<AuditEntry[]> {

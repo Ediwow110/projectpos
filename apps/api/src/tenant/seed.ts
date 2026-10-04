@@ -25,7 +25,11 @@ export const ROLE_SEED: Record<"owner" | "manager" | "cashier" | "inventory", st
       p !== "supplier.write" &&
       p !== "purchase_order.write" &&
       p !== "purchase_order.order" &&
-      p !== "purchase_order.cancel",
+      p !== "purchase_order.cancel" &&
+      p !== "purchase_order.receive" &&
+      p !== "supplier_return.write" &&
+      p !== "supplier_return.post" &&
+      p !== "supplier_return.cancel",
   ),
   inventory: ALL_PERMISSIONS.filter(
     (p) => p !== "sale.refund" && p !== "refund.override" && p !== "user.manage" && p !== "settings.write",

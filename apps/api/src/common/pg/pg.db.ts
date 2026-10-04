@@ -1,4 +1,4 @@
-import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCashMovement, DbCategory, DbCustomer, DbDevice, DbExchange, DbExpense, DbFeatureFlag, DbHeldSale, DbIdempotency, DbInvoice, DbMovement, DbPayment, DbPlan, DbMembership, DbPort, DbPrinter, DbPrintJob, DbProduct, DbReceiptDelivery, DbRefund, DbRefundItem, DbRegister, DbResetToken, DbSale, DbSaleItem, DbSession, DbShift, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbDisplayToken, DbUsageCounter, DbUser, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine } from "../db.port";
+import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCashMovement, DbCategory, DbCustomer, DbDevice, DbExchange, DbExpense, DbFeatureFlag, DbHeldSale, DbIdempotency, DbInvoice, DbMovement, DbPayment, DbPlan, DbMembership, DbPort, DbPrinter, DbPrintJob, DbProduct, DbReceiptDelivery, DbRefund, DbRefundItem, DbRegister, DbResetToken, DbSale, DbSaleItem, DbSession, DbShift, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbDisplayToken, DbUsageCounter, DbUser, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine } from "../db.port";
 import { PgContext } from "./context";
 import { settingsFamily } from "./pg-settings";
 import { auditFamily } from "./pg-audit";
@@ -618,4 +618,19 @@ export class PgDbPort implements DbPort {
   listAuditFor(businessId: string, entityType: string, entityId: string): Promise<AuditEntry[]> {
     return this.procurement.listAuditFor(businessId, entityType, entityId);
   }
+  nextPurchaseReceiptNo(businessId: string): Promise<string> { return this.procurement.nextPurchaseReceiptNo(businessId); }
+  createPurchaseReceipt(r: Omit<DbPurchaseReceipt, "id" | "createdAt">): Promise<DbPurchaseReceipt> { return this.procurement.createPurchaseReceipt(r); }
+  findPurchaseReceiptById(id: string, businessId: string): Promise<DbPurchaseReceipt | null> { return this.procurement.findPurchaseReceiptById(id, businessId); }
+  listPurchaseReceiptsByOrder(purchaseOrderId: string, businessId: string): Promise<DbPurchaseReceipt[]> { return this.procurement.listPurchaseReceiptsByOrder(purchaseOrderId, businessId); }
+  createPurchaseReceiptLine(l: Omit<DbPurchaseReceiptLine, "id" | "createdAt">): Promise<DbPurchaseReceiptLine> { return this.procurement.createPurchaseReceiptLine(l); }
+  listPurchaseReceiptLines(receiptId: string, businessId: string): Promise<DbPurchaseReceiptLine[]> { return this.procurement.listPurchaseReceiptLines(receiptId, businessId); }
+  nextSupplierReturnNo(businessId: string): Promise<string> { return this.procurement.nextSupplierReturnNo(businessId); }
+  createSupplierReturn(r: Omit<DbSupplierReturn, "id" | "createdAt" | "updatedAt">): Promise<DbSupplierReturn> { return this.procurement.createSupplierReturn(r); }
+  findSupplierReturnById(id: string, businessId: string): Promise<DbSupplierReturn | null> { return this.procurement.findSupplierReturnById(id, businessId); }
+  listSupplierReturnsByBusiness(businessId: string): Promise<DbSupplierReturn[]> { return this.procurement.listSupplierReturnsByBusiness(businessId); }
+  listSupplierReturnsByOrder(purchaseOrderId: string, businessId: string): Promise<DbSupplierReturn[]> { return this.procurement.listSupplierReturnsByOrder(purchaseOrderId, businessId); }
+  updateSupplierReturn(id: string, businessId: string, patch: Partial<Omit<DbSupplierReturn, "id" | "businessId" | "createdAt" | "version">>, expectedVersion: number): Promise<DbSupplierReturn | null> { return this.procurement.updateSupplierReturn(id, businessId, patch, expectedVersion); }
+  createSupplierReturnLine(l: Omit<DbSupplierReturnLine, "id" | "createdAt" | "updatedAt">): Promise<DbSupplierReturnLine> { return this.procurement.createSupplierReturnLine(l); }
+  listSupplierReturnLines(returnId: string, businessId: string): Promise<DbSupplierReturnLine[]> { return this.procurement.listSupplierReturnLines(returnId, businessId); }
+  deleteSupplierReturnLines(returnId: string, businessId: string): Promise<void> { return this.procurement.deleteSupplierReturnLines(returnId, businessId); }
 }

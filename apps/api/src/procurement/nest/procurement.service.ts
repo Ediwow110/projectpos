@@ -7,7 +7,11 @@ import type {
   DbProductSupplier,
   DbPurchaseOrder,
   DbPurchaseOrderLine,
+  DbPurchaseReceipt,
+  DbPurchaseReceiptLine,
   DbSupplier,
+  DbSupplierReturn,
+  DbSupplierReturnLine,
 } from "../../common/db.port";
 import { fingerprintPayload } from "../../sales/idempotency";
 import {
@@ -15,6 +19,7 @@ import {
   computePurchaseOrderTotals,
 } from "../purchase-order-math";
 import { normalizeSupplierCode, normalizeSupplierPayload, parseExpectedDate, parsePurchaseOrderFilterDate } from "../normalize";
+import { withInventoryLocks } from "../../inventory/inventory-locks";
 
 export interface SupplierPage {
   items: DbSupplier[];
@@ -48,6 +53,16 @@ export interface PurchaseOrderInput {
 
 export interface PurchaseOrderWithLines extends DbPurchaseOrder {
   lines: DbPurchaseOrderLine[];
+  receipts?: PurchaseReceiptWithLines[];
+  supplierReturns?: SupplierReturnWithLines[];
+}
+
+export interface PurchaseReceiptWithLines extends DbPurchaseReceipt {
+  lines: DbPurchaseReceiptLine[];
+}
+
+export interface SupplierReturnWithLines extends DbSupplierReturn {
+  lines: DbSupplierReturnLine[];
 }
 
 export interface PurchaseOrderPage {
@@ -344,7 +359,208 @@ export class ProcurementService {
 
   async getPurchaseOrder(businessId: string, id: string): Promise<PurchaseOrderWithLines> {
     withScope(businessId, {});
-    return this.embed(await this.requireOrder(businessId, id));
+    const order = await this.requireOrder(businessId, id);
+    return this.embedFull(order);
+  }
+
+  private async embedFull(order: DbPurchaseOrder): Promise<PurchaseOrderWithLines> {
+    const [base, receipts, returns] = await Promise.all([
+      this.embed(order),
+      this.listReceiptDetails(order.id, order.businessId),
+      this.listReturnDetails(order.id, order.businessId),
+    ]);
+    return { ...base, receipts, supplierReturns: returns };
+  }
+
+  private async listReceiptDetails(purchaseOrderId: string, businessId: string): Promise<PurchaseReceiptWithLines[]> {
+    const receipts = await this.db.listPurchaseReceiptsByOrder(purchaseOrderId, businessId);
+    return Promise.all(receipts.map(async (receipt) => ({ receipt, lines: await this.db.listPurchaseReceiptLines(receipt.id, businessId) }))).then((rows) => rows.map(({ receipt, lines }) => ({ ...receipt, lines })));
+  }
+
+  private async listReturnDetails(purchaseOrderId: string, businessId: string): Promise<SupplierReturnWithLines[]> {
+    const returns = await this.db.listSupplierReturnsByOrder(purchaseOrderId, businessId);
+    return Promise.all(returns.map(async (item) => ({ item, lines: await this.db.listSupplierReturnLines(item.id, businessId) }))).then((rows) => rows.map(({ item, lines }) => ({ ...item, lines })));
+  }
+
+  private async requireReceipt(businessId: string, id: string): Promise<DbPurchaseReceipt> {
+    const row = await this.db.findPurchaseReceiptById(id, businessId);
+    if (!row) throw new Error("NOT_FOUND");
+    return row;
+  }
+
+  private async requireSupplierReturn(businessId: string, id: string): Promise<DbSupplierReturn> {
+    const row = await this.db.findSupplierReturnById(id, businessId);
+    if (!row) throw new Error("NOT_FOUND");
+    return row;
+  }
+
+  private async receivedByLine(businessId: string, orderId: string, db: DbPort = this.db): Promise<Map<string, number>> {
+    const receipts = await db.listPurchaseReceiptsByOrder(orderId, businessId);
+    const totals = new Map<string, number>();
+    for (const receipt of receipts) {
+      for (const line of await db.listPurchaseReceiptLines(receipt.id, businessId)) totals.set(line.purchaseOrderLineId, (totals.get(line.purchaseOrderLineId) ?? 0) + line.quantityReceived);
+    }
+    return totals;
+  }
+
+  private async returnedByLine(businessId: string, orderId: string, db: DbPort = this.db): Promise<Map<string, number>> {
+    const returns = await db.listSupplierReturnsByOrder(orderId, businessId);
+    const totals = new Map<string, number>();
+    for (const item of returns) {
+      if (item.status !== "POSTED") continue;
+      for (const line of await db.listSupplierReturnLines(item.id, businessId)) totals.set(line.purchaseOrderLineId, (totals.get(line.purchaseOrderLineId) ?? 0) + line.quantity);
+    }
+    return totals;
+  }
+
+  private async receiptLines(businessId: string, order: DbPurchaseOrder, input: { branchId?: string | null; lines: Array<{ purchaseOrderLineId: string; quantityReceived: number }>; notes?: string }, db: DbPort = this.db): Promise<Array<{ source: DbPurchaseOrderLine; quantityReceived: number }>> {
+    if (input.branchId !== undefined && (input.branchId ?? null) !== order.branchId) throw new Error("VALIDATION");
+    if (order.status !== "ORDERED" && order.status !== "PARTIALLY_RECEIVED") throw new Error("PURCHASE_ORDER_INVALID_STATE");
+    const lines = await db.listPurchaseOrderLines(order.id, businessId);
+    const byId = new Map(lines.map((line) => [line.id, line]));
+    const received = await this.receivedByLine(businessId, order.id, db);
+    const seen = new Set<string>();
+    const resolved: Array<{ source: DbPurchaseOrderLine; quantityReceived: number }> = [];
+    for (const item of input.lines) {
+      if (seen.has(item.purchaseOrderLineId)) throw new Error("VALIDATION");
+      seen.add(item.purchaseOrderLineId);
+      const source = byId.get(item.purchaseOrderLineId);
+      if (!source || !Number.isInteger(item.quantityReceived) || item.quantityReceived <= 0) throw new Error("VALIDATION");
+      const remaining = source.quantity - (received.get(source.id) ?? 0);
+      if (item.quantityReceived > remaining) throw new Error("RECEIPT_EXCEEDS_OUTSTANDING");
+      resolved.push({ source, quantityReceived: item.quantityReceived });
+    }
+    if (!resolved.length) throw new Error("VALIDATION");
+    return resolved;
+  }
+
+  async listPurchaseReceipts(businessId: string, orderId: string): Promise<PurchaseReceiptWithLines[]> {
+    await this.requireOrder(businessId, orderId);
+    return this.listReceiptDetails(orderId, businessId);
+  }
+
+  async getPurchaseReceipt(businessId: string, id: string): Promise<PurchaseReceiptWithLines> {
+    const receipt = await this.requireReceipt(businessId, id);
+    return { ...receipt, lines: await this.db.listPurchaseReceiptLines(id, businessId) };
+  }
+
+  async receivePurchaseOrder(businessId: string, actorId: string, requestId: string, orderId: string, key: string, input: { branchId?: string | null; lines: Array<{ purchaseOrderLineId: string; quantityReceived: number }>; notes?: string }, granted: string[]): Promise<{ purchaseReceipt: PurchaseReceiptWithLines; purchaseOrder: PurchaseOrderWithLines; replayed: boolean }> {
+    withScope(businessId, {});
+    this.requireGrant(granted, "purchase_order.receive");
+    const fingerprint = fingerprintPayload({ purchaseOrderId: orderId, ...input });
+    return this.db.withLock(`purchase-order:${businessId}:${orderId}`, async () => {
+      const existing = await this.db.findIdempotency(businessId, key, "purchase_receipt.post");
+      if (existing) {
+        if (existing.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
+        const purchaseReceipt = await this.getPurchaseReceipt(businessId, existing.resultId);
+        return { purchaseReceipt, purchaseOrder: await this.getPurchaseOrder(businessId, purchaseReceipt.purchaseOrderId), replayed: true };
+      }
+      return this.db.withTransaction(async (tx) => {
+        const current = await this.requireOrder(businessId, orderId);
+        await this.requireBranch(businessId, current.branchId);
+        const resolved = await this.receiptLines(businessId, current, input, tx);
+        const result = await withInventoryLocks(tx, businessId, resolved.map(({ source }) => ({ productId: source.productId, branchId: current.branchId })), async () => {
+          const receiptNumber = await tx.nextPurchaseReceiptNo(businessId);
+          const receipt = await tx.createPurchaseReceipt({ businessId, purchaseOrderId: orderId, branchId: current.branchId, receiptNumber, status: "POSTED", receivedBy: actorId, receivedAt: new Date(), notes: input.notes?.trim() || null });
+          const createdLines: DbPurchaseReceiptLine[] = [];
+          for (const { source, quantityReceived } of resolved) {
+            createdLines.push(await tx.createPurchaseReceiptLine({ businessId, purchaseReceiptId: receipt.id, purchaseOrderLineId: source.id, productId: source.productId, quantityReceived, unitCostMinorSnapshot: source.unitCostMinor, productNameSnapshot: source.productNameSnapshot, supplierSkuSnapshot: source.supplierSkuSnapshot }));
+            const balance = await tx.findBalance(source.productId, businessId, current.branchId);
+            await tx.createMovement({ businessId, productId: source.productId, type: "receive", qtyDelta: quantityReceived, reason: null, referenceType: "PurchaseReceipt", referenceId: receipt.id, actorId, requestId, branchId: current.branchId });
+            await tx.upsertBalance({ businessId, productId: source.productId, branchId: current.branchId, qtyOnHand: (balance?.qtyOnHand ?? 0) + quantityReceived });
+          }
+          const cumulative = await this.receivedByLine(businessId, orderId, tx);
+          for (const { source, quantityReceived } of resolved) cumulative.set(source.id, (cumulative.get(source.id) ?? 0) + quantityReceived);
+          const allReceived = (await tx.listPurchaseOrderLines(orderId, businessId)).every((line) => (cumulative.get(line.id) ?? 0) >= line.quantity);
+          const nextStatus = allReceived ? "RECEIVED" : "PARTIALLY_RECEIVED";
+          const next = await tx.updatePurchaseOrder(orderId, businessId, { status: nextStatus }, current.version);
+          if (!next) throw new Error("STALE_VERSION");
+          await tx.claimIdempotency({ businessId, key, commandType: "purchase_receipt.post", fingerprint, resultId: receipt.id });
+          const receiptDetail = { ...receipt, lines: createdLines };
+          await tx.appendAudit({ businessId, actorId, action: "purchase_receipt.posted", entityType: "PurchaseReceipt", entityId: receipt.id, requestId, after: snapshot(receiptDetail) });
+          await tx.appendAudit({ businessId, actorId, action: allReceived ? "purchase_order.received" : "purchase_order.partially_received", entityType: "PurchaseOrder", entityId: orderId, requestId, before: snapshot(current), after: snapshot(next) });
+          return { purchaseReceipt: receiptDetail, purchaseOrder: await this.getPurchaseOrder(businessId, orderId), replayed: false };
+        });
+        return result;
+      });
+    });
+  }
+
+  async listSupplierReturns(businessId: string): Promise<SupplierReturnWithLines[]> {
+    const rows = await this.db.listSupplierReturnsByBusiness(businessId);
+    return Promise.all(rows.map(async (item) => ({ ...item, lines: await this.db.listSupplierReturnLines(item.id, businessId) })));
+  }
+
+  async getSupplierReturn(businessId: string, id: string): Promise<SupplierReturnWithLines> {
+    const item = await this.requireSupplierReturn(businessId, id);
+    return { ...item, lines: await this.db.listSupplierReturnLines(id, businessId) };
+  }
+
+  private async resolveReturnLines(businessId: string, order: DbPurchaseOrder, input: Array<{ purchaseOrderLineId: string; quantity: number }>, db: DbPort = this.db): Promise<Array<{ source: DbPurchaseOrderLine; quantity: number }>> {
+    const received = await this.receivedByLine(businessId, order.id, db);
+    const returned = await this.returnedByLine(businessId, order.id, db);
+    const byId = new Map((await db.listPurchaseOrderLines(order.id, businessId)).map((line) => [line.id, line]));
+    const seen = new Set<string>(); const resolved: Array<{ source: DbPurchaseOrderLine; quantity: number }> = [];
+    for (const item of input) {
+      if (seen.has(item.purchaseOrderLineId)) throw new Error("VALIDATION"); seen.add(item.purchaseOrderLineId);
+      const source = byId.get(item.purchaseOrderLineId); const available = source ? (received.get(source.id) ?? 0) - (returned.get(source.id) ?? 0) : 0;
+      if (!source || !Number.isInteger(item.quantity) || item.quantity <= 0 || item.quantity > available) throw new Error("RETURN_EXCEEDS_RETURNABLE");
+      resolved.push({ source, quantity: item.quantity });
+    }
+    if (!resolved.length) throw new Error("VALIDATION"); return resolved;
+  }
+
+  async createSupplierReturn(businessId: string, actorId: string, requestId: string, key: string, input: { supplierId: string; purchaseOrderId: string; branchId?: string | null; reason: string; lines: Array<{ purchaseOrderLineId: string; quantity: number }> }, granted: string[]): Promise<{ supplierReturn: SupplierReturnWithLines; replayed: boolean }> {
+    withScope(businessId, {}); this.requireGrant(granted, "supplier_return.write");
+    const fingerprint = fingerprintPayload(input);
+    return this.db.withLock(`supplier-return:${businessId}:${input.purchaseOrderId}`, async () => {
+      const existing = await this.db.findIdempotency(businessId, key, "supplier_return.create");
+      if (existing) { if (existing.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH"); return { supplierReturn: await this.getSupplierReturn(businessId, existing.resultId), replayed: true }; }
+      const order = await this.requireOrder(businessId, input.purchaseOrderId); if (order.supplierId !== input.supplierId) throw new Error("NOT_FOUND"); if (input.branchId !== undefined && (input.branchId ?? null) !== order.branchId) throw new Error("VALIDATION");
+      if (order.status !== "PARTIALLY_RECEIVED" && order.status !== "RECEIVED") throw new Error("PURCHASE_ORDER_INVALID_STATE");
+      const supplier = await this.requireSupplier(businessId, input.supplierId); void supplier;
+      await this.requireBranch(businessId, order.branchId);
+      const resolved = await this.resolveReturnLines(businessId, order, input.lines);
+      const number = await this.db.nextSupplierReturnNo(businessId);
+      const item = await this.db.createSupplierReturn({ businessId, supplierId: input.supplierId, purchaseOrderId: order.id, branchId: order.branchId, returnNumber: number, status: "DRAFT", reason: input.reason.trim(), createdBy: actorId, postedBy: null, postedAt: null, cancelledBy: null, cancelledAt: null, version: 1 });
+      const lines = await Promise.all(resolved.map(({ source, quantity }) => this.db.createSupplierReturnLine({ businessId, supplierReturnId: item.id, purchaseOrderLineId: source.id, productId: source.productId, quantity, unitCostMinorSnapshot: source.unitCostMinor, productNameSnapshot: source.productNameSnapshot, supplierSkuSnapshot: source.supplierSkuSnapshot })));
+      await this.db.claimIdempotency({ businessId, key, commandType: "supplier_return.create", fingerprint, resultId: item.id });
+      const detail = { ...item, lines }; await this.db.appendAudit({ businessId, actorId, action: "supplier_return.created", entityType: "SupplierReturn", entityId: item.id, requestId, after: snapshot(detail) });
+      return { supplierReturn: detail, replayed: false };
+    });
+  }
+
+  async updateSupplierReturn(businessId: string, actorId: string, requestId: string, id: string, expectedVersion: number, input: { reason?: string; lines?: Array<{ purchaseOrderLineId: string; quantity: number }> }, granted: string[]): Promise<SupplierReturnWithLines> {
+    this.requireGrant(granted, "supplier_return.write");
+    return this.db.withLock(`supplier-return:${businessId}:${id}`, async () => {
+      const current = await this.requireSupplierReturn(businessId, id); if (current.status !== "DRAFT") throw new Error("SUPPLIER_RETURN_INVALID_STATE");
+      const order = await this.requireOrder(businessId, current.purchaseOrderId); const lines = input.lines ? await this.resolveReturnLines(businessId, order, input.lines) : null;
+      const next = await this.db.updateSupplierReturn(id, businessId, { ...(input.reason !== undefined ? { reason: input.reason.trim() } : {}) }, expectedVersion);
+      if (!next) throw new Error("STALE_VERSION");
+      if (lines) { await this.db.deleteSupplierReturnLines(id, businessId); for (const { source, quantity } of lines) await this.db.createSupplierReturnLine({ businessId, supplierReturnId: id, purchaseOrderLineId: source.id, productId: source.productId, quantity, unitCostMinorSnapshot: source.unitCostMinor, productNameSnapshot: source.productNameSnapshot, supplierSkuSnapshot: source.supplierSkuSnapshot }); }
+      const detail = await this.getSupplierReturn(businessId, id); await this.db.appendAudit({ businessId, actorId, action: "supplier_return.updated", entityType: "SupplierReturn", entityId: id, requestId, before: snapshot(current), after: snapshot(detail) }); return detail;
+    });
+  }
+
+  async postSupplierReturn(businessId: string, actorId: string, requestId: string, id: string, key: string, expectedVersion: number, granted: string[]): Promise<{ supplierReturn: SupplierReturnWithLines; replayed: boolean }> {
+    withScope(businessId, {}); this.requireGrant(granted, "supplier_return.post"); const fingerprint = fingerprintPayload({ supplierReturnId: id, expectedVersion });
+    return this.db.withLock(`supplier-return:${businessId}:${id}`, async () => {
+      const existing = await this.db.findIdempotency(businessId, key, "supplier_return.post"); if (existing) { if (existing.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH"); return { supplierReturn: await this.getSupplierReturn(businessId, existing.resultId), replayed: true }; }
+      return this.db.withTransaction(async (tx) => {
+        const current = await this.requireSupplierReturn(businessId, id); if (current.status !== "DRAFT") throw new Error("SUPPLIER_RETURN_INVALID_STATE");
+        const order = await this.requireOrder(businessId, current.purchaseOrderId); await this.requireBranch(businessId, current.branchId); const draftLines = await tx.listSupplierReturnLines(id, businessId); const resolved = await this.resolveReturnLines(businessId, order, draftLines.map((line) => ({ purchaseOrderLineId: line.purchaseOrderLineId, quantity: line.quantity })), tx);
+        return withInventoryLocks(tx, businessId, resolved.map(({ source }) => ({ productId: source.productId, branchId: current.branchId })), async () => {
+          for (const { source, quantity } of resolved) { const balance = await tx.findBalance(source.productId, businessId, current.branchId); if ((balance?.qtyOnHand ?? 0) < quantity) throw new Error("INSUFFICIENT_STOCK"); }
+          const next = await tx.updateSupplierReturn(id, businessId, { status: "POSTED", postedBy: actorId, postedAt: new Date() }, expectedVersion); if (!next) throw new Error("STALE_VERSION");
+          for (const { source, quantity } of resolved) { const balance = await tx.findBalance(source.productId, businessId, current.branchId); await tx.createMovement({ businessId, productId: source.productId, type: "supplier_return", qtyDelta: -quantity, reason: current.reason, referenceType: "SupplierReturn", referenceId: id, actorId, requestId, branchId: current.branchId }); await tx.upsertBalance({ businessId, productId: source.productId, branchId: current.branchId, qtyOnHand: (balance?.qtyOnHand ?? 0) - quantity }); }
+          await tx.claimIdempotency({ businessId, key, commandType: "supplier_return.post", fingerprint, resultId: id }); const detail = await this.getSupplierReturn(businessId, id); await tx.appendAudit({ businessId, actorId, action: "supplier_return.posted", entityType: "SupplierReturn", entityId: id, requestId, before: snapshot(current), after: snapshot(detail) }); return { supplierReturn: detail, replayed: false };
+        });
+      });
+    });
+  }
+
+  async cancelSupplierReturn(businessId: string, actorId: string, requestId: string, id: string, expectedVersion: number, granted: string[]): Promise<SupplierReturnWithLines> {
+    this.requireGrant(granted, "supplier_return.cancel"); return this.db.withLock(`supplier-return:${businessId}:${id}`, async () => { const current = await this.requireSupplierReturn(businessId, id); if (current.status !== "DRAFT") throw new Error("SUPPLIER_RETURN_INVALID_STATE"); const next = await this.db.updateSupplierReturn(id, businessId, { status: "CANCELLED", cancelledBy: actorId, cancelledAt: new Date() }, expectedVersion); if (!next) throw new Error("STALE_VERSION"); const detail = await this.getSupplierReturn(businessId, id); await this.db.appendAudit({ businessId, actorId, action: "supplier_return.cancelled", entityType: "SupplierReturn", entityId: id, requestId, before: snapshot(current), after: snapshot(detail) }); return detail; });
   }
 
   async createPurchaseOrder(businessId: string, actorId: string, requestId: string, key: string, input: PurchaseOrderInput, granted: string[]): Promise<{ purchaseOrder: PurchaseOrderWithLines; replayed: boolean }> {

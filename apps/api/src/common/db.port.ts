@@ -564,6 +564,65 @@ export interface DbPurchaseOrderLine {
   updatedAt: Date;
 }
 
+export interface DbPurchaseReceipt {
+  id: string;
+  businessId: string;
+  purchaseOrderId: string;
+  branchId: string | null;
+  receiptNumber: string;
+  status: string;
+  receivedBy: string;
+  receivedAt: Date;
+  notes: string | null;
+  createdAt: Date;
+}
+
+export interface DbPurchaseReceiptLine {
+  id: string;
+  businessId: string;
+  purchaseReceiptId: string;
+  purchaseOrderLineId: string;
+  productId: string;
+  quantityReceived: number;
+  unitCostMinorSnapshot: number;
+  productNameSnapshot: string;
+  supplierSkuSnapshot: string | null;
+  createdAt: Date;
+}
+
+export interface DbSupplierReturn {
+  id: string;
+  businessId: string;
+  supplierId: string;
+  purchaseOrderId: string;
+  branchId: string | null;
+  returnNumber: string;
+  status: string;
+  reason: string;
+  createdBy: string;
+  postedBy: string | null;
+  postedAt: Date | null;
+  cancelledBy: string | null;
+  cancelledAt: Date | null;
+  version: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DbSupplierReturnLine {
+  id: string;
+  businessId: string;
+  supplierReturnId: string;
+  purchaseOrderLineId: string;
+  productId: string;
+  quantity: number;
+  unitCostMinorSnapshot: number;
+  productNameSnapshot: string;
+  supplierSkuSnapshot: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface DbPort {
   // Phase 12: the critical-section primitives. Memory serializes per key with
   // a promise chain (atomic by construction); PostgreSQL takes a
@@ -797,4 +856,21 @@ export interface DbPort {
   deletePurchaseOrderLines(purchaseOrderId: string, businessId: string): Promise<void>;
 
   listAuditFor(businessId: string, entityType: string, entityId: string): Promise<AuditEntry[]>;
+
+  // Phase 17: immutable receipt ledger and draft/post supplier returns.
+  nextPurchaseReceiptNo(businessId: string): Promise<string>;
+  createPurchaseReceipt(r: Omit<DbPurchaseReceipt, "id" | "createdAt">): Promise<DbPurchaseReceipt>;
+  findPurchaseReceiptById(id: string, businessId: string): Promise<DbPurchaseReceipt | null>;
+  listPurchaseReceiptsByOrder(purchaseOrderId: string, businessId: string): Promise<DbPurchaseReceipt[]>;
+  createPurchaseReceiptLine(l: Omit<DbPurchaseReceiptLine, "id" | "createdAt">): Promise<DbPurchaseReceiptLine>;
+  listPurchaseReceiptLines(receiptId: string, businessId: string): Promise<DbPurchaseReceiptLine[]>;
+  nextSupplierReturnNo(businessId: string): Promise<string>;
+  createSupplierReturn(r: Omit<DbSupplierReturn, "id" | "createdAt" | "updatedAt">): Promise<DbSupplierReturn>;
+  findSupplierReturnById(id: string, businessId: string): Promise<DbSupplierReturn | null>;
+  listSupplierReturnsByBusiness(businessId: string): Promise<DbSupplierReturn[]>;
+  listSupplierReturnsByOrder(purchaseOrderId: string, businessId: string): Promise<DbSupplierReturn[]>;
+  updateSupplierReturn(id: string, businessId: string, patch: Partial<Omit<DbSupplierReturn, "id" | "businessId" | "createdAt" | "version">>, expectedVersion: number): Promise<DbSupplierReturn | null>;
+  createSupplierReturnLine(l: Omit<DbSupplierReturnLine, "id" | "createdAt" | "updatedAt">): Promise<DbSupplierReturnLine>;
+  listSupplierReturnLines(returnId: string, businessId: string): Promise<DbSupplierReturnLine[]>;
+  deleteSupplierReturnLines(returnId: string, businessId: string): Promise<void>;
 }

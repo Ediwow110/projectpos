@@ -6,6 +6,7 @@ describe("phase3 inventory domain", () => {
   it("signs receive positive and damage negative, adjustment either", () => {
     expect(signFor("receive")).toBe(1);
     expect(signFor("damage")).toBe(-1);
+    expect(signFor("supplier_return")).toBe(-1);
     expect(signFor("adjustment")).toBe(0);
   });
   it("rejects zero and mismatched signs", () => {

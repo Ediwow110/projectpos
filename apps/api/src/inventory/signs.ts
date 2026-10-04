@@ -1,9 +1,10 @@
 export type MovementType =
   | "opening_stock" | "receive" | "sale" | "return" | "damage"
-  | "adjustment" | "transfer_in" | "transfer_out" | "stock_count";
+  | "adjustment" | "transfer_in" | "transfer_out" | "stock_count"
+  | "supplier_return";
 
 const POSITIVE = new Set(["opening_stock", "receive", "return", "transfer_in"]);
-const NEGATIVE = new Set(["sale", "damage", "transfer_out"]);
+const NEGATIVE = new Set(["sale", "damage", "transfer_out", "supplier_return"]);
 
 export function signFor(type: MovementType): 1 | -1 | 0 {
   if (POSITIVE.has(type)) return 1;

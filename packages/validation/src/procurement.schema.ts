@@ -114,7 +114,7 @@ export const purchaseOrderUpdateSchema = z
 export const purchaseOrderListSchema = z.object({
   q: z.string().trim().max(80, "VALIDATION").optional(),
   supplierId: z.string().min(1, "VALIDATION").optional(),
-  status: z.enum(["DRAFT", "ORDERED", "CANCELLED", "all"]).default("all"),
+  status: z.enum(["DRAFT", "ORDERED", "PARTIALLY_RECEIVED", "RECEIVED", "CANCELLED", "all"]).default("all"),
   branchId: z.string().min(1, "VALIDATION").optional(),
   dateFrom: expectedDateSchema.optional(),
   dateTo: expectedDateSchema.optional(),
@@ -124,6 +124,67 @@ export const purchaseOrderListSchema = z.object({
 
 export const purchaseOrderCancelSchema = z.object({
   reason: z.string().trim().min(3, "VALIDATION").max(500, "VALIDATION"),
+  expectedVersion: z.number().int("VALIDATION").min(1, "VALIDATION"),
+}).strict();
+
+const receiptLineSchema = z.object({
+  purchaseOrderLineId: z.string().min(1, "VALIDATION"),
+  quantityReceived: quantitySchema,
+}).strict();
+
+export const purchaseReceiptCreateSchema = z.object({
+  branchId: z.string().min(1, "VALIDATION").nullish(),
+  lines: z.array(receiptLineSchema).min(1, "VALIDATION").max(100, "VALIDATION"),
+  notes: trimmed(500).optional(),
+}).strict().superRefine((value, ctx) => {
+  const seen = new Set<string>();
+  value.lines.forEach((line, index) => {
+    if (seen.has(line.purchaseOrderLineId)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "VALIDATION", path: ["lines", index, "purchaseOrderLineId"] });
+    }
+    seen.add(line.purchaseOrderLineId);
+  });
+});
+
+const supplierReturnLineSchema = z.object({
+  purchaseOrderLineId: z.string().min(1, "VALIDATION"),
+  quantity: quantitySchema,
+}).strict();
+
+export const supplierReturnCreateSchema = z.object({
+  supplierId: z.string().min(1, "VALIDATION"),
+  purchaseOrderId: z.string().min(1, "VALIDATION"),
+  branchId: z.string().min(1, "VALIDATION").nullish(),
+  reason: z.string().trim().min(3, "VALIDATION").max(500, "VALIDATION"),
+  lines: z.array(supplierReturnLineSchema).min(1, "VALIDATION").max(100, "VALIDATION"),
+}).strict().superRefine((value, ctx) => {
+  const seen = new Set<string>();
+  value.lines.forEach((line, index) => {
+    if (seen.has(line.purchaseOrderLineId)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "VALIDATION", path: ["lines", index, "purchaseOrderLineId"] });
+    }
+    seen.add(line.purchaseOrderLineId);
+  });
+});
+
+export const supplierReturnUpdateSchema = z.object({
+  expectedVersion: z.number().int("VALIDATION").min(1, "VALIDATION"),
+  reason: z.string().trim().min(3, "VALIDATION").max(500, "VALIDATION").optional(),
+  lines: z.array(supplierReturnLineSchema).min(1, "VALIDATION").max(100, "VALIDATION").optional(),
+}).strict().superRefine((value, ctx) => {
+  if (value.reason === undefined && value.lines === undefined) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "VALIDATION" });
+  const seen = new Set<string>();
+  value.lines?.forEach((line, index) => {
+    if (seen.has(line.purchaseOrderLineId)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "VALIDATION", path: ["lines", index, "purchaseOrderLineId"] });
+    seen.add(line.purchaseOrderLineId);
+  });
+});
+
+export const supplierReturnPostSchema = z.object({
+  expectedVersion: z.number().int("VALIDATION").min(1, "VALIDATION"),
+}).strict();
+
+export const supplierReturnCancelSchema = z.object({
   expectedVersion: z.number().int("VALIDATION").min(1, "VALIDATION"),
 }).strict();
 
@@ -140,3 +201,6 @@ export type ProductSupplierUpdateInput = z.infer<typeof productSupplierUpdateSch
 export type PurchaseOrderCreateInput = z.infer<typeof purchaseOrderCreateSchema>;
 export type PurchaseOrderUpdateInput = z.infer<typeof purchaseOrderUpdateSchema>;
 export type PurchaseOrderCancelInput = z.infer<typeof purchaseOrderCancelSchema>;
+export type PurchaseReceiptCreateInput = z.infer<typeof purchaseReceiptCreateSchema>;
+export type SupplierReturnCreateInput = z.infer<typeof supplierReturnCreateSchema>;
+export type SupplierReturnUpdateInput = z.infer<typeof supplierReturnUpdateSchema>;

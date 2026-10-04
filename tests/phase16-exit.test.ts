@@ -12,9 +12,9 @@ describe("phase16 exit", () => {
     }
   });
 
-  it("keeps procurement commercially isolated from inventory and cash writes", () => {
-    const source = readFileSync("apps/api/src/procurement/nest/procurement.service.ts", "utf8");
-    expect(source).not.toMatch(/createMovement|upsertBalance|createCashMovement|createPayment|createSale|createExpense|createShift/);
+  it("keeps the Phase 16 migration commercially isolated from inventory and cash writes", () => {
+    const sql = readFileSync("packages/database/prisma/migrations/0028_procurement/migration.sql", "utf8");
+    expect(sql).not.toMatch(/InventoryMovement|InventoryBalance|CashMovement|Sale|Expense|Shift/);
   });
 
   it("registers the four server-enforced permission keys without granting cashiers", () => {

@@ -5,6 +5,9 @@ import {
   purchaseOrderCreateSchema,
   purchaseOrderListSchema,
   purchaseOrderUpdateSchema,
+  purchaseReceiptCreateSchema,
+  supplierReturnCreateSchema,
+  supplierReturnUpdateSchema,
   supplierCreateSchema,
   supplierListSchema,
   supplierUpdateSchema,
@@ -53,6 +56,21 @@ describe("phase16 supplier schemas", () => {
     expect(parsed.page).toBe(1);
     expect(parsed.pageSize).toBe(20);
     expect(() => supplierListSchema.parse({ pageSize: 101 })).toThrow();
+  });
+});
+
+describe("phase17 receipt and supplier-return schemas", () => {
+  it("requires positive, unique receipt lines", () => {
+    const line = { purchaseOrderLineId: "pol-1", quantityReceived: 2 };
+    expect(purchaseReceiptCreateSchema.parse({ lines: [line] }).lines[0]?.quantityReceived).toBe(2);
+    expect(() => purchaseReceiptCreateSchema.parse({ lines: [{ ...line, quantityReceived: 0 }] })).toThrow();
+    expect(() => purchaseReceiptCreateSchema.parse({ lines: [line, line] })).toThrow();
+  });
+  it("requires a reason and unique return lines", () => {
+    const line = { purchaseOrderLineId: "pol-1", quantity: 1 };
+    expect(supplierReturnCreateSchema.parse({ supplierId: "s", purchaseOrderId: "po", reason: "Damaged", lines: [line] }).reason).toBe("Damaged");
+    expect(() => supplierReturnCreateSchema.parse({ supplierId: "s", purchaseOrderId: "po", reason: "no", lines: [line] })).toThrow();
+    expect(() => supplierReturnUpdateSchema.parse({ expectedVersion: 1 })).toThrow();
   });
 });
 
@@ -166,7 +184,8 @@ describe("phase16 purchase order schemas", () => {
     const parsed = purchaseOrderListSchema.parse({});
     expect(parsed.status).toBe("all");
     expect(parsed.page).toBe(1);
-    expect(() => purchaseOrderListSchema.parse({ status: "RECEIVED" })).toThrow();
+    expect(purchaseOrderListSchema.parse({ status: "RECEIVED" }).status).toBe("RECEIVED");
+    expect(() => purchaseOrderListSchema.parse({ status: "NOT_A_STATUS" })).toThrow();
   });
   it("rejects client-owned totals and relationship foreign keys", () => {
     expect(() => purchaseOrderCreateSchema.parse({ supplierId: "s1", lines: [], subtotalMinor: 999 })).toThrow();
