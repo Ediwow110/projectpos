@@ -106,4 +106,17 @@ describe("Phase 17 receiving and supplier returns", () => {
     await expect(svc.receivePurchaseOrder(businessId, "cashier", "cashier-r", "missing", "key-cashier-17", { lines: [] }, [])).rejects.toThrow("FORBIDDEN");
     await expect(svc.createSupplierReturn(businessId, "cashier", "cashier-r2", "key-cashier-17b", { supplierId: "s", purchaseOrderId: "p", reason: "No", lines: [] }, [])).rejects.toThrow("FORBIDDEN");
   });
+
+  it("includes supplier-return audit events in purchase-order history", async () => {
+    const { svc, businessId, branchId, productA } = await setup();
+    const supplier = await svc.createSupplier(businessId, "owner", "audit-r1", "audit-supplier-key", { name: "Audit Supplier" }, WRITE);
+    const draft = await svc.createPurchaseOrder(businessId, "owner", "audit-r2", "audit-po-key", { supplierId: supplier.supplier.id, branchId, lines: [{ productId: productA.id, quantity: 2 }] }, WRITE);
+    const ordered = await svc.orderPurchaseOrder(businessId, "owner", "audit-r3", draft.purchaseOrder.id, "audit-order-key", draft.purchaseOrder.version, WRITE);
+    const received = await svc.receivePurchaseOrder(businessId, "owner", "audit-r4", draft.purchaseOrder.id, "audit-receive-key", { lines: [{ purchaseOrderLineId: ordered.purchaseOrder.lines[0]!.id, quantityReceived: 1 }] }, WRITE);
+    const created = await svc.createSupplierReturn(businessId, "owner", "audit-r5", "audit-return-key", { supplierId: supplier.supplier.id, purchaseOrderId: draft.purchaseOrder.id, reason: "Audit cancellation", lines: [{ purchaseOrderLineId: received.purchaseOrder.lines[0]!.id, quantity: 1 }] }, WRITE);
+    await svc.cancelSupplierReturn(businessId, "owner", "audit-r6", created.supplierReturn.id, created.supplierReturn.version, WRITE);
+
+    const events = await svc.listPurchaseOrderEvents(businessId, draft.purchaseOrder.id);
+    expect(events.some((event) => event.action === "supplier_return.cancelled" && event.entityId === created.supplierReturn.id)).toBe(true);
+  });
 });
