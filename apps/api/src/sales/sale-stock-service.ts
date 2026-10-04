@@ -31,15 +31,17 @@ export class SalesStockService {
     const requirements = new Map<string, number>();
     for (const item of items) {
       const product = await this.requireProduct(businessId, item.productId);
-      const bundle = product.productType === "BUNDLE"
-        ? await this.db.findProductBundleByProductId(item.productId, businessId)
-        : null;
-      if (product.productType === "BUNDLE" && !bundle) throw new Error("INVALID_BUNDLE");
-      if (bundle) {
-        const components = await this.db.listBundleComponents(bundle.id, businessId);
-        if (components.length === 0) throw new Error("INVALID_BUNDLE");
-        for (const component of components) {
-          requirements.set(component.componentProductId, (requirements.get(component.componentProductId) ?? 0) + item.qty * component.quantity);
+      if (product.productType === "BUNDLE") {
+        // Sale drafts own the historical bundle composition. Never consult the
+        // live definition here: it may have changed after the draft was made,
+        // while refunds intentionally use these same snapshots.
+        const snapshots = await this.db.listSaleItemBundleComponents(item.id, businessId);
+        if (snapshots.length === 0) throw new Error("INVALID_BUNDLE_SNAPSHOT");
+        for (const component of snapshots) {
+          if (!Number.isInteger(component.quantityPerBundleSnapshot) || component.quantityPerBundleSnapshot <= 0) {
+            throw new Error("INVALID_BUNDLE_SNAPSHOT");
+          }
+          requirements.set(component.componentProductId, (requirements.get(component.componentProductId) ?? 0) + item.qty * component.quantityPerBundleSnapshot);
         }
       } else if (product.trackInventory) {
         requirements.set(item.productId, (requirements.get(item.productId) ?? 0) + item.qty);
