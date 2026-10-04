@@ -65,6 +65,10 @@ export const managerApprovalActionSchema = z.discriminatedUnion("kind", [
     branchId: z.string().min(1, "VALIDATION").optional(),
   }).strict(),
   z.object({
+    kind: z.literal("inventory_count"),
+    countId: z.string().min(1, "VALIDATION"),
+  }).strict(),
+  z.object({
     kind: z.literal("shift_close"),
     shiftId: z.string().min(1, "VALIDATION"),
     countedCashMinor: moneyMinorSchema,
@@ -85,6 +89,7 @@ const allowedPermissionByAction: Record<ManagerApprovalAction["kind"], readonly 
   refund: ["sale.refund", "refund.override"],
   sale_void: ["sale.void"],
   inventory_movement: ["inventory.adjust"],
+  inventory_count: ["inventory.adjust"],
   shift_close: ["shift.close.override"],
 };
 

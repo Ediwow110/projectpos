@@ -62,6 +62,9 @@ model Business {
   products    Product[]
   movements   InventoryMovement[]
   balances    InventoryBalance[]
+  inventoryCounts InventoryCount[]
+  inventoryCountLines InventoryCountLine[]
+  inventoryCountCounters InventoryCountCounter[]
   sales       Sale[]
   payments    Payment[]
   heldSales   HeldSale[]
@@ -241,6 +244,7 @@ model Product {
   purchaseOrderLines PurchaseOrderLine[]
   purchaseReceiptLines PurchaseReceiptLine[]
   supplierReturnLines SupplierReturnLine[]
+  inventoryCountLines InventoryCountLine[]
   @@index([businessId, isActive])
   @@index([businessId, categoryId])
 }
@@ -279,6 +283,67 @@ model InventoryBalance {
   // null scope stays unique too — not expressible in the Prisma DSL.
   branchId   String?
   @@unique([businessId, productId, branchId])
+}
+
+model InventoryCountCounter {
+  id         String   @id @default(cuid())
+  businessId String   @unique
+  seq        Int
+  business   Business @relation(fields: [businessId], references: [id])
+}
+
+model InventoryCount {
+  id                  String   @id @default(cuid())
+  businessId          String
+  branchId            String?
+  countNumber         String
+  status              String   @default("DRAFT")
+  scopeType           String
+  name                String
+  notes               String?
+  createdBy           String
+  startedAt           DateTime?
+  submittedBy         String?
+  submittedAt         DateTime?
+  approvedBy          String?
+  approvedAt          DateTime?
+  approvalFingerprint String?
+  postedBy            String?
+  postedAt            DateTime?
+  cancelledBy         String?
+  cancelledAt         DateTime?
+  version             Int      @default(1)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  business            Business @relation(fields: [businessId], references: [id])
+  branch              Branch?  @relation(fields: [branchId], references: [id])
+  lines               InventoryCountLine[]
+  @@unique([businessId, countNumber])
+  @@index([businessId, status, createdAt])
+  @@index([businessId, branchId, status])
+}
+
+model InventoryCountLine {
+  id                     String   @id @default(cuid())
+  businessId             String
+  inventoryCountId       String
+  productId              String
+  expectedQtySnapshot    Int
+  balanceUpdatedAtSnapshot DateTime?
+  countedQty             Int?
+  varianceQty            Int?
+  productNameSnapshot    String
+  skuSnapshot            String?
+  notes                  String?
+  countedBy              String?
+  countedAt              DateTime?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  business               Business       @relation(fields: [businessId], references: [id])
+  inventoryCount         InventoryCount @relation(fields: [inventoryCountId], references: [id], onDelete: Cascade)
+  product                Product        @relation(fields: [productId], references: [id])
+  @@unique([businessId, inventoryCountId, productId])
+  @@index([businessId, inventoryCountId])
 }
 
 model Sale {
@@ -548,6 +613,7 @@ model Branch {
   business   Business   @relation(fields: [businessId], references: [id])
   registers  Register[]
   purchaseOrders PurchaseOrder[]
+  inventoryCounts InventoryCount[]
   activeSessions Session[] @relation("SessionActiveBranch")
   @@unique([businessId, name])
   @@index([businessId])

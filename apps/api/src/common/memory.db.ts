@@ -1,4 +1,4 @@
-import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbDisplayToken, DbExchange, DbFeatureFlag, DbInvoice, DbMembership, DbMovement, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbReceiptDelivery, DbResetToken, DbSession, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine } from "./db.port";
+import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbDisplayToken, DbExchange, DbFeatureFlag, DbInvoice, DbMembership, DbMovement, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbReceiptDelivery, DbResetToken, DbSession, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine, DbInventoryCount, DbInventoryCountLine } from "./db.port";
 
 let n = 0;
 const nid = (p: string): string => `${p}_${Date.now().toString(36)}_${(n += 1)}`;
@@ -14,6 +14,9 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const products = new Map<string, DbProduct>();
   const movements = new Map<string, DbMovement>();
   const balances = new Map<string, DbBalance>();
+  const inventoryCounts = new Map<string, DbInventoryCount>();
+  const inventoryCountLines = new Map<string, DbInventoryCountLine>();
+  const inventoryCountSeq = new Map<string, number>();
   const sales = new Map<string, DbSale>();
   const saleItems = new Map<string, DbSaleItem>();
   const payments = new Map<string, DbPayment>();
@@ -103,6 +106,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
         purchaseReceipts: new Map(purchaseReceipts), purchaseReceiptLines: new Map(purchaseReceiptLines),
         supplierReturns: new Map(supplierReturns), supplierReturnLines: new Map(supplierReturnLines),
         movements: new Map(movements), balances: new Map(balances), idempotency: new Map(idempotency),
+        inventoryCounts: new Map(inventoryCounts), inventoryCountLines: new Map(inventoryCountLines), inventoryCountSeq: new Map(inventoryCountSeq),
         audit: [...audit], poSeq: new Map(poSeq), purchaseReceiptSeq: new Map(purchaseReceiptSeq), supplierReturnSeq: new Map(supplierReturnSeq),
       };
       try {
@@ -113,6 +117,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
         restore(purchaseReceipts, snapshot.purchaseReceipts); restore(purchaseReceiptLines, snapshot.purchaseReceiptLines);
         restore(supplierReturns, snapshot.supplierReturns); restore(supplierReturnLines, snapshot.supplierReturnLines);
         restore(movements, snapshot.movements); restore(balances, snapshot.balances); restore(idempotency, snapshot.idempotency);
+        restore(inventoryCounts, snapshot.inventoryCounts); restore(inventoryCountLines, snapshot.inventoryCountLines); restore(inventoryCountSeq, snapshot.inventoryCountSeq);
         restore(poSeq, snapshot.poSeq); restore(purchaseReceiptSeq, snapshot.purchaseReceiptSeq); restore(supplierReturnSeq, snapshot.supplierReturnSeq);
         audit.splice(0, audit.length, ...snapshot.audit);
         throw error;
@@ -391,7 +396,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     async upsertBalance(b) {
       const key = balanceKey(b.businessId, b.branchId, b.productId);
       const existing = balances.get(key);
-      const row = existing ? { ...existing, qtyOnHand: b.qtyOnHand } : { ...b, id: nid("bal") };
+      const row = existing ? { ...existing, qtyOnHand: b.qtyOnHand, updatedAt: new Date() } : { ...b, id: nid("bal"), updatedAt: new Date() };
       balances.set(key, row);
       return row;
     },
@@ -402,6 +407,51 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     },
     async listBalances(businessId) {
       return [...balances.values()].filter((b) => b.businessId === businessId);
+    },
+    async nextInventoryCountNo(businessId) {
+      const year = new Date().getUTCFullYear();
+      const seq = (inventoryCountSeq.get(businessId) ?? 0) + 1;
+      inventoryCountSeq.set(businessId, seq);
+      return `CNT-${year}-${String(seq).padStart(6, "0")}`;
+    },
+    async createInventoryCount(c) {
+      const now = new Date();
+      const row: DbInventoryCount = { ...c, id: nid("cnt"), createdAt: now, updatedAt: now };
+      inventoryCounts.set(row.id, row);
+      return row;
+    },
+    async findInventoryCountById(id, businessId) {
+      const row = inventoryCounts.get(id) ?? null;
+      return row && row.businessId === businessId ? row : null;
+    },
+    async listInventoryCountsByBusiness(businessId) {
+      return [...inventoryCounts.values()].filter((row) => row.businessId === businessId);
+    },
+    async updateInventoryCount(id, businessId, patch, expectedVersion) {
+      const row = inventoryCounts.get(id) ?? null;
+      if (!row || row.businessId !== businessId || row.version !== expectedVersion) return null;
+      const next = { ...row, ...patch, version: expectedVersion + 1, updatedAt: new Date() };
+      inventoryCounts.set(id, next);
+      return next;
+    },
+    async createInventoryCountLine(l) {
+      const now = new Date();
+      const row: DbInventoryCountLine = { ...l, id: nid("cntl"), createdAt: now, updatedAt: now };
+      inventoryCountLines.set(row.id, row);
+      return row;
+    },
+    async listInventoryCountLines(countId, businessId) {
+      return [...inventoryCountLines.values()].filter((row) => row.inventoryCountId === countId && row.businessId === businessId);
+    },
+    async updateInventoryCountLine(id, businessId, patch) {
+      const row = inventoryCountLines.get(id) ?? null;
+      if (!row || row.businessId !== businessId) return null;
+      const next = { ...row, ...patch, updatedAt: new Date() };
+      inventoryCountLines.set(id, next);
+      return next;
+    },
+    async deleteInventoryCountLines(countId, businessId) {
+      for (const [id, row] of inventoryCountLines) if (row.inventoryCountId === countId && row.businessId === businessId) inventoryCountLines.delete(id);
     },
     async createSale(s) {
       const row = { completedAt: null, ...s, id: nid("sale") };

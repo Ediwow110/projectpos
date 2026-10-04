@@ -3,6 +3,7 @@ export * from "./api.schema";
 export * from "./auth.schema";
 export * from "./catalog.schema";
 export * from "./inventory.schema";
+export * from "./inventory-count.schema";
 export * from "./sales.schema";
 export * from "./shifts.schema";
 export * from "./customers.schema";

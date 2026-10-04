@@ -165,6 +165,21 @@ export class ManagerApprovalPolicyService {
           requireDistinctApprover: false,
         };
       }
+      case "inventory_count": {
+        const count = await this.db.findInventoryCountById(action.countId, businessId);
+        if (!count) throw new Error("NOT_FOUND");
+        const lines = await this.db.listInventoryCountLines(count.id, businessId);
+        return {
+          permission: "inventory.adjust",
+          fingerprint: fingerprintPayload({
+            countId: count.id,
+            version: count.version,
+            branchId: count.branchId,
+            lines: lines.map((line) => ({ productId: line.productId, expectedQtySnapshot: line.expectedQtySnapshot, countedQty: line.countedQty, varianceQty: line.varianceQty })).sort((a, b) => a.productId.localeCompare(b.productId)),
+          }),
+          requireDistinctApprover: false,
+        };
+      }
       case "shift_close": {
         const shift = await this.db.findShiftById(action.shiftId, businessId);
         if (!shift) throw new Error("NOT_FOUND");
