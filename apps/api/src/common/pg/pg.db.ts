@@ -1,10 +1,11 @@
-import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCashMovement, DbCategory, DbCustomer, DbDevice, DbExchange, DbExpense, DbFeatureFlag, DbHeldSale, DbIdempotency, DbInvoice, DbMovement, DbPayment, DbPlan, DbMembership, DbPort, DbPrinter, DbPrintJob, DbProduct, DbReceiptDelivery, DbRefund, DbRefundItem, DbRegister, DbResetToken, DbSale, DbSaleItem, DbSession, DbShift, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbDisplayToken, DbUsageCounter, DbUser, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine } from "../db.port";
+import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCashMovement, DbCategory, DbCustomer, DbDevice, DbExchange, DbExpense, DbFeatureFlag, DbHeldSale, DbIdempotency, DbInvoice, DbMovement, DbPayment, DbPlan, DbMembership, DbPort, DbPrinter, DbPrintJob, DbProduct, DbReceiptDelivery, DbRefund, DbRefundItem, DbRegister, DbResetToken, DbSale, DbSaleItem, DbSession, DbShift, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbDisplayToken, DbUsageCounter, DbUser, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine, DbInventoryCount, DbInventoryCountLine } from "../db.port";
 import { PgContext } from "./context";
 import { settingsFamily } from "./pg-settings";
 import { auditFamily } from "./pg-audit";
 import { tenantsFamily } from "./pg-tenants";
 import { catalogFamily } from "./pg-catalog";
 import { inventoryFamily } from "./pg-inventory";
+import { inventoryCountsFamily } from "./pg-inventory-counts";
 import { salesFamily } from "./pg-sales";
 import { shiftsFamily } from "./pg-shifts";
 import { peopleFamily } from "./pg-people";
@@ -23,6 +24,7 @@ export class PgDbPort implements DbPort {
   private readonly tenants: ReturnType<typeof tenantsFamily>;
   private readonly catalog: ReturnType<typeof catalogFamily>;
   private readonly inventory: ReturnType<typeof inventoryFamily>;
+  private readonly inventoryCounts: ReturnType<typeof inventoryCountsFamily>;
   private readonly sales: ReturnType<typeof salesFamily>;
   private readonly shifts: ReturnType<typeof shiftsFamily>;
   private readonly people: ReturnType<typeof peopleFamily>;
@@ -38,6 +40,7 @@ export class PgDbPort implements DbPort {
     this.tenants = tenantsFamily(ctx);
     this.catalog = catalogFamily(ctx);
     this.inventory = inventoryFamily(ctx);
+    this.inventoryCounts = inventoryCountsFamily(ctx);
     this.sales = salesFamily(ctx);
     this.shifts = shiftsFamily(ctx);
     this.people = peopleFamily(ctx);
@@ -199,6 +202,15 @@ export class PgDbPort implements DbPort {
   listBalances(businessId: string): Promise<DbBalance[]> {
     return this.inventory.listBalances(businessId);
   }
+  nextInventoryCountNo(businessId: string): Promise<string> { return this.inventoryCounts.nextInventoryCountNo(businessId); }
+  createInventoryCount(c: Omit<DbInventoryCount, "id" | "createdAt" | "updatedAt">): Promise<DbInventoryCount> { return this.inventoryCounts.createInventoryCount(c); }
+  findInventoryCountById(id: string, businessId: string): Promise<DbInventoryCount | null> { return this.inventoryCounts.findInventoryCountById(id, businessId); }
+  listInventoryCountsByBusiness(businessId: string): Promise<DbInventoryCount[]> { return this.inventoryCounts.listInventoryCountsByBusiness(businessId); }
+  updateInventoryCount(id: string, businessId: string, patch: Partial<Omit<DbInventoryCount, "id" | "businessId" | "createdAt" | "version">>, expectedVersion: number): Promise<DbInventoryCount | null> { return this.inventoryCounts.updateInventoryCount(id, businessId, patch, expectedVersion); }
+  createInventoryCountLine(l: Omit<DbInventoryCountLine, "id" | "createdAt" | "updatedAt">): Promise<DbInventoryCountLine> { return this.inventoryCounts.createInventoryCountLine(l); }
+  listInventoryCountLines(countId: string, businessId: string): Promise<DbInventoryCountLine[]> { return this.inventoryCounts.listInventoryCountLines(countId, businessId); }
+  updateInventoryCountLine(id: string, businessId: string, patch: Partial<Omit<DbInventoryCountLine, "id" | "businessId" | "inventoryCountId" | "createdAt">>): Promise<DbInventoryCountLine | null> { return this.inventoryCounts.updateInventoryCountLine(id, businessId, patch); }
+  deleteInventoryCountLines(countId: string, businessId: string): Promise<void> { return this.inventoryCounts.deleteInventoryCountLines(countId, businessId); }
   // Devices family.
   createDevice(d: Omit<DbDevice, "id">): Promise<DbDevice> {
     return this.devices.createDevice(d);

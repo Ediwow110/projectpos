@@ -20,6 +20,7 @@ export type ManagerApprovalAction =
   | { kind: "refund"; saleId: string; items: Array<{ saleItemId: string; qty: number }>; reason?: string }
   | { kind: "sale_void"; saleId: string; reason: string }
   | { kind: "inventory_movement"; productId: string; movementType: string; qtyDelta: number; reason?: string; branchId?: string }
+  | { kind: "inventory_count"; countId: string }
   | { kind: "shift_close"; shiftId: string; countedCashMinor: number; closeNotes?: string };
 
 export interface ManagerApprovalGrant {

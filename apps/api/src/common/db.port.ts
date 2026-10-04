@@ -260,8 +260,55 @@ export interface DbBalance {
   businessId: string;
   productId: string;
   qtyOnHand: number;
+  updatedAt?: Date;
   // Phase 9a: nullable branch scope; null/undefined = legacy head-office scope.
   branchId?: string | null;
+}
+
+export type InventoryCountStatus = "DRAFT" | "COUNTING" | "SUBMITTED" | "APPROVED" | "POSTED" | "CANCELLED";
+export type InventoryCountScope = "FULL" | "PARTIAL";
+
+export interface DbInventoryCount {
+  id: string;
+  businessId: string;
+  branchId: string | null;
+  countNumber: string;
+  status: InventoryCountStatus;
+  scopeType: InventoryCountScope;
+  name: string;
+  notes: string | null;
+  createdBy: string;
+  startedAt: Date | null;
+  submittedBy: string | null;
+  submittedAt: Date | null;
+  approvedBy: string | null;
+  approvedAt: Date | null;
+  approvalFingerprint: string | null;
+  postedBy: string | null;
+  postedAt: Date | null;
+  cancelledBy: string | null;
+  cancelledAt: Date | null;
+  version: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DbInventoryCountLine {
+  id: string;
+  businessId: string;
+  inventoryCountId: string;
+  productId: string;
+  expectedQtySnapshot: number;
+  balanceUpdatedAtSnapshot: Date | null;
+  countedQty: number | null;
+  varianceQty: number | null;
+  productNameSnapshot: string;
+  skuSnapshot: string | null;
+  notes: string | null;
+  countedBy: string | null;
+  countedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface DbSale {
@@ -698,6 +745,15 @@ export interface DbPort {
   upsertBalance(b: Omit<DbBalance, "id">): Promise<DbBalance>;
   findBalance(productId: string, businessId: string, branchId?: string | null): Promise<DbBalance | null>;
   listBalances(businessId: string): Promise<DbBalance[]>;
+  nextInventoryCountNo(businessId: string): Promise<string>;
+  createInventoryCount(c: Omit<DbInventoryCount, "id" | "createdAt" | "updatedAt">): Promise<DbInventoryCount>;
+  findInventoryCountById(id: string, businessId: string): Promise<DbInventoryCount | null>;
+  listInventoryCountsByBusiness(businessId: string): Promise<DbInventoryCount[]>;
+  updateInventoryCount(id: string, businessId: string, patch: Partial<Omit<DbInventoryCount, "id" | "businessId" | "createdAt" | "version">>, expectedVersion: number): Promise<DbInventoryCount | null>;
+  createInventoryCountLine(l: Omit<DbInventoryCountLine, "id" | "createdAt" | "updatedAt">): Promise<DbInventoryCountLine>;
+  listInventoryCountLines(countId: string, businessId: string): Promise<DbInventoryCountLine[]>;
+  updateInventoryCountLine(id: string, businessId: string, patch: Partial<Omit<DbInventoryCountLine, "id" | "businessId" | "inventoryCountId" | "createdAt">>): Promise<DbInventoryCountLine | null>;
+  deleteInventoryCountLines(countId: string, businessId: string): Promise<void>;
   createSale(s: Omit<DbSale, "id">): Promise<DbSale>;
   findSaleById(id: string, businessId: string): Promise<DbSale | null>;
   listSalesByBusiness(businessId: string): Promise<DbSale[]>;

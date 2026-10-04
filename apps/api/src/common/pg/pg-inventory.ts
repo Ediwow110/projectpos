@@ -21,7 +21,7 @@ const MOVEMENT_SELECT =
   'SELECT "id", "businessId", "productId", "branchId", "qtyDelta", "type", "referenceType", "referenceId",' +
   ' "actorId", "reason", "requestId" FROM "InventoryMovement"';
 const BALANCE_SELECT =
-  'SELECT "id", "businessId", "productId", "branchId", "qtyOnHand" FROM "InventoryBalance"';
+  'SELECT "id", "businessId", "productId", "branchId", "qtyOnHand", "updatedAt" FROM "InventoryBalance"';
 
 export function inventoryFamily(ctx: PgContext) {
   return {

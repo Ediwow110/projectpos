@@ -18,6 +18,8 @@ const ITEMS = {
   products: { href: "/products", label: "Products", icon: "◇", tour: "products" },
   categories: { href: "/categories", label: "Categories", icon: "◈", tour: "categories" },
   inventory: { href: "/inventory", label: "Inventory", icon: "□", tour: "inventory" },
+  stockCounts: { href: "/inventory/counts", label: "Stock Counts", icon: "#", tour: "stock-counts" },
+  replenishment: { href: "/inventory/replenishment", label: "Replenishment", icon: "↟", tour: "replenishment" },
   registers: { href: "/registers", label: "Registers", icon: "▦", tour: "registers" },
   shifts: { href: "/shifts", label: "Shifts", icon: "▤", tour: "shifts" },
   transfers: { href: "/transfers", label: "Transfers", icon: "⇄", tour: "transfers" },
@@ -42,12 +44,12 @@ export function workspaceNavigationForRole(role?: string): WorkspaceNavigationGr
   if (role === "cashier") {
     return [
       group("Sell", ["dashboard", "pos", "sales", "customers"]),
-      group("Operations", ["inventory", "registers", "shifts", "devices", "sync"]),
+      group("Operations", ["inventory", "stockCounts", "replenishment", "registers", "shifts", "devices", "sync"]),
     ];
   }
   if (role === "inventory") {
     return [
-      group("Catalog & stock", ["dashboard", "products", "categories", "inventory"]),
+      group("Catalog & stock", ["dashboard", "products", "categories", "inventory", "stockCounts", "replenishment"]),
       group("Procurement", ["suppliers", "purchaseOrders", "supplierReturns"]),
       group("Operations", ["transfers", "branches", "devices", "sync"]),
       group("Insights", ["reports"]),
@@ -56,7 +58,7 @@ export function workspaceNavigationForRole(role?: string): WorkspaceNavigationGr
   if (role === "manager") {
     return [
       group("Sell", ["dashboard", "pos", "sales", "customers"]),
-      group("Catalog & stock", ["products", "categories", "inventory"]),
+      group("Catalog & stock", ["products", "categories", "inventory", "stockCounts", "replenishment"]),
       group("Procurement", ["suppliers", "purchaseOrders", "supplierReturns"]),
       group("Operations", ["registers", "shifts", "transfers", "expenses"]),
       group("Insights", ["reports"]),
@@ -65,7 +67,7 @@ export function workspaceNavigationForRole(role?: string): WorkspaceNavigationGr
   }
   return [
     group("Sell", ["dashboard", "pos", "sales", "customers"]),
-    group("Catalog & stock", ["products", "categories", "inventory"]),
+    group("Catalog & stock", ["products", "categories", "inventory", "stockCounts", "replenishment"]),
     group("Procurement", ["suppliers", "purchaseOrders", "supplierReturns"]),
     group("Operations", ["registers", "shifts", "transfers", "expenses"]),
     group("Insights", ["reports"]),
