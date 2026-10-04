@@ -177,7 +177,7 @@ export class StoredValueService {
       let beforePoints: number | undefined;
       if (!existing) {
         beforePoints = await this.loyaltyBalance(businessId, customerId);
-        await this.db.createLoyaltyTransaction({ businessId, accountId: account.id, customerId, type: pointsDelta > 0 ? "MANUAL_CREDIT" : "MANUAL_DEBIT", pointsDelta, valueMinorSnapshot: null, saleId: null, refundId: null, idempotencyKey, reason: reason.trim() });
+        await this.db.createLoyaltyTransaction({ businessId, accountId: account.id, customerId, type: pointsDelta > 0 ? "MANUAL_CREDIT" : "MANUAL_DEBIT", pointsDelta, valueMinorSnapshot: null, saleId: null, refundId: null, actorId, requestId, idempotencyKey, reason: reason.trim() });
       }
       const balance = await this.loyaltyBalance(businessId, customerId);
       if (!existing) {
