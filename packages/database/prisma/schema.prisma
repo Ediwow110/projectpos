@@ -60,6 +60,13 @@ model Business {
   settings    Setting[]
   categories  Category[]
   products    Product[]
+  productFamilies ProductFamily[]
+  productOptions ProductOption[]
+  productOptionValues ProductOptionValue[]
+  productVariantOptionValues ProductVariantOptionValue[]
+  productBundles ProductBundle[]
+  bundleComponents BundleComponent[]
+  saleItemBundleComponents SaleItemBundleComponent[]
   movements   InventoryMovement[]
   balances    InventoryBalance[]
   inventoryCounts InventoryCount[]
@@ -213,6 +220,7 @@ model Category {
   updatedAt   DateTime @updatedAt
   business    Business @relation(fields: [businessId], references: [id])
   products    Product[]
+  productFamilies ProductFamily[]
   @@unique([businessId, name])
   @@index([businessId])
 }
@@ -220,6 +228,8 @@ model Category {
 model Product {
   id             String    @id @default(cuid())
   businessId     String
+  familyId       String?
+  productType    String    @default("STANDARD")
   categoryId     String?
   name           String
   sku            String?
@@ -236,6 +246,7 @@ model Product {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   business       Business  @relation(fields: [businessId], references: [id])
+  family         ProductFamily? @relation(fields: [familyId], references: [id], onDelete: SetNull)
   category       Category? @relation(fields: [categoryId], references: [id])
   preventOversell Boolean   @default(true)
   movements      InventoryMovement[]
@@ -245,8 +256,109 @@ model Product {
   purchaseReceiptLines PurchaseReceiptLine[]
   supplierReturnLines SupplierReturnLine[]
   inventoryCountLines InventoryCountLine[]
+  variantOptionValues ProductVariantOptionValue[]
+  bundle             ProductBundle? @relation("BundleProduct")
+  bundleComponents   BundleComponent[] @relation("BundleComponentProduct")
   @@index([businessId, isActive])
   @@index([businessId, categoryId])
+  @@index([businessId, familyId, isActive])
+}
+
+model ProductFamily {
+  id          String   @id @default(cuid())
+  businessId  String
+  name        String
+  categoryId  String?
+  brand       String?
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  business    Business @relation(fields: [businessId], references: [id])
+  category    Category? @relation(fields: [categoryId], references: [id])
+  products    Product[]
+  options     ProductOption[]
+  @@unique([businessId, name])
+  @@index([businessId, isActive])
+}
+
+model ProductOption {
+  id         String   @id @default(cuid())
+  businessId String
+  familyId   String
+  name       String
+  position   Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  business   Business @relation(fields: [businessId], references: [id])
+  family     ProductFamily @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  values     ProductOptionValue[]
+  links      ProductVariantOptionValue[]
+  @@unique([businessId, familyId, name])
+  @@unique([businessId, familyId, position])
+  @@index([businessId, familyId])
+}
+
+model ProductOptionValue {
+  id         String   @id @default(cuid())
+  businessId String
+  optionId   String
+  value      String
+  position   Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  business   Business @relation(fields: [businessId], references: [id])
+  option     ProductOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  links      ProductVariantOptionValue[]
+  @@unique([businessId, optionId, value])
+  @@unique([businessId, optionId, position])
+  @@index([businessId, optionId])
+}
+
+model ProductVariantOptionValue {
+  id            String   @id @default(cuid())
+  businessId    String
+  productId     String
+  optionId      String
+  optionValueId String
+  createdAt     DateTime @default(now())
+  business     Business @relation(fields: [businessId], references: [id])
+  product      Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  option       ProductOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  optionValue  ProductOptionValue @relation(fields: [optionValueId], references: [id], onDelete: Cascade)
+  @@unique([businessId, productId, optionId])
+  @@unique([businessId, productId, optionValueId])
+  @@index([businessId, optionId, optionValueId])
+}
+
+model ProductBundle {
+  id             String   @id @default(cuid())
+  businessId     String
+  bundleProductId String  @unique
+  version        Int      @default(1)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  business       Business @relation(fields: [businessId], references: [id])
+  bundleProduct  Product @relation("BundleProduct", fields: [bundleProductId], references: [id], onDelete: Cascade)
+  components     BundleComponent[]
+  snapshots      SaleItemBundleComponent[]
+  @@index([businessId])
+}
+
+model BundleComponent {
+  id            String   @id @default(cuid())
+  businessId    String
+  bundleId      String
+  componentProductId String
+  quantity      Int
+  position      Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  business      Business @relation(fields: [businessId], references: [id])
+  bundle        ProductBundle @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+  componentProduct Product @relation("BundleComponentProduct", fields: [componentProductId], references: [id])
+  @@unique([businessId, bundleId, componentProductId])
+  @@index([businessId, bundleId, position])
 }
 
 model InventoryMovement {
@@ -397,8 +509,27 @@ model SaleItem {
   lineDiscountMinor Int    @default(0)
   lineTotalMinor    Int
   sale              Sale   @relation(fields: [saleId], references: [id])
+  bundleSnapshots   SaleItemBundleComponent[]
   @@index([businessId, saleId])
   @@index([businessId, saleId, position])
+}
+
+model SaleItemBundleComponent {
+  id                         String   @id @default(cuid())
+  businessId                 String
+  saleItemId                 String
+  bundleId                   String
+  componentProductId         String
+  componentNameSnapshot      String
+  quantityPerBundleSnapshot  Int
+  costMinorSnapshot          Int
+  compositionVersion         Int
+  createdAt                  DateTime @default(now())
+  business                   Business @relation(fields: [businessId], references: [id])
+  saleItem                   SaleItem @relation(fields: [saleItemId], references: [id], onDelete: Cascade)
+  bundle                     ProductBundle @relation(fields: [bundleId], references: [id])
+  @@index([businessId, saleItemId])
+  @@index([businessId, bundleId])
 }
 
 model Payment {

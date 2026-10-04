@@ -44,6 +44,7 @@ export default function InventoryPage(): JSX.Element {
   const [view, setView] = useState("all");
   const [page, setPage] = useState(1);
   const [productId, setProductId] = useState("");
+  const [barcode, setBarcode] = useState("");
   const [type, setType] = useState("receive");
   const [qty, setQty] = useState("");
   const [reason, setReason] = useState("");
@@ -69,6 +70,18 @@ export default function InventoryPage(): JSX.Element {
   // the loaded balances page.
   const approvalProductName = (balancesQuery.data?.items ?? [])
     .find((row) => row.productId === productId.trim())?.productName;
+
+  async function resolveBarcode(): Promise<void> {
+    if (!barcode.trim()) return;
+    try {
+      const product = await apiFetch<{ id: string; name: string }>(`/api/v1/products/barcode/${encodeURIComponent(barcode.trim())}`);
+      setProductId(product.id);
+      setError(`${product.name} selected.`);
+      setBarcode("");
+    } catch (err) {
+      setError(err instanceof ApiError ? `${err.code}: ${err.message}` : "Barcode lookup failed");
+    }
+  }
 
   async function submitMovement(approvalToken?: string): Promise<boolean> {
     const delta = Number(qty);
@@ -239,9 +252,10 @@ export default function InventoryPage(): JSX.Element {
             <SectionHeader title="Record movement" description="Receipts, damage, adjustments, returns, counts, and transfers remain explicit audited movements." />
             <form noValidate onSubmit={(event) => void recordMovement(event)} className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[1.2fr_1fr_.8fr_1.4fr_auto]">
               <label className="text-[11px] font-semibold text-[#655b53]">
-                Product ID
-                <input value={productId} onChange={(event) => setProductId(event.target.value)} placeholder="Product ID" className="field mt-1.5" />
+                Product ID or barcode
+                <input value={productId} onChange={(event) => setProductId(event.target.value)} placeholder="Paste ID or scan barcode" className="field mt-1.5" />
               </label>
+              <label className="text-[11px] font-semibold text-[#655b53]">Scanner helper<input value={barcode} onChange={(event) => setBarcode(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void resolveBarcode(); } }} placeholder="Scan, then press Enter" className="field mt-1.5" /></label>
               <label className="text-[11px] font-semibold text-[#655b53]">
                 Movement type
                 <select value={type} onChange={(event) => setType(event.target.value)} className="field mt-1.5">

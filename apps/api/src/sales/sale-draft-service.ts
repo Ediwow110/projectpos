@@ -24,10 +24,20 @@ export class SalesDraftService {
     granted: string[],
   ): Promise<DbSale> {
     const businessTax = await this.businessTaxRateBps(businessId);
-    const lines: Array<{ product: DbProduct; qty: number; lineDiscountMinor: number }> = [];
+    const lines: Array<{ product: DbProduct; qty: number; lineDiscountMinor: number; costMinor: number }> = [];
     for (const line of input.lines) {
       const product = await this.stock.requireProduct(businessId, line.productId);
-      lines.push({ product, qty: line.qty, lineDiscountMinor: line.lineDiscountMinor ?? 0 });
+      let costMinor = product.costMinor;
+      if (product.productType === "BUNDLE") {
+        const bundle = await this.db.findProductBundleByProductId(product.id, businessId);
+        if (!bundle) throw new Error("INVALID_BUNDLE");
+        const components = await this.db.listBundleComponents(bundle.id, businessId);
+        if (components.length === 0) throw new Error("INVALID_BUNDLE");
+        const componentProducts = await Promise.all(components.map((component) => this.db.findProductById(component.componentProductId, businessId)));
+        if (componentProducts.some((component) => !component)) throw new Error("INVALID_BUNDLE");
+        costMinor = components.reduce((sum, component, index) => sum + component.quantity * componentProducts[index]!.costMinor, 0);
+      }
+      lines.push({ product, qty: line.qty, lineDiscountMinor: line.lineDiscountMinor ?? 0, costMinor });
     }
     const subtotalGuess = lines.reduce(
       (sum, line) => sum + Math.max(0, line.qty * line.product.priceMinor - line.lineDiscountMinor),
@@ -51,7 +61,7 @@ export class SalesDraftService {
       lines: lines.map((line) => ({
         qty: line.qty,
         priceMinor: line.product.priceMinor,
-        costMinor: line.product.costMinor,
+        costMinor: line.costMinor,
         taxRateBps: line.product.taxRateBps,
         lineDiscountMinor: line.lineDiscountMinor,
       })),
@@ -105,7 +115,7 @@ export class SalesDraftService {
       createdAt: new Date(),
     });
     for (const [position, line] of lines.entries()) {
-      await this.db.createSaleItem({
+      const saleItem = await this.db.createSaleItem({
         businessId,
         saleId: sale.id,
         position,
@@ -114,11 +124,31 @@ export class SalesDraftService {
         unit: line.product.unit,
         qty: line.qty,
         priceMinor: line.product.priceMinor,
-        costMinor: line.product.costMinor,
+        costMinor: line.costMinor,
         taxRateBps: line.product.taxRateBps,
         lineDiscountMinor: line.lineDiscountMinor,
         lineTotalMinor: Math.max(0, line.qty * line.product.priceMinor - line.lineDiscountMinor),
       });
+      const bundle = line.product.productType === "BUNDLE"
+        ? await this.db.findProductBundleByProductId(line.product.id, businessId)
+        : null;
+      if (bundle) {
+        const components = await this.db.listBundleComponents(bundle.id, businessId);
+        for (const component of components) {
+          const componentProduct = await this.db.findProductById(component.componentProductId, businessId);
+          if (!componentProduct) throw new Error("INVALID_BUNDLE");
+          await this.db.createSaleItemBundleComponent({
+            businessId,
+            saleItemId: saleItem.id,
+            bundleId: bundle.id,
+            componentProductId: component.componentProductId,
+            componentNameSnapshot: componentProduct.name,
+            quantityPerBundleSnapshot: component.quantity,
+            costMinorSnapshot: componentProduct.costMinor,
+            compositionVersion: bundle.version,
+          });
+        }
+      }
     }
     await this.db.appendAudit({
       businessId,

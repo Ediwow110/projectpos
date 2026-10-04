@@ -224,6 +224,8 @@ export interface DbCategory {
 export interface DbProduct {
   id: string;
   businessId: string;
+  familyId?: string | null;
+  productType?: "STANDARD" | "BUNDLE";
   categoryId: string | null;
   name: string;
   sku: string | null;
@@ -237,6 +239,80 @@ export interface DbProduct {
   trackInventory: boolean;
   isActive: boolean;
   imageUrl: string | null;
+}
+
+export interface DbProductFamily {
+  id: string;
+  businessId: string;
+  name: string;
+  categoryId: string | null;
+  brand: string | null;
+  description: string | null;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DbProductOption {
+  id: string;
+  businessId: string;
+  familyId: string;
+  name: string;
+  position: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DbProductOptionValue {
+  id: string;
+  businessId: string;
+  optionId: string;
+  value: string;
+  position: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DbProductVariantOptionValue {
+  id: string;
+  businessId: string;
+  productId: string;
+  optionId: string;
+  optionValueId: string;
+  createdAt: Date;
+}
+
+export interface DbProductBundle {
+  id: string;
+  businessId: string;
+  bundleProductId: string;
+  version: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DbBundleComponent {
+  id: string;
+  businessId: string;
+  bundleId: string;
+  componentProductId: string;
+  quantity: number;
+  position: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DbSaleItemBundleComponent {
+  id: string;
+  businessId: string;
+  saleItemId: string;
+  bundleId: string;
+  componentProductId: string;
+  componentNameSnapshot: string;
+  quantityPerBundleSnapshot: number;
+  costMinorSnapshot: number;
+  compositionVersion: number;
+  createdAt: Date;
 }
 
 
@@ -738,6 +814,26 @@ export interface DbPort {
   listProducts(businessId: string): Promise<DbProduct[]>;
   findProductById(id: string, businessId: string): Promise<DbProduct | null>;
   updateProduct(id: string, businessId: string, patch: Partial<Omit<DbProduct, "id" | "businessId">>): Promise<DbProduct | null>;
+  createProductFamily(f: Omit<DbProductFamily, "id" | "createdAt" | "updatedAt">): Promise<DbProductFamily>;
+  listProductFamilies(businessId: string): Promise<DbProductFamily[]>;
+  findProductFamilyById(id: string, businessId: string): Promise<DbProductFamily | null>;
+  updateProductFamily(id: string, businessId: string, patch: Partial<Omit<DbProductFamily, "id" | "businessId" | "createdAt">>): Promise<DbProductFamily | null>;
+  createProductOption(o: Omit<DbProductOption, "id" | "createdAt" | "updatedAt">): Promise<DbProductOption>;
+  listProductOptions(familyId: string, businessId: string): Promise<DbProductOption[]>;
+  findProductOptionById(id: string, businessId: string): Promise<DbProductOption | null>;
+  createProductOptionValue(v: Omit<DbProductOptionValue, "id" | "createdAt" | "updatedAt">): Promise<DbProductOptionValue>;
+  listProductOptionValues(optionId: string, businessId: string): Promise<DbProductOptionValue[]>;
+  findProductOptionValueById(id: string, businessId: string): Promise<DbProductOptionValue | null>;
+  createVariantOptionValue(v: Omit<DbProductVariantOptionValue, "id" | "createdAt">): Promise<DbProductVariantOptionValue>;
+  listVariantOptionValues(productId: string, businessId: string): Promise<DbProductVariantOptionValue[]>;
+  deleteVariantOptionValues(productId: string, businessId: string): Promise<void>;
+  createProductBundle(b: Omit<DbProductBundle, "id" | "createdAt" | "updatedAt">): Promise<DbProductBundle>;
+  findProductBundleByProductId(productId: string, businessId: string): Promise<DbProductBundle | null>;
+  findProductBundleById(id: string, businessId: string): Promise<DbProductBundle | null>;
+  updateProductBundle(id: string, businessId: string, patch: Partial<Omit<DbProductBundle, "id" | "businessId" | "createdAt">>): Promise<DbProductBundle | null>;
+  createBundleComponent(c: Omit<DbBundleComponent, "id" | "createdAt" | "updatedAt">): Promise<DbBundleComponent>;
+  listBundleComponents(bundleId: string, businessId: string): Promise<DbBundleComponent[]>;
+  deleteBundleComponents(bundleId: string, businessId: string): Promise<void>;
   createMovement(m: Omit<DbMovement, "id">): Promise<DbMovement>;
   listMovements(productId: string, businessId: string, branchId?: string | null): Promise<DbMovement[]>;
   listMovementsByBusiness(businessId: string): Promise<DbMovement[]>;
@@ -766,6 +862,8 @@ export interface DbPort {
   // Phase 12 bulk read: reporting groups these by saleId in one round-trip
   // instead of two queries per sale (PLAN §12 forbids N+1 patterns).
   listSaleItemsByBusiness(businessId: string): Promise<DbSaleItem[]>;
+  createSaleItemBundleComponent(c: Omit<DbSaleItemBundleComponent, "id" | "createdAt">): Promise<DbSaleItemBundleComponent>;
+  listSaleItemBundleComponents(saleItemId: string, businessId: string): Promise<DbSaleItemBundleComponent[]>;
   createPayment(p: Omit<DbPayment, "id">): Promise<DbPayment>;
   findPaymentById(id: string, businessId: string): Promise<DbPayment | null>;
   listPaymentsBySale(saleId: string, businessId: string): Promise<DbPayment[]>;

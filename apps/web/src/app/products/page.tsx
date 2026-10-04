@@ -338,7 +338,7 @@ export default function ProductsPage(): JSX.Element {
               <h2 className="font-display text-base font-semibold">Products</h2>
               <p className="mt-1 text-[11px] text-[#7a6f66]">{data.total} result{data.total === 1 ? "" : "s"} · page {data.page} of {pages}</p>
             </div>
-            <Link href="/categories" className="text-[11px] font-semibold text-[#e44e34]">Manage categories →</Link>
+            <div className="flex items-center gap-4"><Link href="/products/families" className="text-[11px] font-semibold text-[#e44e34]">Manage variants →</Link><Link href="/products/bundles" className="text-[11px] font-semibold text-[#e44e34]">Manage bundles →</Link><Link href="/products/labels" className="text-[11px] font-semibold text-[#e44e34]">Barcode labels →</Link><Link href="/categories" className="text-[11px] font-semibold text-[#e44e34]">Manage categories →</Link></div>
           </div>
           <table className="premium-table min-w-[720px] text-left text-[12px]">
             <thead>

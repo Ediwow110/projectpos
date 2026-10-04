@@ -16,16 +16,36 @@ export class SalesStockService {
     items: DbSaleItem[],
     branchId: string | null,
   ): Promise<void> {
-    for (const item of items) {
-      const product = await this.requireProduct(businessId, item.productId);
-      if (!product.trackInventory) continue;
-      const current = await this.db.findBalance(item.productId, businessId, branchId);
+    const requirements = await this.stockRequirements(businessId, items);
+    for (const [productId, required] of requirements) {
+      const current = await this.db.findBalance(productId, businessId, branchId);
       const onHand = current?.qtyOnHand ?? 0;
-      if (onHand - item.qty < 0) {
+      if (onHand - required < 0) {
         incrementMetric("pos_inventory_failures_total");
         throw new Error("INSUFFICIENT_STOCK");
       }
     }
+  }
+
+  private async stockRequirements(businessId: string, items: DbSaleItem[]): Promise<Map<string, number>> {
+    const requirements = new Map<string, number>();
+    for (const item of items) {
+      const product = await this.requireProduct(businessId, item.productId);
+      const bundle = product.productType === "BUNDLE"
+        ? await this.db.findProductBundleByProductId(item.productId, businessId)
+        : null;
+      if (product.productType === "BUNDLE" && !bundle) throw new Error("INVALID_BUNDLE");
+      if (bundle) {
+        const components = await this.db.listBundleComponents(bundle.id, businessId);
+        if (components.length === 0) throw new Error("INVALID_BUNDLE");
+        for (const component of components) {
+          requirements.set(component.componentProductId, (requirements.get(component.componentProductId) ?? 0) + item.qty * component.quantity);
+        }
+      } else if (product.trackInventory) {
+        requirements.set(item.productId, (requirements.get(item.productId) ?? 0) + item.qty);
+      }
+    }
+    return requirements;
   }
 
   async applySale(
@@ -39,19 +59,18 @@ export class SalesStockService {
     await withInventoryLocks(
       this.db,
       businessId,
-      items.map((item) => ({ productId: item.productId, branchId })),
+      [...(await this.stockRequirements(businessId, items)).keys()].map((productId) => ({ productId, branchId })),
       async () => {
         await this.assertAvailable(businessId, items, branchId);
-        for (const item of items) {
-          const product = await this.requireProduct(businessId, item.productId);
-          if (!product.trackInventory) continue;
-          const current = await this.db.findBalance(item.productId, businessId, branchId);
+        const requirements = await this.stockRequirements(businessId, items);
+        for (const [productId, required] of requirements) {
+          const current = await this.db.findBalance(productId, businessId, branchId);
           const onHand = current?.qtyOnHand ?? 0;
           await this.db.createMovement({
             businessId,
-            productId: item.productId,
+            productId,
             type: "sale",
-            qtyDelta: -item.qty,
+            qtyDelta: -required,
             reason: null,
             referenceType: "Sale",
             referenceId: saleId,
@@ -62,8 +81,8 @@ export class SalesStockService {
           await this.db.upsertBalance({
             businessId,
             branchId,
-            productId: item.productId,
-            qtyOnHand: onHand - item.qty,
+            productId,
+            qtyOnHand: onHand - required,
           });
         }
       },

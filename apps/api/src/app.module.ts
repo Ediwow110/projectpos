@@ -14,6 +14,7 @@ import { TenantService } from "./tenant/nest/tenant.service";
 import { BusinessController } from "./business/nest/business.controller";
 import { BusinessService } from "./business/nest/business.service";
 import { CatalogController } from "./catalog/nest/catalog.controller";
+import { ProductModelController } from "./catalog/nest/product-model.controller";
 import { InventoryController } from "./inventory/nest/inventory.controller";
 import { InventoryCountController } from "./inventory/nest/inventory-count.controller";
 import { SalesController } from "./sales/nest/sales.controller";
@@ -37,6 +38,7 @@ import { ReceiptShareController } from "./sales/nest/receipt-share.controller";
 import { PayMongoController } from "./payments/paymongo.controller";
 import { ProcurementController } from "./procurement/nest/procurement.controller";
 import { CatalogService } from "./catalog/nest/catalog.service";
+import { ProductModelService } from "./catalog/nest/product-model.service";
 import { InventoryService } from "./inventory/nest/inventory.service";
 import { InventoryCountService } from "./inventory/nest/inventory-count.service";
 import { SalesService } from "./sales/nest/sales.service";
@@ -100,7 +102,7 @@ function runtimeDatabaseUrl(): string | undefined {
 }
 
 @Module({
-    controllers: [HealthController, AuthController, ApprovalController, TenantController, BusinessController, CatalogController, InventoryController, InventoryCountController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, ProcurementController, MetricsController],
+    controllers: [HealthController, AuthController, ApprovalController, TenantController, BusinessController, ProductModelController, CatalogController, InventoryController, InventoryCountController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, ProcurementController, MetricsController],
   providers: [
     {
       provide: HUMAN_VERIFICATION_PORT,
@@ -123,6 +125,7 @@ function runtimeDatabaseUrl(): string | undefined {
     TenantService,
     BusinessService,
     CatalogService,
+    ProductModelService,
     InventoryService,
     {
       provide: SalesService,
@@ -204,7 +207,7 @@ export async function createTestApp(options: { paymongo?: PayMongoPort; humanVer
     ? new PgDbPort(new PgContext(databaseUrl))
     : createMemoryDb();
   const moduleRef = await Test.createTestingModule({
-  controllers: [HealthController, AuthController, ApprovalController, TenantController, BusinessController, CatalogController, InventoryController, InventoryCountController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, ProcurementController, MetricsController],
+  controllers: [HealthController, AuthController, ApprovalController, TenantController, BusinessController, ProductModelController, CatalogController, InventoryController, InventoryCountController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, ProcurementController, MetricsController],
     providers: [
       { provide: "DbPort", useValue: db },
       { provide: PAYMONGO_PORT, useValue: options.paymongo ?? createPayMongoFromEnv({}) },
@@ -229,6 +232,11 @@ export async function createTestApp(options: { paymongo?: PayMongoPort; humanVer
       {
         provide: CatalogService,
         useFactory: (d: DbPort) => new CatalogService(d),
+        inject: ["DbPort"],
+      },
+      {
+        provide: ProductModelService,
+        useFactory: (d: DbPort) => new ProductModelService(d),
         inject: ["DbPort"],
       },
       {
