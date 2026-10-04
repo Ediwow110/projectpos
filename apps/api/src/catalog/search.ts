@@ -4,6 +4,8 @@ export interface CatalogRow {
   name: string;
   sku: string | null;
   barcode: string | null;
+  brand?: string | null;
+  optionText?: string | null;
   categoryId: string | null;
   costMinor: number;
   priceMinor: number;
@@ -15,6 +17,8 @@ export function matchesQuery(row: CatalogRow, q: string): boolean {
   if (needle === "") return true;
   if (row.name.toLowerCase().includes(needle.toLowerCase())) return true;
   if (row.sku && row.sku.toLowerCase().includes(needle.toLowerCase())) return true;
+  if (row.brand && row.brand.toLowerCase().includes(needle.toLowerCase())) return true;
+  if (row.optionText && row.optionText.toLowerCase().includes(needle.toLowerCase())) return true;
   if (row.barcode && row.barcode === needle) return true;
   return false;
 }

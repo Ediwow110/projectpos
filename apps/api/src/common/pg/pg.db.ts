@@ -1,4 +1,4 @@
-import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCashMovement, DbCategory, DbCustomer, DbDevice, DbExchange, DbExpense, DbFeatureFlag, DbHeldSale, DbIdempotency, DbInvoice, DbMovement, DbPayment, DbPlan, DbMembership, DbPort, DbPrinter, DbPrintJob, DbProduct, DbReceiptDelivery, DbRefund, DbRefundItem, DbRegister, DbResetToken, DbSale, DbSaleItem, DbSession, DbShift, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbDisplayToken, DbUsageCounter, DbUser, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine, DbInventoryCount, DbInventoryCountLine } from "../db.port";
+import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCashMovement, DbCategory, DbCustomer, DbDevice, DbExchange, DbExpense, DbFeatureFlag, DbHeldSale, DbIdempotency, DbInvoice, DbMovement, DbPayment, DbPlan, DbMembership, DbPort, DbPrinter, DbPrintJob, DbProduct, DbProductFamily, DbProductOption, DbProductOptionValue, DbProductVariantOptionValue, DbProductBundle, DbBundleComponent, DbSaleItemBundleComponent, DbReceiptDelivery, DbRefund, DbRefundItem, DbRegister, DbResetToken, DbSale, DbSaleItem, DbSession, DbShift, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbDisplayToken, DbUsageCounter, DbUser, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine, DbInventoryCount, DbInventoryCountLine } from "../db.port";
 import { PgContext } from "./context";
 import { settingsFamily } from "./pg-settings";
 import { auditFamily } from "./pg-audit";
@@ -14,6 +14,7 @@ import { devicesFamily } from "./pg-devices";
 import { billingFamily } from "./pg-billing";
 import { integrationsFamily } from "./pg-integrations";
 import { procurementFamily } from "./pg-procurement";
+import { productModelFamily, type ProductModelFamily } from "./pg-product-model";
 
 // Phase 12: the PostgreSQL-backed DbPort. Composed from per-family modules
 // over one PgContext; `implements DbPort` makes the compiler enforce that the
@@ -33,6 +34,7 @@ export class PgDbPort implements DbPort {
   private readonly billing: ReturnType<typeof billingFamily>;
   private readonly integrations: ReturnType<typeof integrationsFamily>;
   private readonly procurement: ReturnType<typeof procurementFamily>;
+  private readonly productModels: ProductModelFamily;
 
   constructor(private readonly ctx: PgContext) {
     this.settings = settingsFamily(ctx);
@@ -49,6 +51,7 @@ export class PgDbPort implements DbPort {
     this.billing = billingFamily(ctx);
     this.integrations = integrationsFamily(ctx);
     this.procurement = procurementFamily(ctx);
+    this.productModels = productModelFamily(ctx);
   }
 
   // withLock/withTransaction come straight from the context so every family
@@ -180,6 +183,26 @@ export class PgDbPort implements DbPort {
   updateProduct(id: string, businessId: string, patch: Partial<Omit<DbProduct, "id" | "businessId">>): Promise<DbProduct | null> {
     return this.catalog.updateProduct(id, businessId, patch);
   }
+  createProductFamily(f: Omit<DbProductFamily, "id" | "createdAt" | "updatedAt">): Promise<DbProductFamily> { return this.productModels.createProductFamily(f); }
+  listProductFamilies(businessId: string): Promise<DbProductFamily[]> { return this.productModels.listProductFamilies(businessId); }
+  findProductFamilyById(id: string, businessId: string): Promise<DbProductFamily | null> { return this.productModels.findProductFamilyById(id, businessId); }
+  updateProductFamily(id: string, businessId: string, patch: Partial<Omit<DbProductFamily, "id" | "businessId" | "createdAt">>): Promise<DbProductFamily | null> { return this.productModels.updateProductFamily(id, businessId, patch); }
+  createProductOption(o: Omit<DbProductOption, "id" | "createdAt" | "updatedAt">): Promise<DbProductOption> { return this.productModels.createProductOption(o); }
+  listProductOptions(familyId: string, businessId: string): Promise<DbProductOption[]> { return this.productModels.listProductOptions(familyId, businessId); }
+  findProductOptionById(id: string, businessId: string): Promise<DbProductOption | null> { return this.productModels.findProductOptionById(id, businessId); }
+  createProductOptionValue(v: Omit<DbProductOptionValue, "id" | "createdAt" | "updatedAt">): Promise<DbProductOptionValue> { return this.productModels.createProductOptionValue(v); }
+  listProductOptionValues(optionId: string, businessId: string): Promise<DbProductOptionValue[]> { return this.productModels.listProductOptionValues(optionId, businessId); }
+  findProductOptionValueById(id: string, businessId: string): Promise<DbProductOptionValue | null> { return this.productModels.findProductOptionValueById(id, businessId); }
+  createVariantOptionValue(v: Omit<DbProductVariantOptionValue, "id" | "createdAt">): Promise<DbProductVariantOptionValue> { return this.productModels.createVariantOptionValue(v); }
+  listVariantOptionValues(productId: string, businessId: string): Promise<DbProductVariantOptionValue[]> { return this.productModels.listVariantOptionValues(productId, businessId); }
+  deleteVariantOptionValues(productId: string, businessId: string): Promise<void> { return this.productModels.deleteVariantOptionValues(productId, businessId); }
+  createProductBundle(b: Omit<DbProductBundle, "id" | "createdAt" | "updatedAt">): Promise<DbProductBundle> { return this.productModels.createProductBundle(b); }
+  findProductBundleByProductId(productId: string, businessId: string): Promise<DbProductBundle | null> { return this.productModels.findProductBundleByProductId(productId, businessId); }
+  findProductBundleById(id: string, businessId: string): Promise<DbProductBundle | null> { return this.productModels.findProductBundleById(id, businessId); }
+  updateProductBundle(id: string, businessId: string, patch: Partial<Omit<DbProductBundle, "id" | "businessId" | "createdAt">>): Promise<DbProductBundle | null> { return this.productModels.updateProductBundle(id, businessId, patch); }
+  createBundleComponent(c: Omit<DbBundleComponent, "id" | "createdAt" | "updatedAt">): Promise<DbBundleComponent> { return this.productModels.createBundleComponent(c); }
+  listBundleComponents(bundleId: string, businessId: string): Promise<DbBundleComponent[]> { return this.productModels.listBundleComponents(bundleId, businessId); }
+  deleteBundleComponents(bundleId: string, businessId: string): Promise<void> { return this.productModels.deleteBundleComponents(bundleId, businessId); }
   // Inventory family.
   createMovement(m: Omit<DbMovement, "id">): Promise<DbMovement> {
     return this.inventory.createMovement(m);
@@ -492,6 +515,8 @@ export class PgDbPort implements DbPort {
   listSaleItemsByBusiness(businessId: string): Promise<DbSaleItem[]> {
     return this.sales.listSaleItemsByBusiness(businessId);
   }
+  createSaleItemBundleComponent(c: Omit<DbSaleItemBundleComponent, "id" | "createdAt">): Promise<DbSaleItemBundleComponent> { return this.productModels.createSaleItemBundleComponent(c); }
+  listSaleItemBundleComponents(saleItemId: string, businessId: string): Promise<DbSaleItemBundleComponent[]> { return this.productModels.listSaleItemBundleComponents(saleItemId, businessId); }
   createPayment(p: Omit<DbPayment, "id">): Promise<DbPayment> {
     return this.sales.createPayment(p);
   }

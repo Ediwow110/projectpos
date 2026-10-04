@@ -80,7 +80,7 @@ export class InventoryService {
       async () => {
     withScope(businessId, {});
     const product = await this.requireProduct(businessId, input.productId);
-    if (!product.trackInventory && input.type !== "adjustment" && input.type !== "stock_count") {
+    if (product.productType === "BUNDLE" || !product.trackInventory) {
       throw new Error("PRODUCT_NOT_TRACKED");
     }
     validateQtyDelta(input.type, input.qtyDelta);

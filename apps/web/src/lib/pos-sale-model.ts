@@ -2,7 +2,9 @@ export interface PosProduct {
   id: string;
   name: string;
   sku: string | null;
+  barcode?: string | null;
   categoryId: string | null;
+  productType?: "STANDARD" | "BUNDLE";
   priceMinor: number;
   isActive: boolean;
 }
@@ -180,7 +182,8 @@ export function filterOfflineCatalog(products: PosProduct[], query: string, cate
       (
         needle === "" ||
         product.name.toLowerCase().includes(needle) ||
-        (product.sku ?? "").toLowerCase().includes(needle)
+        (product.sku ?? "").toLowerCase().includes(needle) ||
+        (product.barcode ?? "").toLowerCase().includes(needle)
       ),
   );
 }

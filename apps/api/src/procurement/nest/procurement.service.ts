@@ -143,6 +143,7 @@ export class ProcurementService {
         throw new Error("VALIDATION");
       }
       const product = await this.requireProduct(businessId, item.productId);
+      if (product.productType === "BUNDLE") throw new Error("PRODUCT_NOT_TRACKED");
       const mapping = mappings.find((row) => row.productId === product.id && row.supplierId === supplierId);
       const unitCostMinor = item.unitCostMinor ?? mapping?.unitCostMinor ?? product.costMinor ?? 0;
       const lineTotalMinor = item.quantity * unitCostMinor;
@@ -291,6 +292,7 @@ export class ProcurementService {
       const supplier = await this.requireSupplier(businessId, supplierId);
       if (!supplier.isActive) throw new Error("SUPPLIER_INACTIVE");
       const product = await this.requireProduct(businessId, input.productId);
+      if (product.productType === "BUNDLE") throw new Error("PRODUCT_NOT_TRACKED");
       const existing = (await this.db.listProductSuppliersBySupplier(supplierId, businessId)).find((row) => row.productId === product.id);
       if (existing) throw new Error("PRODUCT_SUPPLIER_DUPLICATE");
       if (input.isPreferred) await this.db.clearPreferredProductSuppliers(businessId, product.id);

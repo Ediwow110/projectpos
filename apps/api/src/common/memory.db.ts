@@ -1,4 +1,4 @@
-import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbDisplayToken, DbExchange, DbFeatureFlag, DbInvoice, DbMembership, DbMovement, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbReceiptDelivery, DbResetToken, DbSession, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine, DbInventoryCount, DbInventoryCountLine } from "./db.port";
+import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbDisplayToken, DbExchange, DbFeatureFlag, DbInvoice, DbMembership, DbMovement, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbProductFamily, DbProductOption, DbProductOptionValue, DbProductVariantOptionValue, DbProductBundle, DbBundleComponent, DbSaleItemBundleComponent, DbReceiptDelivery, DbResetToken, DbSession, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine, DbInventoryCount, DbInventoryCountLine } from "./db.port";
 
 let n = 0;
 const nid = (p: string): string => `${p}_${Date.now().toString(36)}_${(n += 1)}`;
@@ -12,6 +12,13 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const settings = new Map<string, Record<string, unknown>>();
   const categories = new Map<string, DbCategory>();
   const products = new Map<string, DbProduct>();
+  const productFamilies = new Map<string, DbProductFamily>();
+  const productOptions = new Map<string, DbProductOption>();
+  const productOptionValues = new Map<string, DbProductOptionValue>();
+  const variantOptionValues = new Map<string, DbProductVariantOptionValue>();
+  const productBundles = new Map<string, DbProductBundle>();
+  const bundleComponents = new Map<string, DbBundleComponent>();
+  const saleItemBundleComponents = new Map<string, DbSaleItemBundleComponent>();
   const movements = new Map<string, DbMovement>();
   const balances = new Map<string, DbBalance>();
   const inventoryCounts = new Map<string, DbInventoryCount>();
@@ -371,6 +378,32 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       products.set(id, next);
       return next;
     },
+    async createProductFamily(f) {
+      const now = new Date(); const row = { ...f, id: nid("pfam"), createdAt: now, updatedAt: now };
+      productFamilies.set(row.id, row); return row;
+    },
+    async listProductFamilies(businessId) { return [...productFamilies.values()].filter((r) => r.businessId === businessId); },
+    async findProductFamilyById(id, businessId) { const row = productFamilies.get(id) ?? null; return row && row.businessId === businessId ? row : null; },
+    async updateProductFamily(id, businessId, patch) {
+      const row = productFamilies.get(id) ?? null; if (!row || row.businessId !== businessId) return null;
+      const next = { ...row, ...patch, updatedAt: new Date() }; productFamilies.set(id, next); return next;
+    },
+    async createProductOption(o) { const now = new Date(); const row = { ...o, id: nid("popt"), createdAt: now, updatedAt: now }; productOptions.set(row.id, row); return row; },
+    async listProductOptions(familyId, businessId) { return [...productOptions.values()].filter((r) => r.familyId === familyId && r.businessId === businessId).sort((a, b) => a.position - b.position); },
+    async findProductOptionById(id, businessId) { const row = productOptions.get(id) ?? null; return row && row.businessId === businessId ? row : null; },
+    async createProductOptionValue(v) { const now = new Date(); const row = { ...v, id: nid("pval"), createdAt: now, updatedAt: now }; productOptionValues.set(row.id, row); return row; },
+    async listProductOptionValues(optionId, businessId) { return [...productOptionValues.values()].filter((r) => r.optionId === optionId && r.businessId === businessId).sort((a, b) => a.position - b.position); },
+    async findProductOptionValueById(id, businessId) { const row = productOptionValues.get(id) ?? null; return row && row.businessId === businessId ? row : null; },
+    async createVariantOptionValue(v) { const row = { ...v, id: nid("pvo"), createdAt: new Date() }; variantOptionValues.set(row.id, row); return row; },
+    async listVariantOptionValues(productId, businessId) { return [...variantOptionValues.values()].filter((r) => r.productId === productId && r.businessId === businessId); },
+    async deleteVariantOptionValues(productId, businessId) { for (const [id, row] of variantOptionValues) if (row.productId === productId && row.businessId === businessId) variantOptionValues.delete(id); },
+    async createProductBundle(b) { const now = new Date(); const row = { ...b, id: nid("bun"), createdAt: now, updatedAt: now }; productBundles.set(row.id, row); return row; },
+    async findProductBundleByProductId(productId, businessId) { return [...productBundles.values()].find((r) => r.bundleProductId === productId && r.businessId === businessId) ?? null; },
+    async findProductBundleById(id, businessId) { const row = productBundles.get(id) ?? null; return row && row.businessId === businessId ? row : null; },
+    async updateProductBundle(id, businessId, patch) { const row = productBundles.get(id) ?? null; if (!row || row.businessId !== businessId) return null; const next = { ...row, ...patch, updatedAt: new Date() }; productBundles.set(id, next); return next; },
+    async createBundleComponent(c) { const now = new Date(); const row = { ...c, id: nid("bc"), createdAt: now, updatedAt: now }; bundleComponents.set(row.id, row); return row; },
+    async listBundleComponents(bundleId, businessId) { return [...bundleComponents.values()].filter((r) => r.bundleId === bundleId && r.businessId === businessId).sort((a, b) => a.position - b.position); },
+    async deleteBundleComponents(bundleId, businessId) { for (const [id, row] of bundleComponents) if (row.bundleId === bundleId && row.businessId === businessId) bundleComponents.delete(id); },
     async createMovement(m) {
       const row = { ...m, id: nid("mov") };
       movements.set(row.id, row);
@@ -497,6 +530,8 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     async listSaleItemsByBusiness(businessId) {
       return [...saleItems.values()].filter((i) => i.businessId === businessId);
     },
+    async createSaleItemBundleComponent(c) { const row = { ...c, id: nid("sbc"), createdAt: new Date() }; saleItemBundleComponents.set(row.id, row); return row; },
+    async listSaleItemBundleComponents(saleItemId, businessId) { return [...saleItemBundleComponents.values()].filter((r) => r.saleItemId === saleItemId && r.businessId === businessId); },
     async createPayment(p) {
       const row = { ...p, id: nid("pay") };
       payments.set(row.id, row);

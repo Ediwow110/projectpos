@@ -3,7 +3,7 @@
 import type { JSX } from "react";
 
 import { useEffect, useRef, useState } from "react";
-import { ApiError } from "../../lib/api";
+import { apiFetch, ApiError } from "../../lib/api";
 import { cartTotal } from "../../lib/sales";
 import { ConnectivityBanner } from "../../lib/sync-ui";
 import {
@@ -133,6 +133,25 @@ export default function PosPage(): JSX.Element {
       return;
     }
     setCart((prev) => addProductToCart(prev, p));
+  }
+
+  async function searchOrScan(): Promise<void> {
+    const scanned = q.trim();
+    if (scanned !== "") {
+      try {
+        const product = await apiFetch<PosProduct>(`/api/v1/products/barcode/${encodeURIComponent(scanned)}`);
+        addToCart(product);
+        setQ("");
+        setStatus(`${product.name} added from barcode scan.`);
+        return;
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.code !== "NOT_FOUND") {
+          setStatus("Barcode lookup failed. Check connectivity and try again.");
+          return;
+        }
+      }
+    }
+    await searchQuery.refetch();
   }
 
   function setQty(productId: string, delta: number): void {
@@ -467,7 +486,7 @@ export default function PosPage(): JSX.Element {
           connectivityBanner={offline && store ? <div className="mt-3"><ConnectivityBanner store={store} /></div> : null}
           onRegisterChange={setSaleRegister}
           onQueryChange={setQ}
-          onSearch={() => void searchQuery.refetch()}
+          onSearch={() => void searchOrScan()}
           onCategoryChange={setActiveCategoryId}
           onAddProduct={addToCart}
           onAssignCustomer={openCustomerAssignment}

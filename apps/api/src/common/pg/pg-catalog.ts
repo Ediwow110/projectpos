@@ -13,7 +13,7 @@ import type { PgContext } from "./context";
 //   stamps "updatedAt" = CURRENT_TIMESTAMP like every other family's writes.
 const CATEGORY_COLUMNS = '"id", "businessId", "name", "description", "isActive"';
 const PRODUCT_COLUMNS =
-  '"id", "businessId", "categoryId", "name", "sku", "barcode", "brand", "unit", "costMinor", ' +
+  '"id", "businessId", "familyId", "productType", "categoryId", "name", "sku", "barcode", "brand", "unit", "costMinor", ' +
   '"priceMinor", "taxRateBps", "reorderLevel", "trackInventory", "isActive", "imageUrl"';
 
 // Column names come from the typed patch keys (never user input), so quoting
@@ -98,13 +98,12 @@ export function catalogFamily(ctx: PgContext) {
       try {
         const row = { ...p, id: nid("prod") };
         await c.query(
-          'INSERT INTO "Product" ("id", "businessId", "categoryId", "name", "sku", "barcode", "brand", "unit", "costMinor", "priceMinor", "taxRateBps", "reorderLevel", "trackInventory", "isActive", "imageUrl", "createdAt", "updatedAt")' +
-            ' VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
+          'INSERT INTO "Product" ("id", "businessId", "familyId", "productType", "categoryId", "name", "sku", "barcode", "brand", "unit", "costMinor", "priceMinor", "taxRateBps", "reorderLevel", "trackInventory", "isActive", "imageUrl", "createdAt", "updatedAt")' +
+            ' VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
           [
-            row.id, row.businessId, row.categoryId ?? null, row.name, row.sku ?? null,
+            row.id, row.businessId, row.familyId ?? null, row.productType ?? "STANDARD", row.categoryId ?? null, row.name, row.sku ?? null,
             row.barcode ?? null, row.brand ?? null, row.unit, row.costMinor, row.priceMinor,
-            row.taxRateBps ?? null, row.reorderLevel, row.trackInventory, row.isActive,
-            row.imageUrl ?? null,
+            row.taxRateBps ?? null, row.reorderLevel, row.trackInventory, row.isActive, row.imageUrl ?? null,
           ],
         );
         return row;

@@ -137,22 +137,20 @@ export class RefundService {
       const resolvedWithTracking = await Promise.all(
         resolved.map(async (row) => ({
           ...row,
-          tracked:
-            (await this.db.findProductById(row.line.productId, businessId))
-              ?.trackInventory === true,
+          tracked: (await this.db.findProductById(row.line.productId, businessId))?.trackInventory === true,
+          bundleComponents: await this.db.listSaleItemBundleComponents(row.line.id, businessId),
         })),
       );
       await withInventoryLocks(
         this.db,
         businessId,
         resolvedWithTracking
-          .filter((row) => row.tracked)
-          .map((row) => ({
-            productId: row.line.productId,
-            branchId: sale.branchId ?? null,
-          })),
+          .flatMap((row) => row.bundleComponents.length > 0
+            ? row.bundleComponents.map((component) => ({ productId: component.componentProductId, branchId: sale.branchId ?? null }))
+            : row.tracked ? [{ productId: row.line.productId, branchId: sale.branchId ?? null }] : []),
         async () => {
           for (const r of resolvedWithTracking) {
+            const restocked = r.tracked || r.bundleComponents.length > 0;
             await this.db.createRefundItem({
               businessId,
               refundId: refund.id,
@@ -160,9 +158,34 @@ export class RefundService {
               productId: r.line.productId,
               qty: r.qty,
               amountMinor: r.amount,
-              restocked: r.tracked,
+              restocked,
             });
-            if (r.tracked) {
+            if (r.bundleComponents.length > 0) {
+              const saleBranchId = sale.branchId ?? null;
+              for (const component of r.bundleComponents) {
+                const qty = r.qty * component.quantityPerBundleSnapshot;
+                const current = await this.db.findBalance(component.componentProductId, businessId, saleBranchId);
+                const onHand = current?.qtyOnHand ?? 0;
+                await this.db.createMovement({
+                  businessId,
+                  productId: component.componentProductId,
+                  type: "return",
+                  qtyDelta: qty,
+                  reason: null,
+                  referenceType: "Refund",
+                  referenceId: refund.id,
+                  actorId,
+                  requestId,
+                  branchId: saleBranchId,
+                });
+                await this.db.upsertBalance({
+                  businessId,
+                  branchId: saleBranchId,
+                  productId: component.componentProductId,
+                  qtyOnHand: onHand + qty,
+                });
+              }
+            } else if (r.tracked) {
               const saleBranchId = sale.branchId ?? null;
               const current = await this.db.findBalance(
                 r.line.productId,
