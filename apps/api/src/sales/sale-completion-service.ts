@@ -228,7 +228,7 @@ export class SalesCompletionService {
           await this.db.updateSaleGiftCardLoad(load.id, businessId, { giftCardId: cardId });
         }
         if (!cardId) throw new Error("GIFT_CARD_REQUIRED");
-        await this.db.createGiftCardTransaction({ businessId, giftCardId: cardId, type: "LOAD", amountDeltaMinor: load.amountMinor, saleId: sale.id, refundId: null, actorId, requestId, idempotencyKey: `${input.key}:gift-load:${load.id}`, reason: null, branchId });
+          await this.db.createGiftCardTransaction({ businessId, giftCardId: cardId, type: "LOAD", amountDeltaMinor: load.amountMinor, saleId: sale.id, refundId: null, loadId: load.id, actorId, requestId, idempotencyKey: `${input.key}:gift-load:${load.id}`, reason: null, branchId });
       }
       if (sale.customerId) {
         const eligibleSpendMinor = Math.max(0, totals.subtotalMinor - totals.discountMinor);

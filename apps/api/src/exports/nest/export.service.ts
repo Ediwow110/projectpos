@@ -198,11 +198,26 @@ export class ExportService {
     const refunds = (await this.db.listRefundsBySale(sale.id, businessId)).filter(
       (r) => r.status === "APPROVED",
     );
+    const refundLoadAmounts = new Map<string, number>();
+    for (const refund of refunds) {
+      let loadRefundMinor = 0;
+      for (const load of giftLoads) {
+        if (!load.giftCardId) continue;
+        const transactions = await this.db.listGiftCardTransactions(load.giftCardId, businessId);
+        loadRefundMinor += transactions
+          .filter((transaction) => transaction.refundId === refund.id && transaction.type === "LOAD_REFUND")
+          .reduce((sum, transaction) => sum + Math.abs(transaction.amountDeltaMinor), 0);
+      }
+      refundLoadAmounts.set(refund.id, loadRefundMinor);
+    }
     const refundTotal = refunds.reduce((sum, r) => sum + r.totalMinor, 0);
     if (refundTotal > 0) {
       const iso = sale.createdAt.toISOString();
       const memo = `Refund ${sale.receiptNo}`;
-      rows.push({ date: iso, type: "refund", ref: sale.receiptNo, account: ACCT.revenue, debitMinor: refundTotal, creditMinor: 0, memo });
+      const merchandiseRefundTotal = refunds.reduce((sum, refund) => sum + Math.max(0, refund.totalMinor - (refundLoadAmounts.get(refund.id) ?? 0)), 0);
+      if (merchandiseRefundTotal > 0) rows.push({ date: iso, type: "refund", ref: sale.receiptNo, account: ACCT.revenue, debitMinor: merchandiseRefundTotal, creditMinor: 0, memo });
+      const liabilityRefundTotal = refundTotal - merchandiseRefundTotal;
+      if (liabilityRefundTotal > 0) rows.push({ date: iso, type: "stored_value", ref: sale.receiptNo, account: ACCT.giftCardLiability, debitMinor: liabilityRefundTotal, creditMinor: 0, memo: `Gift card load refund ${sale.receiptNo}` });
       const recorded = new Map<string, number>();
       for (const payment of await this.db.listPaymentsBySale(sale.id, businessId)) {
         if (payment.status !== "REFUNDED") continue;

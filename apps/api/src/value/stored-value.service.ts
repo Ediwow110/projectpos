@@ -137,6 +137,15 @@ export class StoredValueService {
 
   async loyaltyBalance(businessId: string, customerId: string): Promise<number> { const account = await this.db.findLoyaltyAccount(customerId, businessId); if (!account) return 0; return (await this.db.listLoyaltyTransactions(account.id, businessId)).reduce((sum, row) => sum + row.pointsDelta, 0); }
 
+  async adjustLoyalty(businessId: string, actorId: string, requestId: string, customerId: string, pointsDelta: number, reason: string, idempotencyKey: string): Promise<number> {
+    if (!Number.isInteger(pointsDelta) || pointsDelta === 0 || reason.trim().length < 3) throw new Error("VALIDATION");
+    return this.db.withLock(`loyalty:${businessId}:${customerId}`, async () => {
+      const account = await this.ensureLoyaltyAccount(businessId, customerId);
+      await this.db.createLoyaltyTransaction({ businessId, accountId: account.id, customerId, type: pointsDelta > 0 ? "MANUAL_CREDIT" : "MANUAL_DEBIT", pointsDelta, valueMinorSnapshot: null, saleId: null, refundId: null, actorId, requestId, idempotencyKey, reason: reason.trim() });
+      return this.loyaltyBalance(businessId, customerId);
+    });
+  }
+
   async earnLoyalty(businessId: string, actorId: string, requestId: string, customerId: string, eligibleSpendMinor: number, saleId: string, idempotencyKey: string): Promise<{ points: number; snapshot: DbSaleLoyalty }> {
     return this.db.withLock(`loyalty:${businessId}:${customerId}`, async () => {
       const program = await this.db.getLoyaltyProgram(businessId);

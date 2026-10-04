@@ -117,7 +117,22 @@ export class ManagerApprovalPolicyService {
         };
       case "refund": {
         const items = await this.normalizedRefund(businessId, action.saleId, action.items);
-        const totalMinor = items.reduce((sum, item) => sum + item.amountMinor, 0);
+        const loads = await this.db.listSaleGiftCardLoads(action.saleId, businessId);
+        const loadRefunds = new Map<string, number>();
+        for (const row of action.loadRefunds ?? []) loadRefunds.set(row.loadId, (loadRefunds.get(row.loadId) ?? 0) + row.amountMinor);
+        const normalizedLoadRefunds = [] as Array<{ loadId: string; amountMinor: number }>;
+        for (const [loadId, amountMinor] of loadRefunds.entries()) {
+          const load = loads.find((candidate) => candidate.id === loadId);
+          if (!load || !load.giftCardId) throw new Error("VALIDATION");
+          const transactions = await this.db.listGiftCardTransactions(load.giftCardId, businessId);
+          const refunded = transactions.filter((row) => row.type === "LOAD_REFUND" && row.loadId === load.id).reduce((sum, row) => sum + Math.abs(row.amountDeltaMinor), 0);
+          const balance = transactions.reduce((sum, row) => sum + row.amountDeltaMinor, 0);
+          if (amountMinor > load.amountMinor - refunded) throw new Error("REFUND_EXCEEDS_LIMIT");
+          if (amountMinor > balance) throw new Error("GIFT_CARD_LOAD_SPENT");
+          normalizedLoadRefunds.push({ loadId, amountMinor });
+        }
+        normalizedLoadRefunds.sort((left, right) => left.loadId.localeCompare(right.loadId));
+        const totalMinor = items.reduce((sum, item) => sum + item.amountMinor, 0) + normalizedLoadRefunds.reduce((sum, item) => sum + item.amountMinor, 0);
         const threshold = (await this.db.getSettings(businessId))["refundApprovalThresholdMinor"];
         const permission: ManagerApprovalPermission = typeof threshold === "number" && totalMinor > threshold
           ? "refund.override"
@@ -128,6 +143,7 @@ export class ManagerApprovalPolicyService {
             kind: action.kind,
             saleId: action.saleId,
             items: items.map(({ saleItemId, qty }) => ({ saleItemId, qty })),
+            loadRefunds: normalizedLoadRefunds,
             reason: trimOrNull(action.reason),
           }),
           requireDistinctApprover: await this.refundRequiresDistinctApprover(businessId, requesterId, action.saleId),
@@ -201,6 +217,32 @@ export class ManagerApprovalPolicyService {
           }),
           requireDistinctApprover: false,
           stateFingerprint,
+        };
+      }
+      case "value_adjustment": {
+        const permission: ManagerApprovalPermission = action.valueType === "loyalty" ? "loyalty.adjust" : "stored_value.adjust";
+        let state: { balance: number; version: string };
+        if (action.valueType === "gift_card") {
+          const card = await this.db.findGiftCardById(action.targetId, businessId);
+          if (!card) throw new Error("NOT_FOUND");
+          const balance = (await this.db.listGiftCardTransactions(card.id, businessId)).reduce((sum, row) => sum + row.amountDeltaMinor, 0);
+          state = { balance, version: String(card.version) };
+        } else if (action.valueType === "store_credit") {
+          const account = await this.db.findStoreCreditAccount(action.targetId, businessId);
+          if (!account) throw new Error("NOT_FOUND");
+          const balance = (await this.db.listStoreCreditTransactions(account.id, businessId)).reduce((sum, row) => sum + row.amountDeltaMinor, 0);
+          state = { balance, version: account.updatedAt.toISOString() };
+        } else {
+          const account = await this.db.findLoyaltyAccount(action.targetId, businessId);
+          if (!account) throw new Error("NOT_FOUND");
+          const balance = (await this.db.listLoyaltyTransactions(account.id, businessId)).reduce((sum, row) => sum + row.pointsDelta, 0);
+          state = { balance, version: account.updatedAt.toISOString() };
+        }
+        return {
+          permission,
+          fingerprint: fingerprintPayload({ kind: action.kind, businessId, requesterId, valueType: action.valueType, targetId: action.targetId, amountDelta: action.amountDelta, reason: action.reason.trim(), currentBalance: state.balance, currentVersion: state.version }),
+          requireDistinctApprover: false,
+          stateFingerprint: fingerprintPayload(state),
         };
       }
     }

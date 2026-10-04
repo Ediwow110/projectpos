@@ -15,6 +15,7 @@ const ITEMS = {
   pos: { href: "/pos", label: "POS", icon: "▣", tour: "pos" },
   sales: { href: "/sales", label: "Sales", icon: "↗", tour: "sales" },
   customers: { href: "/customers", label: "Customers", icon: "○", tour: "customers" },
+  giftCards: { href: "/gift-cards", label: "Gift cards", icon: "▤", tour: "gift-cards" },
   products: { href: "/products", label: "Products", icon: "◇", tour: "products" },
   categories: { href: "/categories", label: "Categories", icon: "◈", tour: "categories" },
   inventory: { href: "/inventory", label: "Inventory", icon: "□", tour: "inventory" },
@@ -43,7 +44,7 @@ function group(label: string, keys: Array<keyof typeof ITEMS>): WorkspaceNavigat
 export function workspaceNavigationForRole(role?: string): WorkspaceNavigationGroup[] {
   if (role === "cashier") {
     return [
-      group("Sell", ["dashboard", "pos", "sales", "customers"]),
+      group("Sell", ["dashboard", "pos", "sales", "customers", "giftCards"]),
       group("Operations", ["inventory", "stockCounts", "replenishment", "registers", "shifts", "devices", "sync"]),
     ];
   }
@@ -57,7 +58,7 @@ export function workspaceNavigationForRole(role?: string): WorkspaceNavigationGr
   }
   if (role === "manager") {
     return [
-      group("Sell", ["dashboard", "pos", "sales", "customers"]),
+      group("Sell", ["dashboard", "pos", "sales", "customers", "giftCards"]),
       group("Catalog & stock", ["products", "categories", "inventory", "stockCounts", "replenishment"]),
       group("Procurement", ["suppliers", "purchaseOrders", "supplierReturns"]),
       group("Operations", ["registers", "shifts", "transfers", "expenses"]),
@@ -66,7 +67,7 @@ export function workspaceNavigationForRole(role?: string): WorkspaceNavigationGr
     ];
   }
   return [
-    group("Sell", ["dashboard", "pos", "sales", "customers"]),
+    group("Sell", ["dashboard", "pos", "sales", "customers", "giftCards"]),
     group("Catalog & stock", ["products", "categories", "inventory", "stockCounts", "replenishment"]),
     group("Procurement", ["suppliers", "purchaseOrders", "supplierReturns"]),
     group("Operations", ["registers", "shifts", "transfers", "expenses"]),

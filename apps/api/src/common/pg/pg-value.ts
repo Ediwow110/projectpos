@@ -25,7 +25,7 @@ function buildSet(patch: Record<string, unknown>): { sets: string[]; values: unk
 }
 
 const GC = '"id", "businessId", "codeHash", "codePrefix", "codeLast4", "status", "createdBy", "activatedAt", "suspendedAt", "version", "createdAt", "updatedAt"';
-const GCT = '"id", "businessId", "giftCardId", "type", "amountDeltaMinor", "saleId", "refundId", "actorId", "requestId", "idempotencyKey", "reason", "branchId", "createdAt"';
+const GCT = '"id", "businessId", "giftCardId", "type", "amountDeltaMinor", "saleId", "refundId", "loadId", "actorId", "requestId", "idempotencyKey", "reason", "branchId", "createdAt"';
 const SCA = '"id", "businessId", "customerId", "createdAt", "updatedAt"';
 const SCT = '"id", "businessId", "accountId", "customerId", "type", "amountDeltaMinor", "saleId", "refundId", "actorId", "requestId", "idempotencyKey", "reason", "branchId", "createdAt"';
 const LP = '"id", "businessId", "enabled", "earnAmountMinor", "earnPoints", "redeemPoints", "redeemValueMinor", "minimumRedeemPoints", "version", "updatedAt"';
@@ -60,7 +60,7 @@ export function valueFamily(ctx: PgContext) {
       const c = await ctx.client(); try {
         const existing = await c.query(`SELECT ${GCT} FROM "GiftCardTransaction" WHERE "businessId"=$1 AND "idempotencyKey"=$2`, [input.businessId,input.idempotencyKey]); if (existing.rows[0]) return existing.rows[0] as DbGiftCardTransaction;
         const current = await balance("GiftCardTransaction", "amountDeltaMinor", "giftCardId", input.giftCardId, input.businessId); if (current + input.amountDeltaMinor < 0) throw new Error("GIFT_CARD_INSUFFICIENT_BALANCE");
-        const row={...input,id:nid("gct")}; await c.query(`INSERT INTO "GiftCardTransaction" ("id","businessId","giftCardId","type","amountDeltaMinor","saleId","refundId","actorId","requestId","idempotencyKey","reason","branchId") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, [row.id,row.businessId,row.giftCardId,row.type,row.amountDeltaMinor,row.saleId,row.refundId,row.actorId,row.requestId,row.idempotencyKey,row.reason,row.branchId]);
+        const row={...input,id:nid("gct")}; await c.query(`INSERT INTO "GiftCardTransaction" ("id","businessId","giftCardId","type","amountDeltaMinor","saleId","refundId","loadId","actorId","requestId","idempotencyKey","reason","branchId") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, [row.id,row.businessId,row.giftCardId,row.type,row.amountDeltaMinor,row.saleId,row.refundId,row.loadId,row.actorId,row.requestId,row.idempotencyKey,row.reason,row.branchId]);
         return { ...row, createdAt: new Date() };
       } finally { if (ctx.owns()) c.release(); }
     },

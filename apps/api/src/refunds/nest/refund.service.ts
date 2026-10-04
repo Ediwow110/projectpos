@@ -15,6 +15,11 @@ export interface RefundItemInput {
   qty: number;
 }
 
+export interface GiftCardLoadRefundInput {
+  loadId: string;
+  amountMinor: number;
+}
+
 const CASH_METHODS = new Set(["cash"]);
 
 @Injectable()
@@ -47,7 +52,7 @@ export class RefundService {
     actorId: string,
     requestId: string,
     saleId: string,
-    input: { items: RefundItemInput[]; reason?: string; destination?: "ORIGINAL_TENDER" | "STORE_CREDIT"; key: string },
+    input: { items: RefundItemInput[]; loadRefunds?: GiftCardLoadRefundInput[]; reason?: string; destination?: "ORIGINAL_TENDER" | "STORE_CREDIT"; key: string },
     granted: string[],
     role: string,
     approval?: AppliedManagerApproval,
@@ -62,8 +67,16 @@ export class RefundService {
       const requestedItems = [...requestedByLine.entries()]
         .map(([saleItemId, qty]) => ({ saleItemId, qty }))
         .sort((left, right) => left.saleItemId.localeCompare(right.saleItemId));
+      const requestedLoads = new Map<string, number>();
+      for (const load of input.loadRefunds ?? []) {
+        if (!Number.isInteger(load.amountMinor) || load.amountMinor <= 0) throw new Error("VALIDATION");
+        requestedLoads.set(load.loadId, (requestedLoads.get(load.loadId) ?? 0) + load.amountMinor);
+      }
+      const normalizedLoads = [...requestedLoads.entries()]
+        .map(([loadId, amountMinor]) => ({ loadId, amountMinor }))
+        .sort((left, right) => left.loadId.localeCompare(right.loadId));
       const destination = input.destination ?? "ORIGINAL_TENDER";
-      const fingerprint = fingerprintPayload({ saleId, items: requestedItems, reason: input.reason ?? null, destination });
+      const fingerprint = fingerprintPayload({ saleId, items: requestedItems, loadRefunds: normalizedLoads, reason: input.reason ?? null, destination });
       const existing = await this.db.findIdempotency(businessId, input.key, "refund.approve");
       if (existing) {
         if (existing.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
@@ -84,6 +97,7 @@ export class RefundService {
         }
       }
       const lines = await this.db.listSaleItems(sale.id, businessId);
+      const loads = await this.db.listSaleGiftCardLoads(sale.id, businessId);
       const prior = await this.db.listRefundItemsBySale(sale.id, businessId);
       const refundedByLine = new Map<string, number>();
       for (const ri of prior) {
@@ -98,7 +112,22 @@ export class RefundService {
         }
         return { line, qty: req.qty, amount: lineRefundAmount(line.lineTotalMinor, line.qty, req.qty) };
       });
-      const totalMinor = resolved.reduce((sum, r) => sum + r.amount, 0);
+      const resolvedLoadRows: Array<{ load: (typeof loads)[number]; amountMinor: number }> = [];
+      for (const req of normalizedLoads) {
+        const load = loads.find((row) => row.id === req.loadId);
+        if (!load || !load.giftCardId) throw new Error("VALIDATION");
+        const transactions = await this.db.listGiftCardTransactions(load.giftCardId, businessId);
+        const refunded = transactions.filter((row) => row.type === "LOAD_REFUND" && row.loadId === load.id)
+          .reduce((sum, row) => sum + Math.abs(row.amountDeltaMinor), 0);
+        const balance = transactions.reduce((sum, row) => sum + row.amountDeltaMinor, 0);
+        if (req.amountMinor > load.amountMinor - refunded) throw new Error("REFUND_EXCEEDS_LIMIT");
+        if (req.amountMinor > balance) throw new Error("GIFT_CARD_LOAD_SPENT");
+        resolvedLoadRows.push({ load, amountMinor: req.amountMinor });
+      }
+      if (resolvedLoadRows.length > 0 && destination !== "ORIGINAL_TENDER") throw new Error("GIFT_CARD_LOAD_ORIGINAL_TENDER_ONLY");
+      const merchandiseTotalMinor = resolved.reduce((sum, r) => sum + r.amount, 0);
+      const loadRefundTotalMinor = resolvedLoadRows.reduce((sum, row) => sum + row.amountMinor, 0);
+      const totalMinor = merchandiseTotalMinor + loadRefundTotalMinor;
       // FR-REFUND-02: approval follows role AND threshold policy. Above the
       // configured threshold only a role holding refund.override may approve.
       const threshold = (await this.db.getSettings(businessId))["refundApprovalThresholdMinor"];
@@ -260,7 +289,23 @@ export class RefundService {
           if (points > 0) await this.db.createLoyaltyTransaction({ businessId, accountId: account.id, customerId: sale.customerId!, type: "REFUND_REDEEM", pointsDelta: points, valueMinorSnapshot: a.amount, saleId: sale.id, refundId: refund.id, actorId, requestId, idempotencyKey: ledgerKey, reason: reason ?? "Refund" });
         }
       }
-      if (saleLoyalty && saleLoyalty.earnedPoints > 0 && saleLoyalty.eligibleSpendMinor > 0) {
+      for (const row of resolvedLoadRows) {
+        await this.db.createGiftCardTransaction({
+          businessId,
+          giftCardId: row.load.giftCardId!,
+          type: "LOAD_REFUND",
+          amountDeltaMinor: -row.amountMinor,
+          saleId: sale.id,
+          refundId: refund.id,
+          loadId: row.load.id,
+          actorId,
+          requestId,
+          idempotencyKey: `${input.key}:load-refund:${row.load.id}`,
+          reason: reason ?? "Gift-card load refund",
+          branchId: sale.branchId ?? null,
+        });
+      }
+      if (merchandiseTotalMinor > 0 && saleLoyalty && saleLoyalty.earnedPoints > 0 && saleLoyalty.eligibleSpendMinor > 0) {
         const itemAllocations = await this.db.listSaleItemLoyaltyAllocations(saleLoyalty.id, businessId);
         const resolvedByLine = new Map(resolved.map((row) => [row.line.id, row]));
         const allocatedReversal = itemAllocations.reduce((sum, allocation) => {
@@ -273,7 +318,7 @@ export class RefundService {
         }, 0);
         const reversal = itemAllocations.length > 0
           ? Math.min(saleLoyalty.earnedPoints, allocatedReversal)
-          : Math.min(saleLoyalty.earnedPoints, Math.floor(saleLoyalty.earnedPoints * totalMinor / saleLoyalty.eligibleSpendMinor));
+          : Math.min(saleLoyalty.earnedPoints, Math.floor(saleLoyalty.earnedPoints * merchandiseTotalMinor / saleLoyalty.eligibleSpendMinor));
         if (reversal > 0) {
           const account = await this.db.findLoyaltyAccount(saleLoyalty.customerId, businessId);
           if (account) await this.db.createLoyaltyTransaction({ businessId, accountId: account.id, customerId: saleLoyalty.customerId, type: "REFUND_EARN_REVERSAL", pointsDelta: -reversal, valueMinorSnapshot: totalMinor, saleId: sale.id, refundId: refund.id, actorId, requestId, idempotencyKey: `${input.key}:refund-earn`, reason: reason ?? "Refund" });
@@ -292,7 +337,7 @@ export class RefundService {
       for (const ri of allRefunded) {
         refundedTotals.set(ri.saleItemId, (refundedTotals.get(ri.saleItemId) ?? 0) + ri.qty);
       }
-      const fully = allLines.every((l) => (refundedTotals.get(l.id) ?? 0) >= l.qty);
+      const fully = allLines.length > 0 && allLines.every((l) => (refundedTotals.get(l.id) ?? 0) >= l.qty);
       const target = fully ? "REFUNDED" : "PARTIALLY_REFUNDED";
       const status = transitionSale(sale.status, target);
       const updated =

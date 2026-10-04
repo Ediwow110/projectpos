@@ -1033,6 +1033,7 @@ model GiftCardTransaction {
   amountDeltaMinor Int
   saleId         String?
   refundId       String?
+  loadId         String?
   actorId        String
   requestId      String
   idempotencyKey String
@@ -1041,9 +1042,11 @@ model GiftCardTransaction {
   createdAt      DateTime @default(now())
   business       Business @relation(fields: [businessId], references: [id])
   giftCard       GiftCard @relation(fields: [giftCardId], references: [id])
+  load           SaleGiftCardLoad? @relation(fields: [loadId], references: [id])
   @@unique([businessId, idempotencyKey])
   @@index([businessId, giftCardId, createdAt])
   @@index([businessId, saleId])
+  @@index([businessId, loadId])
 }
 
 model StoreCreditAccount {
@@ -1143,6 +1146,7 @@ model SaleGiftCardLoad {
   business   Business @relation(fields: [businessId], references: [id])
   sale       Sale     @relation(fields: [saleId], references: [id])
   giftCard   GiftCard? @relation(fields: [giftCardId], references: [id])
+  transactions GiftCardTransaction[]
   @@index([businessId, saleId])
   @@index([businessId, giftCardId])
 }

@@ -3,6 +3,7 @@ import { z } from "zod";
 export const storedValueAdjustSchema = z.object({
   amountMinor: z.number().int().refine((value) => value !== 0),
   reason: z.string().trim().min(3).max(500),
+  approvalToken: z.string().trim().min(20).max(160).optional(),
 });
 
 export const giftCardIssueSchema = z.object({ idempotencyKey: z.string().min(8).max(128) });

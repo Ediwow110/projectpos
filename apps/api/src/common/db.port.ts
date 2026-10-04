@@ -542,6 +542,7 @@ export interface DbGiftCardTransaction {
   amountDeltaMinor: number;
   saleId: string | null;
   refundId: string | null;
+  loadId?: string | null;
   actorId: string;
   requestId: string;
   idempotencyKey: string;

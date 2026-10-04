@@ -13,15 +13,18 @@ export type ManagerApprovalPermission =
   | "refund.override"
   | "sale.void"
   | "inventory.adjust"
-  | "shift.close.override";
+  | "shift.close.override"
+  | "stored_value.adjust"
+  | "loyalty.adjust";
 
 export type ManagerApprovalAction =
   | { kind: "discount"; lines: Array<{ productId: string; qty: number; lineDiscountMinor: number }>; orderDiscountMinor: number }
-  | { kind: "refund"; saleId: string; items: Array<{ saleItemId: string; qty: number }>; reason?: string }
+  | { kind: "refund"; saleId: string; items: Array<{ saleItemId: string; qty: number }>; loadRefunds?: Array<{ loadId: string; amountMinor: number }>; reason?: string }
   | { kind: "sale_void"; saleId: string; reason: string }
   | { kind: "inventory_movement"; productId: string; movementType: string; qtyDelta: number; reason?: string; branchId?: string }
   | { kind: "inventory_count"; countId: string }
-  | { kind: "shift_close"; shiftId: string; countedCashMinor: number; closeNotes?: string };
+  | { kind: "shift_close"; shiftId: string; countedCashMinor: number; closeNotes?: string }
+  | { kind: "value_adjustment"; valueType: "gift_card" | "store_credit" | "loyalty"; targetId: string; amountDelta: number; reason: string };
 
 export interface ManagerApprovalGrant {
   token: string;

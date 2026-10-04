@@ -24,6 +24,12 @@ interface CustomerDetail {
   purchaseHistory: Array<{ id: string; receiptNo: string; status: string; totalMinor: number }>;
 }
 
+interface StoredValue {
+  customerId: string;
+  storeCreditMinor: number;
+  loyaltyPoints: number;
+}
+
 interface Me {
   role: string;
   businessName?: string;
@@ -50,6 +56,11 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   const detailQuery = useQuery({
     queryKey: ["customer", id],
     queryFn: () => apiFetch<CustomerDetail>(`/api/v1/customers/${id}`),
+    retry: false,
+  });
+  const valueQuery = useQuery({
+    queryKey: ["customer-value", id],
+    queryFn: () => apiFetch<StoredValue>(`/api/v1/customers/${id}/stored-value`),
     retry: false,
   });
 
@@ -154,6 +165,8 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
             <MetricCard label="Purchase total" value={`₱${money(purchaseTotal)}`} icon="₱" tone="info" meta="Historical recorded sales" />
             <MetricCard label="Contact" value={customer.phone || customer.email ? "Available" : "Limited"} icon="☎" tone={customer.phone || customer.email ? "success" : "warning"} meta="Stored profile fields" />
             <MetricCard label="Status" value={<span className="text-base">{customer.isActive ? "Active" : "Archived"}</span>} icon={customer.isActive ? "✓" : "—"} tone={customer.isActive ? "success" : "warning"} meta="Profile lifecycle" />
+            <MetricCard label="Store credit" value={`₱${money(valueQuery.data?.storeCreditMinor ?? 0)}`} icon="₱" tone="info" meta="Available customer credit" />
+            <MetricCard label="Loyalty points" value={(valueQuery.data?.loyaltyPoints ?? 0).toLocaleString("en-PH")} icon="✦" tone="success" meta="Current points balance" />
           </section>
         ) : null}
 
@@ -200,6 +213,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
             </DataTableFrame>
           </div>
         ) : <Panel className="p-6 text-sm text-[#73685f]">Loading customer…</Panel>}
+        {customer ? <Panel className="p-5"><SectionHeader title="Customer value" description="Stored value is tracked separately from purchase history and can be used by supported refund and POS flows." /><div className="mt-4 grid gap-3 sm:grid-cols-2"><div className="rounded-xl bg-[#f7f1ea] p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#9a8d83]">Store credit</p><p className="mt-1 font-data text-2xl font-semibold text-[#2a241f]">₱{money(valueQuery.data?.storeCreditMinor ?? 0)}</p><p className="mt-1 text-[11px] text-[#73685f]">Issued through refunds or authorized adjustments.</p></div><div className="rounded-xl bg-[#f7f1ea] p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#9a8d83]">Loyalty points</p><p className="mt-1 font-data text-2xl font-semibold text-[#2a241f]">{(valueQuery.data?.loyaltyPoints ?? 0).toLocaleString("en-PH")}</p><p className="mt-1 text-[11px] text-[#73685f]">Earned and redeemed against the configured program.</p></div></div><div className="mt-4 flex flex-wrap gap-3"><Link href={`/customers/${id}/stored-value`} className="inline-flex min-h-10 items-center rounded-[10px] border border-[#e4d9d0] bg-white px-4 text-sm font-semibold text-[#2a241f] hover:border-[#f35d3f]">Open value ledger →</Link><Link href="/gift-cards" className="inline-flex min-h-10 items-center rounded-[10px] border border-[#e4d9d0] bg-white px-4 text-sm font-semibold text-[#2a241f] hover:border-[#f35d3f]">Manage gift cards</Link></div></Panel> : null}
       </main>
 
       <Modal

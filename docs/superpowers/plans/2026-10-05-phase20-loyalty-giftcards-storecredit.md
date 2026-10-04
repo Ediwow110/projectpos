@@ -21,28 +21,28 @@ tests before UI and production smoke work.
 
 ### Foundation
 
-- [ ] Task 1: Add Phase 20 Prisma models, migration, RLS, validation types, and
+- [x] Task 1: Add Phase 20 Prisma models, migration, RLS, validation types, and
   memory/PostgreSQL adapter parity.
-- [ ] Task 2: Add secure gift-card code generation, masked lookup, append-only
+- [x] Task 2: Add secure gift-card code generation, masked lookup, append-only
   ledger, rate limiting, lifecycle, and manager-authorized adjustments.
-- [ ] Task 3: Add customer-bound store-credit accounts, ledger, adjustments,
+- [x] Task 3: Add customer-bound store-credit accounts, ledger, adjustments,
   balance/history, and tenant/RBAC enforcement.
-- [ ] Task 4: Add loyalty program/account/ledger, integer earn/redeem math, and
+- [x] Task 4: Add loyalty program/account/ledger, integer earn/redeem math, and
   sale-time snapshots.
 
 ### Atomic commerce integration
 
-- [ ] Task 5: Add internal payment fields and make sale completion atomic for
+- [x] Task 5: Add internal payment fields and make sale completion atomic for
   gift-card/store-credit/loyalty redemption, gift-card loads, earning, and
   split tender.
-- [ ] Task 6: Extend refunds for original internal-tender restoration,
+- [x] Task 6: Extend refunds for original internal-tender restoration,
   explicit refund-to-store-credit, and historical loyalty reversal.
-- [ ] Task 7: Add receipts, reports, ledger export, liability summaries, and
+- [x] Task 7: Add receipts, reports, ledger export, liability summaries, and
   audit redaction.
 
 ### UI and hardening
 
-- [ ] Task 8: Add customer value and loyalty settings UI plus `/gift-cards`.
+- [x] Task 8: Add customer value and loyalty settings UI plus `/gift-cards`.
 - [ ] Task 9: Add responsive POS internal tenders, gift-card load/print, and
   offline/accessibility behavior.
 - [ ] Task 10: Add concurrency, idempotency, injected-failure, security,
@@ -50,9 +50,9 @@ tests before UI and production smoke work.
 
 ### Checkpoints
 
-- [ ] Checkpoint A: Foundation tests and migration compile cleanly.
-- [ ] Checkpoint B: Mixed-tender sale/refund atomicity and accounting tests pass.
-- [ ] Checkpoint C: UI tests, full regression, build, and production smoke pass.
+- [x] Checkpoint A: Foundation tests and migration compile cleanly.
+- [x] Checkpoint B: Mixed-tender sale/refund atomicity and accounting tests pass.
+- [x] Checkpoint C: UI tests and full regression pass; production smoke remains pending deployed QA access.
 
 ## Verification commands
 

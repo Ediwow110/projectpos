@@ -74,6 +74,30 @@ describe("phase6 refund service", () => {
     const actions = (await db.listAudit()).map((a) => a.action);
     expect(actions).toContain("refund.approve");
   });
+
+  it("reverses a gift-card load without restocking merchandise or reversing loyalty", async () => {
+    const db = createMemoryDb();
+    const shifts = new ShiftService(db);
+    const register = await shifts.createRegister("b1", "u1", "r0-load-refund", { name: "Load Counter" }, "owner");
+    await shifts.openShift("b1", "u1", "r1-load-refund", register.id, { openingFloatMinor: 0 }, "cashier");
+    const prod = await db.createProduct({ businessId: "b1", categoryId: null, name: "Load item", sku: null, barcode: null, brand: null, unit: "pc", costMinor: 100, priceMinor: 500, taxRateBps: null, reorderLevel: 0, trackInventory: true, isActive: true, imageUrl: null });
+    await db.upsertBalance({ businessId: "b1", productId: prod.id, qtyOnHand: 3 });
+    const sales = new SalesService(db);
+    const draft = await sales.createDraft("b1", "u1", "r2-load-refund", { lines: [{ productId: prod.id, qty: 1, lineDiscountMinor: 0 }], orderDiscountMinor: 0, registerId: register.id, giftCardLoad: { amountMinor: 1000, kind: "NEW" } }, ALL);
+    await sales.completeSale("b1", "u1", "r3-load-refund", draft.id, { payments: [{ method: "cash", amountMinor: draft.totalMinor }], key: "load-refund-sale", granted: ALL });
+    const load = (await db.listSaleGiftCardLoads(draft.id, "b1"))[0]!;
+    const card = await db.findGiftCardById(load.giftCardId!, "b1");
+    expect(card).toBeTruthy();
+    const refund = new RefundService(db);
+    const out = await refund.approveRefund("b1", "u1", "r4-load-refund", draft.id, { items: [], loadRefunds: [{ loadId: load.id, amountMinor: 1000 }], key: "load-refund-approve" }, ALL, "owner");
+    expect(out.refund.totalMinor).toBe(1000);
+    expect(out.sale.status).toBe("PARTIALLY_REFUNDED");
+    expect((await db.findBalance(prod.id, "b1"))!.qtyOnHand).toBe(2);
+    const tx = await db.listGiftCardTransactions(card!.id, "b1");
+    expect(tx.filter((row) => row.type === "LOAD_REFUND")).toHaveLength(1);
+    expect(tx.find((row) => row.type === "LOAD_REFUND")?.amountDeltaMinor).toBe(-1000);
+    expect((await db.listRefundItemsBySale(draft.id, "b1"))).toEqual([]);
+  });
   it("keeps sale completion and refund symmetric when the live bundle changes", async () => {
     const db = createMemoryDb();
     const shifts = new ShiftService(db);
