@@ -6,6 +6,7 @@ import { AppShell } from "../../../components/AppShell";
 import { PageHeader, Panel, SectionHeader } from "../../../components/premium";
 import { GhostButton, PrimaryButton } from "../../../components/ui";
 import { apiFetch, ApiError } from "../../../lib/api";
+import { encodeCode128 } from "../../../lib/code128";
 
 interface LabelProduct {
   id: string;
@@ -16,22 +17,18 @@ interface LabelProduct {
   labelQuantity: number;
 }
 
-function bars(value: string): string {
-  return Array.from(value).map((character, index) => {
-    const code = character.charCodeAt(0) + index * 17;
-    return Array.from({ length: (code % 4) + 1 }, (_, bar) => (bar % 2 === 0 ? "1" : "0")).join("");
-  }).join("101");
-}
-
 function Label({ product }: { product: LabelProduct }): JSX.Element {
-  const pattern = bars(product.barcode ?? product.sku ?? product.id);
+  const value = product.barcode ?? product.sku ?? product.id;
+  let pattern = "";
+  try { pattern = encodeCode128(value).modules; } catch { pattern = ""; }
   return (
     <article className="label-card rounded-lg border border-[#d9cec4] bg-white p-3 text-center text-[#241f1b]">
       <p className="truncate text-[11px] font-semibold">{product.name}</p>
-      <svg aria-label={`Barcode for ${product.name}`} role="img" viewBox={`0 0 ${pattern.length} 42`} className="mx-auto mt-2 h-12 w-full">
+      {pattern ? <svg aria-label={`Code 128 barcode for ${value}`} role="img" viewBox={`0 0 ${pattern.length} 42`} className="mx-auto mt-2 h-12 w-full" shapeRendering="crispEdges">
         {Array.from(pattern).map((bit, index) => bit === "1" ? <rect key={index} x={index} y="0" width="1" height="42" fill="currentColor" /> : null)}
-      </svg>
-      <p className="font-data mt-1 text-[10px] tracking-[0.16em]">{product.barcode ?? "NO BARCODE"}</p>
+      </svg> : <p role="alert" className="mt-2 text-[10px] text-[#b33d32]">Barcode cannot be encoded.</p>}
+      <p className="font-data mt-1 text-[10px] tracking-[0.16em]">{value}</p>
+      {product.sku ? <p className="font-data mt-1 text-[10px] text-[#73685f]">SKU {product.sku}</p> : null}
       <p className="font-data mt-1 text-[10px]">₱{(product.priceMinor / 100).toFixed(2)}</p>
     </article>
   );

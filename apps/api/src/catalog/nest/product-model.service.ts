@@ -94,6 +94,7 @@ export class ProductModelService {
 
   async createBundle(businessId: string, actorId: string, requestId: string, input: { name: string; sku: string; barcode?: string | null; priceMinor: number; costMinor: number; categoryId?: string | null; components: Array<{ productId: string; quantity: number }> }): Promise<unknown> {
     const duplicate = new Set(input.components.map((c) => c.productId)); if (duplicate.size !== input.components.length) throw new Error("DUPLICATE_COMPONENT");
+    if (input.components.some((component) => !Number.isInteger(component.quantity) || component.quantity <= 0)) throw new Error("VALIDATION");
     await this.uniqueProductIdentity(businessId, input.sku.trim(), input.barcode?.trim() || null);
     const products = await Promise.all(input.components.map((c) => this.db.findProductById(c.productId, businessId)));
     if (products.some((p) => !p || !p.isActive || !p.trackInventory)) throw new Error("INVALID_BUNDLE_COMPONENT");
@@ -108,6 +109,16 @@ export class ProductModelService {
     const bundle = await this.db.findProductBundleById(bundleId, businessId); if (!bundle) throw new Error("NOT_FOUND");
     const product = await this.db.findProductById(bundle.bundleProductId, businessId); const components = await this.db.listBundleComponents(bundle.id, businessId);
     return { ...bundle, product, components };
+  }
+
+  async listBundles(businessId: string): Promise<unknown[]> {
+    withScope(businessId, {});
+    const products = (await this.db.listProducts(businessId)).filter((product) => product.productType === "BUNDLE");
+    const bundles = await Promise.all(products.map(async (product) => {
+      const bundle = await this.db.findProductBundleByProductId(product.id, businessId);
+      return bundle ? { ...bundle, product, components: await this.db.listBundleComponents(bundle.id, businessId) } : null;
+    }));
+    return bundles.filter((bundle): bundle is NonNullable<typeof bundle> => bundle !== null);
   }
 
   async updateBundle(businessId: string, actorId: string, requestId: string, bundleId: string, input: { components: Array<{ productId: string; quantity: number }> }): Promise<unknown> {

@@ -74,6 +74,35 @@ describe("phase6 refund service", () => {
     const actions = (await db.listAudit()).map((a) => a.action);
     expect(actions).toContain("refund.approve");
   });
+  it("keeps sale completion and refund symmetric when the live bundle changes", async () => {
+    const db = createMemoryDb();
+    const shifts = new ShiftService(db);
+    const register = await shifts.createRegister("b1", "u1", "r0-bundle", { name: "Bundle Counter" }, "owner");
+    await shifts.openShift("b1", "u1", "r1-bundle", register.id, { openingFloatMinor: 0 }, "cashier");
+    const componentA = await db.createProduct({ businessId: "b1", categoryId: null, name: "Bundle A", sku: "BA", barcode: null, brand: null, unit: "pc", costMinor: 100, priceMinor: 200, taxRateBps: null, reorderLevel: 0, trackInventory: true, isActive: true, imageUrl: null });
+    const componentB = await db.createProduct({ businessId: "b1", categoryId: null, name: "Bundle B", sku: "BB", barcode: null, brand: null, unit: "pc", costMinor: 150, priceMinor: 300, taxRateBps: null, reorderLevel: 0, trackInventory: true, isActive: true, imageUrl: null });
+    const bundleProduct = await db.createProduct({ businessId: "b1", categoryId: null, name: "Snapshot bundle", sku: "BUNDLE-SNAP", barcode: null, brand: null, unit: "kit", costMinor: 250, priceMinor: 700, taxRateBps: null, reorderLevel: 0, trackInventory: false, isActive: true, imageUrl: null, productType: "BUNDLE" });
+    const bundle = await db.createProductBundle({ businessId: "b1", bundleProductId: bundleProduct.id, version: 1 });
+    await db.createBundleComponent({ businessId: "b1", bundleId: bundle.id, componentProductId: componentA.id, quantity: 1, position: 0 });
+    await db.createBundleComponent({ businessId: "b1", bundleId: bundle.id, componentProductId: componentB.id, quantity: 1, position: 1 });
+    await db.upsertBalance({ businessId: "b1", productId: componentA.id, qtyOnHand: 10 });
+    await db.upsertBalance({ businessId: "b1", productId: componentB.id, qtyOnHand: 10 });
+    const sales = new SalesService(db);
+    const draft = await sales.createDraft("b1", "u1", "r2-bundle", { lines: [{ productId: bundleProduct.id, qty: 1, lineDiscountMinor: 0 }], orderDiscountMinor: 0, registerId: register.id }, ALL);
+    const items = await db.listSaleItems(draft.id, "b1");
+    expect(await db.listSaleItemBundleComponents(items[0]!.id, "b1")).toHaveLength(2);
+    await db.deleteBundleComponents(bundle.id, "b1");
+    await db.createBundleComponent({ businessId: "b1", bundleId: bundle.id, componentProductId: componentA.id, quantity: 2, position: 0 });
+    await db.createBundleComponent({ businessId: "b1", bundleId: bundle.id, componentProductId: componentB.id, quantity: 1, position: 1 });
+    await db.updateProductBundle(bundle.id, "b1", { version: 2 });
+    await sales.completeSale("b1", "u1", "r3-bundle", draft.id, { payments: [{ method: "cash", amountMinor: draft.totalMinor }], key: "bundle-snapshot-sale", granted: ALL });
+    expect((await db.findBalance(componentA.id, "b1"))!.qtyOnHand).toBe(9);
+    expect((await db.findBalance(componentB.id, "b1"))!.qtyOnHand).toBe(9);
+    const refund = new RefundService(db);
+    await refund.approveRefund("b1", "u1", "r4-bundle", draft.id, { items: [{ saleItemId: items[0]!.id, qty: 1 }], key: "bundle-snapshot-refund" }, ALL, "owner");
+    expect((await db.findBalance(componentA.id, "b1"))!.qtyOnHand).toBe(10);
+    expect((await db.findBalance(componentB.id, "b1"))!.qtyOnHand).toBe(10);
+  });
   it("rejects over-quantity refunds with nothing written", async () => {
     const { db, svc, saleId } = await setupRefund();
     const items = await db.listSaleItems(saleId, "b1");

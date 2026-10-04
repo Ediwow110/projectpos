@@ -127,6 +127,12 @@ export class ProductModelController {
     catch (error) { failFromError(res, error, "Bundle create failed", req); }
   }
 
+  @Get("bundles")
+  @Scopes("catalog:read")
+  async listBundles(@Req() req: Request, @Res() res: Response): Promise<void> {
+    res.json({ items: await this.models.listBundles(req.auth!.businessId) });
+  }
+
   @Get("bundles/:id")
   @Scopes("catalog:read")
   async getBundle(@Req() req: Request, @Res() res: Response, @Param("id") id: string): Promise<void> {

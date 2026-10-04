@@ -135,11 +135,13 @@ export class RefundService {
         singleStep,
       });
       const resolvedWithTracking = await Promise.all(
-        resolved.map(async (row) => ({
-          ...row,
-          tracked: (await this.db.findProductById(row.line.productId, businessId))?.trackInventory === true,
-          bundleComponents: await this.db.listSaleItemBundleComponents(row.line.id, businessId),
-        })),
+        resolved.map(async (row) => {
+          const product = await this.db.findProductById(row.line.productId, businessId);
+          const bundleComponents = await this.db.listSaleItemBundleComponents(row.line.id, businessId);
+          if (product?.productType === "BUNDLE" && bundleComponents.length === 0) throw new Error("INVALID_BUNDLE_SNAPSHOT");
+          if (bundleComponents.some((component) => !Number.isInteger(component.quantityPerBundleSnapshot) || component.quantityPerBundleSnapshot <= 0)) throw new Error("INVALID_BUNDLE_SNAPSHOT");
+          return { ...row, tracked: product?.trackInventory === true, bundleComponents };
+        }),
       );
       await withInventoryLocks(
         this.db,
