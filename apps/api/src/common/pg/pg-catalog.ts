@@ -16,6 +16,15 @@ const PRODUCT_COLUMNS =
   '"id", "businessId", "familyId", "productType", "categoryId", "name", "sku", "barcode", "brand", "unit", "costMinor", ' +
   '"priceMinor", "taxRateBps", "reorderLevel", "trackInventory", "isActive", "imageUrl"';
 
+// Keep the historical adapter shape for ordinary products. The new columns
+// are only surfaced when they carry Phase 19 meaning.
+function exposePhase19Product(row: DbProduct): DbProduct {
+  const out = { ...row } as DbProduct & { familyId?: string | null; productType?: string };
+  if (out.familyId == null) delete out.familyId;
+  if (out.productType === "STANDARD") delete out.productType;
+  return out;
+}
+
 // Column names come from the typed patch keys (never user input), so quoting
 // them is safe. Keys explicitly set to undefined are skipped — the SQL NOT NULL
 // columns could not take them, and no caller produces them.
@@ -119,7 +128,7 @@ export function catalogFamily(ctx: PgContext) {
           `SELECT ${PRODUCT_COLUMNS} FROM "Product" WHERE "businessId" = $1 ORDER BY "createdAt" ASC, "id" ASC`,
           [businessId],
         );
-        return r.rows as DbProduct[];
+        return (r.rows as DbProduct[]).map(exposePhase19Product);
       } finally {
         if (ctx.owns()) c.release();
       }
@@ -132,7 +141,7 @@ export function catalogFamily(ctx: PgContext) {
           `SELECT ${PRODUCT_COLUMNS} FROM "Product" WHERE "id" = $1 AND "businessId" = $2`,
           [id, businessId],
         );
-        return (r.rows[0] as DbProduct | undefined) ?? null;
+        return r.rows[0] ? exposePhase19Product(r.rows[0] as DbProduct) : null;
       } finally {
         if (ctx.owns()) c.release();
       }
@@ -152,7 +161,7 @@ export function catalogFamily(ctx: PgContext) {
             ` RETURNING ${PRODUCT_COLUMNS}`,
           [...values, id, businessId],
         );
-        return (r.rows[0] as DbProduct | undefined) ?? null;
+        return r.rows[0] ? exposePhase19Product(r.rows[0] as DbProduct) : null;
       } finally {
         if (ctx.owns()) c.release();
       }
