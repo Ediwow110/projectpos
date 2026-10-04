@@ -154,6 +154,7 @@ export class RefundService {
           return { ...row, tracked: product?.trackInventory === true, bundleComponents };
         }),
       );
+      const saleLoyalty = await this.db.findSaleLoyalty(sale.id, businessId);
       await withInventoryLocks(
         this.db,
         businessId,
@@ -255,13 +256,24 @@ export class RefundService {
           if (!account) throw new Error("NOT_FOUND");
           const program = await this.db.getLoyaltyProgram(businessId);
           if (!program) throw new Error("LOYALTY_DISABLED");
-          const points = Math.floor(a.amount * program.redeemPoints / program.redeemValueMinor);
+          const points = Math.floor(a.amount * (saleLoyalty?.redeemPointsSnapshot ?? program.redeemPoints) / (saleLoyalty?.redeemValueMinorSnapshot ?? program.redeemValueMinor));
           if (points > 0) await this.db.createLoyaltyTransaction({ businessId, accountId: account.id, customerId: sale.customerId!, type: "REFUND_REDEEM", pointsDelta: points, valueMinorSnapshot: a.amount, saleId: sale.id, refundId: refund.id, actorId, requestId, idempotencyKey: ledgerKey, reason: reason ?? "Refund" });
         }
       }
-      const saleLoyalty = await this.db.findSaleLoyalty(sale.id, businessId);
       if (saleLoyalty && saleLoyalty.earnedPoints > 0 && saleLoyalty.eligibleSpendMinor > 0) {
-        const reversal = Math.min(saleLoyalty.earnedPoints, Math.floor(saleLoyalty.earnedPoints * totalMinor / saleLoyalty.eligibleSpendMinor));
+        const itemAllocations = await this.db.listSaleItemLoyaltyAllocations(saleLoyalty.id, businessId);
+        const resolvedByLine = new Map(resolved.map((row) => [row.line.id, row]));
+        const allocatedReversal = itemAllocations.reduce((sum, allocation) => {
+          const row = resolvedByLine.get(allocation.saleItemId);
+          if (!row) return sum;
+          const priorQty = refundedByLine.get(row.line.id) ?? 0;
+          const before = Math.floor(allocation.earnedPoints * priorQty / Math.max(1, row.line.qty));
+          const after = Math.floor(allocation.earnedPoints * (priorQty + row.qty) / Math.max(1, row.line.qty));
+          return sum + Math.max(0, after - before);
+        }, 0);
+        const reversal = itemAllocations.length > 0
+          ? Math.min(saleLoyalty.earnedPoints, allocatedReversal)
+          : Math.min(saleLoyalty.earnedPoints, Math.floor(saleLoyalty.earnedPoints * totalMinor / saleLoyalty.eligibleSpendMinor));
         if (reversal > 0) {
           const account = await this.db.findLoyaltyAccount(saleLoyalty.customerId, businessId);
           if (account) await this.db.createLoyaltyTransaction({ businessId, accountId: account.id, customerId: saleLoyalty.customerId, type: "REFUND_EARN_REVERSAL", pointsDelta: -reversal, valueMinorSnapshot: totalMinor, saleId: sale.id, refundId: refund.id, actorId, requestId, idempotencyKey: `${input.key}:refund-earn`, reason: reason ?? "Refund" });

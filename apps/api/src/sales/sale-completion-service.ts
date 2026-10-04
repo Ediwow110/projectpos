@@ -236,6 +236,19 @@ export class SalesCompletionService {
         if (loyalty?.enabled && eligibleSpendMinor > 0) {
           const earned = await this.storedValue.earnLoyalty(businessId, actorId, requestId, sale.customerId, eligibleSpendMinor, sale.id, `${input.key}:loyalty:earn`);
           if (redeemedPointsTotal > 0 || redeemedValueTotal > 0) await this.db.updateSaleLoyalty(earned.snapshot.id, businessId, { redeemedPoints: redeemedPointsTotal, redeemedValueMinor: redeemedValueTotal });
+          const eligibleLines = items.map((item) => Math.max(0, item.lineTotalMinor));
+          const lineTotal = eligibleLines.reduce((sum, value) => sum + value, 0);
+          let allocated = 0;
+          for (const [index, item] of items.entries()) {
+            const points = index === items.length - 1
+              ? earned.points - allocated
+              : Math.floor(earned.points * (eligibleLines[index] ?? 0) / Math.max(1, lineTotal));
+            allocated += points;
+            if (points > 0) await this.db.createSaleItemLoyaltyAllocation({ businessId, saleLoyaltyId: earned.snapshot.id, saleItemId: item.id, earnedPoints: points });
+          }
+        } else if (loyalty?.enabled && redeemedPointsTotal > 0) {
+          const account = await this.storedValue.ensureLoyaltyAccount(businessId, sale.customerId);
+          await this.db.createSaleLoyalty({ businessId, saleId: sale.id, customerId: sale.customerId, loyaltyAccountId: account.id, programVersion: loyalty.version, eligibleSpendMinor: 0, earnedPoints: 0, redeemedPoints: redeemedPointsTotal, redeemedValueMinor: redeemedValueTotal, earnAmountMinorSnapshot: loyalty.earnAmountMinor, earnPointsSnapshot: loyalty.earnPoints, redeemPointsSnapshot: loyalty.redeemPoints, redeemValueMinorSnapshot: loyalty.redeemValueMinor });
         }
       }
       if (registerId && cashMinor > 0) {
