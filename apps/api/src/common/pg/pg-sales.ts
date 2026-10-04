@@ -23,7 +23,7 @@ const SALE_SELECT =
 const ITEM_SELECT =
   '"id", "businessId", "saleId", "position", "productId", "name", "unit", "qty", "priceMinor", "costMinor", ' +
   '"taxRateBps", "lineDiscountMinor", "lineTotalMinor"';
-const PAYMENT_SELECT = '"id", "businessId", "saleId", "method", "amountMinor", "status", "providerRef", "idempotencyKey"';
+const PAYMENT_SELECT = '"id", "businessId", "saleId", "method", "amountMinor", "status", "providerRef", "internalInstrumentType", "internalInstrumentId", "idempotencyKey"';
 const HELD_SELECT = '"id", "businessId", "actorId", "payload", "resumedAt"';
 const IDEMPOTENCY_SELECT = '"businessId", "key", "commandType", "fingerprint", "resultId"';
 
@@ -189,11 +189,11 @@ export function salesFamily(ctx: PgContext) {
       try {
         const row = { ...p, id: nid("pay") };
         await c.query(
-          'INSERT INTO "Payment" ("id", "businessId", "saleId", "method", "amountMinor", "status", "providerRef", "idempotencyKey", "createdAt")' +
-            ' VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)',
+          'INSERT INTO "Payment" ("id", "businessId", "saleId", "method", "amountMinor", "status", "providerRef", "internalInstrumentType", "internalInstrumentId", "idempotencyKey", "createdAt")' +
+            ' VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)',
           [
             row.id, row.businessId, row.saleId, row.method, row.amountMinor, row.status,
-            row.providerRef ?? null, row.idempotencyKey,
+            row.providerRef ?? null, row.internalInstrumentType ?? null, row.internalInstrumentId ?? null, row.idempotencyKey,
           ],
         );
         return row;

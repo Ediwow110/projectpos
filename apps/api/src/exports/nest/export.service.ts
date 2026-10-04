@@ -22,6 +22,9 @@ const ACCT = {
   cogs: "5000",
   expenses: "6000",
   purchases: "7000",
+  giftCardLiability: "2300",
+  storeCreditLiability: "2310",
+  loyaltyLiability: "2320",
 } as const;
 
 const PAYMENT_ACCOUNTS: Record<string, string> = {
@@ -32,6 +35,9 @@ const PAYMENT_ACCOUNTS: Record<string, string> = {
   maya: ACCT.walletClearing,
   qrph: ACCT.walletClearing,
   other: ACCT.otherClearing,
+  gift_card: ACCT.giftCardLiability,
+  store_credit: ACCT.storeCreditLiability,
+  loyalty: ACCT.loyaltyLiability,
 };
 
 export function accountForMethod(method: string): string {
@@ -153,6 +159,9 @@ export class ExportService {
     if (!isSettled(sale.status) || !inRange(sale.createdAt)) return [];
     const iso = sale.createdAt.toISOString();
     const rows: JournalRow[] = [];
+    const giftLoads = await this.db.listSaleGiftCardLoads(sale.id, businessId);
+    const giftLoadMinor = giftLoads.reduce((sum, load) => sum + load.amountMinor, 0);
+    const merchandiseRevenueMinor = Math.max(0, sale.totalMinor - giftLoadMinor);
     const payments = (await this.db.listPaymentsBySale(sale.id, businessId)).filter(
       (p: DbPayment) => p.status === "SUCCEEDED" && p.amountMinor > 0,
     );
@@ -164,7 +173,8 @@ export class ExportService {
     for (const leg of legs) {
       rows.push({ date: iso, type: "sale", ref: sale.receiptNo, account: leg.account, debitMinor: leg.amountMinor, creditMinor: 0, memo: sale.receiptNo });
     }
-    rows.push({ date: iso, type: "sale", ref: sale.receiptNo, account: ACCT.revenue, debitMinor: 0, creditMinor: sale.totalMinor, memo: sale.receiptNo });
+    rows.push({ date: iso, type: "sale", ref: sale.receiptNo, account: ACCT.revenue, debitMinor: 0, creditMinor: merchandiseRevenueMinor, memo: sale.receiptNo });
+    if (giftLoadMinor > 0) rows.push({ date: iso, type: "stored_value", ref: sale.receiptNo, account: ACCT.giftCardLiability, debitMinor: 0, creditMinor: giftLoadMinor, memo: `Gift card load ${sale.receiptNo}` });
     // Cash handed back as change is a liability, not revenue: without this the
     // tender debits would not balance against the sale total.
     if (sale.changeMinor > 0) {

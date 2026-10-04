@@ -8,6 +8,7 @@ import { withInventoryLocks } from "../../inventory/inventory-locks";
 import { lineRefundAmount, refundableQty } from "../refund-math";
 import { refundLockKey } from "../refund-lock";
 import type { AppliedManagerApproval } from "../../auth/nest/manager-approval-policy.service";
+import { StoredValueService } from "../../value/stored-value.service";
 
 export interface RefundItemInput {
   saleItemId: string;
@@ -19,10 +20,12 @@ const CASH_METHODS = new Set(["cash"]);
 @Injectable()
 export class RefundService {
   private readonly shifts: ShiftService;
+  private readonly storedValue: StoredValueService;
 
   constructor(@Inject("DbPort") private readonly db: DbPort) {
     // Same-DbPort instance (not Nest DI) to avoid a Refund<->Shift DI cycle.
     this.shifts = new ShiftService(db);
+    this.storedValue = new StoredValueService(db);
   }
 
   private async requireSale(businessId: string, saleId: string): Promise<DbSale> {
@@ -44,14 +47,14 @@ export class RefundService {
     actorId: string,
     requestId: string,
     saleId: string,
-    input: { items: RefundItemInput[]; reason?: string; key: string },
+    input: { items: RefundItemInput[]; reason?: string; destination?: "ORIGINAL_TENDER" | "STORE_CREDIT"; key: string },
     granted: string[],
     role: string,
     approval?: AppliedManagerApproval,
   ): Promise<{ refund: DbRefund; sale: DbSale; replayed: boolean }> {
     withScope(businessId, {});
     if (!granted.includes("sale.refund")) throw new Error("FORBIDDEN");
-    return this.db.withLock(refundLockKey(businessId, saleId), async () => {
+    return this.db.withLock(refundLockKey(businessId, saleId), async () => this.db.withTransaction(async () => {
       const requestedByLine = new Map<string, number>();
       for (const item of input.items) {
         requestedByLine.set(item.saleItemId, (requestedByLine.get(item.saleItemId) ?? 0) + item.qty);
@@ -59,7 +62,8 @@ export class RefundService {
       const requestedItems = [...requestedByLine.entries()]
         .map(([saleItemId, qty]) => ({ saleItemId, qty }))
         .sort((left, right) => left.saleItemId.localeCompare(right.saleItemId));
-      const fingerprint = fingerprintPayload({ saleId, items: requestedItems, reason: input.reason ?? null });
+      const destination = input.destination ?? "ORIGINAL_TENDER";
+      const fingerprint = fingerprintPayload({ saleId, items: requestedItems, reason: input.reason ?? null, destination });
       const existing = await this.db.findIdempotency(businessId, input.key, "refund.approve");
       if (existing) {
         if (existing.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
@@ -106,11 +110,18 @@ export class RefundService {
         (p) => p.status === "SUCCEEDED",
       );
       let remaining = totalMinor;
-      const allocations: Array<{ method: string; amount: number }> = [];
+      const allocations: Array<{ method: string; amount: number; internalInstrumentType?: "gift_card" | "store_credit" | "loyalty"; internalInstrumentId?: string }> = [];
+      if (destination === "STORE_CREDIT") {
+        if (!sale.customerId) throw new Error("CUSTOMER_REQUIRED");
+        const account = await this.storedValue.ensureStoreCreditAccount(businessId, sale.customerId);
+        allocations.push({ method: "store_credit", amount: totalMinor, internalInstrumentType: "store_credit", internalInstrumentId: account.id });
+        remaining = 0;
+      }
       for (const p of succeeded) {
+        if (destination === "STORE_CREDIT") break;
         if (remaining <= 0) break;
         const portion = Math.min(remaining, p.amountMinor);
-        allocations.push({ method: p.method, amount: portion });
+        allocations.push({ method: p.method, amount: portion, internalInstrumentType: p.internalInstrumentType ?? undefined, internalInstrumentId: p.internalInstrumentId ?? undefined });
         remaining -= portion;
       }
       if (remaining > 0) throw new Error("REFUND_EXCEEDS_LIMIT");
@@ -225,9 +236,36 @@ export class RefundService {
           amountMinor: a.amount,
           status: "REFUNDED",
           providerRef: null,
+          internalInstrumentType: a.internalInstrumentType ?? null,
+          internalInstrumentId: a.internalInstrumentId ?? null,
           // Leg index, not just method: two cash legs must not collide.
           idempotencyKey: `${input.key}:refund:${a.method}:${legIndex}`,
         });
+      }
+      for (const [legIndex, a] of allocations.entries()) {
+        const ledgerKey = `${input.key}:refund-ledger:${legIndex}`;
+        if (a.internalInstrumentType === "gift_card" && a.internalInstrumentId) {
+          await this.db.createGiftCardTransaction({ businessId, giftCardId: a.internalInstrumentId, type: "REFUND", amountDeltaMinor: a.amount, saleId: sale.id, refundId: refund.id, actorId, requestId, idempotencyKey: ledgerKey, reason: reason ?? "Refund", branchId: sale.branchId ?? null });
+        } else if (a.internalInstrumentType === "store_credit" && a.internalInstrumentId) {
+          const account = await this.db.findStoreCreditAccount(sale.customerId ?? "", businessId);
+          if (!account) throw new Error("NOT_FOUND");
+          await this.db.createStoreCreditTransaction({ businessId, accountId: account.id, customerId: sale.customerId!, type: "REFUND", amountDeltaMinor: a.amount, saleId: sale.id, refundId: refund.id, actorId, requestId, idempotencyKey: ledgerKey, reason: reason ?? "Refund", branchId: sale.branchId ?? null });
+        } else if (a.internalInstrumentType === "loyalty" && a.internalInstrumentId) {
+          const account = await this.db.findLoyaltyAccount(sale.customerId ?? "", businessId);
+          if (!account) throw new Error("NOT_FOUND");
+          const program = await this.db.getLoyaltyProgram(businessId);
+          if (!program) throw new Error("LOYALTY_DISABLED");
+          const points = Math.floor(a.amount * program.redeemPoints / program.redeemValueMinor);
+          if (points > 0) await this.db.createLoyaltyTransaction({ businessId, accountId: account.id, customerId: sale.customerId!, type: "REFUND_REDEEM", pointsDelta: points, valueMinorSnapshot: a.amount, saleId: sale.id, refundId: refund.id, actorId, requestId, idempotencyKey: ledgerKey, reason: reason ?? "Refund" });
+        }
+      }
+      const saleLoyalty = await this.db.findSaleLoyalty(sale.id, businessId);
+      if (saleLoyalty && saleLoyalty.earnedPoints > 0 && saleLoyalty.eligibleSpendMinor > 0) {
+        const reversal = Math.min(saleLoyalty.earnedPoints, Math.floor(saleLoyalty.earnedPoints * totalMinor / saleLoyalty.eligibleSpendMinor));
+        if (reversal > 0) {
+          const account = await this.db.findLoyaltyAccount(saleLoyalty.customerId, businessId);
+          if (account) await this.db.createLoyaltyTransaction({ businessId, accountId: account.id, customerId: saleLoyalty.customerId, type: "REFUND_EARN_REVERSAL", pointsDelta: -reversal, valueMinorSnapshot: totalMinor, saleId: sale.id, refundId: refund.id, actorId, requestId, idempotencyKey: `${input.key}:refund-earn`, reason: reason ?? "Refund" });
+        }
       }
       if (cashMinor > 0 && sale.registerId) {
         await this.shifts.postCashSale(businessId, actorId, requestId, sale.registerId, sale.id, cashMinor, {
@@ -274,7 +312,7 @@ export class RefundService {
         });
       }
       return { refund, sale: updated, replayed: false };
-    });
+    }));
   }
 
   async rejectRefund(

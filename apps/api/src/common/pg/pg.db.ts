@@ -15,6 +15,8 @@ import { billingFamily } from "./pg-billing";
 import { integrationsFamily } from "./pg-integrations";
 import { procurementFamily } from "./pg-procurement";
 import { productModelFamily, type ProductModelFamily } from "./pg-product-model";
+import { valueFamily, type ValueFamily } from "./pg-value";
+import type { DbGiftCard, DbGiftCardTransaction, DbStoreCreditAccount, DbStoreCreditTransaction, DbLoyaltyProgram, DbLoyaltyAccount, DbLoyaltyTransaction, DbSaleGiftCardLoad, DbSaleLoyalty, DbSaleItemLoyaltyAllocation } from "../db.port";
 
 // Phase 12: the PostgreSQL-backed DbPort. Composed from per-family modules
 // over one PgContext; `implements DbPort` makes the compiler enforce that the
@@ -35,6 +37,7 @@ export class PgDbPort implements DbPort {
   private readonly integrations: ReturnType<typeof integrationsFamily>;
   private readonly procurement: ReturnType<typeof procurementFamily>;
   private readonly productModels: ProductModelFamily;
+  private readonly values: ValueFamily;
 
   constructor(private readonly ctx: PgContext) {
     this.settings = settingsFamily(ctx);
@@ -52,6 +55,7 @@ export class PgDbPort implements DbPort {
     this.integrations = integrationsFamily(ctx);
     this.procurement = procurementFamily(ctx);
     this.productModels = productModelFamily(ctx);
+    this.values = valueFamily(ctx);
   }
 
   // withLock/withTransaction come straight from the context so every family
@@ -406,6 +410,34 @@ export class PgDbPort implements DbPort {
   updateCustomer(id: string, businessId: string, patch: Partial<Omit<DbCustomer, "id" | "businessId">>): Promise<DbCustomer | null> {
     return this.people.updateCustomer(id, businessId, patch);
   }
+  createGiftCard(c: Omit<DbGiftCard, "id" | "createdAt" | "updatedAt">): Promise<DbGiftCard> { return this.values.createGiftCard(c); }
+  findGiftCardByHash(codeHash: string, businessId: string): Promise<DbGiftCard | null> { return this.values.findGiftCardByHash(codeHash, businessId); }
+  findGiftCardById(id: string, businessId: string): Promise<DbGiftCard | null> { return this.values.findGiftCardById(id, businessId); }
+  listGiftCards(businessId: string): Promise<DbGiftCard[]> { return this.values.listGiftCards(businessId); }
+  updateGiftCard(id: string, businessId: string, patch: Partial<Omit<DbGiftCard, "id" | "businessId" | "createdAt">>): Promise<DbGiftCard | null> { return this.values.updateGiftCard(id, businessId, patch); }
+  createGiftCardTransaction(t: Omit<DbGiftCardTransaction, "id" | "createdAt">): Promise<DbGiftCardTransaction> { return this.values.createGiftCardTransaction(t); }
+  listGiftCardTransactions(giftCardId: string, businessId: string): Promise<DbGiftCardTransaction[]> { return this.values.listGiftCardTransactions(giftCardId, businessId); }
+  findGiftCardTransactionByIdempotency(businessId: string, idempotencyKey: string): Promise<DbGiftCardTransaction | null> { return this.values.findGiftCardTransactionByIdempotency(businessId, idempotencyKey); }
+  createStoreCreditAccount(a: Omit<DbStoreCreditAccount, "id" | "createdAt" | "updatedAt">): Promise<DbStoreCreditAccount> { return this.values.createStoreCreditAccount(a); }
+  findStoreCreditAccount(customerId: string, businessId: string): Promise<DbStoreCreditAccount | null> { return this.values.findStoreCreditAccount(customerId, businessId); }
+  createStoreCreditTransaction(t: Omit<DbStoreCreditTransaction, "id" | "createdAt">): Promise<DbStoreCreditTransaction> { return this.values.createStoreCreditTransaction(t); }
+  listStoreCreditTransactions(accountId: string, businessId: string): Promise<DbStoreCreditTransaction[]> { return this.values.listStoreCreditTransactions(accountId, businessId); }
+  findStoreCreditTransactionByIdempotency(businessId: string, idempotencyKey: string): Promise<DbStoreCreditTransaction | null> { return this.values.findStoreCreditTransactionByIdempotency(businessId, idempotencyKey); }
+  upsertLoyaltyProgram(p: Omit<DbLoyaltyProgram, "id" | "updatedAt">): Promise<DbLoyaltyProgram> { return this.values.upsertLoyaltyProgram(p); }
+  getLoyaltyProgram(businessId: string): Promise<DbLoyaltyProgram | null> { return this.values.getLoyaltyProgram(businessId); }
+  createLoyaltyAccount(a: Omit<DbLoyaltyAccount, "id" | "createdAt" | "updatedAt">): Promise<DbLoyaltyAccount> { return this.values.createLoyaltyAccount(a); }
+  findLoyaltyAccount(customerId: string, businessId: string): Promise<DbLoyaltyAccount | null> { return this.values.findLoyaltyAccount(customerId, businessId); }
+  createLoyaltyTransaction(t: Omit<DbLoyaltyTransaction, "id" | "createdAt">): Promise<DbLoyaltyTransaction> { return this.values.createLoyaltyTransaction(t); }
+  listLoyaltyTransactions(accountId: string, businessId: string): Promise<DbLoyaltyTransaction[]> { return this.values.listLoyaltyTransactions(accountId, businessId); }
+  findLoyaltyTransactionByIdempotency(businessId: string, idempotencyKey: string): Promise<DbLoyaltyTransaction | null> { return this.values.findLoyaltyTransactionByIdempotency(businessId, idempotencyKey); }
+  createSaleGiftCardLoad(l: Omit<DbSaleGiftCardLoad, "id" | "createdAt">): Promise<DbSaleGiftCardLoad> { return this.values.createSaleGiftCardLoad(l); }
+  updateSaleGiftCardLoad(id: string, businessId: string, patch: Partial<Pick<DbSaleGiftCardLoad, "giftCardId">>): Promise<DbSaleGiftCardLoad | null> { return this.values.updateSaleGiftCardLoad(id, businessId, patch); }
+  listSaleGiftCardLoads(saleId: string, businessId: string): Promise<DbSaleGiftCardLoad[]> { return this.values.listSaleGiftCardLoads(saleId, businessId); }
+  createSaleLoyalty(s: Omit<DbSaleLoyalty, "id" | "createdAt">): Promise<DbSaleLoyalty> { return this.values.createSaleLoyalty(s); }
+  findSaleLoyalty(saleId: string, businessId: string): Promise<DbSaleLoyalty | null> { return this.values.findSaleLoyalty(saleId, businessId); }
+  updateSaleLoyalty(id: string, businessId: string, patch: Partial<Pick<DbSaleLoyalty, "redeemedPoints" | "redeemedValueMinor" | "earnedPoints">>): Promise<DbSaleLoyalty | null> { return this.values.updateSaleLoyalty(id, businessId, patch); }
+  createSaleItemLoyaltyAllocation(a: Omit<DbSaleItemLoyaltyAllocation, "id" | "createdAt">): Promise<DbSaleItemLoyaltyAllocation> { return this.values.createSaleItemLoyaltyAllocation(a); }
+  listSaleItemLoyaltyAllocations(saleLoyaltyId: string, businessId: string): Promise<DbSaleItemLoyaltyAllocation[]> { return this.values.listSaleItemLoyaltyAllocations(saleLoyaltyId, businessId); }
   createRefund(r: Omit<DbRefund, "id">): Promise<DbRefund> {
     return this.people.createRefund(r);
   }

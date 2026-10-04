@@ -125,7 +125,7 @@ export class SalesService {
     requestId: string,
     saleId: string,
     input: { payments: PaymentInput[]; key: string; granted: string[]; registerId?: string; branchId?: string | null },
-  ): Promise<{ sale: SaleWithLines; replayed: boolean }> {
+  ): Promise<{ sale: SaleWithLines; replayed: boolean; giftCardCodes?: string[] }> {
     withScope(businessId, {});
     return this.completion.completeSale(businessId, actorId, requestId, saleId, input);
   }

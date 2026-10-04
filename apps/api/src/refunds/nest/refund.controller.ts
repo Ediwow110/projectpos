@@ -120,7 +120,7 @@ export class RefundController {
       if (existing) {
         const replay = await this.refunds.approveRefund(
           auth.businessId, auth.userId, rid(req), id,
-          { items: parsed.data.items, reason: parsed.data.reason, key },
+          { items: parsed.data.items, reason: parsed.data.reason, destination: parsed.data.destination, key },
           this.perms(req), auth.role,
         );
         res.status(200).json({ refund: replay.refund, sale: replay.sale, replayed: true });
@@ -149,6 +149,7 @@ export class RefundController {
         {
           items: parsed.data.items,
           reason: parsed.data.reason,
+          destination: parsed.data.destination,
           key,
         },
         granted,

@@ -7,6 +7,7 @@ export interface ReceiptTextLine {
 export interface ReceiptTextTender {
   method: string;
   amountMinor: number;
+  label?: string;
 }
 
 export interface ReceiptTextInput {
@@ -44,7 +45,7 @@ export function renderReceiptText(input: ReceiptTextInput): string {
   lines.push(`PAID ${money(input.paidMinor)}`);
   lines.push(`CHANGE ${money(input.changeMinor)}`);
   for (const tender of input.tenders) {
-    lines.push(`${tender.method} ${money(tender.amountMinor)}`);
+    lines.push(`${tender.label ?? tender.method} ${money(tender.amountMinor)}`);
   }
   return `${lines.join("\n")}\n`;
 }

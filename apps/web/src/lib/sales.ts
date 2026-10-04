@@ -18,8 +18,8 @@ export function canRequestRefund(granted: string[]): boolean {
 
 export function buildCompletePayload(
   saleId: string,
-  payments: Array<{ method: string; amountMinor: number }>,
+  payments: Array<{ method: string; amountMinor: number; internalInstrumentId?: string }>,
   idempotencyKey: string,
-): { saleId: string; payments: Array<{ method: string; amountMinor: number }>; idempotencyKey: string } {
+): { saleId: string; payments: Array<{ method: string; amountMinor: number; internalInstrumentId?: string }>; idempotencyKey: string } {
   return { saleId, payments, idempotencyKey };
 }

@@ -45,6 +45,9 @@ const METHODS: Array<{ key: string; label: string; tile: string }> = [
   { key: "maya", label: "Maya", tile: "bg-[#1f8a5b]" },
   { key: "qrph", label: "QR Ph", tile: "bg-[#6554c0]" },
   { key: "bank_transfer", label: "Bank transfer", tile: "bg-[#3468d4]" },
+  { key: "gift_card", label: "Gift card", tile: "bg-[#bd6b2e]" },
+  { key: "store_credit", label: "Store credit", tile: "bg-[#2e8b78]" },
+  { key: "loyalty", label: "Loyalty", tile: "bg-[#8a5bb8]" },
   { key: "other", label: "Other", tile: "bg-[#5d534b]" },
 ];
 
@@ -54,6 +57,7 @@ export default function PosPage(): JSX.Element {
   const [cart, setCart] = useState<PosCartEntry[]>([]);
   const [method, setMethod] = useState("cash");
   const [received, setReceived] = useState("");
+  const [internalInstrumentId, setInternalInstrumentId] = useState("");
   const [status, setStatus] = useState("");
   const [receiptId, setReceiptId] = useState<string | null>(null);
   const [reconcileId, setReconcileId] = useState<string | null>(null);
@@ -367,6 +371,7 @@ export default function PosPage(): JSX.Element {
         walkIn,
         received,
         method,
+        internalInstrumentId: internalInstrumentId.trim() || undefined,
         orderDiscountMinor,
         approvalToken,
         existingDraft: activeDraft ?? undefined,
@@ -656,6 +661,8 @@ export default function PosPage(): JSX.Element {
             canPay={canPay}
             methodAvailable={methodAvailable}
             onMethodChange={setMethod}
+            internalInstrumentId={internalInstrumentId}
+            onInternalInstrumentIdChange={setInternalInstrumentId}
             onReceivedChange={setReceived}
             onClose={() => setShowPay(false)}
             onPay={() => void pay()}

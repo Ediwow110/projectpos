@@ -10,6 +10,7 @@ export const refundApproveSchema = z.object({
   saleId: z.string().min(1, "VALIDATION"),
   items: refundItemSchema.array().min(1, "VALIDATION").max(100, "VALIDATION"),
   reason: z.string().trim().max(500, "VALIDATION").optional(),
+  destination: z.enum(["ORIGINAL_TENDER", "STORE_CREDIT"]).default("ORIGINAL_TENDER"),
   approvalToken: managerApprovalTokenSchema.optional(),
 });
 

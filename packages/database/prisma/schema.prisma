@@ -109,6 +109,16 @@ model Business {
   supplierReturnLines SupplierReturnLine[]
   purchaseReceiptCounters PurchaseReceiptCounter[]
   supplierReturnCounters SupplierReturnCounter[]
+  giftCards GiftCard[]
+  giftCardTransactions GiftCardTransaction[]
+  storeCreditAccounts StoreCreditAccount[]
+  storeCreditTransactions StoreCreditTransaction[]
+  loyaltyPrograms LoyaltyProgram[]
+  loyaltyAccounts LoyaltyAccount[]
+  loyaltyTransactions LoyaltyTransaction[]
+  saleGiftCardLoads SaleGiftCardLoad[]
+  saleLoyaltySnapshots SaleLoyalty[]
+  saleItemLoyaltyAllocations SaleItemLoyaltyAllocation[]
   activeSessions Session[] @relation("SessionActiveBusiness")
 }
 
@@ -487,6 +497,8 @@ model Sale {
   items          SaleItem[]
   payments       Payment[]
   receiptDeliveries ReceiptDelivery[]
+  giftCardLoads  SaleGiftCardLoad[]
+  loyaltySnapshot SaleLoyalty?
   @@unique([businessId, receiptNo])
   @@unique([businessId, idempotencyKey])
   @@index([businessId, status, createdAt])
@@ -540,6 +552,8 @@ model Payment {
   amountMinor    Int
   status         String   @default("SUCCEEDED")
   providerRef    String?
+  internalInstrumentType String?
+  internalInstrumentId   String?
   idempotencyKey String
   createdAt      DateTime @default(now())
   business       Business @relation(fields: [businessId], references: [id])
@@ -547,6 +561,7 @@ model Payment {
   @@unique([businessId, idempotencyKey])
   @@unique([businessId, providerRef])
   @@index([businessId, saleId])
+  @@index([businessId, internalInstrumentType, internalInstrumentId])
 }
 
 model HeldSale {
@@ -583,6 +598,8 @@ model Register {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   business   Business @relation(fields: [businessId], references: [id])
+  storeCreditAccount StoreCreditAccount?
+  loyaltyAccount LoyaltyAccount?
   shifts     Shift[]
   @@unique([businessId, name])
   @@index([businessId])
@@ -980,10 +997,190 @@ model ReceiptDelivery {
   sentAt         DateTime?
   createdAt      DateTime @default(now())
   business       Business @relation(fields: [businessId], references: [id])
+  storeCreditAccount StoreCreditAccount?
+  loyaltyAccount LoyaltyAccount?
   sale           Sale     @relation(fields: [saleId], references: [id])
 
   @@unique([businessId, idempotencyKey])
   @@index([businessId, saleId, createdAt])
+}
+
+model GiftCard {
+  id          String   @id @default(cuid())
+  businessId  String
+  codeHash    String
+  codePrefix  String
+  codeLast4   String
+  status      String   @default("ACTIVE")
+  createdBy   String
+  activatedAt DateTime?
+  suspendedAt DateTime?
+  version     Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  business    Business @relation(fields: [businessId], references: [id])
+  transactions GiftCardTransaction[]
+  loads       SaleGiftCardLoad[]
+  @@unique([businessId, codeHash])
+  @@index([businessId, status, createdAt])
+}
+
+model GiftCardTransaction {
+  id             String   @id @default(cuid())
+  businessId     String
+  giftCardId     String
+  type           String
+  amountDeltaMinor Int
+  saleId         String?
+  refundId       String?
+  actorId        String
+  requestId      String
+  idempotencyKey String
+  reason         String?
+  branchId       String?
+  createdAt      DateTime @default(now())
+  business       Business @relation(fields: [businessId], references: [id])
+  giftCard       GiftCard @relation(fields: [giftCardId], references: [id])
+  @@unique([businessId, idempotencyKey])
+  @@index([businessId, giftCardId, createdAt])
+  @@index([businessId, saleId])
+}
+
+model StoreCreditAccount {
+  id         String   @id @default(cuid())
+  businessId String
+  customerId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  business   Business @relation(fields: [businessId], references: [id])
+  customer   Customer @relation(fields: [customerId], references: [id])
+  transactions StoreCreditTransaction[]
+  @@unique([businessId, customerId])
+  @@index([businessId, customerId])
+}
+
+model StoreCreditTransaction {
+  id             String   @id @default(cuid())
+  businessId     String
+  accountId      String
+  customerId     String
+  type           String
+  amountDeltaMinor Int
+  saleId         String?
+  refundId       String?
+  actorId        String
+  requestId      String
+  idempotencyKey String
+  reason         String?
+  branchId       String?
+  createdAt      DateTime @default(now())
+  business       Business @relation(fields: [businessId], references: [id])
+  account        StoreCreditAccount @relation(fields: [accountId], references: [id])
+  @@unique([businessId, idempotencyKey])
+  @@index([businessId, accountId, createdAt])
+  @@index([businessId, customerId])
+}
+
+model LoyaltyProgram {
+  id                String   @id @default(cuid())
+  businessId        String
+  enabled           Boolean  @default(false)
+  earnAmountMinor   Int      @default(100)
+  earnPoints        Int      @default(1)
+  redeemPoints      Int      @default(100)
+  redeemValueMinor  Int      @default(100)
+  minimumRedeemPoints Int?
+  version           Int      @default(1)
+  updatedAt         DateTime @updatedAt
+  business          Business @relation(fields: [businessId], references: [id])
+  @@unique([businessId])
+}
+
+model LoyaltyAccount {
+  id         String   @id @default(cuid())
+  businessId String
+  customerId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  business   Business @relation(fields: [businessId], references: [id])
+  customer   Customer @relation(fields: [customerId], references: [id])
+  transactions LoyaltyTransaction[]
+  saleSnapshot SaleLoyalty[]
+  @@unique([businessId, customerId])
+  @@index([businessId, customerId])
+}
+
+model LoyaltyTransaction {
+  id               String   @id @default(cuid())
+  businessId       String
+  accountId        String
+  customerId       String
+  type             String
+  pointsDelta      Int
+  valueMinorSnapshot Int?
+  saleId           String?
+  refundId         String?
+  actorId          String
+  requestId        String
+  idempotencyKey   String
+  reason           String?
+  createdAt        DateTime @default(now())
+  business         Business @relation(fields: [businessId], references: [id])
+  account          LoyaltyAccount @relation(fields: [accountId], references: [id])
+  @@unique([businessId, idempotencyKey])
+  @@index([businessId, accountId, createdAt])
+  @@index([businessId, customerId])
+}
+
+model SaleGiftCardLoad {
+  id         String   @id @default(cuid())
+  businessId String
+  saleId     String
+  giftCardId String?
+  amountMinor Int
+  kind       String
+  createdAt  DateTime @default(now())
+  business   Business @relation(fields: [businessId], references: [id])
+  sale       Sale     @relation(fields: [saleId], references: [id])
+  giftCard   GiftCard? @relation(fields: [giftCardId], references: [id])
+  @@index([businessId, saleId])
+  @@index([businessId, giftCardId])
+}
+
+model SaleLoyalty {
+  id                    String   @id @default(cuid())
+  businessId            String
+  saleId                String   @unique
+  customerId            String
+  loyaltyAccountId      String
+  programVersion        Int
+  eligibleSpendMinor    Int
+  earnedPoints          Int
+  redeemedPoints        Int
+  redeemedValueMinor    Int
+  earnAmountMinorSnapshot Int
+  earnPointsSnapshot    Int
+  redeemPointsSnapshot  Int
+  redeemValueMinorSnapshot Int
+  createdAt             DateTime @default(now())
+  business              Business @relation(fields: [businessId], references: [id])
+  sale                  Sale     @relation(fields: [saleId], references: [id])
+  account               LoyaltyAccount @relation(fields: [loyaltyAccountId], references: [id])
+  allocations           SaleItemLoyaltyAllocation[]
+  @@index([businessId, customerId])
+}
+
+model SaleItemLoyaltyAllocation {
+  id             String   @id @default(cuid())
+  businessId     String
+  saleLoyaltyId  String
+  saleItemId     String
+  earnedPoints   Int
+  createdAt      DateTime @default(now())
+  business       Business @relation(fields: [businessId], references: [id])
+  saleLoyalty    SaleLoyalty @relation(fields: [saleLoyaltyId], references: [id], onDelete: Cascade)
+  @@unique([businessId, saleLoyaltyId, saleItemId])
+  @@index([businessId, saleItemId])
 }
 
 model ReceiptCounter {
