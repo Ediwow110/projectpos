@@ -184,6 +184,7 @@ export class ReportingBreakdownService {
       sold: number;
       damaged: number;
       adjusted: number;
+      supplierReturned: number;
     };
     generatedAt: string;
   }> {
@@ -241,6 +242,7 @@ export class ReportingBreakdownService {
     let sold = 0;
     let damaged = 0;
     let adjusted = 0;
+    let supplierReturned = 0;
     for (const movement of movements) {
       if (
         movement.type === "opening_stock" ||
@@ -254,6 +256,8 @@ export class ReportingBreakdownService {
         movement.type === "transfer_out"
       ) {
         sold += -movement.qtyDelta;
+      } else if (movement.type === "supplier_return") {
+        supplierReturned += -movement.qtyDelta;
       } else if (movement.type === "damage") {
         damaged += -movement.qtyDelta;
       } else if (
@@ -269,7 +273,7 @@ export class ReportingBreakdownService {
       out,
       untracked,
       lowStock: lowStock.slice(0, 50),
-      movements: { received, sold, damaged, adjusted },
+      movements: { received, sold, damaged, adjusted, supplierReturned },
       generatedAt: new Date().toISOString(),
     };
   }

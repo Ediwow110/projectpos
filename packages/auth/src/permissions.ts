@@ -18,6 +18,10 @@ export const SENSITIVE_ACTIONS = [
   "purchase_order.write",
   "purchase_order.order",
   "purchase_order.cancel",
+  "purchase_order.receive",
+  "supplier_return.write",
+  "supplier_return.post",
+  "supplier_return.cancel",
 ] as const;
 
 export function hasPermission(

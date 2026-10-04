@@ -63,6 +63,9 @@ export const CODE_STATUS: Record<string, number> = {
   PRODUCT_SUPPLIER_DUPLICATE: 409,
   PURCHASE_ORDER_INVALID_STATE: 409,
   STALE_VERSION: 409,
+  RECEIPT_EXCEEDS_OUTSTANDING: 409,
+  RETURN_EXCEEDS_RETURNABLE: 409,
+  SUPPLIER_RETURN_INVALID_STATE: 409,
 };
 
 export function statusFor(code: string, fallback = 400): number {

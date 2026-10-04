@@ -31,6 +31,7 @@ const ITEMS = {
   admin: { href: "/admin", label: "Administration / Help", icon: "?", tour: "admin" },
   suppliers: { href: "/suppliers", label: "Suppliers", icon: "⌁", tour: "suppliers" },
   purchaseOrders: { href: "/purchase-orders", label: "Purchase Orders", icon: "▱", tour: "purchase-orders" },
+  supplierReturns: { href: "/supplier-returns", label: "Supplier Returns", icon: "↩", tour: "supplier-returns" },
 } as const satisfies Record<string, WorkspaceNavigationItem>;
 
 function group(label: string, keys: Array<keyof typeof ITEMS>): WorkspaceNavigationGroup {
@@ -47,7 +48,7 @@ export function workspaceNavigationForRole(role?: string): WorkspaceNavigationGr
   if (role === "inventory") {
     return [
       group("Catalog & stock", ["dashboard", "products", "categories", "inventory"]),
-      group("Procurement", ["suppliers", "purchaseOrders"]),
+      group("Procurement", ["suppliers", "purchaseOrders", "supplierReturns"]),
       group("Operations", ["transfers", "branches", "devices", "sync"]),
       group("Insights", ["reports"]),
     ];
@@ -56,7 +57,7 @@ export function workspaceNavigationForRole(role?: string): WorkspaceNavigationGr
     return [
       group("Sell", ["dashboard", "pos", "sales", "customers"]),
       group("Catalog & stock", ["products", "categories", "inventory"]),
-      group("Procurement", ["suppliers", "purchaseOrders"]),
+      group("Procurement", ["suppliers", "purchaseOrders", "supplierReturns"]),
       group("Operations", ["registers", "shifts", "transfers", "expenses"]),
       group("Insights", ["reports"]),
       group("Administration", ["branches", "devices", "printers", "sync", "admin"]),
@@ -65,7 +66,7 @@ export function workspaceNavigationForRole(role?: string): WorkspaceNavigationGr
   return [
     group("Sell", ["dashboard", "pos", "sales", "customers"]),
     group("Catalog & stock", ["products", "categories", "inventory"]),
-    group("Procurement", ["suppliers", "purchaseOrders"]),
+    group("Procurement", ["suppliers", "purchaseOrders", "supplierReturns"]),
     group("Operations", ["registers", "shifts", "transfers", "expenses"]),
     group("Insights", ["reports"]),
     group("Administration", ["branches", "devices", "printers", "sync", "team", "admin"]),

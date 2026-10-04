@@ -1,9 +1,11 @@
-export const PO_STATUSES = ["DRAFT", "ORDERED", "CANCELLED"] as const;
+export const PO_STATUSES = ["DRAFT", "ORDERED", "PARTIALLY_RECEIVED", "RECEIVED", "CANCELLED"] as const;
 export type PurchaseOrderStatus = (typeof PO_STATUSES)[number];
 
 const transitions: Record<PurchaseOrderStatus, readonly PurchaseOrderStatus[]> = {
   DRAFT: ["ORDERED", "CANCELLED"],
-  ORDERED: ["CANCELLED"],
+  ORDERED: ["PARTIALLY_RECEIVED", "RECEIVED", "CANCELLED"],
+  PARTIALLY_RECEIVED: ["PARTIALLY_RECEIVED", "RECEIVED"],
+  RECEIVED: [],
   CANCELLED: [],
 };
 

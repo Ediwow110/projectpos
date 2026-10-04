@@ -35,6 +35,8 @@ const MAP = {
   DbShiftCorrection: "ShiftCorrection",
   DbSupplier: "Supplier", DbProductSupplier: "ProductSupplier",
   DbPurchaseOrder: "PurchaseOrder", DbPurchaseOrderLine: "PurchaseOrderLine",
+  DbPurchaseReceipt: "PurchaseReceipt", DbPurchaseReceiptLine: "PurchaseReceiptLine",
+  DbSupplierReturn: "SupplierReturn", DbSupplierReturnLine: "SupplierReturnLine",
 };
 
 const gaps = [];
