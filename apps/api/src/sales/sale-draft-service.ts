@@ -68,6 +68,14 @@ export class SalesDraftService {
       orderDiscountMinor: input.orderDiscountMinor ?? 0,
       businessTaxRateBps: businessTax,
     });
+    const giftCardLoad = input.giftCardLoad;
+    if (giftCardLoad) {
+      if (!Number.isInteger(giftCardLoad.amountMinor) || giftCardLoad.amountMinor <= 0) throw new Error("VALIDATION");
+      if (giftCardLoad.kind === "RELOAD" && !giftCardLoad.giftCardId) throw new Error("VALIDATION");
+    }
+    const totalWithStoredValue = giftCardLoad
+      ? { ...totals, totalMinor: totals.totalMinor + giftCardLoad.amountMinor }
+      : totals;
     const receiptNo = await this.db.nextReceiptNo(businessId);
     let registerId: string | null = null;
     let registerBranchId: string | null = null;
@@ -100,7 +108,7 @@ export class SalesDraftService {
       subtotalMinor: totals.subtotalMinor,
       discountMinor: totals.discountMinor,
       taxMinor: totals.taxMinor,
-      totalMinor: totals.totalMinor,
+      totalMinor: totalWithStoredValue.totalMinor,
       paidMinor: 0,
       changeMinor: 0,
       currency: "PHP",
@@ -150,6 +158,15 @@ export class SalesDraftService {
         }
       }
     }
+    if (giftCardLoad) {
+      await this.db.createSaleGiftCardLoad({
+        businessId,
+        saleId: sale.id,
+        giftCardId: giftCardLoad.giftCardId ?? null,
+        amountMinor: giftCardLoad.amountMinor,
+        kind: giftCardLoad.kind,
+      });
+    }
     await this.db.appendAudit({
       businessId,
       actorId,
@@ -158,6 +175,6 @@ export class SalesDraftService {
       entityId: sale.id,
       requestId,
     });
-    return { ...sale, ...totals, totalMinor: totals.totalMinor };
+    return { ...sale, ...totalWithStoredValue, totalMinor: totalWithStoredValue.totalMinor };
   }
 }

@@ -15,6 +15,10 @@ export const ROLE_SEED: Record<"owner" | "manager" | "cashier" | "inventory", st
       p !== "cost.view" &&
       p !== "discount.override" &&
       p !== "sale.refund" &&
+      p !== "stored_value.adjust" &&
+      p !== "gift_card.manage" &&
+      p !== "loyalty.manage" &&
+      p !== "loyalty.adjust" &&
       p !== "sale.void" &&
       p !== "refund.override" &&
       p !== "inventory.adjust" &&

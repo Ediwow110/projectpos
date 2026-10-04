@@ -23,6 +23,8 @@ interface PosPaymentWorkspaceProps {
   canPay: boolean;
   methodAvailable: (key: string) => boolean;
   onMethodChange: (method: string) => void;
+  internalInstrumentId?: string;
+  onInternalInstrumentIdChange?: (value: string) => void;
   onReceivedChange: (received: string) => void;
   onClose: () => void;
   onPay: () => void;
@@ -47,6 +49,8 @@ export function PosPaymentWorkspace({
   canPay,
   methodAvailable,
   onMethodChange,
+  internalInstrumentId = "",
+  onInternalInstrumentIdChange = () => undefined,
   onReceivedChange,
   onClose,
   onPay,
@@ -110,6 +114,11 @@ export function PosPaymentWorkspace({
               <p className="text-[12px] font-semibold text-white">Continue in PayMongo secure checkout</p>
               <p className="mt-1 text-[11px] leading-4 text-white/45">{selectedMethodLabel} payment is completed on PayMongo. NexPOS waits for the signed payment confirmation before finalizing the sale.</p>
             </div>
+          ) : ["gift_card", "store_credit", "loyalty"].includes(effectiveMethod) ? (
+            <label className="mx-5 mt-3 block text-[11px] font-semibold uppercase tracking-wider text-white/40">
+              {effectiveMethod === "gift_card" ? "Gift card ID" : effectiveMethod === "store_credit" ? "Customer-bound credit" : "Loyalty account"}
+              <input value={internalInstrumentId} onChange={(event) => onInternalInstrumentIdChange(event.target.value)} placeholder={effectiveMethod === "gift_card" ? "Scan or enter card ID" : "Optional account ID"} className="field-dark mt-1.5" />
+            </label>
           ) : null}
           <div className="grid grid-cols-2 gap-2 p-5">
             <button onClick={onClose} className="rounded-xl border border-white/15 py-2.5 text-sm font-semibold text-white/70 hover:text-white">Cancel</button>
@@ -179,6 +188,11 @@ export function PosPaymentWorkspace({
               <p className="text-[12px] font-semibold text-white">Continue in PayMongo secure checkout</p>
               <p className="mt-2 max-w-[500px] text-[10px] leading-5 text-[#a79e94]">{selectedMethodLabel} payment is completed on PayMongo. NexPOS will finalize the sale only after a signed payment confirmation is received.</p>
             </div>
+          ) : ["gift_card", "store_credit", "loyalty"].includes(effectiveMethod) ? (
+            <label className="mt-[46px] block w-[556px] text-[10px] font-semibold text-[#b7ada5]">
+              {effectiveMethod === "gift_card" ? "Gift card ID" : effectiveMethod === "store_credit" ? "Customer-bound credit" : "Loyalty account"}
+              <input value={internalInstrumentId} onChange={(event) => onInternalInstrumentIdChange(event.target.value)} placeholder={effectiveMethod === "gift_card" ? "Scan or enter card ID" : "Optional account ID"} className="field-dark mt-[11px]" />
+            </label>
           ) : null}
 
           <button

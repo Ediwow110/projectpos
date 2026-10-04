@@ -144,6 +144,7 @@ export async function completePosSale(
   input: SaleIdentityInput & {
     received: string;
     method: string;
+    internalInstrumentId?: string;
     existingDraft?: { id: string; totalMinor: number };
   },
   deps: { api?: PosApiCall; uuid?: () => string } = {},
@@ -180,8 +181,8 @@ export async function completePosSale(
   const tendered = resolveTenderedMinor(input.received, draft.totalMinor);
   const payments =
     input.method === "cash" && tendered >= draft.totalMinor
-      ? [{ method: input.method, amountMinor: tendered }]
-      : [{ method: input.method, amountMinor: draft.totalMinor }];
+      ? [{ method: input.method, amountMinor: tendered, ...(input.internalInstrumentId ? { internalInstrumentId: input.internalInstrumentId } : {}) }]
+      : [{ method: input.method, amountMinor: draft.totalMinor, ...(input.internalInstrumentId ? { internalInstrumentId: input.internalInstrumentId } : {}) }];
   const payload = buildCompletePayload(draft.id, payments, key);
   const response = await api<CompleteSaleResponse>("/api/v1/sales/complete", {
     csrfToken: csrf.csrfToken,

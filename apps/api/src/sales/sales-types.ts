@@ -22,12 +22,18 @@ export interface DraftInput {
   notes?: string;
   registerId?: string;
   branchId?: string | null;
+  giftCardLoad?: {
+    amountMinor: number;
+    kind: "NEW" | "RELOAD";
+    giftCardId?: string;
+  };
 }
 
 export interface PaymentInput {
   method: string;
   amountMinor: number;
   providerRef?: string;
+  internalInstrumentId?: string;
 }
 
 export type SaleWithLines = DbSale & {

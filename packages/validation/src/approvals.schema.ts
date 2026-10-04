@@ -10,6 +10,8 @@ export const managerApprovalPermissionSchema = z.enum([
   "sale.void",
   "inventory.adjust",
   "shift.close.override",
+  "stored_value.adjust",
+  "loyalty.adjust",
 ]);
 
 export type ManagerApprovalPermission = z.infer<typeof managerApprovalPermissionSchema>;
@@ -37,6 +39,11 @@ const refundItemSchema = z.object({
   qty: z.number().int("QTY_NOT_INTEGER").positive("QTY_NOT_POSITIVE"),
 }).strict();
 
+const giftCardLoadRefundSchema = z.object({
+  loadId: z.string().min(1, "VALIDATION"),
+  amountMinor: moneyMinorSchema.refine((value) => value > 0, { message: "VALIDATION" }),
+}).strict();
+
 const optionalReasonSchema = z.string().trim().max(500, "VALIDATION").optional();
 
 export const managerApprovalActionSchema = z.discriminatedUnion("kind", [
@@ -48,7 +55,8 @@ export const managerApprovalActionSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("refund"),
     saleId: z.string().min(1, "VALIDATION"),
-    items: refundItemSchema.array().min(1, "VALIDATION").max(100, "VALIDATION"),
+    items: refundItemSchema.array().max(100, "VALIDATION").default([]),
+    loadRefunds: giftCardLoadRefundSchema.array().max(100, "VALIDATION").optional(),
     reason: optionalReasonSchema,
   }).strict(),
   z.object({
@@ -74,7 +82,20 @@ export const managerApprovalActionSchema = z.discriminatedUnion("kind", [
     countedCashMinor: moneyMinorSchema,
     closeNotes: optionalReasonSchema,
   }).strict(),
+  z.object({
+    kind: z.literal("value_adjustment"),
+    valueType: z.enum(["gift_card", "store_credit", "loyalty"]),
+    targetId: z.string().min(1, "VALIDATION"),
+    amountDelta: z.number().int().refine((value) => value !== 0, "VALIDATION"),
+    reason: z.string().trim().min(3, "VALIDATION").max(500, "VALIDATION"),
+  }).strict(),
 ]);
+
+export const managerApprovalActionWithValidationSchema = managerApprovalActionSchema.superRefine((value, context) => {
+  if (value.kind === "refund" && value.items.length === 0 && (value.loadRefunds?.length ?? 0) === 0) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "VALIDATION", path: ["items"] });
+  }
+});
 
 export type ManagerApprovalAction = z.infer<typeof managerApprovalActionSchema>;
 
@@ -91,11 +112,12 @@ const allowedPermissionByAction: Record<ManagerApprovalAction["kind"], readonly 
   inventory_movement: ["inventory.adjust"],
   inventory_count: ["inventory.adjust"],
   shift_close: ["shift.close.override"],
+  value_adjustment: ["stored_value.adjust", "loyalty.adjust"],
 };
 
 export const managerApprovalRequestSchema = credentialsSchema.extend({
   permission: managerApprovalPermissionSchema,
-  action: managerApprovalActionSchema,
+  action: managerApprovalActionWithValidationSchema,
 }).strict().superRefine((value, context) => {
   if ((value.password ? 1 : 0) + (value.pin ? 1 : 0) !== 1) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: "VALIDATION", path: ["password"] });

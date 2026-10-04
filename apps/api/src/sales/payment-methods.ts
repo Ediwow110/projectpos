@@ -7,6 +7,9 @@ export const DEFAULT_PAYMENT_METHODS: Array<{ key: string; label: string }> = [
   { key: "maya", label: "Maya" },
   { key: "qrph", label: "QR Ph" },
   { key: "bank_transfer", label: "Bank transfer" },
+  { key: "gift_card", label: "Gift card" },
+  { key: "store_credit", label: "Store credit" },
+  { key: "loyalty", label: "Loyalty" },
   { key: "other", label: "Other" },
 ];
 

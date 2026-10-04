@@ -33,7 +33,7 @@ export interface SharedReceipt {
   totalMinor: number;
   paidMinor: number;
   changeMinor: number;
-  tenders: Array<{ method: string; amountMinor: number }>;
+  tenders: Array<{ method: string; amountMinor: number; label?: string }>;
 }
 
 export class SalesReceiptService {
@@ -84,10 +84,15 @@ export class SalesReceiptService {
       totalMinor: receipt.totalMinor,
       paidMinor: receipt.paidMinor,
       changeMinor: receipt.changeMinor,
-      tenders: receipt.payments.map((payment) => ({
+      tenders: await Promise.all(receipt.payments.map(async (payment) => ({
         method: payment.method,
         amountMinor: payment.amountMinor,
-      })),
+        ...(payment.internalInstrumentType === "gift_card" && payment.internalInstrumentId
+          ? { label: `Gift card ••••${(await this.db.findGiftCardById(payment.internalInstrumentId, businessId))?.codeLast4 ?? ""}` }
+          : payment.internalInstrumentType === "store_credit" ? { label: "Store credit" }
+          : payment.internalInstrumentType === "loyalty" ? { label: "Loyalty reward" }
+          : {}),
+      }))),
     });
     return { filename: `receipt-${receipt.receiptNo}.txt`, text };
   }
@@ -141,6 +146,7 @@ export class SalesReceiptService {
       tenders: receipt.payments.map((payment) => ({
         method: payment.method,
         amountMinor: payment.amountMinor,
+        ...(payment.internalInstrumentType === "store_credit" ? { label: "Store credit" } : payment.internalInstrumentType === "loyalty" ? { label: "Loyalty reward" } : {}),
       })),
     };
   }

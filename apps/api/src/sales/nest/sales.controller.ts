@@ -150,6 +150,7 @@ export class SalesController {
           notes: parsed.data.notes,
           registerId: parsed.data.registerId,
           branchId: parsed.data.branchId,
+          giftCardLoad: parsed.data.giftCardLoad,
         },
         granted,
         approval,
@@ -244,7 +245,7 @@ export class SalesController {
         fail(res, 429, "RATE_LIMITED", "Too many attempts", req);
         return;
       }
-      const { sale, replayed } = await this.sales.completeSale(
+      const { sale, replayed, giftCardCodes } = await this.sales.completeSale(
         auth.businessId,
         auth.userId,
         rid(req),
@@ -254,6 +255,7 @@ export class SalesController {
             method: p.method,
             amountMinor: p.amountMinor,
             providerRef: p.providerRef,
+            internalInstrumentId: p.internalInstrumentId,
           })),
           key,
           granted: this.perms(req),
@@ -270,7 +272,7 @@ export class SalesController {
         });
         return;
       }
-      res.status(replayed ? 200 : 201).json({ ...sale, replayed });
+      res.status(replayed ? 200 : 201).json({ ...sale, replayed, ...(giftCardCodes?.length ? { giftCardCodes } : {}) });
     } catch (e) {
       const code = e instanceof Error ? e.message : "VALIDATION";
       fail(res, statusFor(code), code, "Sale completion failed", req);

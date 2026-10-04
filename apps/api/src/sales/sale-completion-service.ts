@@ -8,6 +8,7 @@ import { resolvePaymentMethods } from "./payment-methods";
 import { transitionSale } from "./state-machine";
 import type { PaymentInput, SaleWithLines } from "./sales-types";
 import { SalesStockService } from "./sale-stock-service";
+import { StoredValueService } from "../value/stored-value.service";
 
 const CASH_METHODS = new Set(["cash"]);
 
@@ -16,6 +17,7 @@ export class SalesCompletionService {
     private readonly db: DbPort,
     private readonly stock: SalesStockService,
     private readonly shifts: ShiftService,
+    private readonly storedValue = new StoredValueService(db),
   ) {}
 
   private async requireSale(businessId: string, saleId: string): Promise<DbSale> {
@@ -48,8 +50,8 @@ export class SalesCompletionService {
       registerId?: string;
       branchId?: string | null;
     },
-  ): Promise<{ sale: SaleWithLines; replayed: boolean }> {
-    return this.db.withLock(`sales:${businessId}`, async () => {
+  ): Promise<{ sale: SaleWithLines; replayed: boolean; giftCardCodes?: string[] }> {
+    return this.db.withLock(`sales:${businessId}`, async () => this.db.withTransaction(async () => {
       const sale = await this.requireSale(businessId, saleId);
       const registerId = input.registerId ?? sale.registerId ?? null;
       let registerBranchId: string | null = null;
@@ -106,12 +108,15 @@ export class SalesCompletionService {
         orderDiscountMinor: sale.discountMinor,
         businessTaxRateBps: await this.businessTaxRateBps(businessId),
       });
+      const giftLoads = await this.db.listSaleGiftCardLoads(sale.id, businessId);
+      const giftLoadMinor = giftLoads.reduce((sum, load) => sum + load.amountMinor, 0);
+      const saleTotalMinor = totals.totalMinor + giftLoadMinor;
       const paid = input.payments.reduce((sum, payment) => sum + payment.amountMinor, 0);
-      if (paid < totals.totalMinor) throw new Error("PAYMENT_TOTAL_MISMATCH");
-      if (paid > totals.totalMinor && input.payments.some((payment) => !CASH_METHODS.has(payment.method))) {
+      if (paid < saleTotalMinor) throw new Error("PAYMENT_TOTAL_MISMATCH");
+      if (paid > saleTotalMinor && input.payments.some((payment) => !CASH_METHODS.has(payment.method))) {
         throw new Error("PAYMENT_TOTAL_MISMATCH");
       }
-      const change = paid - totals.totalMinor;
+      const change = paid - saleTotalMinor;
       const cashMinor = input.payments
         .filter((payment) => CASH_METHODS.has(payment.method))
         .reduce((sum, payment) => sum + payment.amountMinor, 0);
@@ -130,6 +135,8 @@ export class SalesCompletionService {
             amountMinor: payment.amountMinor,
             status: "UNKNOWN",
             providerRef: payment.providerRef ?? null,
+            internalInstrumentType: ["gift_card", "store_credit", "loyalty"].includes(payment.method) ? payment.method as "gift_card" | "store_credit" | "loyalty" : null,
+            internalInstrumentId: payment.internalInstrumentId ?? null,
             idempotencyKey: `${input.key}:${payment.method}:${legIndex}`,
           });
         }
@@ -165,7 +172,17 @@ export class SalesCompletionService {
       }
 
       await this.stock.applySale(businessId, actorId, requestId, sale.id, items, branchId);
+      let redeemedPointsTotal = 0;
+      let redeemedValueTotal = 0;
       for (const [legIndex, payment] of input.payments.entries()) {
+        let internalInstrumentId = payment.internalInstrumentId ?? null;
+        if (payment.method === "store_credit") {
+          if (!sale.customerId) throw new Error("CUSTOMER_REQUIRED");
+          internalInstrumentId = (await this.storedValue.ensureStoreCreditAccount(businessId, sale.customerId)).id;
+        } else if (payment.method === "loyalty") {
+          if (!sale.customerId) throw new Error("CUSTOMER_REQUIRED");
+          internalInstrumentId = (await this.storedValue.ensureLoyaltyAccount(businessId, sale.customerId)).id;
+        }
         await this.db.createPayment({
           businessId,
           saleId: sale.id,
@@ -173,8 +190,66 @@ export class SalesCompletionService {
           amountMinor: payment.amountMinor,
           status: "SUCCEEDED",
           providerRef: payment.providerRef ?? null,
+          internalInstrumentType: ["gift_card", "store_credit", "loyalty"].includes(payment.method) ? payment.method as "gift_card" | "store_credit" | "loyalty" : null,
+          internalInstrumentId,
           idempotencyKey: `${input.key}:${payment.method}:${legIndex}`,
         });
+      }
+      for (const [legIndex, payment] of input.payments.entries()) {
+        const ledgerKey = `${input.key}:internal:${payment.method}:${legIndex}`;
+        if (payment.method === "gift_card") {
+          if (!payment.internalInstrumentId) throw new Error("GIFT_CARD_REQUIRED");
+          const card = await this.db.findGiftCardById(payment.internalInstrumentId, businessId);
+          if (!card || (card.status !== "ACTIVE" && card.status !== "EXHAUSTED")) throw new Error("GIFT_CARD_INVALID_STATUS");
+          await this.db.createGiftCardTransaction({ businessId, giftCardId: card.id, type: "REDEEM", amountDeltaMinor: -payment.amountMinor, saleId: sale.id, refundId: null, actorId, requestId, idempotencyKey: ledgerKey, reason: null, branchId });
+        } else if (payment.method === "store_credit") {
+          if (!sale.customerId) throw new Error("CUSTOMER_REQUIRED");
+          const account = await this.storedValue.ensureStoreCreditAccount(businessId, sale.customerId);
+          await this.db.createStoreCreditTransaction({ businessId, accountId: account.id, customerId: sale.customerId, type: "REDEEM", amountDeltaMinor: -payment.amountMinor, saleId: sale.id, refundId: null, actorId, requestId, idempotencyKey: ledgerKey, reason: null, branchId });
+        } else if (payment.method === "loyalty") {
+          if (!sale.customerId) throw new Error("CUSTOMER_REQUIRED");
+          const program = await this.db.getLoyaltyProgram(businessId);
+          if (!program || !program.enabled) throw new Error("LOYALTY_DISABLED");
+          const points = payment.amountMinor * program.redeemPoints / program.redeemValueMinor;
+          if (!Number.isInteger(points)) throw new Error("LOYALTY_VALUE_INVALID");
+          redeemedPointsTotal += points;
+          redeemedValueTotal += payment.amountMinor;
+          const account = await this.storedValue.ensureLoyaltyAccount(businessId, sale.customerId);
+          await this.db.createLoyaltyTransaction({ businessId, accountId: account.id, customerId: sale.customerId, type: "REDEEM", pointsDelta: -points, valueMinorSnapshot: payment.amountMinor, saleId: sale.id, refundId: null, actorId, requestId, idempotencyKey: ledgerKey, reason: null });
+        }
+      }
+      const giftCardCodes: string[] = [];
+      for (const load of giftLoads) {
+        let cardId = load.giftCardId;
+        if (load.kind === "NEW") {
+          const issued = await this.storedValue.issueGiftCard(businessId, actorId, requestId, `${input.key}:gift-card:${load.id}`);
+          cardId = issued.card.id;
+          giftCardCodes.push(issued.code);
+          await this.db.updateSaleGiftCardLoad(load.id, businessId, { giftCardId: cardId });
+        }
+        if (!cardId) throw new Error("GIFT_CARD_REQUIRED");
+          await this.db.createGiftCardTransaction({ businessId, giftCardId: cardId, type: "LOAD", amountDeltaMinor: load.amountMinor, saleId: sale.id, refundId: null, loadId: load.id, actorId, requestId, idempotencyKey: `${input.key}:gift-load:${load.id}`, reason: null, branchId });
+      }
+      if (sale.customerId) {
+        const eligibleSpendMinor = Math.max(0, totals.subtotalMinor - totals.discountMinor);
+        const loyalty = await this.db.getLoyaltyProgram(businessId);
+        if (loyalty?.enabled && eligibleSpendMinor > 0) {
+          const earned = await this.storedValue.earnLoyalty(businessId, actorId, requestId, sale.customerId, eligibleSpendMinor, sale.id, `${input.key}:loyalty:earn`);
+          if (redeemedPointsTotal > 0 || redeemedValueTotal > 0) await this.db.updateSaleLoyalty(earned.snapshot.id, businessId, { redeemedPoints: redeemedPointsTotal, redeemedValueMinor: redeemedValueTotal });
+          const eligibleLines = items.map((item) => Math.max(0, item.lineTotalMinor));
+          const lineTotal = eligibleLines.reduce((sum, value) => sum + value, 0);
+          let allocated = 0;
+          for (const [index, item] of items.entries()) {
+            const points = index === items.length - 1
+              ? earned.points - allocated
+              : Math.floor(earned.points * (eligibleLines[index] ?? 0) / Math.max(1, lineTotal));
+            allocated += points;
+            if (points > 0) await this.db.createSaleItemLoyaltyAllocation({ businessId, saleLoyaltyId: earned.snapshot.id, saleItemId: item.id, earnedPoints: points });
+          }
+        } else if (loyalty?.enabled && redeemedPointsTotal > 0) {
+          const account = await this.storedValue.ensureLoyaltyAccount(businessId, sale.customerId);
+          await this.db.createSaleLoyalty({ businessId, saleId: sale.id, customerId: sale.customerId, loyaltyAccountId: account.id, programVersion: loyalty.version, eligibleSpendMinor: 0, earnedPoints: 0, redeemedPoints: redeemedPointsTotal, redeemedValueMinor: redeemedValueTotal, earnAmountMinorSnapshot: loyalty.earnAmountMinor, earnPointsSnapshot: loyalty.earnPoints, redeemPointsSnapshot: loyalty.redeemPoints, redeemValueMinorSnapshot: loyalty.redeemValueMinor });
+        }
       }
       if (registerId && cashMinor > 0) {
         await this.shifts.postCashSale(
@@ -196,7 +271,7 @@ export class SalesCompletionService {
           status,
           subtotalMinor: totals.subtotalMinor,
           taxMinor: totals.taxMinor,
-          totalMinor: totals.totalMinor,
+          totalMinor: saleTotalMinor,
           paidMinor: paid,
           changeMinor: change,
           idempotencyKey: input.key,
@@ -221,7 +296,7 @@ export class SalesCompletionService {
       });
       await new BillingService(this.db).recordSale(businessId);
       incrementMetric("pos_sales_completed_total");
-      return { sale: await this.embed(updated), replayed: false };
-    });
+      return { sale: await this.embed(updated), replayed: false, ...(giftCardCodes.length ? { giftCardCodes } : {}) };
+    }));
   }
 }

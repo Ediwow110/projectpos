@@ -23,7 +23,16 @@ const SALE_SELECT =
 const ITEM_SELECT =
   '"id", "businessId", "saleId", "position", "productId", "name", "unit", "qty", "priceMinor", "costMinor", ' +
   '"taxRateBps", "lineDiscountMinor", "lineTotalMinor"';
-const PAYMENT_SELECT = '"id", "businessId", "saleId", "method", "amountMinor", "status", "providerRef", "idempotencyKey"';
+const PAYMENT_SELECT = '"id", "businessId", "saleId", "method", "amountMinor", "status", "providerRef", "internalInstrumentType", "internalInstrumentId", "idempotencyKey"';
+
+function normalizePayment(row: DbPayment): DbPayment {
+  const { internalInstrumentType, internalInstrumentId, ...base } = row;
+  return {
+    ...base,
+    ...(internalInstrumentType ? { internalInstrumentType } : {}),
+    ...(internalInstrumentId ? { internalInstrumentId } : {}),
+  };
+}
 const HELD_SELECT = '"id", "businessId", "actorId", "payload", "resumedAt"';
 const IDEMPOTENCY_SELECT = '"businessId", "key", "commandType", "fingerprint", "resultId"';
 
@@ -189,11 +198,11 @@ export function salesFamily(ctx: PgContext) {
       try {
         const row = { ...p, id: nid("pay") };
         await c.query(
-          'INSERT INTO "Payment" ("id", "businessId", "saleId", "method", "amountMinor", "status", "providerRef", "idempotencyKey", "createdAt")' +
-            ' VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)',
+          'INSERT INTO "Payment" ("id", "businessId", "saleId", "method", "amountMinor", "status", "providerRef", "internalInstrumentType", "internalInstrumentId", "idempotencyKey", "createdAt")' +
+            ' VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)',
           [
             row.id, row.businessId, row.saleId, row.method, row.amountMinor, row.status,
-            row.providerRef ?? null, row.idempotencyKey,
+            row.providerRef ?? null, row.internalInstrumentType ?? null, row.internalInstrumentId ?? null, row.idempotencyKey,
           ],
         );
         return row;
@@ -209,7 +218,7 @@ export function salesFamily(ctx: PgContext) {
           `SELECT ${PAYMENT_SELECT} FROM "Payment" WHERE "id" = $1 AND "businessId" = $2`,
           [id, businessId],
         );
-        return (r.rows[0] as DbPayment | undefined) ?? null;
+        return r.rows[0] ? normalizePayment(r.rows[0] as DbPayment) : null;
       } finally {
         if (ctx.owns()) c.release();
       }
@@ -222,7 +231,7 @@ export function salesFamily(ctx: PgContext) {
           `SELECT ${PAYMENT_SELECT} FROM "Payment" WHERE "saleId" = $1 AND "businessId" = $2 ORDER BY "createdAt" ASC, "id" ASC`,
           [saleId, businessId],
         );
-        return r.rows as DbPayment[];
+        return (r.rows as DbPayment[]).map(normalizePayment);
       } finally {
         if (ctx.owns()) c.release();
       }
@@ -234,7 +243,7 @@ export function salesFamily(ctx: PgContext) {
           `SELECT ${PAYMENT_SELECT} FROM "Payment" WHERE "businessId" = $1 ORDER BY "createdAt" ASC, "id" ASC`,
           [businessId],
         );
-        return r.rows as DbPayment[];
+        return (r.rows as DbPayment[]).map(normalizePayment);
       } finally {
         if (ctx.owns()) c.release();
       }
@@ -255,7 +264,7 @@ export function salesFamily(ctx: PgContext) {
             `SELECT ${PAYMENT_SELECT} FROM "Payment" WHERE "id" = $1 AND "businessId" = $2`,
             [id, businessId],
           );
-          return (cur.rows[0] as DbPayment | undefined) ?? null;
+          return cur.rows[0] ? normalizePayment(cur.rows[0] as DbPayment) : null;
         }
         const r = await c.query(
           `UPDATE "Payment" SET ${sets.join(", ")}` +
@@ -263,7 +272,7 @@ export function salesFamily(ctx: PgContext) {
             ` RETURNING ${PAYMENT_SELECT}`,
           [...values, id, businessId],
         );
-        return (r.rows[0] as DbPayment | undefined) ?? null;
+        return r.rows[0] ? normalizePayment(r.rows[0] as DbPayment) : null;
       } finally {
         if (ctx.owns()) c.release();
       }

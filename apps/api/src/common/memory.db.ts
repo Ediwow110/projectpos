@@ -1,4 +1,4 @@
-import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbDisplayToken, DbExchange, DbFeatureFlag, DbInvoice, DbMembership, DbMovement, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbProductFamily, DbProductOption, DbProductOptionValue, DbProductVariantOptionValue, DbProductBundle, DbBundleComponent, DbSaleItemBundleComponent, DbReceiptDelivery, DbResetToken, DbSession, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine, DbInventoryCount, DbInventoryCountLine } from "./db.port";
+import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbDisplayToken, DbExchange, DbFeatureFlag, DbInvoice, DbMembership, DbMovement, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbProductFamily, DbProductOption, DbProductOptionValue, DbProductVariantOptionValue, DbProductBundle, DbBundleComponent, DbSaleItemBundleComponent, DbReceiptDelivery, DbResetToken, DbSession, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine, DbInventoryCount, DbInventoryCountLine, DbGiftCard, DbGiftCardTransaction, DbStoreCreditAccount, DbStoreCreditTransaction, DbLoyaltyProgram, DbLoyaltyAccount, DbLoyaltyTransaction, DbSaleGiftCardLoad, DbSaleLoyalty, DbSaleItemLoyaltyAllocation } from "./db.port";
 
 let n = 0;
 const nid = (p: string): string => `${p}_${Date.now().toString(36)}_${(n += 1)}`;
@@ -34,6 +34,16 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const shifts = new Map<string, DbShift>();
   const cashMovements = new Map<string, DbCashMovement>();
   const customers = new Map<string, DbCustomer>();
+  const giftCards = new Map<string, DbGiftCard>();
+  const giftCardTransactions = new Map<string, DbGiftCardTransaction>();
+  const storeCreditAccounts = new Map<string, DbStoreCreditAccount>();
+  const storeCreditTransactions = new Map<string, DbStoreCreditTransaction>();
+  const loyaltyPrograms = new Map<string, DbLoyaltyProgram>();
+  const loyaltyAccounts = new Map<string, DbLoyaltyAccount>();
+  const loyaltyTransactions = new Map<string, DbLoyaltyTransaction>();
+  const saleGiftCardLoads = new Map<string, DbSaleGiftCardLoad>();
+  const saleLoyalty = new Map<string, DbSaleLoyalty>();
+  const saleItemLoyaltyAllocations = new Map<string, DbSaleItemLoyaltyAllocation>();
   const refunds = new Map<string, DbRefund>();
   const refundItems = new Map<string, DbRefundItem>();
   const exchanges = new Map<string, DbExchange>();
@@ -113,6 +123,11 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
         purchaseReceipts: new Map(purchaseReceipts), purchaseReceiptLines: new Map(purchaseReceiptLines),
         supplierReturns: new Map(supplierReturns), supplierReturnLines: new Map(supplierReturnLines),
         movements: new Map(movements), balances: new Map(balances), idempotency: new Map(idempotency),
+        sales: new Map(sales), saleItems: new Map(saleItems), payments: new Map(payments), refunds: new Map(refunds), refundItems: new Map(refundItems),
+        giftCards: new Map(giftCards), giftCardTransactions: new Map(giftCardTransactions),
+        storeCreditAccounts: new Map(storeCreditAccounts), storeCreditTransactions: new Map(storeCreditTransactions),
+        loyaltyPrograms: new Map(loyaltyPrograms), loyaltyAccounts: new Map(loyaltyAccounts), loyaltyTransactions: new Map(loyaltyTransactions),
+        saleGiftCardLoads: new Map(saleGiftCardLoads), saleLoyalty: new Map(saleLoyalty), saleItemLoyaltyAllocations: new Map(saleItemLoyaltyAllocations),
         inventoryCounts: new Map(inventoryCounts), inventoryCountLines: new Map(inventoryCountLines), inventoryCountSeq: new Map(inventoryCountSeq),
         audit: [...audit], poSeq: new Map(poSeq), purchaseReceiptSeq: new Map(purchaseReceiptSeq), supplierReturnSeq: new Map(supplierReturnSeq),
       };
@@ -124,6 +139,11 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
         restore(purchaseReceipts, snapshot.purchaseReceipts); restore(purchaseReceiptLines, snapshot.purchaseReceiptLines);
         restore(supplierReturns, snapshot.supplierReturns); restore(supplierReturnLines, snapshot.supplierReturnLines);
         restore(movements, snapshot.movements); restore(balances, snapshot.balances); restore(idempotency, snapshot.idempotency);
+        restore(sales, snapshot.sales); restore(saleItems, snapshot.saleItems); restore(payments, snapshot.payments); restore(refunds, snapshot.refunds); restore(refundItems, snapshot.refundItems);
+        restore(giftCards, snapshot.giftCards); restore(giftCardTransactions, snapshot.giftCardTransactions);
+        restore(storeCreditAccounts, snapshot.storeCreditAccounts); restore(storeCreditTransactions, snapshot.storeCreditTransactions);
+        restore(loyaltyPrograms, snapshot.loyaltyPrograms); restore(loyaltyAccounts, snapshot.loyaltyAccounts); restore(loyaltyTransactions, snapshot.loyaltyTransactions);
+        restore(saleGiftCardLoads, snapshot.saleGiftCardLoads); restore(saleLoyalty, snapshot.saleLoyalty); restore(saleItemLoyaltyAllocations, snapshot.saleItemLoyaltyAllocations);
         restore(inventoryCounts, snapshot.inventoryCounts); restore(inventoryCountLines, snapshot.inventoryCountLines); restore(inventoryCountSeq, snapshot.inventoryCountSeq);
         restore(poSeq, snapshot.poSeq); restore(purchaseReceiptSeq, snapshot.purchaseReceiptSeq); restore(supplierReturnSeq, snapshot.supplierReturnSeq);
         audit.splice(0, audit.length, ...snapshot.audit);
@@ -533,7 +553,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     async createSaleItemBundleComponent(c) { const row = { ...c, id: nid("sbc"), createdAt: new Date() }; saleItemBundleComponents.set(row.id, row); return row; },
     async listSaleItemBundleComponents(saleItemId, businessId) { return [...saleItemBundleComponents.values()].filter((r) => r.saleItemId === saleItemId && r.businessId === businessId); },
     async createPayment(p) {
-      const row = { ...p, id: nid("pay") };
+      const row = { internalInstrumentType: null, internalInstrumentId: null, ...p, id: nid("pay") };
       payments.set(row.id, row);
       return row;
     },
@@ -666,6 +686,112 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       customers.set(id, next);
       return next;
     },
+    async createGiftCard(c) {
+      if ([...giftCards.values()].some((row) => row.businessId === c.businessId && row.codeHash === c.codeHash)) throw new Error("GIFT_CARD_DUPLICATE");
+      const now = new Date();
+      const row: DbGiftCard = { ...c, id: nid("gcard"), createdAt: now, updatedAt: now };
+      giftCards.set(row.id, row);
+      return row;
+    },
+    async findGiftCardByHash(codeHash, businessId) {
+      return [...giftCards.values()].find((row) => row.businessId === businessId && row.codeHash === codeHash) ?? null;
+    },
+    async findGiftCardById(id, businessId) {
+      const row = giftCards.get(id) ?? null;
+      return row && row.businessId === businessId ? row : null;
+    },
+    async listGiftCards(businessId) {
+      return [...giftCards.values()].filter((row) => row.businessId === businessId).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    },
+    async updateGiftCard(id, businessId, patch) {
+      const row = giftCards.get(id) ?? null;
+      if (!row || row.businessId !== businessId) return null;
+      const next = { ...row, ...patch, updatedAt: new Date() };
+      giftCards.set(id, next);
+      return next;
+    },
+    async createGiftCardTransaction(t) {
+      const existing = [...giftCardTransactions.values()].find((row) => row.businessId === t.businessId && row.idempotencyKey === t.idempotencyKey);
+      if (existing) return existing;
+      const card = giftCards.get(t.giftCardId);
+      if (!card || card.businessId !== t.businessId) throw new Error("NOT_FOUND");
+      const balance = [...giftCardTransactions.values()].filter((row) => row.businessId === t.businessId && row.giftCardId === t.giftCardId).reduce((sum, row) => sum + row.amountDeltaMinor, 0);
+      if (balance + t.amountDeltaMinor < 0) throw new Error("GIFT_CARD_INSUFFICIENT_BALANCE");
+      const row: DbGiftCardTransaction = { ...t, id: nid("gct"), createdAt: new Date() };
+      giftCardTransactions.set(row.id, row);
+      if (balance + t.amountDeltaMinor === 0 && card.status === "ACTIVE") await this.updateGiftCard(card.id, card.businessId, { status: "EXHAUSTED" });
+      if (balance + t.amountDeltaMinor > 0 && card.status === "EXHAUSTED") await this.updateGiftCard(card.id, card.businessId, { status: "ACTIVE" });
+      return row;
+    },
+    async listGiftCardTransactions(giftCardId, businessId) {
+      return [...giftCardTransactions.values()].filter((row) => row.giftCardId === giftCardId && row.businessId === businessId).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    },
+    async findGiftCardTransactionByIdempotency(businessId, idempotencyKey) {
+      return [...giftCardTransactions.values()].find((row) => row.businessId === businessId && row.idempotencyKey === idempotencyKey) ?? null;
+    },
+    async createStoreCreditAccount(a) {
+      const existing = [...storeCreditAccounts.values()].find((row) => row.businessId === a.businessId && row.customerId === a.customerId);
+      if (existing) return existing;
+      const row: DbStoreCreditAccount = { ...a, id: nid("sca"), createdAt: new Date(), updatedAt: new Date() };
+      storeCreditAccounts.set(row.id, row);
+      return row;
+    },
+    async findStoreCreditAccount(customerId, businessId) {
+      return [...storeCreditAccounts.values()].find((row) => row.businessId === businessId && row.customerId === customerId) ?? null;
+    },
+    async createStoreCreditTransaction(t) {
+      const existing = [...storeCreditTransactions.values()].find((row) => row.businessId === t.businessId && row.idempotencyKey === t.idempotencyKey);
+      if (existing) return existing;
+      const account = storeCreditAccounts.get(t.accountId);
+      if (!account || account.businessId !== t.businessId || account.customerId !== t.customerId) throw new Error("NOT_FOUND");
+      const balance = [...storeCreditTransactions.values()].filter((row) => row.businessId === t.businessId && row.accountId === t.accountId).reduce((sum, row) => sum + row.amountDeltaMinor, 0);
+      if (balance + t.amountDeltaMinor < 0) throw new Error("STORE_CREDIT_INSUFFICIENT_BALANCE");
+      const row: DbStoreCreditTransaction = { ...t, id: nid("sct"), createdAt: new Date() };
+      storeCreditTransactions.set(row.id, row);
+      return row;
+    },
+    async listStoreCreditTransactions(accountId, businessId) {
+      return [...storeCreditTransactions.values()].filter((row) => row.accountId === accountId && row.businessId === businessId).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    },
+    async findStoreCreditTransactionByIdempotency(businessId, idempotencyKey) {
+      return [...storeCreditTransactions.values()].find((row) => row.businessId === businessId && row.idempotencyKey === idempotencyKey) ?? null;
+    },
+    async upsertLoyaltyProgram(p) {
+      const existing = loyaltyPrograms.get(p.businessId);
+      const row: DbLoyaltyProgram = existing ? { ...existing, ...p, version: existing.version + 1, updatedAt: new Date() } : { ...p, id: nid("lp"), updatedAt: new Date() };
+      loyaltyPrograms.set(p.businessId, row);
+      return row;
+    },
+    async getLoyaltyProgram(businessId) { return loyaltyPrograms.get(businessId) ?? null; },
+    async createLoyaltyAccount(a) {
+      const existing = [...loyaltyAccounts.values()].find((row) => row.businessId === a.businessId && row.customerId === a.customerId);
+      if (existing) return existing;
+      const row: DbLoyaltyAccount = { ...a, id: nid("la"), createdAt: new Date(), updatedAt: new Date() };
+      loyaltyAccounts.set(row.id, row);
+      return row;
+    },
+    async findLoyaltyAccount(customerId, businessId) { return [...loyaltyAccounts.values()].find((row) => row.businessId === businessId && row.customerId === customerId) ?? null; },
+    async createLoyaltyTransaction(t) {
+      const existing = [...loyaltyTransactions.values()].find((row) => row.businessId === t.businessId && row.idempotencyKey === t.idempotencyKey);
+      if (existing) return existing;
+      const account = loyaltyAccounts.get(t.accountId);
+      if (!account || account.businessId !== t.businessId || account.customerId !== t.customerId) throw new Error("NOT_FOUND");
+      const balance = [...loyaltyTransactions.values()].filter((row) => row.businessId === t.businessId && row.accountId === t.accountId).reduce((sum, row) => sum + row.pointsDelta, 0);
+      if (balance + t.pointsDelta < 0 && !t.type.startsWith("REFUND_EARN")) throw new Error("LOYALTY_INSUFFICIENT_POINTS");
+      const row: DbLoyaltyTransaction = { ...t, id: nid("lt"), createdAt: new Date() };
+      loyaltyTransactions.set(row.id, row);
+      return row;
+    },
+    async listLoyaltyTransactions(accountId, businessId) { return [...loyaltyTransactions.values()].filter((row) => row.accountId === accountId && row.businessId === businessId).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()); },
+    async findLoyaltyTransactionByIdempotency(businessId, idempotencyKey) { return [...loyaltyTransactions.values()].find((row) => row.businessId === businessId && row.idempotencyKey === idempotencyKey) ?? null; },
+    async createSaleGiftCardLoad(l) { const row: DbSaleGiftCardLoad = { ...l, id: nid("sgl"), createdAt: new Date() }; saleGiftCardLoads.set(row.id, row); return row; },
+    async updateSaleGiftCardLoad(id, businessId, patch) { const row = saleGiftCardLoads.get(id); if (!row || row.businessId !== businessId) return null; const updated = { ...row, ...patch }; saleGiftCardLoads.set(id, updated); return updated; },
+    async listSaleGiftCardLoads(saleId, businessId) { return [...saleGiftCardLoads.values()].filter((row) => row.saleId === saleId && row.businessId === businessId); },
+    async createSaleLoyalty(s) { const row: DbSaleLoyalty = { ...s, id: nid("sl"), createdAt: new Date() }; saleLoyalty.set(row.saleId, row); return row; },
+    async findSaleLoyalty(saleId, businessId) { const row = saleLoyalty.get(saleId) ?? null; return row && row.businessId === businessId ? row : null; },
+    async updateSaleLoyalty(id, businessId, patch) { const row = saleLoyalty.get(id); if (!row || row.businessId !== businessId) return null; const updated = { ...row, ...patch }; saleLoyalty.set(id, updated); return updated; },
+    async createSaleItemLoyaltyAllocation(a) { const row: DbSaleItemLoyaltyAllocation = { ...a, id: nid("sla"), createdAt: new Date() }; saleItemLoyaltyAllocations.set(row.id, row); return row; },
+    async listSaleItemLoyaltyAllocations(saleLoyaltyId, businessId) { return [...saleItemLoyaltyAllocations.values()].filter((row) => row.saleLoyaltyId === saleLoyaltyId && row.businessId === businessId); },
     async createRefund(r) {
       const row = { ...r, id: nid("ref") };
       refunds.set(row.id, row);

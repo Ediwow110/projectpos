@@ -8,10 +8,16 @@ import { withInventoryLocks } from "../../inventory/inventory-locks";
 import { lineRefundAmount, refundableQty } from "../refund-math";
 import { refundLockKey } from "../refund-lock";
 import type { AppliedManagerApproval } from "../../auth/nest/manager-approval-policy.service";
+import { StoredValueService } from "../../value/stored-value.service";
 
 export interface RefundItemInput {
   saleItemId: string;
   qty: number;
+}
+
+export interface GiftCardLoadRefundInput {
+  loadId: string;
+  amountMinor: number;
 }
 
 const CASH_METHODS = new Set(["cash"]);
@@ -19,10 +25,12 @@ const CASH_METHODS = new Set(["cash"]);
 @Injectable()
 export class RefundService {
   private readonly shifts: ShiftService;
+  private readonly storedValue: StoredValueService;
 
   constructor(@Inject("DbPort") private readonly db: DbPort) {
     // Same-DbPort instance (not Nest DI) to avoid a Refund<->Shift DI cycle.
     this.shifts = new ShiftService(db);
+    this.storedValue = new StoredValueService(db);
   }
 
   private async requireSale(businessId: string, saleId: string): Promise<DbSale> {
@@ -44,14 +52,14 @@ export class RefundService {
     actorId: string,
     requestId: string,
     saleId: string,
-    input: { items: RefundItemInput[]; reason?: string; key: string },
+    input: { items: RefundItemInput[]; loadRefunds?: GiftCardLoadRefundInput[]; reason?: string; destination?: "ORIGINAL_TENDER" | "STORE_CREDIT"; key: string },
     granted: string[],
     role: string,
     approval?: AppliedManagerApproval,
   ): Promise<{ refund: DbRefund; sale: DbSale; replayed: boolean }> {
     withScope(businessId, {});
     if (!granted.includes("sale.refund")) throw new Error("FORBIDDEN");
-    return this.db.withLock(refundLockKey(businessId, saleId), async () => {
+    return this.db.withLock(refundLockKey(businessId, saleId), async () => this.db.withTransaction(async () => {
       const requestedByLine = new Map<string, number>();
       for (const item of input.items) {
         requestedByLine.set(item.saleItemId, (requestedByLine.get(item.saleItemId) ?? 0) + item.qty);
@@ -59,7 +67,16 @@ export class RefundService {
       const requestedItems = [...requestedByLine.entries()]
         .map(([saleItemId, qty]) => ({ saleItemId, qty }))
         .sort((left, right) => left.saleItemId.localeCompare(right.saleItemId));
-      const fingerprint = fingerprintPayload({ saleId, items: requestedItems, reason: input.reason ?? null });
+      const requestedLoads = new Map<string, number>();
+      for (const load of input.loadRefunds ?? []) {
+        if (!Number.isInteger(load.amountMinor) || load.amountMinor <= 0) throw new Error("VALIDATION");
+        requestedLoads.set(load.loadId, (requestedLoads.get(load.loadId) ?? 0) + load.amountMinor);
+      }
+      const normalizedLoads = [...requestedLoads.entries()]
+        .map(([loadId, amountMinor]) => ({ loadId, amountMinor }))
+        .sort((left, right) => left.loadId.localeCompare(right.loadId));
+      const destination = input.destination ?? "ORIGINAL_TENDER";
+      const fingerprint = fingerprintPayload({ saleId, items: requestedItems, loadRefunds: normalizedLoads, reason: input.reason ?? null, destination });
       const existing = await this.db.findIdempotency(businessId, input.key, "refund.approve");
       if (existing) {
         if (existing.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
@@ -80,6 +97,7 @@ export class RefundService {
         }
       }
       const lines = await this.db.listSaleItems(sale.id, businessId);
+      const loads = await this.db.listSaleGiftCardLoads(sale.id, businessId);
       const prior = await this.db.listRefundItemsBySale(sale.id, businessId);
       const refundedByLine = new Map<string, number>();
       for (const ri of prior) {
@@ -94,7 +112,22 @@ export class RefundService {
         }
         return { line, qty: req.qty, amount: lineRefundAmount(line.lineTotalMinor, line.qty, req.qty) };
       });
-      const totalMinor = resolved.reduce((sum, r) => sum + r.amount, 0);
+      const resolvedLoadRows: Array<{ load: (typeof loads)[number]; amountMinor: number }> = [];
+      for (const req of normalizedLoads) {
+        const load = loads.find((row) => row.id === req.loadId);
+        if (!load || !load.giftCardId) throw new Error("VALIDATION");
+        const transactions = await this.db.listGiftCardTransactions(load.giftCardId, businessId);
+        const refunded = transactions.filter((row) => row.type === "LOAD_REFUND" && row.loadId === load.id)
+          .reduce((sum, row) => sum + Math.abs(row.amountDeltaMinor), 0);
+        const balance = transactions.reduce((sum, row) => sum + row.amountDeltaMinor, 0);
+        if (req.amountMinor > load.amountMinor - refunded) throw new Error("REFUND_EXCEEDS_LIMIT");
+        if (req.amountMinor > balance) throw new Error("GIFT_CARD_LOAD_SPENT");
+        resolvedLoadRows.push({ load, amountMinor: req.amountMinor });
+      }
+      if (resolvedLoadRows.length > 0 && destination !== "ORIGINAL_TENDER") throw new Error("GIFT_CARD_LOAD_ORIGINAL_TENDER_ONLY");
+      const merchandiseTotalMinor = resolved.reduce((sum, r) => sum + r.amount, 0);
+      const loadRefundTotalMinor = resolvedLoadRows.reduce((sum, row) => sum + row.amountMinor, 0);
+      const totalMinor = merchandiseTotalMinor + loadRefundTotalMinor;
       // FR-REFUND-02: approval follows role AND threshold policy. Above the
       // configured threshold only a role holding refund.override may approve.
       const threshold = (await this.db.getSettings(businessId))["refundApprovalThresholdMinor"];
@@ -106,11 +139,18 @@ export class RefundService {
         (p) => p.status === "SUCCEEDED",
       );
       let remaining = totalMinor;
-      const allocations: Array<{ method: string; amount: number }> = [];
+      const allocations: Array<{ method: string; amount: number; internalInstrumentType?: "gift_card" | "store_credit" | "loyalty"; internalInstrumentId?: string }> = [];
+      if (destination === "STORE_CREDIT") {
+        if (!sale.customerId) throw new Error("CUSTOMER_REQUIRED");
+        const account = await this.storedValue.ensureStoreCreditAccount(businessId, sale.customerId);
+        allocations.push({ method: "store_credit", amount: totalMinor, internalInstrumentType: "store_credit", internalInstrumentId: account.id });
+        remaining = 0;
+      }
       for (const p of succeeded) {
+        if (destination === "STORE_CREDIT") break;
         if (remaining <= 0) break;
         const portion = Math.min(remaining, p.amountMinor);
-        allocations.push({ method: p.method, amount: portion });
+        allocations.push({ method: p.method, amount: portion, internalInstrumentType: p.internalInstrumentType ?? undefined, internalInstrumentId: p.internalInstrumentId ?? undefined });
         remaining -= portion;
       }
       if (remaining > 0) throw new Error("REFUND_EXCEEDS_LIMIT");
@@ -143,6 +183,7 @@ export class RefundService {
           return { ...row, tracked: product?.trackInventory === true, bundleComponents };
         }),
       );
+      const saleLoyalty = await this.db.findSaleLoyalty(sale.id, businessId);
       await withInventoryLocks(
         this.db,
         businessId,
@@ -225,9 +266,63 @@ export class RefundService {
           amountMinor: a.amount,
           status: "REFUNDED",
           providerRef: null,
+          internalInstrumentType: a.internalInstrumentType ?? null,
+          internalInstrumentId: a.internalInstrumentId ?? null,
           // Leg index, not just method: two cash legs must not collide.
           idempotencyKey: `${input.key}:refund:${a.method}:${legIndex}`,
         });
+      }
+      for (const [legIndex, a] of allocations.entries()) {
+        const ledgerKey = `${input.key}:refund-ledger:${legIndex}`;
+        if (a.internalInstrumentType === "gift_card" && a.internalInstrumentId) {
+          await this.db.createGiftCardTransaction({ businessId, giftCardId: a.internalInstrumentId, type: "REFUND", amountDeltaMinor: a.amount, saleId: sale.id, refundId: refund.id, actorId, requestId, idempotencyKey: ledgerKey, reason: reason ?? "Refund", branchId: sale.branchId ?? null });
+        } else if (a.internalInstrumentType === "store_credit" && a.internalInstrumentId) {
+          const account = await this.db.findStoreCreditAccount(sale.customerId ?? "", businessId);
+          if (!account) throw new Error("NOT_FOUND");
+          await this.db.createStoreCreditTransaction({ businessId, accountId: account.id, customerId: sale.customerId!, type: "REFUND", amountDeltaMinor: a.amount, saleId: sale.id, refundId: refund.id, actorId, requestId, idempotencyKey: ledgerKey, reason: reason ?? "Refund", branchId: sale.branchId ?? null });
+        } else if (a.internalInstrumentType === "loyalty" && a.internalInstrumentId) {
+          const account = await this.db.findLoyaltyAccount(sale.customerId ?? "", businessId);
+          if (!account) throw new Error("NOT_FOUND");
+          const program = await this.db.getLoyaltyProgram(businessId);
+          if (!program) throw new Error("LOYALTY_DISABLED");
+          const points = Math.floor(a.amount * (saleLoyalty?.redeemPointsSnapshot ?? program.redeemPoints) / (saleLoyalty?.redeemValueMinorSnapshot ?? program.redeemValueMinor));
+          if (points > 0) await this.db.createLoyaltyTransaction({ businessId, accountId: account.id, customerId: sale.customerId!, type: "REFUND_REDEEM", pointsDelta: points, valueMinorSnapshot: a.amount, saleId: sale.id, refundId: refund.id, actorId, requestId, idempotencyKey: ledgerKey, reason: reason ?? "Refund" });
+        }
+      }
+      for (const row of resolvedLoadRows) {
+        await this.db.createGiftCardTransaction({
+          businessId,
+          giftCardId: row.load.giftCardId!,
+          type: "LOAD_REFUND",
+          amountDeltaMinor: -row.amountMinor,
+          saleId: sale.id,
+          refundId: refund.id,
+          loadId: row.load.id,
+          actorId,
+          requestId,
+          idempotencyKey: `${input.key}:load-refund:${row.load.id}`,
+          reason: reason ?? "Gift-card load refund",
+          branchId: sale.branchId ?? null,
+        });
+      }
+      if (merchandiseTotalMinor > 0 && saleLoyalty && saleLoyalty.earnedPoints > 0 && saleLoyalty.eligibleSpendMinor > 0) {
+        const itemAllocations = await this.db.listSaleItemLoyaltyAllocations(saleLoyalty.id, businessId);
+        const resolvedByLine = new Map(resolved.map((row) => [row.line.id, row]));
+        const allocatedReversal = itemAllocations.reduce((sum, allocation) => {
+          const row = resolvedByLine.get(allocation.saleItemId);
+          if (!row) return sum;
+          const priorQty = refundedByLine.get(row.line.id) ?? 0;
+          const before = Math.floor(allocation.earnedPoints * priorQty / Math.max(1, row.line.qty));
+          const after = Math.floor(allocation.earnedPoints * (priorQty + row.qty) / Math.max(1, row.line.qty));
+          return sum + Math.max(0, after - before);
+        }, 0);
+        const reversal = itemAllocations.length > 0
+          ? Math.min(saleLoyalty.earnedPoints, allocatedReversal)
+          : Math.min(saleLoyalty.earnedPoints, Math.floor(saleLoyalty.earnedPoints * merchandiseTotalMinor / saleLoyalty.eligibleSpendMinor));
+        if (reversal > 0) {
+          const account = await this.db.findLoyaltyAccount(saleLoyalty.customerId, businessId);
+          if (account) await this.db.createLoyaltyTransaction({ businessId, accountId: account.id, customerId: saleLoyalty.customerId, type: "REFUND_EARN_REVERSAL", pointsDelta: -reversal, valueMinorSnapshot: totalMinor, saleId: sale.id, refundId: refund.id, actorId, requestId, idempotencyKey: `${input.key}:refund-earn`, reason: reason ?? "Refund" });
+        }
       }
       if (cashMinor > 0 && sale.registerId) {
         await this.shifts.postCashSale(businessId, actorId, requestId, sale.registerId, sale.id, cashMinor, {
@@ -242,7 +337,7 @@ export class RefundService {
       for (const ri of allRefunded) {
         refundedTotals.set(ri.saleItemId, (refundedTotals.get(ri.saleItemId) ?? 0) + ri.qty);
       }
-      const fully = allLines.every((l) => (refundedTotals.get(l.id) ?? 0) >= l.qty);
+      const fully = allLines.length > 0 && allLines.every((l) => (refundedTotals.get(l.id) ?? 0) >= l.qty);
       const target = fully ? "REFUNDED" : "PARTIALLY_REFUNDED";
       const status = transitionSale(sale.status, target);
       const updated =
@@ -274,7 +369,7 @@ export class RefundService {
         });
       }
       return { refund, sale: updated, replayed: false };
-    });
+    }));
   }
 
   async rejectRefund(

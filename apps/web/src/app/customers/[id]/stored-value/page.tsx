@@ -1,0 +1,47 @@
+"use client";
+
+import type { JSX } from "react";
+import Link from "next/link";
+import { use, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+
+import { AppShell } from "../../../../components/AppShell";
+import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "../../../../components/premium";
+import { PrimaryButton, StatusPill } from "../../../../components/ui";
+import { ApiError, apiFetch } from "../../../../lib/api";
+
+interface Me { role: string; businessName?: string }
+interface Customer { id: string; name: string }
+interface HistoryRow { id: string; type: string; amountDeltaMinor?: number; pointsDelta?: number; reason: string | null; createdAt: string }
+interface History { customerId: string; storeCredit: HistoryRow[]; loyalty: HistoryRow[] }
+function money(minor: number): string { return (minor / 100).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+export default function CustomerStoredValuePage({ params }: { params: Promise<{ id: string }> }): JSX.Element {
+  const { id } = use(params);
+  const [type, setType] = useState<"store-credit" | "loyalty">("store-credit");
+  const [amount, setAmount] = useState("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const me = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<Me>("/api/v1/me"), retry: false });
+  const customer = useQuery({ queryKey: ["customer", id], queryFn: () => apiFetch<Customer>(`/api/v1/customers/${id}`), retry: false });
+  const history = useQuery({ queryKey: ["customer-value-history", id], queryFn: () => apiFetch<History>(`/api/v1/customers/${id}/stored-value/history`), retry: false });
+  const storeCredit = (history.data?.storeCredit ?? []).reduce((sum, row) => sum + (row.amountDeltaMinor ?? 0), 0);
+  const loyalty = (history.data?.loyalty ?? []).reduce((sum, row) => sum + (row.pointsDelta ?? 0), 0);
+  const canAdjust = ["owner", "manager"].includes(me.data?.role ?? "");
+
+  async function adjust(): Promise<void> {
+    const delta = Number(amount);
+    if (!Number.isInteger(delta) || delta === 0 || reason.trim().length < 3) { setError(type === "loyalty" ? "Enter a non-zero whole-point adjustment and a reason." : "Enter a non-zero amount in minor units and a reason."); return; }
+    setBusy(true); setError(""); setSuccess("");
+    try {
+      const csrf = await apiFetch<{ csrfToken: string }>("/api/v1/auth/csrf");
+      const path = type === "loyalty" ? `/api/v1/customers/${id}/loyalty/adjust` : `/api/v1/customers/${id}/store-credit/adjust`;
+      await apiFetch(path, { csrfToken: csrf.csrfToken, init: { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ amountMinor: delta, reason: reason.trim() }) } });
+      setAmount(""); setReason(""); setSuccess(`${type === "loyalty" ? "Loyalty" : "Store-credit"} balance adjusted.`); await history.refetch();
+    } catch (cause) { setError(cause instanceof ApiError ? `${cause.code}: ${cause.message}` : "Adjustment failed."); } finally { setBusy(false); }
+  }
+
+  return <AppShell businessName={me.data?.businessName} role={me.data?.role}><main className="mx-auto max-w-[1240px] space-y-5 px-4 pb-10 pt-3 sm:px-6"><PageHeader eyebrow="Customers / Stored value" title={`${customer.data?.name ?? "Customer"} value ledger`} description="Review customer-level credit and loyalty activity. Every manual change requires a reason and is recorded for audit." actions={<Link href={`/customers/${id}`} className="inline-flex min-h-10 items-center rounded-[10px] border border-[#e4d9d0] bg-white px-4 text-sm font-semibold text-[#2a241f] hover:border-[#f35d3f]">← Customer profile</Link>} />{success ? <Panel className="border-[#cfe9dc] bg-[#eaf7f0] p-4"><p role="status" className="text-sm font-medium text-[#1f8a5b]">{success}</p></Panel> : null}{error ? <Panel className="border-[#efb9b9] bg-[#fff0f0] p-4"><p role="alert" className="text-sm font-medium text-[#c43e3e]">{error}</p></Panel> : null}<section className="grid gap-4 sm:grid-cols-2"><MetricCard label="Store credit" value={`₱${money(storeCredit)}`} icon="₱" tone="info" meta="Current ledger balance" /><MetricCard label="Loyalty points" value={loyalty.toLocaleString("en-PH")} icon="✦" tone="success" meta="Current points balance" /></section>{canAdjust ? <Panel className="p-5"><SectionHeader title="Manual adjustment" description="Owner or manager access is required. A negative change cannot exceed the current balance." /><div className="mt-4 grid gap-3 sm:grid-cols-[180px_180px_1fr_auto]"><label className="text-[11px] font-semibold text-[#655b53]">Value type<select value={type} onChange={(event) => setType(event.target.value as typeof type)} className="field mt-1.5"><option value="store-credit">Store credit</option><option value="loyalty">Loyalty points</option></select></label><label className="text-[11px] font-semibold text-[#655b53]">{type === "loyalty" ? "Points delta" : "Amount delta (minor)"}<input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="numeric" className="field mt-1.5" placeholder={type === "loyalty" ? "100" : "5000"} /></label><label className="text-[11px] font-semibold text-[#655b53]">Reason<input value={reason} onChange={(event) => setReason(event.target.value)} className="field mt-1.5" placeholder="Customer service correction" /></label><PrimaryButton type="button" onClick={() => void adjust()} disabled={busy} className="self-end">{busy ? "Saving…" : "Apply"}</PrimaryButton></div></Panel> : <Panel className="bg-[#fff4df] p-4 text-[11px] font-medium text-[#8a5606]">Manual value adjustments are restricted to owner and manager roles. Refunds and approved manager overrides remain available through their normal workflows.</Panel>}<DataTableFrame><div className="px-5 py-4"><SectionHeader title="Store-credit history" description="Append-only entries, newest activity first." /></div><table className="premium-table min-w-[720px] text-left text-[12px]"><thead><tr><th className="px-5 pb-3">Date</th><th className="px-5 pb-3">Type</th><th className="px-5 pb-3">Reason</th><th className="px-5 pb-3 text-right">Change</th></tr></thead><tbody>{(history.data?.storeCredit ?? []).slice().reverse().map((row) => <tr key={row.id}><td className="font-data px-5 py-3 text-[#73685f]">{new Date(row.createdAt).toLocaleString("en-PH")}</td><td className="px-5 py-3"><StatusPill tone={(row.amountDeltaMinor ?? 0) < 0 ? "warn" : "ok"}>{row.type}</StatusPill></td><td className="px-5 py-3 text-[#73685f]">{row.reason ?? "—"}</td><td className="font-data px-5 py-3 text-right font-semibold">{(row.amountDeltaMinor ?? 0) > 0 ? "+" : ""}₱{money(row.amountDeltaMinor ?? 0)}</td></tr>)}</tbody></table></DataTableFrame><DataTableFrame><div className="px-5 py-4"><SectionHeader title="Loyalty history" description="Points earned, redeemed, refunded, or manually adjusted." /></div><table className="premium-table min-w-[720px] text-left text-[12px]"><thead><tr><th className="px-5 pb-3">Date</th><th className="px-5 pb-3">Type</th><th className="px-5 pb-3">Reason</th><th className="px-5 pb-3 text-right">Points</th></tr></thead><tbody>{(history.data?.loyalty ?? []).slice().reverse().map((row) => <tr key={row.id}><td className="font-data px-5 py-3 text-[#73685f]">{new Date(row.createdAt).toLocaleString("en-PH")}</td><td className="px-5 py-3"><StatusPill tone={(row.pointsDelta ?? 0) < 0 ? "warn" : "ok"}>{row.type}</StatusPill></td><td className="px-5 py-3 text-[#73685f]">{row.reason ?? "—"}</td><td className="font-data px-5 py-3 text-right font-semibold">{(row.pointsDelta ?? 0) > 0 ? "+" : ""}{row.pointsDelta ?? 0}</td></tr>)}</tbody></table></DataTableFrame></main></AppShell>;
+}

@@ -438,6 +438,8 @@ export interface DbPayment {
   amountMinor: number;
   status: string;
   providerRef: string | null;
+  internalInstrumentType?: "gift_card" | "store_credit" | "loyalty" | null;
+  internalInstrumentId?: string | null;
   idempotencyKey: string;
 }
 
@@ -513,6 +515,140 @@ export interface DbCustomer {
   address: string | null;
   notes: string | null;
   isActive: boolean;
+}
+
+export type GiftCardStatus = "PENDING" | "ACTIVE" | "SUSPENDED" | "EXHAUSTED" | "VOID";
+
+export interface DbGiftCard {
+  id: string;
+  businessId: string;
+  codeHash: string;
+  codePrefix: string;
+  codeLast4: string;
+  status: GiftCardStatus;
+  createdBy: string;
+  activatedAt: Date | null;
+  suspendedAt: Date | null;
+  version: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DbGiftCardTransaction {
+  id: string;
+  businessId: string;
+  giftCardId: string;
+  type: string;
+  amountDeltaMinor: number;
+  saleId: string | null;
+  refundId: string | null;
+  loadId?: string | null;
+  actorId: string;
+  requestId: string;
+  idempotencyKey: string;
+  reason: string | null;
+  branchId: string | null;
+  createdAt: Date;
+}
+
+export interface DbStoreCreditAccount {
+  id: string;
+  businessId: string;
+  customerId: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DbStoreCreditTransaction {
+  id: string;
+  businessId: string;
+  accountId: string;
+  customerId: string;
+  type: string;
+  amountDeltaMinor: number;
+  saleId: string | null;
+  refundId: string | null;
+  actorId: string;
+  requestId: string;
+  idempotencyKey: string;
+  reason: string | null;
+  branchId: string | null;
+  createdAt: Date;
+}
+
+export interface DbLoyaltyProgram {
+  id: string;
+  businessId: string;
+  enabled: boolean;
+  earnAmountMinor: number;
+  earnPoints: number;
+  redeemPoints: number;
+  redeemValueMinor: number;
+  minimumRedeemPoints: number | null;
+  version: number;
+  updatedAt: Date;
+}
+
+export interface DbLoyaltyAccount {
+  id: string;
+  businessId: string;
+  customerId: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DbLoyaltyTransaction {
+  id: string;
+  businessId: string;
+  accountId: string;
+  customerId: string;
+  type: string;
+  pointsDelta: number;
+  valueMinorSnapshot: number | null;
+  saleId: string | null;
+  refundId: string | null;
+  actorId: string;
+  requestId: string;
+  idempotencyKey: string;
+  reason: string | null;
+  createdAt: Date;
+}
+
+export interface DbSaleGiftCardLoad {
+  id: string;
+  businessId: string;
+  saleId: string;
+  giftCardId: string | null;
+  amountMinor: number;
+  kind: "NEW" | "RELOAD";
+  createdAt: Date;
+}
+
+export interface DbSaleLoyalty {
+  id: string;
+  businessId: string;
+  saleId: string;
+  customerId: string;
+  loyaltyAccountId: string;
+  programVersion: number;
+  eligibleSpendMinor: number;
+  earnedPoints: number;
+  redeemedPoints: number;
+  redeemedValueMinor: number;
+  earnAmountMinorSnapshot: number;
+  earnPointsSnapshot: number;
+  redeemPointsSnapshot: number;
+  redeemValueMinorSnapshot: number;
+  createdAt: Date;
+}
+
+export interface DbSaleItemLoyaltyAllocation {
+  id: string;
+  businessId: string;
+  saleLoyaltyId: string;
+  saleItemId: string;
+  earnedPoints: number;
+  createdAt: Date;
 }
 
 export interface DbRefund {
@@ -891,6 +1027,34 @@ export interface DbPort {
   listCustomersByBusiness(businessId: string): Promise<DbCustomer[]>;
   findCustomerById(id: string, businessId: string): Promise<DbCustomer | null>;
   updateCustomer(id: string, businessId: string, patch: Partial<Omit<DbCustomer, "id" | "businessId">>): Promise<DbCustomer | null>;
+  createGiftCard(c: Omit<DbGiftCard, "id" | "createdAt" | "updatedAt">): Promise<DbGiftCard>;
+  findGiftCardByHash(codeHash: string, businessId: string): Promise<DbGiftCard | null>;
+  findGiftCardById(id: string, businessId: string): Promise<DbGiftCard | null>;
+  listGiftCards(businessId: string): Promise<DbGiftCard[]>;
+  updateGiftCard(id: string, businessId: string, patch: Partial<Omit<DbGiftCard, "id" | "businessId" | "createdAt">>): Promise<DbGiftCard | null>;
+  createGiftCardTransaction(t: Omit<DbGiftCardTransaction, "id" | "createdAt">): Promise<DbGiftCardTransaction>;
+  listGiftCardTransactions(giftCardId: string, businessId: string): Promise<DbGiftCardTransaction[]>;
+  findGiftCardTransactionByIdempotency(businessId: string, idempotencyKey: string): Promise<DbGiftCardTransaction | null>;
+  createStoreCreditAccount(a: Omit<DbStoreCreditAccount, "id" | "createdAt" | "updatedAt">): Promise<DbStoreCreditAccount>;
+  findStoreCreditAccount(customerId: string, businessId: string): Promise<DbStoreCreditAccount | null>;
+  createStoreCreditTransaction(t: Omit<DbStoreCreditTransaction, "id" | "createdAt">): Promise<DbStoreCreditTransaction>;
+  listStoreCreditTransactions(accountId: string, businessId: string): Promise<DbStoreCreditTransaction[]>;
+  findStoreCreditTransactionByIdempotency(businessId: string, idempotencyKey: string): Promise<DbStoreCreditTransaction | null>;
+  upsertLoyaltyProgram(p: Omit<DbLoyaltyProgram, "id" | "updatedAt">): Promise<DbLoyaltyProgram>;
+  getLoyaltyProgram(businessId: string): Promise<DbLoyaltyProgram | null>;
+  createLoyaltyAccount(a: Omit<DbLoyaltyAccount, "id" | "createdAt" | "updatedAt">): Promise<DbLoyaltyAccount>;
+  findLoyaltyAccount(customerId: string, businessId: string): Promise<DbLoyaltyAccount | null>;
+  createLoyaltyTransaction(t: Omit<DbLoyaltyTransaction, "id" | "createdAt">): Promise<DbLoyaltyTransaction>;
+  listLoyaltyTransactions(accountId: string, businessId: string): Promise<DbLoyaltyTransaction[]>;
+  findLoyaltyTransactionByIdempotency(businessId: string, idempotencyKey: string): Promise<DbLoyaltyTransaction | null>;
+  createSaleGiftCardLoad(l: Omit<DbSaleGiftCardLoad, "id" | "createdAt">): Promise<DbSaleGiftCardLoad>;
+  updateSaleGiftCardLoad(id: string, businessId: string, patch: Partial<Pick<DbSaleGiftCardLoad, "giftCardId">>): Promise<DbSaleGiftCardLoad | null>;
+  listSaleGiftCardLoads(saleId: string, businessId: string): Promise<DbSaleGiftCardLoad[]>;
+  createSaleLoyalty(s: Omit<DbSaleLoyalty, "id" | "createdAt">): Promise<DbSaleLoyalty>;
+  findSaleLoyalty(saleId: string, businessId: string): Promise<DbSaleLoyalty | null>;
+  updateSaleLoyalty(id: string, businessId: string, patch: Partial<Pick<DbSaleLoyalty, "redeemedPoints" | "redeemedValueMinor" | "earnedPoints">>): Promise<DbSaleLoyalty | null>;
+  createSaleItemLoyaltyAllocation(a: Omit<DbSaleItemLoyaltyAllocation, "id" | "createdAt">): Promise<DbSaleItemLoyaltyAllocation>;
+  listSaleItemLoyaltyAllocations(saleLoyaltyId: string, businessId: string): Promise<DbSaleItemLoyaltyAllocation[]>;
   createRefund(r: Omit<DbRefund, "id">): Promise<DbRefund>;
   listRefundsBySale(saleId: string, businessId: string): Promise<DbRefund[]>;
   // Phase 12 bulk read: reporting maps refund items to sales in one round-trip.
