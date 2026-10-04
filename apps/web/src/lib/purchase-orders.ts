@@ -103,4 +103,9 @@ export function purchaseOrderStatusTone(status: string): "ok" | "warn" | "bad" |
   return "warn";
 }
 
+export function supplierReturnActions(status: SupplierReturn["status"], canWrite: boolean): { canPost: boolean; canCancel: boolean } {
+  const writableDraft = canWrite && status === "DRAFT";
+  return { canPost: writableDraft, canCancel: writableDraft };
+}
+
 export { formatMinor, requestKey };

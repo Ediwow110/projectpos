@@ -683,7 +683,12 @@ export class ProcurementService {
   }
 
   async listPurchaseOrderEvents(businessId: string, id: string) {
-    await this.requireOrder(businessId, id);
-    return this.db.listAuditFor(businessId, "PurchaseOrder", id);
+    const order = await this.requireOrder(businessId, id);
+    const supplierReturns = await this.listReturnDetails(order.id, businessId);
+    const events = await Promise.all([
+      this.db.listAuditFor(businessId, "PurchaseOrder", id),
+      ...supplierReturns.map((item) => this.db.listAuditFor(businessId, "SupplierReturn", item.id)),
+    ]);
+    return events.flat().sort((left, right) => (left.at?.getTime() ?? 0) - (right.at?.getTime() ?? 0));
   }
 }
