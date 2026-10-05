@@ -84,4 +84,27 @@ describe("StoredValueService", () => {
     expect(result.snapshot.earnPointsSnapshot).toBe(3);
     await expect(service.redeemLoyalty(business.id, "actor", "req-2", customer.id, 100, "sale-2", "redeem-1")).rejects.toThrow("LOYALTY_INSUFFICIENT_POINTS");
   });
+  it("writes one business audit per new manual adjustment and none on idempotent replay", async () => {
+    const { db, service, business, customer } = await fixture();
+    const issued = await service.issueGiftCard(business.id, "actor", "req-issue", "issue-1");
+
+    await service.adjustGiftCard(business.id, "actor", "req-gift", issued.card.id, 500, "qa gift load", "gift-1");
+    await service.adjustGiftCard(business.id, "actor", "req-gift-replay", issued.card.id, 500, "qa gift load", "gift-1");
+    await service.adjustStoreCredit(business.id, "actor", "req-credit", customer.id, 250, "qa credit", "credit-1");
+    await service.adjustStoreCredit(business.id, "actor", "req-credit-replay", customer.id, 250, "qa credit", "credit-1");
+    await service.adjustLoyalty(business.id, "actor", "req-loyalty", customer.id, 10, "qa points", "loyalty-1");
+    await service.adjustLoyalty(business.id, "actor", "req-loyalty-replay", customer.id, 10, "qa points", "loyalty-1");
+
+    const audits = (await db.listAudit()).filter((entry) => entry.businessId === business.id);
+    const adjustments = audits.filter((entry) => entry.action.endsWith(".adjust"));
+    expect(adjustments.map((entry) => entry.action).sort()).toEqual([
+      "gift-card.adjust",
+      "loyalty.adjust",
+      "store-credit.adjust",
+    ]);
+    expect(adjustments.find((entry) => entry.action === "gift-card.adjust")?.after).toEqual({ balanceMinor: 500, amountDeltaMinor: 500 });
+    expect(adjustments.find((entry) => entry.action === "store-credit.adjust")?.after).toEqual({ balanceMinor: 250, amountDeltaMinor: 250 });
+    expect(adjustments.find((entry) => entry.action === "loyalty.adjust")?.after).toEqual({ points: 10, pointsDelta: 10 });
+  });
+
 });

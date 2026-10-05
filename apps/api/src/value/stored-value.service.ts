@@ -97,14 +97,26 @@ export class StoredValueService {
       if (!card) throw new Error("NOT_FOUND");
       if (card.status === "SUSPENDED" || card.status === "VOID") throw new Error("GIFT_CARD_INVALID_STATUS");
       const existing = await this.db.findGiftCardTransactionByIdempotency(businessId, idempotencyKey);
-      const previousBalance = await this.giftCardBalance(businessId, giftCardId);
+      let beforeBalance: number | undefined;
       if (!existing) {
+        beforeBalance = await this.giftCardBalance(businessId, giftCardId);
         await this.db.createGiftCardTransaction({ businessId, giftCardId, type: amountDeltaMinor > 0 ? "ADJUST_CREDIT" : "ADJUST_DEBIT", amountDeltaMinor, saleId: null, refundId: null, actorId, requestId, idempotencyKey, reason: reason.trim(), branchId: null });
       }
       const balance = await this.giftCardBalance(businessId, giftCardId);
-      const result = { id: card.id, maskedCode: this.maskGiftCard(card), codeLast4: card.codeLast4, status: balance === 0 ? "EXHAUSTED" : card.status, balanceMinor: balance };
-      if (!existing) await this.appendAdjustmentAudit({ businessId, actorId, requestId, action: "gift-card.adjust", entityType: "GiftCard", entityId: giftCardId, reason, previousBalance, amountDelta: amountDeltaMinor, newBalance: balance });
-      return { result, created: !existing, previousBalance, newBalance: balance };
+      if (!existing) {
+        await this.db.appendAudit({
+          businessId,
+          actorId,
+          action: "gift-card.adjust",
+          entityType: "GiftCard",
+          entityId: giftCardId,
+          requestId,
+          reason: reason.trim(),
+          before: { balanceMinor: beforeBalance },
+          after: { balanceMinor: balance, amountDeltaMinor },
+        });
+      }
+      return { id: card.id, maskedCode: this.maskGiftCard(card), codeLast4: card.codeLast4, status: balance === 0 ? "EXHAUSTED" : card.status, balanceMinor: balance };
     });
   }
 
@@ -140,13 +152,26 @@ export class StoredValueService {
     return this.db.withLock(`store-credit:${businessId}:${customerId}`, async () => {
       const account = await this.ensureStoreCreditAccount(businessId, customerId);
       const existing = await this.db.findStoreCreditTransactionByIdempotency(businessId, idempotencyKey);
-      const previousBalance = await this.storeCreditBalance(businessId, customerId);
+      let beforeBalance: number | undefined;
       if (!existing) {
+        beforeBalance = await this.storeCreditBalance(businessId, customerId);
         await this.db.createStoreCreditTransaction({ businessId, accountId: account.id, customerId, type: amountDeltaMinor > 0 ? "MANUAL_CREDIT" : "MANUAL_DEBIT", amountDeltaMinor, saleId: null, refundId: null, actorId, requestId, idempotencyKey, reason: reason.trim(), branchId: null });
       }
-      const newBalance = await this.storeCreditBalance(businessId, customerId);
-      if (!existing) await this.appendAdjustmentAudit({ businessId, actorId, requestId, action: "store-credit.adjust", entityType: "StoreCreditAccount", entityId: account.id, reason, previousBalance, amountDelta: amountDeltaMinor, newBalance });
-      return { result: newBalance, created: !existing, previousBalance, newBalance };
+      const balance = await this.storeCreditBalance(businessId, customerId);
+      if (!existing) {
+        await this.db.appendAudit({
+          businessId,
+          actorId,
+          action: "store-credit.adjust",
+          entityType: "StoreCreditAccount",
+          entityId: account.id,
+          requestId,
+          reason: reason.trim(),
+          before: { balanceMinor: beforeBalance },
+          after: { balanceMinor: balance, amountDeltaMinor },
+        });
+      }
+      return balance;
     });
   }
 
@@ -168,11 +193,26 @@ export class StoredValueService {
     return this.db.withLock(`loyalty:${businessId}:${customerId}`, async () => {
       const account = await this.ensureLoyaltyAccount(businessId, customerId);
       const existing = await this.db.findLoyaltyTransactionByIdempotency(businessId, idempotencyKey);
-      const previousBalance = await this.loyaltyBalance(businessId, customerId);
-      if (!existing) await this.db.createLoyaltyTransaction({ businessId, accountId: account.id, customerId, type: pointsDelta > 0 ? "MANUAL_CREDIT" : "MANUAL_DEBIT", pointsDelta, valueMinorSnapshot: null, saleId: null, refundId: null, actorId, requestId, idempotencyKey, reason: reason.trim() });
-      const newBalance = await this.loyaltyBalance(businessId, customerId);
-      if (!existing) await this.appendAdjustmentAudit({ businessId, actorId, requestId, action: "loyalty.adjust", entityType: "LoyaltyAccount", entityId: account.id, reason, previousBalance, amountDelta: pointsDelta, newBalance });
-      return { result: newBalance, created: !existing, previousBalance, newBalance };
+      let beforePoints: number | undefined;
+      if (!existing) {
+        beforePoints = await this.loyaltyBalance(businessId, customerId);
+        await this.db.createLoyaltyTransaction({ businessId, accountId: account.id, customerId, type: pointsDelta > 0 ? "MANUAL_CREDIT" : "MANUAL_DEBIT", pointsDelta, valueMinorSnapshot: null, saleId: null, refundId: null, actorId, requestId, idempotencyKey, reason: reason.trim() });
+      }
+      const balance = await this.loyaltyBalance(businessId, customerId);
+      if (!existing) {
+        await this.db.appendAudit({
+          businessId,
+          actorId,
+          action: "loyalty.adjust",
+          entityType: "LoyaltyAccount",
+          entityId: account.id,
+          requestId,
+          reason: reason.trim(),
+          before: { points: beforePoints },
+          after: { points: balance, pointsDelta },
+        });
+      }
+      return balance;
     });
   }
 
