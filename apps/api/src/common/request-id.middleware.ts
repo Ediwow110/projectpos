@@ -4,12 +4,14 @@ import { getCorrelationId } from "../correlation";
 
 @Injectable()
 export class RequestIdMiddleware implements NestMiddleware {
-  use(req: Request, _res: Response, next: NextFunction): void {
+  use(req: Request, res: Response, next: NextFunction): void {
     const headers: Record<string, string | undefined> = {};
     for (const [k, v] of Object.entries(req.headers)) {
       headers[k.toLowerCase()] = Array.isArray(v) ? v.join(",") : String(v ?? "");
     }
-    (req as Request & { correlationId?: string }).correlationId = getCorrelationId(headers);
+    const correlationId = getCorrelationId(headers);
+    (req as Request & { correlationId?: string }).correlationId = correlationId;
+    res.setHeader("X-Request-Id", correlationId);
     next();
   }
 }
