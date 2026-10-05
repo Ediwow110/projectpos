@@ -6,6 +6,7 @@ import { withInventoryLocks } from "../inventory-locks";
 import type { AppliedManagerApproval } from "../../auth/nest/manager-approval-policy.service";
 import type { InventoryCountCreateInput, InventoryCountLineUpdateInput, ReplenishmentDraftPoInput } from "@pos/validation";
 import { ProcurementService } from "../../procurement/nest/procurement.service";
+import { InventoryAvailabilityService } from "../availability-service";
 
 export interface InventoryCountView extends DbInventoryCount { lines: DbInventoryCountLine[]; }
 
@@ -210,7 +211,7 @@ export class InventoryCountService {
       if (existing.resultId !== id || existing.fingerprint !== fingerprintPayload({ countId: id, version: expectedVersion })) throw new Error("IDEMPOTENCY_MISMATCH");
       return { count: await this.getCount(businessId, id), replayed: true, movements: 0 };
     }
-    return this.db.withLock(`inventory-count-post:${businessId}:${id}`, async () => {
+    return this.db.withLock(`sales:${businessId}`, () => this.db.withLock(`inventory-count-post:${businessId}:${id}`, async () => {
       const count = await this.requireCount(businessId, id);
       if (count.status === "POSTED") throw new Error("IDEMPOTENCY_MISMATCH");
       if (count.status !== "APPROVED") throw new Error("INVALID_STATE");
@@ -228,6 +229,16 @@ export class InventoryCountService {
         const latest = await tx.findInventoryCountById(id, businessId);
         if (!latest || latest.version !== expectedVersion || latest.status !== "APPROVED") throw new Error("CONFLICT");
         await this.verifyFreshness(businessId, latest, lines);
+        const decreases = lines
+          .filter((line) => (line.varianceQty ?? 0) < 0)
+          .map((line) => ({ productId: line.productId, qty: Math.abs(line.varianceQty ?? 0) }));
+        if (decreases.length > 0) {
+          await new InventoryAvailabilityService(tx).assertReservationsPreserved(
+            businessId,
+            latest.branchId,
+            decreases,
+          );
+        }
         let movementCount = 0;
         for (const line of lines) {
           const variance = line.varianceQty ?? 0;
@@ -243,7 +254,7 @@ export class InventoryCountService {
         await tx.appendAudit({ businessId, actorId, action: "inventory_count.posted", entityType: "InventoryCount", entityId: id, requestId, after: snapshot(posted) });
         return { count: { ...posted, lines: await tx.listInventoryCountLines(id, businessId) }, replayed: false, movements: movementCount };
       }));
-    });
+    }));
   }
 
   async cancelCount(businessId: string, actorId: string, requestId: string, id: string, expectedVersion: number, _granted: string[]): Promise<InventoryCountView> {

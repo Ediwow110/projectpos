@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createMemoryDb } from "../common/memory.db";
 import type { DbSale } from "../common/db.port";
@@ -93,6 +93,37 @@ async function setup() {
 }
 
 describe("sales payment provider service", () => {
+  it("passes a linked Order id to the stock preflight so its own hold is excluded", async () => {
+    const { db, sale, paymongo } = await setup();
+    const now = new Date();
+    const order = await db.createOrder({
+      businessId: "b1", channel: "WEB", fulfillmentMode: "PICKUP", paymentMode: "PREPAID",
+      branchId: null, customerId: null, contactName: "Ana", email: "ana@example.com", phone: "+639171234567",
+      deliveryAddress: null, fulfillmentInstructions: null, currency: "PHP", subtotalMinor: 2500, discountMinor: 0,
+      taxMinor: 0, deliveryFeeMinor: 0, deliveryTaxMinor: 0, totalMinor: 2500, saleId: sale.id, status: "SUBMITTED",
+      version: 1, checkoutAt: now, submittedAt: now, confirmedAt: null, completedAt: null, cancelledAt: null,
+      actorId: "public", requestId: "order-owner", createdAt: now, updatedAt: now,
+    });
+    const requireSale = async (businessId: string, saleId: string): Promise<DbSale> => {
+      const row = await db.findSaleById(saleId, businessId);
+      if (!row) throw new Error("NOT_FOUND");
+      return row;
+    };
+    const assertStockAvailable = vi.fn(async () => undefined);
+    const service = new SalesPaymentProviderService(db, paymongo, {
+      requireSale,
+      embedSale: async (row) => ({
+        ...row,
+        items: await db.listSaleItems(row.id, row.businessId),
+        payments: await db.listPaymentsBySale(row.id, row.businessId),
+      }),
+      assertStockAvailable,
+    });
+
+    await service.startPayMongoCheckout("b1", "u1", "req-owner", sale.id, "card", "owner-key", "https://nexpos.example");
+    expect(assertStockAvailable).toHaveBeenCalledWith("b1", expect.any(Array), null, order.id);
+  });
+
   it("starts and replays one PayMongo checkout without duplicating the payment", async () => {
     const { db, sale, paymongo, service } = await setup();
 

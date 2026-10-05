@@ -59,7 +59,8 @@ export class SalesService {
     this.providers = new SalesPaymentProviderService(db, paymongo, {
       requireSale: (businessId, saleId) => this.requireSale(businessId, saleId),
       embedSale: (sale) => this.embed(sale),
-      assertStockAvailable: (businessId, items, branchId) => this.stock.assertAvailable(businessId, items, branchId),
+      assertStockAvailable: (businessId, items, branchId, ownerOrderId) =>
+        this.stock.assertAvailable(businessId, items, branchId, ownerOrderId),
     });
     this.reconciliation = new SalesPaymentReconciliationService(db, {
       requireSale: (businessId, saleId) => this.requireSale(businessId, saleId),

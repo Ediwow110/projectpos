@@ -2,6 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { withScope } from "@pos/database";
 import type { DbPort, DbStockTransfer, DbStockTransferLine } from "../../common/db.port";
 import { fingerprintPayload } from "../../sales/idempotency";
+import { InventoryAvailabilityService } from "../../inventory/availability-service";
 import { withInventoryLocks } from "../../inventory/inventory-locks";
 import { canTransitionTransfer } from "../transfer-math";
 
@@ -134,7 +135,7 @@ export class TransferService {
   ): Promise<{ transfer: TransferWithLines; replayed: boolean }> {
     withScope(businessId, {});
     if (granted !== undefined) this.requireGrant(granted);
-    return this.db.withLock(`transfer:${businessId}:${transferId}`, async () => {
+    return this.db.withLock(`sales:${businessId}`, () => this.db.withLock(`transfer:${businessId}:${transferId}`, async () => {
       const t = await this.requireTransfer(businessId, transferId);
       const fingerprint = fingerprintPayload({ transferId });
       const existing = await this.db.findIdempotency(businessId, key, "transfer.dispatch");
@@ -158,9 +159,20 @@ export class TransferService {
             if (!product) throw new Error("NOT_FOUND");
             const preventOversell =
               (product as { preventOversell?: boolean }).preventOversell ?? true;
-            const balance = await this.db.findBalance(line.productId, businessId, t.fromBranchId);
-            const onHand = balance?.qtyOnHand ?? 0;
-            if (preventOversell && onHand < line.qty) throw new Error("INSUFFICIENT_STOCK");
+            const availability = new InventoryAvailabilityService(this.db);
+            if (preventOversell) {
+              await availability.assertDecreaseAllowed(
+                businessId,
+                t.fromBranchId,
+                [{ productId: line.productId, qty: line.qty }],
+              );
+            } else {
+              await availability.assertReservationsPreserved(
+                businessId,
+                t.fromBranchId,
+                [{ productId: line.productId, qty: line.qty }],
+              );
+            }
           }
           for (const line of lines) {
             await this.db.createMovement({
@@ -206,7 +218,7 @@ export class TransferService {
           return { transfer: await this.embed(updated), replayed: false };
         },
       );
-    });
+    }));
   }
 
   async receiveTransfer(

@@ -4,6 +4,23 @@ import { createMemoryDb } from "../common/memory.db";
 import { SalesStockService } from "./sale-stock-service";
 
 describe("sales stock locking", () => {
+  it("protects another Order's hold and lets the owning Sale consume its own hold", async () => {
+    const db = createMemoryDb();
+    const business = await db.createBusiness({ name: "Held", currency: "PHP" });
+    const branch = await db.createBranch({ businessId: business.id, name: "Main", type: "store", isActive: true });
+    const product = await db.createProduct({ businessId: business.id, categoryId: null, name: "Held unit", sku: "H", barcode: null, brand: null, unit: "pc", costMinor: 50, priceMinor: 100, taxRateBps: null, reorderLevel: 0, trackInventory: true, isActive: true, imageUrl: null });
+    await db.upsertBalance({ businessId: business.id, branchId: branch.id, productId: product.id, qtyOnHand: 1 });
+    const now = new Date();
+    const order = await db.createOrder({ businessId: business.id, channel: "WEB", fulfillmentMode: "PICKUP", paymentMode: "PREPAID", branchId: branch.id, customerId: null, contactName: "Ana", email: "ana@example.com", phone: "+639171234567", deliveryAddress: null, fulfillmentInstructions: null, currency: "PHP", subtotalMinor: 100, discountMinor: 0, taxMinor: 0, deliveryFeeMinor: 0, deliveryTaxMinor: 0, totalMinor: 100, saleId: null, status: "SUBMITTED", version: 1, checkoutAt: now, submittedAt: now, confirmedAt: null, completedAt: null, cancelledAt: null, actorId: "public", requestId: "o1", createdAt: now, updatedAt: now });
+    const line = await db.createOrderLine({ businessId: business.id, orderId: order.id, position: 0, productId: product.id, name: product.name, sku: product.sku, barcode: null, unit: product.unit, qty: 1, priceMinor: 100, costMinor: 50, taxRateBps: null, discountMinor: 0, taxMinor: 0, lineTotalMinor: 100, bundleComponentsSnapshot: null, createdAt: now });
+    await db.createInventoryReservation({ businessId: business.id, branchId: branch.id, orderId: order.id, orderLineId: line.id, productId: product.id, qty: 1, status: "HELD", expiresAt: new Date(Date.now() + 60_000), idempotencyKey: "hold-1", createdAt: now, updatedAt: now });
+    const sale = await db.createSale({ businessId: business.id, receiptNo: "HOLD-1", status: "DRAFT", subtotalMinor: 100, discountMinor: 0, taxMinor: 0, totalMinor: 100, paidMinor: 0, changeMinor: 0, currency: "PHP", customerId: null, customerName: null, notes: null, actorId: "u1", requestId: "s1", idempotencyKey: null, registerId: null, branchId: branch.id, createdAt: now });
+    const item = await db.createSaleItem({ businessId: business.id, saleId: sale.id, productId: product.id, name: product.name, unit: product.unit, qty: 1, priceMinor: 100, costMinor: 50, taxRateBps: null, lineDiscountMinor: 0, lineTotalMinor: 100 });
+    const stock = new SalesStockService(db);
+    await expect(stock.applySale(business.id, "u1", "r1", sale.id, [item], branch.id)).rejects.toThrow("RESERVATION_CONFLICT");
+    await expect(stock.applySale(business.id, "u1", "r2", sale.id, [item], branch.id, order.id)).resolves.toBeUndefined();
+    expect((await db.findBalance(product.id, business.id, branch.id))?.qtyOnHand).toBe(0);
+  });
   it("waits for the canonical branch/product inventory lock before mutating stock", async () => {
     const db = createMemoryDb();
     const product = await db.createProduct({

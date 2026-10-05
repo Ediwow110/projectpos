@@ -18,6 +18,18 @@ async function setupTransfer() {
   return { db, svc, a: a.id, b: b.id, productId: prod.id };
 }
 
+async function holdTransferStock(
+  db: ReturnType<typeof createMemoryDb>,
+  branchId: string,
+  productId: string,
+  qty: number,
+) {
+  const now = new Date();
+  const order = await db.createOrder({ businessId: "b1", channel: "WEB", fulfillmentMode: "PICKUP", paymentMode: "PAY_AT_PICKUP", branchId, customerId: null, contactName: "Ana", email: "ana@example.com", phone: "+639171234567", deliveryAddress: null, fulfillmentInstructions: null, currency: "PHP", subtotalMinor: 100, discountMinor: 0, taxMinor: 0, deliveryFeeMinor: 0, deliveryTaxMinor: 0, totalMinor: 100, saleId: null, status: "SUBMITTED", version: 1, checkoutAt: now, submittedAt: now, confirmedAt: null, completedAt: null, cancelledAt: null, actorId: "public", requestId: "hold-transfer", createdAt: now, updatedAt: now });
+  const line = await db.createOrderLine({ businessId: "b1", orderId: order.id, position: 0, productId, name: "Held", sku: null, barcode: null, unit: "pc", qty, priceMinor: 100, costMinor: 50, taxRateBps: null, discountMinor: 0, taxMinor: 0, lineTotalMinor: 100 * qty, bundleComponentsSnapshot: null, createdAt: now });
+  await db.createInventoryReservation({ businessId: "b1", branchId, orderId: order.id, orderLineId: line.id, productId, qty, status: "HELD", expiresAt: new Date(Date.now() + 60_000), idempotencyKey: "hold-transfer", createdAt: now, updatedAt: now });
+}
+
 describe("phase9a transfer service", () => {
   it("dispatches and receives with dual-location ledger entries", async () => {
     const { db, svc, a, b, productId } = await setupTransfer();
@@ -43,6 +55,16 @@ describe("phase9a transfer service", () => {
     await expect(svc.dispatchTransfer("b1", "u1", "r2", t.id, "key-d2")).rejects.toThrow("INSUFFICIENT_STOCK");
     expect(await db.listMovementsByBusiness("b1")).toEqual([]);
     expect((await db.findTransferById(t.id, "b1"))!.status).toBe("DRAFT");
+  });
+  it("rejects dispatch that would consume another Order's HELD stock", async () => {
+    const { db, svc, a, b, productId } = await setupTransfer();
+    await holdTransferStock(db, a, productId, 7);
+    const t = await svc.createTransfer("b1", "u1", "r1", {
+      fromBranchId: a, toBranchId: b, lines: [{ productId, qty: 4 }],
+    }, GRANT);
+    await expect(svc.dispatchTransfer("b1", "u1", "r2", t.id, "key-held")).rejects.toThrow("RESERVATION_CONFLICT");
+    expect((await db.findBalance(productId, "b1", a))?.qtyOnHand).toBe(10);
+    expect((await db.listMovementsByBusiness("b1")).filter((m) => m.type === "transfer_out")).toHaveLength(0);
   });
   it("rejects double dispatch and receive-before-dispatch", async () => {
     const { svc, a, b, productId } = await setupTransfer();

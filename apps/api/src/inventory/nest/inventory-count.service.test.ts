@@ -53,6 +53,26 @@ describe("phase 18 inventory counts", () => {
     expect((await db.listMovementsByBusiness(businessId)).filter((row) => row.type === "stock_count")).toHaveLength(2);
   });
 
+  it("rejects a negative count that would make on-hand lower than HELD reservations", async () => {
+    const { db, service, businessId, products } = await fixture();
+    const branch = await db.createBranch({ businessId, name: "Held branch", type: "store", isActive: true });
+    await db.createMovement({ businessId, productId: products[0]!, type: "opening_stock", qtyDelta: 10, reason: null, referenceType: null, referenceId: null, actorId: "owner", requestId: "held-seed", branchId: branch.id });
+    await db.upsertBalance({ businessId, productId: products[0]!, qtyOnHand: 10, branchId: branch.id });
+    const now = new Date();
+    const order = await db.createOrder({ businessId, channel: "WEB", fulfillmentMode: "PICKUP", paymentMode: "PAY_AT_PICKUP", branchId: branch.id, customerId: null, contactName: "Ana", email: "ana@example.com", phone: "+639171234567", deliveryAddress: null, fulfillmentInstructions: null, currency: "PHP", subtotalMinor: 900, discountMinor: 0, taxMinor: 0, deliveryFeeMinor: 0, deliveryTaxMinor: 0, totalMinor: 900, saleId: null, status: "SUBMITTED", version: 1, checkoutAt: now, submittedAt: now, confirmedAt: null, completedAt: null, cancelledAt: null, actorId: "public", requestId: "held-count-order", createdAt: now, updatedAt: now });
+    const line = await db.createOrderLine({ businessId, orderId: order.id, position: 0, productId: products[0]!, name: "A", sku: "A", barcode: null, unit: "pc", qty: 9, priceMinor: 100, costMinor: 100, taxRateBps: null, discountMinor: 0, taxMinor: 0, lineTotalMinor: 900, bundleComponentsSnapshot: null, createdAt: now });
+    await db.createInventoryReservation({ businessId, branchId: branch.id, orderId: order.id, orderLineId: line.id, productId: products[0]!, qty: 9, status: "HELD", expiresAt: new Date(Date.now() + 60_000), idempotencyKey: "held-count-res", createdAt: now, updatedAt: now });
+
+    const count = await service.createCount(businessId, "owner", "hc1", { scopeType: "PARTIAL", name: "Held count", branchId: branch.id, productIds: [products[0]!] }, grant);
+    const started = await service.startCount(businessId, "owner", "hc2", count.id, count.version, grant);
+    const updated = await service.updateLines(businessId, "owner", "hc3", count.id, { expectedVersion: started.version, lines: [{ lineId: started.lines[0]!.id, countedQty: 8 }] }, grant);
+    const submitted = await service.submitCount(businessId, "owner", "hc4", count.id, updated.version, grant);
+    const approved = await service.approveCount(businessId, "owner", "hc5", count.id, submitted.version, grant);
+    await expect(service.postCount(businessId, "owner", "hc6", count.id, "held-count-post", approved.version, grant)).rejects.toThrow("RESERVATION_CONFLICT");
+    expect((await db.findBalance(products[0]!, businessId, branch.id))?.qtyOnHand).toBe(10);
+    expect((await db.listMovements(products[0]!, businessId, branch.id)).filter((m) => m.type === "stock_count")).toHaveLength(0);
+  });
+
   it("suppresses inbound stock, counts partial receipts, surfaces missing suppliers, and keeps draft PO creation commercial", async () => {
     const { db, businessId, products } = await fixture();
     const procurement = new ProcurementService(db);

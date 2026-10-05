@@ -17,7 +17,12 @@ type EmbeddedSale = DbSale & {
 interface PaymentProviderOps {
   requireSale: (businessId: string, saleId: string) => Promise<DbSale>;
   embedSale: (sale: DbSale) => Promise<EmbeddedSale>;
-  assertStockAvailable: (businessId: string, items: DbSaleItem[], branchId: string | null) => Promise<void>;
+  assertStockAvailable: (
+    businessId: string,
+    items: DbSaleItem[],
+    branchId: string | null,
+    ownerOrderId?: string,
+  ) => Promise<void>;
 }
 
 export class SalesPaymentProviderService {
@@ -52,7 +57,8 @@ export class SalesPaymentProviderService {
       if (!configuredMethods.has(method)) throw new Error("VALIDATION");
       const items = await this.db.listSaleItems(sale.id, businessId);
       if (items.length === 0) throw new Error("VALIDATION");
-      await this.ops.assertStockAvailable(businessId, items, sale.branchId ?? null);
+      const ownerOrder = await this.db.findOrderBySaleId(sale.id, businessId);
+      await this.ops.assertStockAvailable(businessId, items, sale.branchId ?? null, ownerOrder?.id);
 
       const fingerprint = fingerprintPayload({ saleId, method });
       const existingKey = await this.db.findIdempotency(businessId, key, "paymongo.checkout");
