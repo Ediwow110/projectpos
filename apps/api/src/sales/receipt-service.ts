@@ -14,6 +14,7 @@ export interface ReceiptData {
   customerName: string | null;
   customerEmail: string | null;
   items: DbSaleItem[];
+  giftCardLoads: Array<{ amountMinor: number; kind: "NEW" | "RELOAD"; maskedCode: string | null }>;
   subtotalMinor: number;
   discountMinor: number;
   taxMinor: number;
@@ -27,6 +28,7 @@ export interface SharedReceipt {
   receiptNo: string;
   status: string;
   items: Array<{ name: string; qty: number; lineTotalMinor: number }>;
+  giftCardLoads: Array<{ amountMinor: number; kind: "NEW" | "RELOAD"; maskedCode: string | null }>;
   subtotalMinor: number;
   discountMinor: number;
   taxMinor: number;
@@ -46,6 +48,15 @@ export class SalesReceiptService {
     const sale = await this.db.findSaleById(saleId, businessId);
     if (!sale) throw new Error("NOT_FOUND");
     const items = await this.db.listSaleItems(sale.id, businessId);
+    const loads = await this.db.listSaleGiftCardLoads(sale.id, businessId);
+    const giftCardLoads = await Promise.all(loads.map(async (load) => {
+      const card = load.giftCardId ? await this.db.findGiftCardById(load.giftCardId, businessId) : null;
+      return {
+        amountMinor: load.amountMinor,
+        kind: load.kind,
+        maskedCode: card ? `${card.codePrefix}-••••${card.codeLast4}` : null,
+      };
+    }));
     const payments = await this.db.listPaymentsBySale(sale.id, businessId);
     const customer = sale.customerId ? await this.db.findCustomerById(sale.customerId, businessId) : null;
     return {
@@ -58,6 +69,7 @@ export class SalesReceiptService {
       customerName: sale.customerName,
       customerEmail: customer?.email ?? null,
       items,
+      giftCardLoads,
       subtotalMinor: sale.subtotalMinor,
       discountMinor: sale.discountMinor,
       taxMinor: sale.taxMinor,
@@ -78,6 +90,7 @@ export class SalesReceiptService {
         qty: item.qty,
         lineTotalMinor: item.lineTotalMinor,
       })),
+      giftCardLoads: receipt.giftCardLoads,
       subtotalMinor: receipt.subtotalMinor,
       discountMinor: receipt.discountMinor,
       taxMinor: receipt.taxMinor,
@@ -137,6 +150,7 @@ export class SalesReceiptService {
         qty: item.qty,
         lineTotalMinor: item.lineTotalMinor,
       })),
+      giftCardLoads: receipt.giftCardLoads,
       subtotalMinor: receipt.subtotalMinor,
       discountMinor: receipt.discountMinor,
       taxMinor: receipt.taxMinor,

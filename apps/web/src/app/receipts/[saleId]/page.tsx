@@ -25,6 +25,12 @@ interface ReceiptItem {
   lineTotalMinor: number;
 }
 
+interface ReceiptGiftCardLoad {
+  amountMinor: number;
+  kind: "NEW" | "RELOAD";
+  maskedCode: string | null;
+}
+
 interface ReceiptPayment {
   method: string;
   amountMinor: number;
@@ -40,6 +46,7 @@ interface Receipt {
   customerName: string | null;
   customerEmail: string | null;
   items: ReceiptItem[];
+  giftCardLoads: ReceiptGiftCardLoad[];
   subtotalMinor: number;
   discountMinor: number;
   taxMinor: number;
@@ -212,6 +219,12 @@ export default function ReceiptPage({ params }: { params: Promise<{ saleId: stri
                   <div key={`${item.name}-${index}`} className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 text-[12px]">
                     <div><p className="font-semibold text-[#2a241f]">{item.name}</p><p className="font-data mt-1 text-[10px] text-[#9a8d83]">{item.qty} × ₱{money(item.priceMinor)}</p></div>
                     <p className="font-data font-semibold text-[#2a241f]">₱{money(item.lineTotalMinor)}</p>
+                  </div>
+                ))}
+                {receipt.giftCardLoads.map((load, index) => (
+                  <div key={`gift-card-load-${index}`} className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 text-[12px]">
+                    <div><p className="font-semibold text-[#2a241f]">{load.kind === "NEW" ? "Gift card load" : "Gift card reload"}</p><p className="font-data mt-1 text-[10px] text-[#9a8d83]">{load.maskedCode ?? "Stored-value load"}</p></div>
+                    <p className="font-data font-semibold text-[#2a241f]">₱{money(load.amountMinor)}</p>
                   </div>
                 ))}
               </div>

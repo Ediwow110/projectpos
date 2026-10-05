@@ -24,6 +24,7 @@ describe("phase11 exit", () => {
     expect(renderReceiptText({
       receiptNo: "2026-000002", status: "COMPLETED",
       items: [{ name: "X", qty: 2, lineTotalMinor: 5000 }],
+      giftCardLoads: [],
       subtotalMinor: 5000, discountMinor: 0, taxMinor: 0, totalMinor: 5000,
       paidMinor: 10000, changeMinor: 5000, tenders: [{ method: "cash", amountMinor: 10000 }],
     })).toContain("CHANGE 50.00");
