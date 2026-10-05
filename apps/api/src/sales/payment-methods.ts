@@ -13,23 +13,35 @@ export const DEFAULT_PAYMENT_METHODS: Array<{ key: string; label: string }> = [
   { key: "other", label: "Other" },
 ];
 
-const LEGACY_DEFAULT_METHODS = [
-  { key: "cash", label: "Cash" },
-  { key: "card", label: "Card" },
-  { key: "gcash", label: "GCash" },
-  { key: "maya", label: "Maya" },
-  { key: "bank_transfer", label: "Bank transfer" },
-  { key: "other", label: "Other" },
+const HISTORICAL_DEFAULTS = [
+  [
+    { key: "cash", label: "Cash" },
+    { key: "card", label: "Card" },
+    { key: "gcash", label: "GCash" },
+    { key: "maya", label: "Maya" },
+    { key: "bank_transfer", label: "Bank transfer" },
+    { key: "other", label: "Other" },
+  ],
+  [
+    { key: "cash", label: "Cash" },
+    { key: "card", label: "Card" },
+    { key: "gcash", label: "GCash" },
+    { key: "maya", label: "Maya" },
+    { key: "qrph", label: "QR Ph" },
+    { key: "bank_transfer", label: "Bank transfer" },
+    { key: "other", label: "Other" },
+  ],
 ];
 
-function isLegacyDefaultList(
+function isHistoricalDefaultList(
   methods: Array<{ key: string; label: string }>,
 ): boolean {
-  return methods.length === LEGACY_DEFAULT_METHODS.length &&
-    methods.every((method, index) => {
-      const legacy = LEGACY_DEFAULT_METHODS[index];
-      return method.key === legacy?.key && method.label === legacy.label;
-    });
+  return HISTORICAL_DEFAULTS.some((historical) =>
+    methods.length === historical.length && methods.every((method, index) => {
+      const expected = historical[index];
+      return method.key === expected?.key && method.label === expected.label;
+    }),
+  );
 }
 
 // FR-PAY-01: payment methods are business configuration, not hard-coded UI
@@ -45,7 +57,7 @@ export async function resolvePaymentMethods(
     // Existing tenants seeded before QR Ph was added should inherit the new
     // default without overriding businesses that intentionally customized
     // their payment method list.
-    if (isLegacyDefaultList(configured)) return DEFAULT_PAYMENT_METHODS;
+    if (isHistoricalDefaultList(configured)) return DEFAULT_PAYMENT_METHODS;
     return configured;
   }
   return DEFAULT_PAYMENT_METHODS;
