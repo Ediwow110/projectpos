@@ -32,6 +32,7 @@ const ITEMS = {
   devices: { href: "/devices", label: "Devices", icon: "▦", tour: "devices" },
   printers: { href: "/printers", label: "Printers", icon: "▧", tour: "printers" },
   admin: { href: "/admin", label: "Administration / Help", icon: "?", tour: "admin" },
+  loyaltySettings: { href: "/admin/loyalty", label: "Loyalty settings", icon: "✦", tour: "loyalty-settings" },
   suppliers: { href: "/suppliers", label: "Suppliers", icon: "⌁", tour: "suppliers" },
   purchaseOrders: { href: "/purchase-orders", label: "Purchase Orders", icon: "▱", tour: "purchase-orders" },
   supplierReturns: { href: "/supplier-returns", label: "Supplier Returns", icon: "↩", tour: "supplier-returns" },
@@ -63,7 +64,7 @@ export function workspaceNavigationForRole(role?: string): WorkspaceNavigationGr
       group("Procurement", ["suppliers", "purchaseOrders", "supplierReturns"]),
       group("Operations", ["registers", "shifts", "transfers", "expenses"]),
       group("Insights", ["reports"]),
-      group("Administration", ["branches", "devices", "printers", "sync", "admin"]),
+      group("Administration", ["branches", "devices", "printers", "sync", "admin", "loyaltySettings"]),
     ];
   }
   return [
@@ -72,7 +73,7 @@ export function workspaceNavigationForRole(role?: string): WorkspaceNavigationGr
     group("Procurement", ["suppliers", "purchaseOrders", "supplierReturns"]),
     group("Operations", ["registers", "shifts", "transfers", "expenses"]),
     group("Insights", ["reports"]),
-    group("Administration", ["branches", "devices", "printers", "sync", "team", "admin"]),
+    group("Administration", ["branches", "devices", "printers", "sync", "team", "admin", "loyaltySettings"]),
   ];
 }
 
