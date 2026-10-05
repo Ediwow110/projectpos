@@ -194,9 +194,11 @@ export class PgDbPort implements DbPort {
   createProductOption(o: Omit<DbProductOption, "id" | "createdAt" | "updatedAt">): Promise<DbProductOption> { return this.productModels.createProductOption(o); }
   listProductOptions(familyId: string, businessId: string): Promise<DbProductOption[]> { return this.productModels.listProductOptions(familyId, businessId); }
   findProductOptionById(id: string, businessId: string): Promise<DbProductOption | null> { return this.productModels.findProductOptionById(id, businessId); }
+  updateProductOption(id: string, businessId: string, patch: Partial<Pick<DbProductOption, "name" | "position">>): Promise<DbProductOption | null> { return this.productModels.updateProductOption(id, businessId, patch); }
   createProductOptionValue(v: Omit<DbProductOptionValue, "id" | "createdAt" | "updatedAt">): Promise<DbProductOptionValue> { return this.productModels.createProductOptionValue(v); }
   listProductOptionValues(optionId: string, businessId: string): Promise<DbProductOptionValue[]> { return this.productModels.listProductOptionValues(optionId, businessId); }
   findProductOptionValueById(id: string, businessId: string): Promise<DbProductOptionValue | null> { return this.productModels.findProductOptionValueById(id, businessId); }
+  updateProductOptionValue(id: string, businessId: string, patch: Partial<Pick<DbProductOptionValue, "isActive">>): Promise<DbProductOptionValue | null> { return this.productModels.updateProductOptionValue(id, businessId, patch); }
   createVariantOptionValue(v: Omit<DbProductVariantOptionValue, "id" | "createdAt">): Promise<DbProductVariantOptionValue> { return this.productModels.createVariantOptionValue(v); }
   listVariantOptionValues(productId: string, businessId: string): Promise<DbProductVariantOptionValue[]> { return this.productModels.listVariantOptionValues(productId, businessId); }
   deleteVariantOptionValues(productId: string, businessId: string): Promise<void> { return this.productModels.deleteVariantOptionValues(productId, businessId); }

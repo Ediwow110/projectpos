@@ -269,6 +269,7 @@ export interface DbProductOptionValue {
   optionId: string;
   value: string;
   position: number;
+  isActive?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -959,9 +960,11 @@ export interface DbPort {
   createProductOption(o: Omit<DbProductOption, "id" | "createdAt" | "updatedAt">): Promise<DbProductOption>;
   listProductOptions(familyId: string, businessId: string): Promise<DbProductOption[]>;
   findProductOptionById(id: string, businessId: string): Promise<DbProductOption | null>;
+  updateProductOption(id: string, businessId: string, patch: Partial<Pick<DbProductOption, "name" | "position">>): Promise<DbProductOption | null>;
   createProductOptionValue(v: Omit<DbProductOptionValue, "id" | "createdAt" | "updatedAt">): Promise<DbProductOptionValue>;
   listProductOptionValues(optionId: string, businessId: string): Promise<DbProductOptionValue[]>;
   findProductOptionValueById(id: string, businessId: string): Promise<DbProductOptionValue | null>;
+  updateProductOptionValue(id: string, businessId: string, patch: Partial<Pick<DbProductOptionValue, "isActive">>): Promise<DbProductOptionValue | null>;
   createVariantOptionValue(v: Omit<DbProductVariantOptionValue, "id" | "createdAt">): Promise<DbProductVariantOptionValue>;
   listVariantOptionValues(productId: string, businessId: string): Promise<DbProductVariantOptionValue[]>;
   deleteVariantOptionValues(productId: string, businessId: string): Promise<void>;
