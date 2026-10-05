@@ -40,6 +40,7 @@ export class SalesPaymentProviderService {
     method: PayMongoMethod,
     key: string,
     webUrl: string,
+    returnPaths?: { successPath: string; cancelPath: string },
   ): Promise<{
     sale: EmbeddedSale;
     payment: DbPayment;
@@ -116,14 +117,24 @@ export class SalesPaymentProviderService {
       }
 
       const base = webUrl.replace(/\/$/, "");
+      const safePath = (value: string): string => {
+        if (!value.startsWith("/") || value.startsWith("//")) throw new Error("VALIDATION");
+        return value;
+      };
+      const successPath = returnPaths
+        ? safePath(returnPaths.successPath)
+        : `/sales/${encodeURIComponent(sale.id)}?paymongo=success`;
+      const cancelPath = returnPaths
+        ? safePath(returnPaths.cancelPath)
+        : `/sales/${encodeURIComponent(sale.id)}?paymongo=cancelled`;
       const remote = await this.paymongo.createCheckout({
         saleId: sale.id,
         receiptNo: sale.receiptNo,
         businessId,
         method,
         idempotencyKey: key,
-        successUrl: `${base}/sales/${encodeURIComponent(sale.id)}?paymongo=success`,
-        cancelUrl: `${base}/sales/${encodeURIComponent(sale.id)}?paymongo=cancelled`,
+        successUrl: `${base}${successPath}`,
+        cancelUrl: `${base}${cancelPath}`,
         lineItems: [{ name: `NexPOS sale ${sale.receiptNo}`, amount: sale.totalMinor, quantity: 1 }],
       });
 

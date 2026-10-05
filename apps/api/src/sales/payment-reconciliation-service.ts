@@ -1,4 +1,5 @@
 import type { DbPayment, DbPort, DbSale, DbSaleItem } from "../common/db.port";
+import { OrderSaleService } from "../orders/order-sale-service";
 import { fingerprintPayload } from "./idempotency";
 import { transitionSale } from "./state-machine";
 
@@ -17,6 +18,7 @@ interface ReconciliationOps {
     saleId: string,
     items: DbSaleItem[],
     branchId: string | null,
+    ownerOrderId?: string,
   ) => Promise<void>;
   postCashSale: (
     businessId: string,
@@ -32,10 +34,14 @@ interface ReconciliationOps {
 const CASH_METHODS = new Set(["cash"]);
 
 export class SalesPaymentReconciliationService {
+  private readonly orderSales: OrderSaleService;
+
   constructor(
     private readonly db: DbPort,
     private readonly ops: ReconciliationOps,
-  ) {}
+  ) {
+    this.orderSales = new OrderSaleService(db);
+  }
 
   async reconcilePayment(
     businessId: string,
@@ -45,7 +51,7 @@ export class SalesPaymentReconciliationService {
     outcome: "SUCCEEDED" | "FAILED",
     key: string,
   ): Promise<{ sale: EmbeddedSale; payment: DbPayment }> {
-    return this.db.withLock(`sales:${businessId}`, async () => {
+    return this.db.withLock(`sales:${businessId}`, async () => this.db.withTransaction(async () => {
       const fingerprint = fingerprintPayload({ paymentId, outcome });
       const existing = await this.db.findIdempotency(businessId, key, "payment.reconcile");
       if (existing) {
@@ -101,7 +107,16 @@ export class SalesPaymentReconciliationService {
       }
 
       const items = await this.db.listSaleItems(sale.id, businessId);
-      await this.ops.applyStockEffect(businessId, actorId, requestId, sale.id, items, sale.branchId ?? null);
+      const linkedOrder = await this.db.findOrderBySaleId(sale.id, businessId);
+      await this.ops.applyStockEffect(
+        businessId,
+        actorId,
+        requestId,
+        sale.id,
+        items,
+        sale.branchId ?? null,
+        linkedOrder?.id,
+      );
       const cashMinor = legs
         .filter((leg) => leg.status === "SUCCEEDED" && CASH_METHODS.has(leg.method))
         .reduce((sum, leg) => sum + leg.amountMinor, 0);
@@ -125,8 +140,9 @@ export class SalesPaymentReconciliationService {
       const completedAt = new Date();
       const updated =
         (await this.db.updateSale(sale.id, businessId, { status, completedAt })) ?? sale;
+      await this.orderSales.settleLinkedSaleLocked(this.db, businessId, sale.id, completedAt);
       await this.ops.recordSale(businessId, completedAt);
       return { sale: await this.ops.embedSale(updated), payment: updatedPayment };
-    });
+    }));
   }
 }

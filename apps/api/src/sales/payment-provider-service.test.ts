@@ -159,6 +159,27 @@ describe("sales payment provider service", () => {
     expect((await db.listPaymentsBySale(sale.id, "b1"))).toHaveLength(1);
   });
 
+  it("uses explicit token-free guest return paths when provided", async () => {
+    const { sale, paymongo, service } = await setup();
+    await service.startPayMongoCheckout(
+      "b1",
+      "u1",
+      "req-guest-return",
+      sale.id,
+      "card",
+      "checkout-guest-return",
+      "https://nexpos.example/",
+      {
+        successPath: "/order-status?payment=success",
+        cancelPath: "/order-status?payment=cancelled",
+      },
+    );
+    expect(paymongo.lastInput).toMatchObject({
+      successUrl: "https://nexpos.example/order-status?payment=success",
+      cancelUrl: "https://nexpos.example/order-status?payment=cancelled",
+    });
+  });
+
   it("rejects an idempotency key reused with different checkout parameters", async () => {
     const { sale, service } = await setup();
 

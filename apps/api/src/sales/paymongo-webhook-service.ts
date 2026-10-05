@@ -1,4 +1,5 @@
 import type { DbPort } from "../common/db.port";
+import { OrderSaleService } from "../orders/order-sale-service";
 import { incrementMetric } from "../common/metrics";
 import { BillingService } from "../billing/nest/billing.service";
 import {
@@ -12,6 +13,7 @@ import { transitionSale } from "./state-machine";
 
 export class SalesPayMongoWebhookService {
   private readonly billing: BillingService;
+  private readonly orderSales: OrderSaleService;
 
   constructor(
     private readonly db: DbPort,
@@ -19,13 +21,14 @@ export class SalesPayMongoWebhookService {
     private readonly stock: SalesStockService,
   ) {
     this.billing = new BillingService(db);
+    this.orderSales = new OrderSaleService(db);
   }
 
   private async settlePaid(
     event: PayMongoPaidEvent,
     requestId: string,
   ): Promise<void> {
-    await this.db.withLock(`sales:${event.businessId}`, async () => {
+    await this.db.withLock(`sales:${event.businessId}`, async () => this.db.withTransaction(async () => {
       const sale = await this.db.findSaleById(event.saleId, event.businessId);
       if (!sale) throw new Error("NOT_FOUND");
       const payments = await this.db.listPaymentsBySale(
@@ -62,6 +65,7 @@ export class SalesPayMongoWebhookService {
       }
 
       const items = await this.db.listSaleItems(sale.id, event.businessId);
+      const linkedOrder = await this.db.findOrderBySaleId(sale.id, event.businessId);
       await this.stock.applySale(
         event.businessId,
         "paymongo-webhook",
@@ -69,6 +73,7 @@ export class SalesPayMongoWebhookService {
         sale.id,
         items,
         sale.branchId ?? null,
+        linkedOrder?.id,
       );
       await this.db.updatePayment(payment.id, event.businessId, {
         status: "SUCCEEDED",
@@ -82,6 +87,12 @@ export class SalesPayMongoWebhookService {
         changeMinor: 0,
         completedAt,
       });
+      await this.orderSales.settleLinkedSaleLocked(
+        this.db,
+        event.businessId,
+        sale.id,
+        completedAt,
+      );
       await this.billing.recordSale(event.businessId, completedAt);
       await this.db.appendAudit({
         businessId: event.businessId,
@@ -92,7 +103,7 @@ export class SalesPayMongoWebhookService {
         requestId,
       });
       incrementMetric("pos_sales_completed_total");
-    });
+    }));
   }
 
   async handle(

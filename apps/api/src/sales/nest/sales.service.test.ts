@@ -52,6 +52,18 @@ async function setupSale() {
 }
 
 describe("phase4 sales service", () => {
+  it("creates one POS Order companion with every new POS draft", async () => {
+    const { db, svc, productId, ALL } = await setupSale();
+    const draft = await svc.createDraft("b1", "u1", "r-pos-order", {
+      lines: [{ productId, qty: 1, lineDiscountMinor: 0 }], orderDiscountMinor: 0,
+    }, ALL);
+    const order = await db.findOrderBySaleId(draft.id, "b1");
+    expect(order).toMatchObject({
+      channel: "POS", fulfillmentMode: "NONE", paymentMode: "POS", status: "CONFIRMED", saleId: draft.id,
+    });
+    expect((await db.listOrderLines(order!.id, "b1"))).toHaveLength(1);
+  });
+
   it("drafts and completes a sale with stock decrease and audit", async () => {
     const { db, svc, productId, ALL } = await setupSale();
     const draft = await svc.createDraft("b1", "u1", "r1", {
@@ -63,6 +75,7 @@ describe("phase4 sales service", () => {
       key: "key-00001", granted: ALL,
     });
     expect(done.sale.status).toBe("COMPLETED");
+    expect(await db.findOrderBySaleId(draft.id, "b1")).toMatchObject({ status: "COMPLETED" });
     expect((await db.findBalance(productId, "b1"))!.qtyOnHand).toBe(8);
     expect((await db.listAudit()).some((a) => a.action === "sale.complete")).toBe(true);
   });
@@ -78,6 +91,7 @@ describe("phase4 sales service", () => {
     expect(voided.voidReason).toBe("Duplicate draft");
     expect(voided.voidedAt).toBeInstanceOf(Date);
     expect((await db.findSaleById(draft.id, "b1"))?.voidReason).toBe("Duplicate draft");
+    expect(await db.findOrderBySaleId(draft.id, "b1")).toMatchObject({ status: "CANCELLED" });
   });
   it("replays the same idempotency key without a second sale", async () => {
     const { db, svc, productId, ALL } = await setupSale();
