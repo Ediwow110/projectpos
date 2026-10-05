@@ -18,6 +18,8 @@ export interface ReceiptData {
   subtotalMinor: number;
   discountMinor: number;
   taxMinor: number;
+  deliveryFeeMinor: number;
+  deliveryTaxMinor: number;
   totalMinor: number;
   paidMinor: number;
   changeMinor: number;
@@ -32,6 +34,8 @@ export interface SharedReceipt {
   subtotalMinor: number;
   discountMinor: number;
   taxMinor: number;
+  deliveryFeeMinor: number;
+  deliveryTaxMinor: number;
   totalMinor: number;
   paidMinor: number;
   changeMinor: number;
@@ -73,6 +77,8 @@ export class SalesReceiptService {
       subtotalMinor: sale.subtotalMinor,
       discountMinor: sale.discountMinor,
       taxMinor: sale.taxMinor,
+      deliveryFeeMinor: sale.deliveryFeeMinor,
+      deliveryTaxMinor: sale.deliveryTaxMinor,
       totalMinor: sale.totalMinor,
       paidMinor: sale.paidMinor,
       changeMinor: sale.changeMinor,
@@ -94,6 +100,8 @@ export class SalesReceiptService {
       subtotalMinor: receipt.subtotalMinor,
       discountMinor: receipt.discountMinor,
       taxMinor: receipt.taxMinor,
+      deliveryFeeMinor: receipt.deliveryFeeMinor,
+      deliveryTaxMinor: receipt.deliveryTaxMinor,
       totalMinor: receipt.totalMinor,
       paidMinor: receipt.paidMinor,
       changeMinor: receipt.changeMinor,
@@ -154,6 +162,8 @@ export class SalesReceiptService {
       subtotalMinor: receipt.subtotalMinor,
       discountMinor: receipt.discountMinor,
       taxMinor: receipt.taxMinor,
+      deliveryFeeMinor: receipt.deliveryFeeMinor,
+      deliveryTaxMinor: receipt.deliveryTaxMinor,
       totalMinor: receipt.totalMinor,
       paidMinor: receipt.paidMinor,
       changeMinor: receipt.changeMinor,

@@ -54,6 +54,20 @@ async function setupReceipt() {
 }
 
 describe("sales receipt service", () => {
+  it("projects delivery fee and delivery tax distinctly", async () => {
+    const { db, sale, receipts } = await setupReceipt();
+    await db.updateSale(sale.id, "b1", {
+      deliveryFeeMinor: 500,
+      deliveryTaxMinor: 60,
+      totalMinor: 3060,
+    });
+    const data = await receipts.receiptData("b1", sale.id);
+    expect(data).toMatchObject({ deliveryFeeMinor: 500, deliveryTaxMinor: 60 });
+    const download = await receipts.downloadReceipt("b1", sale.id);
+    expect(download.text).toContain("DELIVERY 5.00");
+    expect(download.text).toContain("DELIVERY TAX 0.60");
+  });
+
   it("loads and renders tenant-scoped receipt data", async () => {
     const { sale, receipts } = await setupReceipt();
 
@@ -74,6 +88,30 @@ describe("sales receipt service", () => {
     expect(download.filename).toBe("receipt-2026-000001.txt");
     expect(download.text).toContain("Coffee x 1");
     expect(download.text).toContain("TOTAL 25.00");
+  });
+
+  it("exposes delivery fee and delivery tax distinctly in receipt projections", async () => {
+    const db = createMemoryDb();
+    const sale = await db.createSale({
+      businessId: "b-delivery-receipt", receiptNo: "DEL-RECEIPT", status: "COMPLETED",
+      subtotalMinor: 2500, discountMinor: 0, taxMinor: 0,
+      deliveryFeeMinor: 1000, deliveryTaxMinor: 120, totalMinor: 3620,
+      paidMinor: 3620, changeMinor: 0, currency: "PHP", customerId: null, customerName: "Guest",
+      notes: null, actorId: "u1", requestId: "delivery-receipt", idempotencyKey: null,
+      registerId: null, branchId: null, completedAt: new Date(), createdAt: new Date(),
+    });
+    await db.createPayment({
+      businessId: sale.businessId, saleId: sale.id, method: "card", amountMinor: 3620,
+      status: "SUCCEEDED", providerRef: null, idempotencyKey: "delivery-receipt-pay",
+    });
+    const receipts = new SalesReceiptService(db);
+    expect(await receipts.receiptData(sale.businessId, sale.id)).toMatchObject({
+      deliveryFeeMinor: 1000,
+      deliveryTaxMinor: 120,
+    });
+    const download = await receipts.downloadReceipt(sale.businessId, sale.id);
+    expect(download.text).toContain("DELIVERY 10.00");
+    expect(download.text).toContain("DELIVERY TAX 1.20");
   });
 
   it("creates hashed share tokens and resolves public receipt projections", async () => {

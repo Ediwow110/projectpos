@@ -41,6 +41,65 @@ function parseCsv(text: string): string[][] {
 }
 
 describe("phase10 ledger export HTTP contract", () => {
+  it("posts delivery revenue/tax and delivery refunds to separate accounts", async () => {
+    const db = app.get("DbPort");
+    const reg = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
+      ownerName: "Delivery", email: "delivery-export@example.com",
+      password: "correct-horse-12", businessName: "Delivery Export Store",
+    });
+    const deliveryCookie = jar(reg.headers["set-cookie"]);
+    const deliveryCsrf = reg.body.csrfToken;
+    const businessId = reg.body.business.id;
+    const product = await request(app.getHttpServer()).post("/api/v1/products")
+      .set("Cookie", deliveryCookie).set("X-CSRF-Token", deliveryCsrf)
+      .send({ name: "Delivery Coke", priceMinor: 2500, costMinor: 1000 });
+    const createdAt = new Date();
+    const sale = await db.createSale({
+      businessId, receiptNo: "DEL-EXPORT-1", status: "COMPLETED",
+      subtotalMinor: 5000, discountMinor: 0, taxMinor: 0, deliveryFeeMinor: 1000, deliveryTaxMinor: 120,
+      totalMinor: 6120, paidMinor: 6120, changeMinor: 0, currency: "PHP", customerId: null, customerName: null,
+      notes: null, actorId: "u1", requestId: "del-export", idempotencyKey: null, registerId: null, branchId: null,
+      completedAt: createdAt, createdAt,
+    });
+    await db.createSaleItem({
+      businessId, saleId: sale.id, productId: product.body.id, name: "Delivery Coke", unit: "pc", qty: 2, priceMinor: 2500,
+      costMinor: 1000, taxRateBps: null, lineDiscountMinor: 0, lineTotalMinor: 5000,
+    });
+    await db.createPayment({
+      businessId, saleId: sale.id, method: "cash", amountMinor: 6120, status: "SUCCEEDED",
+      providerRef: null, idempotencyKey: "del-export-pay",
+    });
+    await db.createRefund({
+      businessId, saleId: sale.id, status: "APPROVED", totalMinor: 1120,
+      deliveryFeeRefundMinor: 1000, deliveryTaxRefundMinor: 120, reason: "Delivery failure",
+      requestedBy: "u1", approvedBy: "u1", requestId: "del-export-ref", approvedRequestId: "del-export-ref",
+      singleStep: true,
+    });
+    await db.createPayment({
+      businessId, saleId: sale.id, method: "cash", amountMinor: 1120, status: "REFUNDED",
+      providerRef: null, idempotencyKey: "del-export-ref-pay",
+    });
+
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/exports/ledger.csv?format=csv&dateFrom=${SINCE}&compare=none`)
+      .set("Cookie", deliveryCookie);
+    expect(res.status).toBe(200);
+    const rows = parseCsv(res.text).slice(1);
+    const mine = rows.filter((row) => row[2] === "DEL-EXPORT-1");
+    expect(mine.filter((row) => row[1] === "sale" && row[3] === "4000")
+      .reduce((sum, row) => sum + Number(row[5]), 0)).toBe(5000);
+    expect(mine.filter((row) => row[1] === "delivery" && row[3] === "4010")
+      .reduce((sum, row) => sum + Number(row[5]), 0)).toBe(1000);
+    expect(mine.filter((row) => row[1] === "delivery_tax" && row[3] === "2210")
+      .reduce((sum, row) => sum + Number(row[5]), 0)).toBe(120);
+    expect(mine.filter((row) => row[1] === "refund" && row[3] === "4000")
+      .reduce((sum, row) => sum + Number(row[4]), 0)).toBe(0);
+    expect(mine.filter((row) => row[1] === "refund" && row[3] === "4010")
+      .reduce((sum, row) => sum + Number(row[4]), 0)).toBe(1000);
+    expect(mine.filter((row) => row[1] === "refund" && row[3] === "2210")
+      .reduce((sum, row) => sum + Number(row[4]), 0)).toBe(120);
+  });
+
   it("exports balanced journals that reconcile to the sales report", async () => {
     const draft = await request(app.getHttpServer()).post("/api/v1/sales/drafts")
       .set("Cookie", cookie).set("X-CSRF-Token", csrf)

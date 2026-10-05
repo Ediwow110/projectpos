@@ -2,12 +2,15 @@ import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import type { INestApplication } from "@nestjs/common";
 import { createTestApp } from "../src/app.module";
+import type { DbPort } from "../src/common/db.port";
 
 let app: INestApplication;
 let cookie: string;
 let csrf: string;
 let productId: string;
 let registerId: string;
+let db: DbPort;
+let businessId: string;
 
 function jar(h: unknown): string {
   const arr = Array.isArray(h) ? h : [String(h ?? "")];
@@ -27,12 +30,14 @@ async function makeCompletedSale(key: string, qty: number, reg?: string): Promis
 
 beforeAll(async () => {
   app = await createTestApp();
+  db = app.get("DbPort");
   const reg = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
     ownerName: "Ana", email: "ana-ref@example.com",
     password: "correct-horse-12", businessName: "Sari Store",
   });
   cookie = jar(reg.headers["set-cookie"]);
   csrf = reg.body.csrfToken;
+  businessId = reg.body.business.id;
   const created = await request(app.getHttpServer()).post("/api/v1/registers")
     .set("Cookie", cookie).set("X-CSRF-Token", csrf)
     .send({ name: "Counter 1" });
@@ -111,6 +116,43 @@ describe("phase6 refund HTTP contract", () => {
     expect(res.body.sale.status).toBe("REFUNDED");
     const detail = await request(app.getHttpServer()).get(`/api/v1/sales/${sale.id}`).set("Cookie", cookie);
     expect(detail.body.refunds.length).toBe(1);
+  });
+
+  it("approves only the full remaining delivery charge through the existing refund endpoint", async () => {
+    const sale = await makeCompletedSale("ref-delivery-sale", 1, registerId);
+    await db.updateSale(sale.id, businessId, {
+      deliveryFeeMinor: 1000,
+      deliveryTaxMinor: 120,
+      totalMinor: sale.totalMinor + 1120,
+      paidMinor: sale.totalMinor + 1120,
+    });
+    await db.createPayment({
+      businessId,
+      saleId: sale.id,
+      method: "card",
+      amountMinor: 1120,
+      status: "SUCCEEDED",
+      providerRef: null,
+      idempotencyKey: "ref-delivery-extra-tender",
+    });
+    const res = await request(app.getHttpServer()).post(`/api/v1/sales/${sale.id}/refund-approve`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .set("Idempotency-Key", "ref-delivery-approve")
+      .send({ saleId: sale.id, items: [], deliveryRefundMinor: 1120 });
+    expect(res.status).toBe(201);
+    expect(res.body.refund).toMatchObject({
+      totalMinor: 1120,
+      deliveryFeeRefundMinor: 1000,
+      deliveryTaxRefundMinor: 120,
+    });
+    expect(res.body.sale.status).toBe("PARTIALLY_REFUNDED");
+
+    const partial = await request(app.getHttpServer()).post(`/api/v1/sales/${sale.id}/refund-approve`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .set("Idempotency-Key", "ref-delivery-partial-after")
+      .send({ saleId: sale.id, items: [], deliveryRefundMinor: 500 });
+    expect(partial.status).toBe(400);
+    expect(partial.body.code).toBe("REFUND_EXCEEDS_LIMIT");
   });
 
   it("rejects over-quantity refunds with REFUND_EXCEEDS_LIMIT", async () => {

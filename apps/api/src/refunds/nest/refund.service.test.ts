@@ -259,3 +259,111 @@ describe("phase11 refund approval threshold", () => {
     expect(out.refund.status).toBe("APPROVED");
   });
 });
+
+async function setupDeliveryRefund() {
+  const db = createMemoryDb();
+  const product = await db.createProduct({
+    businessId: "b-delivery", categoryId: null, name: "Delivery item", sku: "DEL-1", barcode: null,
+    brand: null, unit: "pc", costMinor: 500, priceMinor: 2500, taxRateBps: null,
+    reorderLevel: 0, trackInventory: true, isActive: true, imageUrl: null,
+  });
+  await db.upsertBalance({ businessId: "b-delivery", productId: product.id, qtyOnHand: 9 });
+  const sale = await db.createSale({
+    businessId: "b-delivery", receiptNo: "DEL-0001", status: "COMPLETED",
+    subtotalMinor: 5000, discountMinor: 0, taxMinor: 0,
+    deliveryFeeMinor: 1000, deliveryTaxMinor: 120, totalMinor: 6120,
+    paidMinor: 6120, changeMinor: 0, currency: "PHP", customerId: null, customerName: "Guest",
+    notes: null, actorId: "u1", requestId: "delivery-sale", idempotencyKey: null, registerId: null,
+    branchId: null, completedAt: new Date(), createdAt: new Date(),
+  });
+  const item = await db.createSaleItem({
+    businessId: "b-delivery", saleId: sale.id, productId: product.id, name: product.name, unit: "pc",
+    qty: 2, priceMinor: 2500, costMinor: 500, taxRateBps: null, lineDiscountMinor: 0, lineTotalMinor: 5000,
+  });
+  await db.createPayment({
+    businessId: "b-delivery", saleId: sale.id, method: "cash", amountMinor: 3000,
+    status: "SUCCEEDED", providerRef: null, idempotencyKey: "delivery-pay-1",
+  });
+  await db.createPayment({
+    businessId: "b-delivery", saleId: sale.id, method: "card", amountMinor: 3120,
+    status: "SUCCEEDED", providerRef: null, idempotencyKey: "delivery-pay-2",
+  });
+  return { db, svc: new RefundService(db), sale, item, product };
+}
+
+describe("phase22 delivery charge refunds", () => {
+  it("refunds only the full remaining delivery charge, persists the fee/tax split, and creates no stock effect", async () => {
+    const { db, svc, sale, product } = await setupDeliveryRefund();
+    const beforeMovements = await db.listMovements(product.id, sale.businessId);
+    const beforeBalance = await db.findBalance(product.id, sale.businessId);
+    const out = await svc.approveRefund(sale.businessId, "u1", "delivery-refund", sale.id, {
+      items: [],
+      deliveryRefundMinor: 1120,
+      key: "delivery-refund-key",
+    }, ALL, "owner");
+    expect(out.refund).toMatchObject({
+      totalMinor: 1120,
+      deliveryFeeRefundMinor: 1000,
+      deliveryTaxRefundMinor: 120,
+    });
+    expect(out.sale.status).toBe("PARTIALLY_REFUNDED");
+    expect(await db.listMovements(product.id, sale.businessId)).toEqual(beforeMovements);
+    expect(await db.findBalance(product.id, sale.businessId)).toEqual(beforeBalance);
+
+    await expect(svc.approveRefund(sale.businessId, "u1", "delivery-refund-2", sale.id, {
+      items: [],
+      deliveryRefundMinor: 1120,
+      key: "delivery-refund-key-2",
+    }, ALL, "owner")).rejects.toThrow("REFUND_EXCEEDS_LIMIT");
+  });
+
+  it("rejects a partial delivery refund instead of silently splitting the charge", async () => {
+    const { svc, sale } = await setupDeliveryRefund();
+    await expect(svc.approveRefund(sale.businessId, "u1", "delivery-partial", sale.id, {
+      items: [],
+      deliveryRefundMinor: 500,
+      key: "delivery-partial-key",
+    }, ALL, "owner")).rejects.toThrow("VALIDATION");
+  });
+
+  it("skips original-tender capacity already consumed by prior approved refunds", async () => {
+    const { db, svc, sale, item } = await setupDeliveryRefund();
+    await svc.approveRefund(sale.businessId, "u1", "merch-refund", sale.id, {
+      items: [{ saleItemId: item.id, qty: 1 }],
+      key: "merch-first",
+    }, ALL, "owner");
+    const before = await db.listPaymentsBySale(sale.id, sale.businessId);
+    expect(before.filter((p) => p.status === "REFUNDED" && p.method === "cash")
+      .reduce((sum, p) => sum + p.amountMinor, 0)).toBe(2500);
+
+    await svc.approveRefund(sale.businessId, "u1", "delivery-after-merch", sale.id, {
+      items: [],
+      deliveryRefundMinor: 1120,
+      key: "delivery-after-merch",
+    }, ALL, "owner");
+    const payments = await db.listPaymentsBySale(sale.id, sale.businessId);
+    const refundedCash = payments.filter((p) => p.status === "REFUNDED" && p.method === "cash")
+      .reduce((sum, p) => sum + p.amountMinor, 0);
+    const refundedCard = payments.filter((p) => p.status === "REFUNDED" && p.method === "card")
+      .reduce((sum, p) => sum + p.amountMinor, 0);
+    expect(refundedCash).toBe(3000);
+    expect(refundedCard).toBe(620);
+  });
+
+  it("marks REFUNDED only after both merchandise and delivery are fully reversed", async () => {
+    const { db, svc, sale, item } = await setupDeliveryRefund();
+    const merchandise = await svc.approveRefund(sale.businessId, "u1", "merch-full", sale.id, {
+      items: [{ saleItemId: item.id, qty: 2 }],
+      key: "merch-full-key",
+    }, ALL, "owner");
+    expect(merchandise.sale.status).toBe("PARTIALLY_REFUNDED");
+    const final = await svc.approveRefund(sale.businessId, "u1", "delivery-final", sale.id, {
+      items: [],
+      deliveryRefundMinor: 1120,
+      key: "delivery-final-key",
+    }, ALL, "owner");
+    expect(final.sale.status).toBe("REFUNDED");
+    expect((await db.listRefundsBySale(sale.id, sale.businessId))
+      .reduce((sum, row) => sum + row.totalMinor, 0)).toBe(6120);
+  });
+});

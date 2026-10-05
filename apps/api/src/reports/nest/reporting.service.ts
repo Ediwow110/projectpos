@@ -34,6 +34,9 @@ export class ReportingService {
   ): Promise<{
     kpis: {
       netRevenue: Kpi;
+      merchandiseRevenue: Kpi;
+      deliveryRevenue: Kpi;
+      deliveryTax: Kpi;
       orders: Kpi;
       avgOrder: Kpi;
       grossProfit?: Kpi;
@@ -93,6 +96,9 @@ export class ReportingService {
     const canSeeProfit = granted.includes("cost.view");
     const kpis: {
       netRevenue: Kpi;
+      merchandiseRevenue: Kpi;
+      deliveryRevenue: Kpi;
+      deliveryTax: Kpi;
       orders: Kpi;
       avgOrder: Kpi;
       grossProfit?: Kpi;
@@ -103,6 +109,18 @@ export class ReportingService {
       netRevenue: this.core.kpi(
         cur.netRevenue,
         old?.netRevenue ?? null,
+      ),
+      merchandiseRevenue: this.core.kpi(
+        cur.merchandiseRevenue,
+        old?.merchandiseRevenue ?? null,
+      ),
+      deliveryRevenue: this.core.kpi(
+        cur.deliveryRevenue,
+        old?.deliveryRevenue ?? null,
+      ),
+      deliveryTax: this.core.kpi(
+        cur.deliveryTax,
+        old?.deliveryTax ?? null,
       ),
       orders: this.core.kpi(cur.orders, old?.orders ?? null),
       avgOrder: this.core.kpi(cur.avgOrder, old?.avgOrder ?? null),
@@ -135,7 +153,7 @@ export class ReportingService {
       const key = bucketKey(sale.sale.createdAt, granularity);
       const slot = byBucket.get(key);
       if (!slot) continue;
-      slot.netRevenue += sale.sale.totalMinor - sale.refunded;
+      slot.netRevenue += sale.netRevenue;
       slot.orders += 1;
     }
     const series: SeriesPoint[] = buckets.map((bucket) => ({
@@ -326,12 +344,15 @@ export class ReportingService {
         bucketKey(sale.sale.createdAt, granularity),
       );
       if (!slot) continue;
-      slot.netRevenue += sale.sale.totalMinor - sale.refunded;
+      slot.netRevenue += sale.netRevenue;
       slot.orders += 1;
     }
     return {
       totals: {
         netRevenue: cur.netRevenue,
+        merchandiseRevenue: cur.merchandiseRevenue,
+        deliveryRevenue: cur.deliveryRevenue,
+        deliveryTax: cur.deliveryTax,
         orders: cur.orders,
         avgOrder: cur.avgOrder,
         grossProfit: granted.includes("cost.view")

@@ -316,7 +316,7 @@ export class ReportingBreakdownService {
     }
     const summarize = async (items: SaleWithLines[]) => ({
       sales: items.reduce(
-        (sum, sale) => sum + sale.sale.totalMinor - sale.refunded,
+        (sum, sale) => sum + sale.netRevenue,
         0,
       ),
       orders: items.length,
@@ -392,7 +392,7 @@ export class ReportingBreakdownService {
         spend: 0,
         orders: 0,
       };
-      row.spend += sale.sale.totalMinor - sale.refunded;
+      row.spend += sale.netRevenue;
       row.orders += 1;
       spend.set(sale.sale.customerId, row);
     }
@@ -480,7 +480,7 @@ export class ReportingBreakdownService {
         refundTotal: 0,
         discounts: 0,
       };
-      row.sales += sale.sale.totalMinor - sale.refunded;
+      row.sales += sale.netRevenue;
       row.orders += 1;
       row.discounts += sale.sale.discountMinor;
       const refunds = await this.db.listRefundsBySale(

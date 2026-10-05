@@ -18,6 +18,8 @@ export interface ReceiptTextInput {
   subtotalMinor: number;
   discountMinor: number;
   taxMinor: number;
+  deliveryFeeMinor?: number;
+  deliveryTaxMinor?: number;
   totalMinor: number;
   paidMinor: number;
   changeMinor: number;
@@ -46,6 +48,8 @@ export function renderReceiptText(input: ReceiptTextInput): string {
   lines.push(`SUBTOTAL ${money(input.subtotalMinor)}`);
   if (input.discountMinor !== 0) lines.push(`DISCOUNT -${money(input.discountMinor)}`);
   if (input.taxMinor !== 0) lines.push(`TAX ${money(input.taxMinor)}`);
+  if ((input.deliveryFeeMinor ?? 0) !== 0) lines.push(`DELIVERY ${money(input.deliveryFeeMinor ?? 0)}`);
+  if ((input.deliveryTaxMinor ?? 0) !== 0) lines.push(`DELIVERY TAX ${money(input.deliveryTaxMinor ?? 0)}`);
   lines.push(`TOTAL ${money(input.totalMinor)}`);
   lines.push(`PAID ${money(input.paidMinor)}`);
   lines.push(`CHANGE ${money(input.changeMinor)}`);

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createMemoryDb } from "../../common/memory.db";
 import { ReportingService } from "./reporting.service";
 import { SalesService } from "../../sales/nest/sales.service";
+import { RefundService } from "../../refunds/nest/refund.service";
 
 const ALL = ["discount.override", "sale.void", "sale.refund", "cost.view"];
 
@@ -30,6 +31,56 @@ async function setupReports() {
 }
 
 describe("phase7 reporting overview", () => {
+  it("separates merchandise, delivery revenue/tax, excludes gift-card liability, and includes delivery refunds", async () => {
+    const db = createMemoryDb();
+    const product = await db.createProduct({
+      businessId: "b-delivery-report", categoryId: null, name: "Report item", sku: "REP-D", barcode: null,
+      brand: null, unit: "pc", costMinor: 500, priceMinor: 5000, taxRateBps: null,
+      reorderLevel: 0, trackInventory: true, isActive: true, imageUrl: null,
+    });
+    await db.upsertBalance({ businessId: "b-delivery-report", productId: product.id, qtyOnHand: 9 });
+    const createdAt = new Date("2026-09-15T12:00:00.000Z");
+    const sale = await db.createSale({
+      businessId: "b-delivery-report", receiptNo: "REP-DEL-1", status: "COMPLETED",
+      subtotalMinor: 5000, discountMinor: 0, taxMinor: 0, deliveryFeeMinor: 1000, deliveryTaxMinor: 120,
+      totalMinor: 7120, paidMinor: 7120, changeMinor: 0, currency: "PHP", customerId: null, customerName: null,
+      notes: null, actorId: "u1", requestId: "report-delivery", idempotencyKey: null, registerId: null, branchId: null,
+      completedAt: createdAt, createdAt,
+    });
+    const item = await db.createSaleItem({
+      businessId: sale.businessId, saleId: sale.id, productId: product.id, name: product.name, unit: "pc",
+      qty: 1, priceMinor: 5000, costMinor: 500, taxRateBps: null, lineDiscountMinor: 0, lineTotalMinor: 5000,
+    });
+    await db.createSaleGiftCardLoad({
+      businessId: sale.businessId, saleId: sale.id, amountMinor: 1000, kind: "NEW",
+      giftCardId: null,
+    });
+    await db.createPayment({
+      businessId: sale.businessId, saleId: sale.id, method: "cash", amountMinor: 7120,
+      status: "SUCCEEDED", providerRef: null, idempotencyKey: "report-delivery-pay",
+    });
+    const refunds = new RefundService(db);
+    await refunds.approveRefund(sale.businessId, "u1", "report-delivery-refund", sale.id, {
+      items: [],
+      deliveryRefundMinor: 1120,
+      key: "report-delivery-refund-key",
+    }, ALL, "owner");
+
+    const out = await new ReportingService(db).getSalesReport(sale.businessId, {
+      dateFrom: "2026-09-01T00:00:00.000Z", dateTo: "2026-09-30T23:59:59.999Z",
+      compare: "none", granularity: "day",
+    }, "owner", ALL);
+    expect(out.totals).toMatchObject({
+      merchandiseRevenue: 5000,
+      deliveryRevenue: 0,
+      deliveryTax: 0,
+      netRevenue: 5000,
+      refundTotal: 1120,
+    });
+    expect(out.totals.grossProfit).toBe(4500);
+    expect(item.lineTotalMinor).toBe(5000);
+  });
+
   it("computes KPIs and deltas for a fixed range", async () => {
     const { svc } = await setupReports();
     const out = await svc.getOverview("b1", {
@@ -61,6 +112,46 @@ describe("phase7 reporting overview", () => {
     }, "owner", ALL);
     expect(out.kpis.netRevenue.value).toBe(0);
     expect(out.topProducts).toEqual([]);
+  });
+
+  it("separates merchandise, delivery revenue/tax, delivery refunds, and gift-card liability", async () => {
+    const db = createMemoryDb();
+    const product = await db.createProduct({
+      businessId: "b-delivery-report", categoryId: null, name: "Report item", sku: null, barcode: null,
+      brand: null, unit: "pc", costMinor: 500, priceMinor: 2500, taxRateBps: null,
+      reorderLevel: 0, trackInventory: false, isActive: true, imageUrl: null,
+    });
+    const createdAt = new Date("2026-09-12T10:00:00.000Z");
+    const sale = await db.createSale({
+      businessId: "b-delivery-report", receiptNo: "REP-DEL-1", status: "PARTIALLY_REFUNDED",
+      subtotalMinor: 2500, discountMinor: 0, taxMinor: 0,
+      deliveryFeeMinor: 1000, deliveryTaxMinor: 120, totalMinor: 4120,
+      paidMinor: 4120, changeMinor: 0, currency: "PHP", customerId: null, customerName: null,
+      notes: null, actorId: "u1", requestId: "report-delivery", idempotencyKey: null,
+      registerId: null, branchId: null, completedAt: createdAt, createdAt,
+    });
+    await db.createSaleItem({
+      businessId: sale.businessId, saleId: sale.id, productId: product.id, name: product.name, unit: "pc",
+      qty: 1, priceMinor: 2500, costMinor: 500, taxRateBps: null, lineDiscountMinor: 0, lineTotalMinor: 2500,
+    });
+    await db.createSaleGiftCardLoad({
+      businessId: sale.businessId, saleId: sale.id, giftCardId: null, amountMinor: 500, kind: "NEW",
+    });
+    await db.createRefund({
+      businessId: sale.businessId, saleId: sale.id, status: "APPROVED", totalMinor: 1120,
+      deliveryFeeRefundMinor: 1000, deliveryTaxRefundMinor: 120, reason: "Delivery issue",
+      requestedBy: "u1", approvedBy: "u1", requestId: "report-refund", approvedRequestId: "report-refund",
+      singleStep: true,
+    });
+
+    const out = await new ReportingService(db).getOverview(sale.businessId, {
+      dateFrom: "2026-09-01T00:00:00.000Z", dateTo: "2026-09-30T00:00:00.000Z", compare: "none",
+    }, "owner", ALL);
+    expect(out.kpis.merchandiseRevenue.value).toBe(2500);
+    expect(out.kpis.deliveryRevenue.value).toBe(0);
+    expect(out.kpis.deliveryTax.value).toBe(0);
+    expect(out.kpis.refundTotal.value).toBe(1120);
+    expect(out.kpis.netRevenue.value).toBe(2500);
   });
 });
 

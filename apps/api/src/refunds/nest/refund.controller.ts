@@ -120,14 +120,15 @@ export class RefundController {
       if (existing) {
         const replay = await this.refunds.approveRefund(
           auth.businessId, auth.userId, rid(req), id,
-          { items: parsed.data.items, loadRefunds: parsed.data.loadRefunds, reason: parsed.data.reason, destination: parsed.data.destination, key },
+          { items: parsed.data.items, loadRefunds: parsed.data.loadRefunds, deliveryRefundMinor: parsed.data.deliveryRefundMinor, reason: parsed.data.reason, destination: parsed.data.destination, key },
           this.perms(req), auth.role,
         );
         res.status(200).json({ refund: replay.refund, sale: replay.sale, replayed: true });
         return;
       }
       const requirement = await this.approvalPolicy.resolveRequirement(auth.businessId, auth.userId, {
-        kind: "refund", saleId: id, items: parsed.data.items, loadRefunds: parsed.data.loadRefunds, reason: parsed.data.reason,
+        kind: "refund", saleId: id, items: parsed.data.items, loadRefunds: parsed.data.loadRefunds,
+        deliveryRefundMinor: parsed.data.deliveryRefundMinor, reason: parsed.data.reason,
       });
       if (!requirement) throw new Error("FORBIDDEN");
       let granted = this.perms(req);
@@ -149,6 +150,7 @@ export class RefundController {
         {
           items: parsed.data.items,
           loadRefunds: parsed.data.loadRefunds,
+          deliveryRefundMinor: parsed.data.deliveryRefundMinor,
           reason: parsed.data.reason,
           destination: parsed.data.destination,
           key,
