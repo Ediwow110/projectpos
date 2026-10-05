@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import { createTestApp } from "../src/app.module";
+import type { DbPort } from "../src/common/db.port";
 
 let app: INestApplication;
 let ownerCookie: string;
@@ -9,6 +10,9 @@ let ownerCsrf: string;
 let cashierCookie: string;
 let cashierCsrf: string;
 let productId: string;
+let customerId: string;
+let businessId: string;
+let storeCreditAccountId: string;
 
 function jar(headers: unknown): string {
   const values = Array.isArray(headers) ? headers : [String(headers ?? "")];
@@ -37,6 +41,11 @@ beforeAll(async () => {
     .set("Cookie", ownerCookie).set("X-CSRF-Token", ownerCsrf)
     .send({ name: "Approval Coffee", priceMinor: 2500, costMinor: 500 });
   productId = product.body.id as string;
+  const me = await request(app.getHttpServer()).get("/api/v1/me").set("Cookie", ownerCookie);
+  businessId = me.body.businessId as string;
+  const db = app.get<DbPort>("DbPort");
+  customerId = (await db.createCustomer({ businessId, name: "Approval Customer", phone: null, email: null, address: null, notes: null, isActive: true })).id;
+  storeCreditAccountId = (await db.createStoreCreditAccount({ businessId, customerId })).id;
 });
 
 afterAll(async () => { await app.close(); });
@@ -157,6 +166,38 @@ describe("generic manager approval contract", () => {
     expect((await db.listAudit()).find((entry) => entry.action === "inventory.adjust" && entry.entityId === applied.body.id)).toMatchObject({
       actorId: cashier.body.userId,
       after: { approval: { permission: "inventory.adjust" } },
+    });
+  });
+
+  it("records separate value-adjustment and manager-approval audits for a manager-approved adjustment", async () => {
+    const amountMinor = 1000;
+    const reason = "Manager value correction";
+    const denied = await request(app.getHttpServer()).post(`/api/v1/customers/${customerId}/store-credit/adjust`)
+      .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf).set("Idempotency-Key", "value-adjust-denied")
+      .send({ amountMinor, reason });
+    expect(denied.status).toBe(403);
+
+    const approval = await request(app.getHttpServer()).post("/api/v1/approvals/manager")
+      .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf)
+      .send({
+        email: "approval-owner-contract@example.com", pin: "482615", permission: "stored_value.adjust",
+        action: { kind: "value_adjustment", valueType: "store_credit", targetId: customerId, amountDelta: amountMinor, reason },
+      });
+    expect(approval.status).toBe(201);
+
+    const applied = await request(app.getHttpServer()).post(`/api/v1/customers/${customerId}/store-credit/adjust`)
+      .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf).set("Idempotency-Key", "value-adjust-1")
+      .send({ amountMinor, reason, approvalToken: approval.body.token });
+    expect([200, 201]).toContain(applied.status);
+
+    const db = app.get<DbPort>("DbPort");
+    const audits = (await db.listAudit()).filter((entry) => entry.entityId === storeCreditAccountId);
+    expect(audits.filter((entry) => entry.action === "store-credit.adjust")).toHaveLength(1);
+    expect(audits.filter((entry) => entry.action === "manager.approval.applied")).toHaveLength(1);
+    expect(audits.find((entry) => entry.action === "store-credit.adjust")).toMatchObject({
+      actorId: expect.any(String),
+      before: { balanceMinor: 0 },
+      after: { amountDeltaMinor: amountMinor, balanceMinor: amountMinor },
     });
   });
 });

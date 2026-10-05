@@ -27,20 +27,44 @@ describe("phase11 configured payment methods", () => {
     expect(await resolvePaymentMethods(db, biz.id)).toEqual(DEFAULT_PAYMENT_METHODS);
   });
 
-  it("upgrades the legacy default list to include QR Ph without changing custom lists", async () => {
+
+  it("upgrades both pre-Phase20 default lists to the current internal-tender defaults", async () => {
     const db = createMemoryDb();
     const biz = await db.createBusiness({ name: "B", currency: "PHP" });
-    await db.saveSettings(biz.id, {
-      ...(await db.getSettings(biz.id)),
-      paymentMethods: [
-        { key: "cash", label: "Cash" },
-        { key: "card", label: "Card" },
-        { key: "gcash", label: "GCash" },
-        { key: "maya", label: "Maya" },
-        { key: "bank_transfer", label: "Bank transfer" },
-        { key: "other", label: "Other" },
-      ],
-    });
-    expect((await resolvePaymentMethods(db, biz.id)).map((method) => method.key)).toContain("qrph");
+    const legacy = [
+      { key: "cash", label: "Cash" },
+      { key: "card", label: "Card" },
+      { key: "gcash", label: "GCash" },
+      { key: "maya", label: "Maya" },
+      { key: "bank_transfer", label: "Bank transfer" },
+      { key: "other", label: "Other" },
+    ];
+    await db.saveSettings(biz.id, { ...(await db.getSettings(biz.id)), paymentMethods: legacy });
+    expect(await resolvePaymentMethods(db, biz.id)).toEqual(DEFAULT_PAYMENT_METHODS);
+
+    const historical = [
+      { key: "cash", label: "Cash" },
+      { key: "card", label: "Card" },
+      { key: "gcash", label: "GCash" },
+      { key: "maya", label: "Maya" },
+      { key: "qrph", label: "QR Ph" },
+      { key: "bank_transfer", label: "Bank transfer" },
+      { key: "other", label: "Other" },
+    ];
+    await db.saveSettings(biz.id, { ...(await db.getSettings(biz.id)), paymentMethods: historical });
+    expect(await resolvePaymentMethods(db, biz.id)).toEqual(DEFAULT_PAYMENT_METHODS);
   });
+
+  it("preserves genuinely customized lists, including intentional omissions", async () => {
+    const db = createMemoryDb();
+    const biz = await db.createBusiness({ name: "B", currency: "PHP" });
+    const custom = [
+      { key: "cash", label: "Cash" },
+      { key: "card", label: "Card" },
+      { key: "other", label: "Other" },
+    ];
+    await db.saveSettings(biz.id, { ...(await db.getSettings(biz.id)), paymentMethods: custom });
+    expect(await resolvePaymentMethods(db, biz.id)).toEqual(custom);
+  });
+
 });
