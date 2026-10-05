@@ -19,3 +19,22 @@ export const orderContactSchema = z.object({
   deliveryAddress: orderDeliveryAddressSchema.nullable().optional(),
   fulfillmentInstructions: z.string().trim().max(500, "VALIDATION").nullable().optional(),
 });
+
+export const ORDER_STATUSES = [
+  "DRAFT", "CHECKOUT", "SUBMITTED", "CONFIRMED", "COMPLETED", "CANCELLED", "EXPIRED", "REJECTED",
+] as const;
+export const ORDER_PAYMENT_STATUSES = [
+  "UNPAID", "PENDING", "UNKNOWN", "FAILED", "PAID", "PARTIALLY_REFUNDED", "REFUNDED",
+] as const;
+
+export const orderListSchema = z.object({
+  cursor: z.string().trim().min(1, "VALIDATION").max(2048, "VALIDATION").optional(),
+  limit: z.coerce.number().int().min(1, "VALIDATION").max(100, "VALIDATION").default(50),
+  status: z.enum(ORDER_STATUSES).optional(),
+  channel: z.enum(["POS", "WEB"]).optional(),
+  fulfillmentMode: z.enum(["NONE", "PICKUP", "DELIVERY"]).optional(),
+  branchId: z.string().trim().min(1, "VALIDATION").optional(),
+  paymentStatus: z.enum(ORDER_PAYMENT_STATUSES).optional(),
+  dateFrom: z.string().trim().min(1, "VALIDATION").optional(),
+  dateTo: z.string().trim().min(1, "VALIDATION").optional(),
+});

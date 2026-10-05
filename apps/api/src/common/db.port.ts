@@ -545,6 +545,14 @@ export type DbFulfillmentStatus =
   | "COLLECTED"
   | "CANCELLED";
 export type DbOrderAccessTokenKind = "CHECKOUT" | "STATUS";
+export type DbOrderPaymentStatus =
+  | "UNPAID"
+  | "PENDING"
+  | "UNKNOWN"
+  | "FAILED"
+  | "PAID"
+  | "PARTIALLY_REFUNDED"
+  | "REFUNDED";
 
 export interface DbOrder {
   id: string;
@@ -667,6 +675,7 @@ export interface DbOrderPageQuery {
   channel?: DbOrderChannel;
   fulfillmentMode?: DbFulfillmentMode;
   branchId?: string;
+  paymentStatus?: DbOrderPaymentStatus;
   dateFrom?: Date;
   dateTo?: Date;
 }

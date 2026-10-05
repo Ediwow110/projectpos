@@ -28,6 +28,22 @@ const FULFILLMENT_LINE_SELECT =
   '"id", "businessId", "fulfillmentId", "orderLineId", "qty", "createdAt"';
 const ACCESS_TOKEN_SELECT =
   '"id", "businessId", "orderId", "kind", "tokenHash", "expiresAt", "revokedAt", "createdAt"';
+const PAYMENT_STATUS_SQL = [
+  "CASE",
+  "WHEN \"Order\".\"saleId\" IS NULL THEN 'UNPAID'",
+  "WHEN (SELECT s.\"status\" FROM \"Sale\" s WHERE s.\"id\" = \"Order\".\"saleId\" AND s.\"businessId\" = \"Order\".\"businessId\") = 'REFUNDED' THEN 'REFUNDED'",
+  "WHEN COALESCE((SELECT SUM(r.\"totalMinor\") FROM \"Refund\" r WHERE r.\"saleId\" = \"Order\".\"saleId\" AND r.\"businessId\" = \"Order\".\"businessId\" AND r.\"status\" = 'APPROVED'), 0) >= COALESCE((SELECT s.\"totalMinor\" FROM \"Sale\" s WHERE s.\"id\" = \"Order\".\"saleId\" AND s.\"businessId\" = \"Order\".\"businessId\"), 1) AND COALESCE((SELECT s.\"totalMinor\" FROM \"Sale\" s WHERE s.\"id\" = \"Order\".\"saleId\" AND s.\"businessId\" = \"Order\".\"businessId\"), 0) > 0 THEN 'REFUNDED'",
+  "WHEN (SELECT s.\"status\" FROM \"Sale\" s WHERE s.\"id\" = \"Order\".\"saleId\" AND s.\"businessId\" = \"Order\".\"businessId\") = 'PARTIALLY_REFUNDED' OR EXISTS (SELECT 1 FROM \"Refund\" r WHERE r.\"saleId\" = \"Order\".\"saleId\" AND r.\"businessId\" = \"Order\".\"businessId\" AND r.\"status\" = 'APPROVED' AND r.\"totalMinor\" > 0) THEN 'PARTIALLY_REFUNDED'",
+  "WHEN EXISTS (SELECT 1 FROM \"Payment\" p WHERE p.\"saleId\" = \"Order\".\"saleId\" AND p.\"businessId\" = \"Order\".\"businessId\" AND p.\"status\" = 'UNKNOWN') THEN 'UNKNOWN'",
+  "WHEN COALESCE((SELECT SUM(p.\"amountMinor\") FROM \"Payment\" p WHERE p.\"saleId\" = \"Order\".\"saleId\" AND p.\"businessId\" = \"Order\".\"businessId\" AND p.\"status\" = 'SUCCEEDED'), 0) >= COALESCE((SELECT s.\"totalMinor\" FROM \"Sale\" s WHERE s.\"id\" = \"Order\".\"saleId\" AND s.\"businessId\" = \"Order\".\"businessId\"), 1) AND COALESCE((SELECT s.\"totalMinor\" FROM \"Sale\" s WHERE s.\"id\" = \"Order\".\"saleId\" AND s.\"businessId\" = \"Order\".\"businessId\"), 0) > 0 THEN 'PAID'",
+  "WHEN (SELECT s.\"status\" FROM \"Sale\" s WHERE s.\"id\" = \"Order\".\"saleId\" AND s.\"businessId\" = \"Order\".\"businessId\") = 'PENDING_PAYMENT' THEN 'PENDING'",
+  "WHEN (SELECT s.\"status\" FROM \"Sale\" s WHERE s.\"id\" = \"Order\".\"saleId\" AND s.\"businessId\" = \"Order\".\"businessId\") = 'PAYMENT_FAILED' THEN 'FAILED'",
+  "WHEN (SELECT s.\"status\" FROM \"Sale\" s WHERE s.\"id\" = \"Order\".\"saleId\" AND s.\"businessId\" = \"Order\".\"businessId\") = 'PAYMENT_UNKNOWN' THEN 'UNKNOWN'",
+  "WHEN (SELECT s.\"status\" FROM \"Sale\" s WHERE s.\"id\" = \"Order\".\"saleId\" AND s.\"businessId\" = \"Order\".\"businessId\") = 'RECONCILED' THEN CASE WHEN EXISTS (SELECT 1 FROM \"Payment\" p WHERE p.\"saleId\" = \"Order\".\"saleId\" AND p.\"businessId\" = \"Order\".\"businessId\" AND p.\"status\" = 'FAILED') THEN 'FAILED' ELSE 'PENDING' END",
+  "WHEN (SELECT s.\"status\" FROM \"Sale\" s WHERE s.\"id\" = \"Order\".\"saleId\" AND s.\"businessId\" = \"Order\".\"businessId\") IN ('PAID','COMPLETED','REFUND_REQUESTED') THEN 'PAID'",
+  "ELSE 'UNPAID'",
+  "END",
+].join(" ");
 
 function buildSet(patch: Record<string, unknown>): { sets: string[]; values: unknown[] } {
   const sets: string[] = [];
@@ -109,6 +125,10 @@ export function ordersFamily(ctx: PgContext) {
         if (query.channel) add("channel", "=", query.channel);
         if (query.fulfillmentMode) add("fulfillmentMode", "=", query.fulfillmentMode);
         if (query.branchId) add("branchId", "=", query.branchId);
+        if (query.paymentStatus) {
+          values.push(query.paymentStatus);
+          where.push("(" + PAYMENT_STATUS_SQL + ") = $" + values.length);
+        }
         if (query.dateFrom) add("createdAt", ">=", query.dateFrom);
         if (query.dateTo) add("createdAt", "<=", query.dateTo);
         if (query.cursor) {

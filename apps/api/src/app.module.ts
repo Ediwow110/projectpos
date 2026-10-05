@@ -72,6 +72,8 @@ import { RequestIdMiddleware } from "./common/request-id.middleware";
 import { SecurityHeadersMiddleware, securityHeaders } from "./common/security-headers.middleware";
 import { MetricsMiddleware, httpMetrics } from "./common/metrics.middleware";
 import { MetricsController } from "./common/metrics.controller";
+import { OrderController } from "./orders/nest/order.controller";
+import { OrderService } from "./orders/order-service";
 import { SessionGuard } from "./common/session.guard";
 import { CsrfGuard } from "./common/csrf.guard";
 import {
@@ -103,7 +105,7 @@ function runtimeDatabaseUrl(): string | undefined {
 }
 
 @Module({
-    controllers: [HealthController, AuthController, ApprovalController, TenantController, BusinessController, ProductModelController, CatalogController, InventoryController, InventoryCountController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, ProcurementController, ValueController, MetricsController],
+    controllers: [HealthController, AuthController, ApprovalController, TenantController, BusinessController, ProductModelController, CatalogController, InventoryController, InventoryCountController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, ProcurementController, ValueController, MetricsController, OrderController],
   providers: [
     {
       provide: HUMAN_VERIFICATION_PORT,
@@ -151,6 +153,7 @@ function runtimeDatabaseUrl(): string | undefined {
     PrintService,
     DisplayService,
     ProcurementService,
+    OrderService,
     {
       provide: InventoryCountService,
       useFactory: (d: DbPort, procurement: ProcurementService) => new InventoryCountService(d, procurement),
@@ -208,7 +211,7 @@ export async function createTestApp(options: { paymongo?: PayMongoPort; humanVer
     ? new PgDbPort(new PgContext(databaseUrl))
     : createMemoryDb();
   const moduleRef = await Test.createTestingModule({
-  controllers: [HealthController, AuthController, ApprovalController, TenantController, BusinessController, ProductModelController, CatalogController, InventoryController, InventoryCountController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, ProcurementController, ValueController, MetricsController],
+  controllers: [HealthController, AuthController, ApprovalController, TenantController, BusinessController, ProductModelController, CatalogController, InventoryController, InventoryCountController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, ProcurementController, ValueController, MetricsController, OrderController],
     providers: [
       { provide: "DbPort", useValue: db },
       { provide: PAYMONGO_PORT, useValue: options.paymongo ?? createPayMongoFromEnv({}) },
@@ -338,6 +341,11 @@ export async function createTestApp(options: { paymongo?: PayMongoPort; humanVer
       {
         provide: ProcurementService,
         useFactory: (d: DbPort) => new ProcurementService(d),
+        inject: ["DbPort"],
+      },
+      {
+        provide: OrderService,
+        useFactory: (d: DbPort) => new OrderService(d),
         inject: ["DbPort"],
       },
       {

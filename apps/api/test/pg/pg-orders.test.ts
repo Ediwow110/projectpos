@@ -200,4 +200,42 @@ describe("phase22 pg order persistence", () => {
       expect((await db.listRefundsBySale(sale.id, business.id))[0]).toEqual(refund);
     });
   });
+
+  it("applies stable bounded cursor and financial projection filters in PostgreSQL", async () => {
+    await withPg(async (raw) => {
+      const db = raw as any;
+      const { business, branch } = await seed(db);
+      const createdAt = new Date("2026-10-06T12:00:00.000Z");
+      const first = await db.createOrder({ ...orderInput(business.id, branch.id), requestId: "page-1", createdAt, updatedAt: createdAt });
+      const sale = await db.createSale({
+        businessId: business.id, receiptNo: "2026-009999", status: "PENDING_PAYMENT",
+        subtotalMinor: 100, discountMinor: 0, taxMinor: 0, deliveryFeeMinor: 0, deliveryTaxMinor: 0,
+        totalMinor: 100, paidMinor: 0, changeMinor: 0, currency: "PHP", customerId: null, customerName: null,
+        notes: null, actorId: "u1", requestId: "sale-page", idempotencyKey: null, registerId: null, branchId: branch.id,
+        completedAt: null, voidedAt: null, voidReason: null, createdAt,
+      });
+      const second = await db.createOrder({
+        ...orderInput(business.id, branch.id), requestId: "page-2", saleId: sale.id, createdAt, updatedAt: createdAt,
+      });
+
+      const page = await db.listOrdersPage(business.id, { cursor: null, limit: 1, branchId: branch.id });
+      expect(page).toHaveLength(1);
+      const next = await db.listOrdersPage(business.id, {
+        cursor: { createdAt: page[0].createdAt, id: page[0].id }, limit: 2, branchId: branch.id,
+      });
+      expect(new Set([page[0].id, ...next.map((row: { id: string }) => row.id)])).toEqual(new Set([first.id, second.id]));
+
+      expect((await db.listOrdersPage(business.id, {
+        cursor: null, limit: 10, paymentStatus: "PENDING",
+      })).map((row: { id: string }) => row.id)).toEqual([second.id]);
+      await db.createPayment({
+        businessId: business.id, saleId: sale.id, method: "card", amountMinor: 100, status: "SUCCEEDED",
+        providerRef: "provider-page", internalInstrumentType: null, internalInstrumentId: null,
+        idempotencyKey: "pay-page",
+      });
+      expect((await db.listOrdersPage(business.id, {
+        cursor: null, limit: 10, paymentStatus: "PAID",
+      })).map((row: { id: string }) => row.id)).toEqual([second.id]);
+    });
+  });
 });

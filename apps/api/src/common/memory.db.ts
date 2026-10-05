@@ -588,12 +588,32 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       return next;
     },
     async listOrdersPage(businessId, query) {
+      const paymentStatusFor = (row: DbOrder): string => {
+        if (!row.saleId) return "UNPAID";
+        const sale = sales.get(row.saleId);
+        if (!sale || sale.businessId !== businessId) return "UNPAID";
+        const saleRefunds = [...refunds.values()].filter((r) => r.businessId === businessId && r.saleId === sale.id && r.status === "APPROVED");
+        const refundTotal = saleRefunds.reduce((sum, r) => sum + r.totalMinor, 0);
+        if (sale.status === "REFUNDED" || (sale.totalMinor > 0 && refundTotal >= sale.totalMinor)) return "REFUNDED";
+        if (sale.status === "PARTIALLY_REFUNDED" || refundTotal > 0) return "PARTIALLY_REFUNDED";
+        const salePayments = [...payments.values()].filter((p) => p.businessId === businessId && p.saleId === sale.id);
+        if (salePayments.some((p) => p.status === "UNKNOWN")) return "UNKNOWN";
+        const succeeded = salePayments.filter((p) => p.status === "SUCCEEDED").reduce((sum, p) => sum + p.amountMinor, 0);
+        if (sale.totalMinor > 0 && succeeded >= sale.totalMinor) return "PAID";
+        if (sale.status === "PENDING_PAYMENT") return "PENDING";
+        if (sale.status === "PAYMENT_FAILED") return "FAILED";
+        if (sale.status === "PAYMENT_UNKNOWN") return "UNKNOWN";
+        if (sale.status === "RECONCILED") return salePayments.some((p) => p.status === "FAILED") ? "FAILED" : "PENDING";
+        if (["PAID", "COMPLETED", "REFUND_REQUESTED"].includes(sale.status)) return "PAID";
+        return "UNPAID";
+      };
       return [...orders.values()]
         .filter((row) => row.businessId === businessId)
         .filter((row) => !query.status || row.status === query.status)
         .filter((row) => !query.channel || row.channel === query.channel)
         .filter((row) => !query.fulfillmentMode || row.fulfillmentMode === query.fulfillmentMode)
         .filter((row) => !query.branchId || row.branchId === query.branchId)
+        .filter((row) => !query.paymentStatus || paymentStatusFor(row) === query.paymentStatus)
         .filter((row) => !query.dateFrom || row.createdAt.getTime() >= query.dateFrom.getTime())
         .filter((row) => !query.dateTo || row.createdAt.getTime() <= query.dateTo.getTime())
         .filter((row) => !query.cursor || row.createdAt.getTime() < query.cursor.createdAt.getTime() ||
