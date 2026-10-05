@@ -6,7 +6,25 @@ Date: 2026-10-06
 
 `scripts/load/phase21-mix.mjs` accepts `BASE_URL`, `DURATION_SECS`, `CONCURRENCY`, and `OUTPUT_PATH` (plus private `PHASE21_LOAD_EMAIL` / `PHASE21_LOAD_PASSWORD` inputs). It seeds one disposable product, high stock, and a session, then measures product search, barcode lookup, POS completion, receipt download-equivalent completion path, dashboard/report, inventory, procurement, customer, and stored-value lookup operations. Output contains p50/p95/p99, throughput, failure classes, and redacted samples; it never prints credentials or request bodies.
 
-The harness is deliberately opt-in. No staging URL or approved credentials were provided in this worktree, so no production-latency claim is made.
+The harness is deliberately opt-in. The approved disposable Render staging stack was provisioned for this run; these numbers are staging measurements and are not a production SLO claim.
+
+## Approved staging measurement
+
+- Environment: disposable Render stack on `codex/phase21-production-hardening`, Oregon free tier, separate PostgreSQL 16 database.
+- Run: 2026-10-05T18:30:23Z; 60 seconds; concurrency 10; 1,448 total requests; 0 failures (0.00% error rate); no redacted failure samples.
+- Raw output: `2026-10-06-phase21-load-staging.json` in this audit directory.
+
+| Operation | Count | p50 | p95 | p99 |
+| --- | ---: | ---: | ---: | ---: |
+| Product search | 160 | 201 ms | 337 ms | 548 ms |
+| Barcode lookup | 160 | 206 ms | 506 ms | 672 ms |
+| Reports/dashboard | 161 | 300 ms | 672 ms | 767 ms |
+| Inventory movements | 161 | 212 ms | 553 ms | 592 ms |
+| Procurement | 161 | 205 ms | 430 ms | 700 ms |
+| Customer lookup | 161 | 211 ms | 475 ms | 657 ms |
+| Stored value | 161 | 200 ms | 505 ms | 566 ms |
+| POS completion | 162 | 765 ms | 1,473 ms | 1,907 ms |
+| Receipt path | 161 | 1,039 ms | 1,779 ms | 2,258 ms |
 
 ## Deterministic evidence
 
@@ -21,4 +39,4 @@ The Phase 21 schema changes add only sale-void metadata and an option-value arch
 
 ## Resilience procedure
 
-Run the harness against staging with a throwaway owner/session, then separately exercise a transient 503, database reconnect, stale-tab refresh, refresh-after-commit, and duplicate-click scenarios using the existing contract/E2E seams. Record environment, dataset size, release, p50/p95/p99, error rate, and the collector/run timestamp alongside the JSON output.
+The staging run used a throwaway owner/session and disposable product data. Separately exercise a transient 503, database reconnect, stale-tab refresh, refresh-after-commit, and duplicate-click scenarios using the existing contract/E2E seams. The environment, release, p50/p95/p99, error rate, and collector/run timestamp are recorded above and in the JSON output.
