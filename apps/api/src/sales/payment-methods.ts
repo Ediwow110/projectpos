@@ -33,16 +33,6 @@ const HISTORICAL_DEFAULTS = [
   ],
 ];
 
-const HISTORICAL_DEFAULT_METHODS = [
-  { key: "cash", label: "Cash" },
-  { key: "card", label: "Card" },
-  { key: "gcash", label: "GCash" },
-  { key: "maya", label: "Maya" },
-  { key: "qrph", label: "QR Ph" },
-  { key: "bank_transfer", label: "Bank transfer" },
-  { key: "other", label: "Other" },
-];
-
 function isExactMethodList(
   methods: Array<{ key: string; label: string }>,
   expected: Array<{ key: string; label: string }>,
@@ -57,8 +47,8 @@ function isExactMethodList(
 function isPrePhase20DefaultList(
   methods: Array<{ key: string; label: string }>,
 ): boolean {
-  return isExactMethodList(methods, LEGACY_DEFAULT_METHODS) ||
-    isExactMethodList(methods, HISTORICAL_DEFAULT_METHODS);
+  return isExactMethodList(methods, HISTORICAL_DEFAULTS[0] ?? []) ||
+    isExactMethodList(methods, HISTORICAL_DEFAULTS[1] ?? []);
 }
 
 // FR-PAY-01: payment methods are business configuration, not hard-coded UI

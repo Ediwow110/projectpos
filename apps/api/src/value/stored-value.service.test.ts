@@ -46,8 +46,8 @@ describe("StoredValueService", () => {
       entityType: "GiftCard",
       entityId: issued.card.id,
       reason: "qa load",
-      before: { previousBalance: 0 },
-      after: { delta: 1000, newBalance: 1000 },
+      before: { balanceMinor: 0 },
+      after: { amountDeltaMinor: 1000, balanceMinor: 1000 },
     });
     expect(JSON.stringify(audits[0])).not.toContain(issued.code);
   });

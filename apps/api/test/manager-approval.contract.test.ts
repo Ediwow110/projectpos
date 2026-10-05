@@ -196,8 +196,8 @@ describe("generic manager approval contract", () => {
     expect(audits.filter((entry) => entry.action === "manager.approval.applied")).toHaveLength(1);
     expect(audits.find((entry) => entry.action === "store-credit.adjust")).toMatchObject({
       actorId: expect.any(String),
-      before: { previousBalance: 0 },
-      after: { delta: amountMinor, newBalance: amountMinor },
+      before: { balanceMinor: 0 },
+      after: { amountDeltaMinor: amountMinor, balanceMinor: amountMinor },
     });
   });
 });
