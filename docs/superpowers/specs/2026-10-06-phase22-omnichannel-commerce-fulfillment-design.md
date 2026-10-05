@@ -79,13 +79,33 @@ UNPAID | PENDING | UNKNOWN | FAILED | PAID | PARTIALLY_REFUNDED | REFUNDED
 
 Projection mapping:
 
-- no linked Sale -> `UNPAID`;
-- linked Sale/provider attempt awaiting settlement -> `PENDING`;
-- existing Sale `PAYMENT_UNKNOWN` -> `UNKNOWN`;
-- latest definitive provider attempt failed with no successful settlement -> `FAILED`;
-- completed Sale with no refund -> `PAID`;
-- completed Sale with a non-zero refund below the paid total -> `PARTIALLY_REFUNDED`;
-- completed Sale fully refunded -> `REFUNDED`.
+Nominal Sale-state mapping:
+
+| Sale state | Order payment projection |
+| --- | --- |
+| no linked Sale | `UNPAID` |
+| `DRAFT` | `UNPAID` |
+| `PENDING_PAYMENT` | `PENDING` |
+| `PAYMENT_FAILED` | `FAILED` |
+| `PAYMENT_UNKNOWN` | `UNKNOWN` |
+| `RECONCILED` | derive from Payment rows as described below |
+| `PAID` | `PAID` |
+| `COMPLETED` | `PAID` unless approved refunds exist |
+| `REFUND_REQUESTED` | `PAID` unless an earlier approved refund makes it `PARTIALLY_REFUNDED` |
+| `PARTIALLY_REFUNDED` | `PARTIALLY_REFUNDED` |
+| `REFUNDED` | `REFUNDED` |
+| `VOIDED` | `UNPAID` unless Payment-row precedence below proves `UNKNOWN` or `PAID` |
+
+Payment/refund rows are the financial evidence when a Sale status is transiently behind them. Projection precedence is:
+
+1. If the Sale is `REFUNDED`, or approved Refund/RefundItem rows transiently satisfy the same full-refund predicate defined in §3.7 before the Sale row is patched -> `REFUNDED`.
+2. If the Sale is `PARTIALLY_REFUNDED`, or any approved Refund exists without satisfying that full-refund predicate -> `PARTIALLY_REFUNDED`.
+3. Any unresolved `UNKNOWN` Payment exists -> `UNKNOWN`.
+4. `SUCCEEDED` Payments cover the Sale total -> `PAID`.
+5. For `RECONCILED`, any definitive failed leg with insufficient succeeded value -> `FAILED`; otherwise -> `PENDING`.
+6. Fall back to the nominal Sale-state mapping above.
+
+The projection is computed on read and is never independently writable or persisted as a financial state machine.
 
 ### 3.2 Canonical lock order
 
@@ -157,7 +177,65 @@ To keep the financial model narrow, Sale gains explicit `deliveryFeeMinor` and `
 
 Reporting must distinguish merchandise revenue from delivery-charge revenue.
 
-### 3.7 Branch routing and assignment
+### 3.7 Delivery-fee refund semantics
+
+Delivery refunds extend the existing RefundService and existing `POST /api/v1/sales/:id/refund-approve` command. Phase 22 does not introduce an Order refund engine or a second financial workflow.
+
+The existing refund-approval payload gains:
+
+```text
+deliveryRefundMinor?: integer >= 0
+```
+
+MVP delivery refunds are all-or-nothing:
+
+- `deliveryRefundMinor` must be omitted/zero, or equal the full remaining refundable delivery charge;
+- remaining refundable delivery charge is the unrefunded `deliveryFeeMinor + deliveryTaxMinor`;
+- partial delivery-fee refunds are not supported in Phase 22;
+- cumulative `Refund.deliveryFeeRefundMinor` cannot exceed `Sale.deliveryFeeMinor`;
+- cumulative `Refund.deliveryTaxRefundMinor` cannot exceed `Sale.deliveryTaxMinor`;
+- a non-zero request after the delivery charge is already fully refunded returns `REFUND_EXCEEDS_LIMIT`.
+
+Each approved Refund persists explicit `deliveryFeeRefundMinor` and `deliveryTaxRefundMinor` snapshots, defaulting to zero. `Refund.totalMinor` includes merchandise refund, gift-card load refund, delivery-fee refund, and delivery-tax refund amounts.
+
+The server derives the fee/tax split from the Sale snapshots and prior approved Refund rows. The client never chooses that split.
+
+Delivery-charge refunds:
+
+- may be approved under the existing refund policy before or after physical delivery; refunding the charge does not rewrite fulfillment history;
+- use the same `destination` field as the existing refund command;
+- are `ORIGINAL_TENDER` for guest web Orders because they have no verified customer store-credit account;
+- may use `STORE_CREDIT` only when the linked Sale already has an eligible `customerId` under the existing RefundService rules; a later Order CRM-link action does not mutate Sale customer/tender eligibility for the submitted Order;
+- do not create inventory movements;
+- do not restore quantities;
+- do not earn, reverse earned, redeem, or restore loyalty points.
+
+For `ORIGINAL_TENDER`, the existing original-payment waterfall remains authoritative. The allocation algorithm treats cumulative prior approved `Refund.totalMinor` as already consumed value, walks original `SUCCEEDED` Payment legs in deterministic creation/id order, skips previously consumed capacity, and allocates the new refund only against the remaining original-tender capacity. This rule applies to the combined refund total; delivery refunds do not get a separate tender allocator.
+
+The existing manager-approval fingerprint and threshold calculation include `deliveryRefundMinor`, so delivery refunds cannot bypass `sale.refund` or `refund.override` policy.
+
+The existing refund ManagerApprovalAction gains the same `deliveryRefundMinor` field. Its validation treats a request as non-empty when any of `items`, `loadRefunds`, or a positive `deliveryRefundMinor` is present. Approval normalization recomputes the allowed delivery amount server-side before fingerprinting.
+
+Sale refund status extends the existing merchandise rule:
+
+- if the Sale has no delivery charge, existing full/partial refund behavior is unchanged;
+- if the Sale has a delivery charge, `REFUNDED` requires the existing full-merchandise refund condition **and** full reversal of `deliveryFeeMinor + deliveryTaxMinor`;
+- otherwise an approved refund leaves the Sale `PARTIALLY_REFUNDED`.
+
+A `DELIVERED` or `COLLECTED` Fulfillment remains terminal even if money is later refunded. The linked Order therefore cannot be cancelled as though handoff never occurred.
+
+Existing gift-card-load refund semantics remain unchanged.
+
+Reporting rules:
+
+- refund KPIs and net financial totals include the delivery component from approved `Refund.totalMinor`, while preserving the existing gift-card-load liability exclusions;
+- merchandise quantity/cost analysis continues to use RefundItem rows only;
+- delivery-fee revenue is reported separately as Sale delivery fees less `Refund.deliveryFeeRefundMinor`;
+- delivery tax is reported separately as Sale delivery tax less `Refund.deliveryTaxRefundMinor` and is not treated as merchandise revenue;
+- accounting export/journal logic that currently derives merchandise refund as Refund total minus gift-card-load refund must also subtract delivery-fee and delivery-tax refund components, so they are never misclassified as merchandise revenue;
+- delivery refunds never affect inventory COGS or loyalty reporting.
+
+### 3.8 Branch routing and assignment
 
 Every submitted Order has an explicit fulfillment branch.
 
@@ -208,6 +286,7 @@ Rules:
 - Payment failure leaves the Order `SUBMITTED` while its timed reservation remains valid; the customer may retry.
 - `PAYMENT_UNKNOWN` leaves the Order `SUBMITTED` and keeps its reservation held until reconciliation resolves the financial uncertainty.
 - `EXPIRED` applies only before confirmation when a timed reservation is safely released.
+- `REJECTED` is a merchant refusal before confirmation; it is valid from `SUBMITTED`, releases the timed reservation, and is terminal.
 - After financial settlement, cancellation uses the existing refund/reversal authority. A fully reversed, unfulfilled Order may then become `CANCELLED`; partial refunds do not cancel the Order.
 - `FULFILLING` is never an independently mutable Order state. It is derived from fulfillment rows.
 
@@ -257,9 +336,12 @@ Bundles reserve stock-bearing components from the submitted bundle snapshot, nev
 - Starting an external provider checkout must not allow the reservation to expire while the provider attempt can still validly settle.
 - If the provider exposes a definitive checkout expiry, `expiresAt` is extended through that expiry plus a five-minute processing grace period.
 - If the provider does not expose a definitive expiry, the expiry worker queries provider state before release. `PENDING` or `UNKNOWN` keeps the hold; only a definitively failed/expired attempt can release it.
-- Pay-at-pickup Orders become operational holds after confirmation; their reservation `expiresAt` is cleared.
+- Pay-at-pickup Orders remain `SUBMITTED` on a timed 20-minute reservation until an authorized staff member explicitly accepts them.
+- Staff acceptance must occur before the timed reservation expires. Acceptance is idempotent, version-checked, audited, and requires `order.accept`.
+- Accepted pay-at-pickup Orders move `SUBMITTED -> CONFIRMED` and only then clear reservation `expiresAt`, making the reservation an operational hold.
+- An unaccepted pay-at-pickup Order that reaches its TTL becomes `EXPIRED` and releases its reservation. An expired Order cannot be accepted or resurrected; the customer must submit a new Order.
 - Successfully prepaid Orders also clear reservation `expiresAt` at confirmation.
-- Operational holds are not auto-expired in Phase 22. Staff must cancel/reject the Order through an audited action to release them.
+- Operational holds are not auto-expired in Phase 22. Because they are already confirmed, staff must cancel the Order through the audited cancellation flow to release them; `REJECTED` is pre-confirmation only.
 - There is no inventory-override action for an operational hold in Phase 22. Managers cancel the Order instead of bypassing its reservation.
 - Aged operational holds are surfaced through metrics/staff queues so they do not become invisible dead stock.
 
@@ -302,7 +384,7 @@ At minimum this applies to:
 
 Inventory counts and explicitly approved negative physical-stock corrections may record the observed quantity, but posting must fail with `RESERVATION_CONFLICT` if the resulting `qtyOnHand` would be lower than active HELD reservations. The system does not fabricate stock, create negative stock, or silently move reservations to another branch.
 
-Authorized staff resolve the conflict by replenishing stock or cancelling/rejecting the affected Orders through their normal audited flow, then retry the count/correction posting. Phase 22 has no force-post override that breaks an active reservation.
+Authorized staff resolve the conflict by replenishing stock or using the affected Order's state-appropriate audited transition: reject an unconfirmed submitted Order, or cancel a confirmed Order. Phase 22 has no force-post override that breaks an active reservation.
 
 ### 4.7 Fulfillment
 
@@ -334,17 +416,32 @@ Pickup:
 
 ```text
 PENDING -> READY -> COLLECTED
+PENDING -> CANCELLED
+READY   -> CANCELLED
 ```
 
 Delivery:
 
 ```text
 PENDING -> PACKED -> DISPATCHED -> DELIVERED
-                         \
-                          -> DELIVERY_FAILED -> DISPATCHED
+PENDING         -> CANCELLED
+PACKED          -> CANCELLED
+DISPATCHED      -> DELIVERY_FAILED
+DELIVERY_FAILED -> DISPATCHED
+DELIVERY_FAILED -> CANCELLED
 ```
 
-Fulfillment transitions never mutate money or inventory.
+Fulfillment cancellation rules:
+
+- pickup `PENDING` and `READY` may transition to `CANCELLED` before handoff;
+- delivery `PENDING` and `PACKED` may transition to `CANCELLED` before dispatch;
+- delivery `DISPATCHED` cannot cancel directly; it must transition to `DELIVERY_FAILED`, and `DELIVERY_FAILED -> CANCELLED` is allowed only after staff confirms the goods are back in merchant custody;
+- `DELIVERY_FAILED -> DISPATCHED` remains the retry path;
+- `COLLECTED` and `DELIVERED` are terminal and cannot transition to `CANCELLED`.
+
+In the Phase 22 MVP, there is no independent “cancel fulfillment but keep the same Order active” command. Confirmed-Order `cancel` atomically transitions each eligible non-terminal Fulfillment to `CANCELLED`. `REJECTED` occurs before fulfillment begins. A dispatched delivery must first use the delivery-failure/return-to-custody path before Order cancellation is allowed.
+
+Fulfillment transitions, including `CANCELLED`, never mutate money or inventory. Order cancellation/refund rules remain separate and authoritative.
 
 ## 5. Lifecycle flows
 
@@ -386,7 +483,9 @@ Provider redirect/success-page return never marks payment paid.
 ```text
 Order SUBMITTED
 -> inventory HELD
+-> staff ACCEPTS before 20-minute TTL
 -> Order CONFIRMED
+-> reservation becomes operational hold
 -> Pickup PENDING
 -> READY
 -> customer arrives
@@ -399,12 +498,16 @@ Order SUBMITTED
 
 The Order is not a completed Sale before collection.
 
+Staff acceptance, not anonymous submission, is the trust boundary that permits a guest pay-at-pickup reservation to become non-expiring. Until acceptance, rate limits and optional human verification are abuse controls only; they do not upgrade the hold.
+
 ### 5.4 Cancellation, rejection, expiry, and refund
 
 - Before financial settlement: cancellation/rejection atomically releases HELD reservations.
+- Staff `reject` is valid only for an unconfirmed `SUBMITTED` Order; confirmed Orders use `cancel`.
 - Timed pre-confirmation expiry releases reservations only when no financially uncertain provider attempt remains.
 - After Sale completion/payment settlement: existing refund/return mechanisms remain authoritative.
 - Full financial reversal plus no completed fulfillment permits Order cancellation.
+- For an Order whose Sale includes a delivery charge, post-settlement Order cancellation requires full merchandise reversal under the existing refund rules **and** full reversal of the Sale's delivery fee and delivery tax.
 - Fulfillment cannot directly reverse money or inventory.
 - Cancellation, refund, reservation release, expiry, and delivery failure are idempotent and audited.
 
@@ -432,12 +535,14 @@ Submission generates a separate 256-bit random status token:
 - only the SHA-256 hash is stored;
 - the raw token is returned once and sent through the existing transactional-email abstraction;
 - customer links use a URL fragment, for example `/order-status#token=...`, so the bearer token is not sent in the initial HTTP request URL;
-- the frontend resolves it through a POST body;
+- the frontend reads the fragment once into an in-memory variable, synchronously calls `history.replaceState` to replace the address with token-free `/order-status`, and only then submits the token through the POST body;
 - the token grants read-only access to one redacted Order projection;
 - default lifetime is 30 days;
 - staff resend rotates the token and revokes the prior token;
 - staff may explicitly revoke access;
 - public self-service resend is out of scope for Phase 22.
+
+The raw status token is never written to localStorage/sessionStorage/IndexedDB, application logs, analytics, referrer-bearing navigation, browser-readable persisted state, or crash/error telemetry. Error reporting for the status page must scrub both URL fragments and request-body token fields.
 
 ### 6.3 Public API shape
 
@@ -460,6 +565,7 @@ Public endpoints are separately rate-limited and may use the existing human-veri
 ```text
 GET    /api/v1/orders
 GET    /api/v1/orders/:id
+POST   /api/v1/orders/:id/accept
 POST   /api/v1/orders/:id/cancel
 POST   /api/v1/orders/:id/reject
 POST   /api/v1/orders/:id/link-customer
@@ -474,6 +580,28 @@ POST   /api/v1/orders/:orderId/fulfillments/:fulfillmentId/collect
 ```
 
 Staff endpoints remain session-, CSRF-, tenant-, branch-, and RBAC-protected as applicable.
+
+`POST /api/v1/orders/:id/accept` is valid only for a `WEB`, pay-at-pickup Order in `SUBMITTED` state whose timed HELD reservations are still active. It cannot confirm prepaid Orders, expired Orders, or Orders with missing/expired reservation coverage.
+
+`POST /api/v1/orders/:id/reject` is valid only before confirmation for a `SUBMITTED` Order. Confirmed Orders use `POST /api/v1/orders/:id/cancel`.
+
+`GET /api/v1/orders` is bounded from its first implementation.
+
+Query contract:
+
+```text
+cursor?: opaque cursor
+limit: integer 1..100, default 50
+status?: Order lifecycle status
+channel?: POS | WEB
+fulfillmentMode?: NONE | PICKUP | DELIVERY
+branchId?: explicit tenant-owned branch
+paymentStatus?: UNPAID | PENDING | UNKNOWN | FAILED | PAID | PARTIALLY_REFUNDED | REFUNDED
+dateFrom?: ISO timestamp
+dateTo?: ISO timestamp
+```
+
+The response is `{ items, nextCursor }`. Results sort by `createdAt DESC, id DESC`; the opaque cursor encodes both values so ties remain stable. `dateFrom/dateTo` filter Order `createdAt`, and a supplied range may not exceed 366 days. Filtering and pagination must occur in the persistence query; implementations must not load all tenant Orders and slice in memory.
 
 ## 7. Idempotency, concurrency, and error contracts
 
@@ -504,6 +632,7 @@ Phase 22 adds operational Order permissions only:
 - `order.view`
 - `order.create`
 - `order.submit`
+- `order.accept`
 - `order.cancel`
 - `order.fulfill`
 - `order.collect`
@@ -518,9 +647,12 @@ Refunds continue to use the existing `sale.refund` and manager-approval policy.
 Role intent:
 
 - owners/managers: all Order permissions plus existing financial authority;
-- cashiers: view, create/submit POS Orders, collect pickup Orders, and start pay-at-pickup Sale flow;
+- cashiers: view, create/submit POS Orders, accept submitted pay-at-pickup Orders, collect pickup Orders, and start pay-at-pickup Sale flow;
+- staff granted `order.accept`: accept a submitted pay-at-pickup Order before its timed reservation expires;
 - fulfillment-capable staff: view assigned work, see required delivery details, and perform fulfillment transitions;
 - only owners/managers may override a CRM-link snapshot mismatch or manage public-access revocation/resend policy.
+
+Default role seeding grants `order.accept` to owner, manager, and cashier roles. Other staff receive it only through the existing permission-management path.
 
 No role edits submitted lines, prices, taxes, reservations, or completed Sale records directly.
 
@@ -573,6 +705,7 @@ Verification must cover:
 - reservation versus transfer-dispatch/supplier-return races;
 - linked Sale completion excluding its own reservation from competing holds;
 - duplicate submit, payment retry, webhook, collection, and fulfillment commands;
+- duplicate/stale staff acceptance and expiry-versus-acceptance races for pay-at-pickup;
 - payment failed, unknown, and reconciliation paths;
 - provider-aware reservation expiry;
 - operational holds and aged-hold visibility;
@@ -581,9 +714,11 @@ Verification must cover:
 - prevention of automatic/accidental CRM linkage;
 - CRM-link mismatch override audit;
 - multiple Fulfillment rows and partial line allocations at the domain level;
+- fulfillment cancellation from PENDING/READY/PACKED, and rejection of cancellation after COLLECTED/DELIVERED;
 - absence of duplicate Sale/Payment/Refund/inventory movement;
 - delivery fee/tax snapshot stability;
-- PII and bearer-secret redaction in logs, URLs, metrics, and error envelopes;
+- delivery refund cumulative limits, tender waterfall, manager threshold, Sale refund status, reporting, and zero inventory/loyalty side effects;
+- PII and bearer-secret redaction in logs, request URLs, retained browser URL state, metrics, crash telemetry, and error envelopes;
 - tenant and branch isolation;
 - end-to-end pickup and manual-delivery smoke paths;
 - regression coverage for Phase 1–21 POS, payments, inventory, refunds, stored value, procurement, audit, recovery, and observability behavior.
@@ -608,10 +743,11 @@ The implementation plan should sequence work as:
 1. Order, OrderLine, Fulfillment, FulfillmentLine, reservation, access-token, and configuration contracts/persistence.
 2. Shared reservation-aware available-to-sell logic and canonical lock-order integration across stock-decreasing paths.
 3. Reservation-aware Sale creation/completion, PayMongo webhook settlement, and reconciliation.
-4. Public web Order draft/submit/payment/status boundary and transactional email.
-5. Pickup and pay-at-pickup staff flow.
-6. Manual delivery, assignment, and multiple-fulfillment domain support.
-7. Storefront/staff UI, observability, load, security, accessibility, and full regression verification.
+4. Extend the existing RefundService/reporting contracts for delivery-fee/tax refunds without creating a second refund path.
+5. Public web Order draft/submit/payment/status boundary and transactional email.
+6. Pickup, staff acceptance, and pay-at-pickup flow.
+7. Manual delivery, assignment, cancellation states, and multiple-fulfillment domain support.
+8. Storefront/staff UI, bounded Order list, observability, load, security, accessibility, and full regression verification.
 
 The plan must preserve the atomic financial/reservation boundary and must not introduce a second financial authority.
 
@@ -623,10 +759,12 @@ The prior open questions are resolved for the MVP as follows:
 - **CRM verification:** guest Orders submit with no customer link; later staff linkage requires explicit customer selection plus an exact email/phone snapshot match, with manager override and reason for mismatch.
 - **Delivery charge:** business-level flat fee, default zero, using existing business tax-rate treatment.
 - **Order access token:** 256-bit random token, SHA-256 at rest, 30-day lifetime, staff-only rotate/resend/revoke.
-- **Operational holds:** no direct override; confirmed holds are released only by audited Order cancellation/rejection or committed by Sale completion.
+- **Operational holds:** no direct override; confirmed holds are released only by audited Order cancellation or committed by Sale completion. Rejection is pre-confirmation only.
+- **Pay-at-pickup trust boundary:** anonymous submission keeps the 20-minute timed reservation; explicit staff acceptance before expiry is required before the hold becomes non-expiring.
 - **Branch routing:** explicit pickup branch; one configured delivery fulfillment branch; no automatic fallback or cross-branch routing.
 - **Assignment:** manual only; no automatic staff assignment.
 - **Refund authority:** existing `sale.refund` only; no `order.refund`.
+- **Delivery refunds:** existing RefundService/refund-approve command only; all-or-nothing remaining delivery fee+tax, cumulative caps, existing tender destination/approval policy, no inventory or loyalty effects.
 - **Error codes:** reuse `IDEMPOTENCY_MISMATCH` and `STALE_VERSION`.
 - **Lock hierarchy:** `sales:<businessId>` first, then sorted inventory advisory locks.
 
