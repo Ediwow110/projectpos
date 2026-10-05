@@ -66,6 +66,19 @@ describe("phase4 sales service", () => {
     expect((await db.findBalance(productId, "b1"))!.qtyOnHand).toBe(8);
     expect((await db.listAudit()).some((a) => a.action === "sale.complete")).toBe(true);
   });
+  it("persists the trimmed void reason and timestamp on the sale projection", async () => {
+    const { db, svc, productId, ALL } = await setupSale();
+    const draft = await svc.createDraft("b1", "u1", "r1", {
+      lines: [{ productId, qty: 1, lineDiscountMinor: 0 }], orderDiscountMinor: 0,
+    }, ALL);
+
+    const voided = await svc.voidSale("b1", "u1", "r-void", draft.id, "  Duplicate draft  ", ALL);
+
+    expect(voided.status).toBe("VOIDED");
+    expect(voided.voidReason).toBe("Duplicate draft");
+    expect(voided.voidedAt).toBeInstanceOf(Date);
+    expect((await db.findSaleById(draft.id, "b1"))?.voidReason).toBe("Duplicate draft");
+  });
   it("replays the same idempotency key without a second sale", async () => {
     const { db, svc, productId, ALL } = await setupSale();
     const draft = await svc.createDraft("b1", "u1", "r1", {

@@ -95,6 +95,8 @@ function fullSale(businessId: string, receiptNo: string, overrides: Partial<DbSa
     idempotencyKey: null,
     registerId: null,
     branchId: null,
+    voidedAt: null,
+    voidReason: null,
     createdAt: new Date(),
     ...overrides,
   };
@@ -143,6 +145,20 @@ describe("phase12 pg sales: sales", () => {
     // A null in the patch clears the column (service clears branch on voids).
     const cleared = await sales.updateSale(s.id, b.id, { branchId: null, customerId: null });
     expect(cleared).toEqual({ ...done, branchId: null, customerId: null });
+  });
+
+  it("round-trips the persisted void timestamp and trimmed reason fields", async () => {
+    const b = await seedBusiness();
+    const s = await sales.createSale(fullSale(b.id, uniq("rcpt")));
+    const voidedAt = new Date("2026-10-06T10:00:00.000Z");
+    const voided = await sales.updateSale(s.id, b.id, {
+      status: "VOIDED",
+      voidedAt,
+      voidReason: "Duplicate draft",
+    });
+
+    expect(voided).toEqual({ ...s, status: "VOIDED", voidedAt, voidReason: "Duplicate draft" });
+    expect(await sales.findSaleById(s.id, b.id)).toEqual(voided);
   });
 
   it("returns null for missing or cross-tenant sales on find and update", async () => {

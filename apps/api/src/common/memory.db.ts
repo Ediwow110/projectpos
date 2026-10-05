@@ -507,7 +507,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       for (const [id, row] of inventoryCountLines) if (row.inventoryCountId === countId && row.businessId === businessId) inventoryCountLines.delete(id);
     },
     async createSale(s) {
-      const row = { completedAt: null, ...s, id: nid("sale") };
+      const row = { completedAt: null, voidedAt: null, voidReason: null, ...s, id: nid("sale") };
       sales.set(row.id, row);
       return row;
     },

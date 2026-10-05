@@ -412,6 +412,8 @@ export interface DbSale {
   // Set when the sale reaches COMPLETED; usage metering buckets by this, not by
   // when the draft was created.
   completedAt?: Date | null;
+  voidedAt?: Date | null;
+  voidReason?: string | null;
 }
 
 export interface DbSaleItem {

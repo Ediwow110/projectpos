@@ -19,7 +19,7 @@ import type { PgContext } from "./context";
 const SALE_SELECT =
   '"id", "businessId", "receiptNo", "status", "subtotalMinor", "discountMinor", "taxMinor", "totalMinor", ' +
   '"paidMinor", "changeMinor", "currency", "customerId", "customerName", "notes", "actorId", "requestId", ' +
-  '"idempotencyKey", "registerId", "branchId", "completedAt", "createdAt"';
+  '"idempotencyKey", "registerId", "branchId", "completedAt", "voidedAt", "voidReason", "createdAt"';
 const ITEM_SELECT =
   '"id", "businessId", "saleId", "position", "productId", "name", "unit", "qty", "priceMinor", "costMinor", ' +
   '"taxRateBps", "lineDiscountMinor", "lineTotalMinor"';
@@ -58,16 +58,16 @@ export function salesFamily(ctx: PgContext) {
       try {
         // Memory: { completedAt: null, ...s, id } — the caller's completion
         // stamp wins, drafts stay null.
-        const row = { completedAt: null as Date | null, ...s, id: nid("sale") };
+        const row = { completedAt: null as Date | null, voidedAt: null as Date | null, voidReason: null as string | null, ...s, id: nid("sale") };
         await c.query(
-          'INSERT INTO "Sale" ("id", "businessId", "receiptNo", "status", "subtotalMinor", "discountMinor", "taxMinor", "totalMinor", "paidMinor", "changeMinor", "currency", "customerId", "customerName", "notes", "actorId", "requestId", "idempotencyKey", "registerId", "branchId", "completedAt", "createdAt", "updatedAt")' +
-            ' VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, CURRENT_TIMESTAMP)',
+          'INSERT INTO "Sale" ("id", "businessId", "receiptNo", "status", "subtotalMinor", "discountMinor", "taxMinor", "totalMinor", "paidMinor", "changeMinor", "currency", "customerId", "customerName", "notes", "actorId", "requestId", "idempotencyKey", "registerId", "branchId", "completedAt", "voidedAt", "voidReason", "createdAt", "updatedAt")' +
+            ' VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, CURRENT_TIMESTAMP)',
           [
             row.id, row.businessId, row.receiptNo, row.status, row.subtotalMinor, row.discountMinor,
             row.taxMinor, row.totalMinor, row.paidMinor, row.changeMinor, row.currency,
             row.customerId ?? null, row.customerName ?? null, row.notes ?? null, row.actorId,
             row.requestId, row.idempotencyKey ?? null, row.registerId ?? null, row.branchId ?? null,
-            row.completedAt ?? null, row.createdAt,
+            row.completedAt ?? null, row.voidedAt ?? null, row.voidReason ?? null, row.createdAt,
           ],
         );
         return row;
