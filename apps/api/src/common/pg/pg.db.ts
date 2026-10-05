@@ -1,4 +1,4 @@
-import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCashMovement, DbCategory, DbCustomer, DbDevice, DbExchange, DbExpense, DbFeatureFlag, DbHeldSale, DbIdempotency, DbInvoice, DbMovement, DbPayment, DbPlan, DbMembership, DbPort, DbPrinter, DbPrintJob, DbProduct, DbProductFamily, DbProductOption, DbProductOptionValue, DbProductVariantOptionValue, DbProductBundle, DbBundleComponent, DbSaleItemBundleComponent, DbReceiptDelivery, DbRefund, DbRefundItem, DbRegister, DbResetToken, DbSale, DbSaleItem, DbSession, DbShift, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbDisplayToken, DbUsageCounter, DbUser, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine, DbInventoryCount, DbInventoryCountLine } from "../db.port";
+import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbBusinessCreate, DbCashMovement, DbCategory, DbCustomer, DbDevice, DbExchange, DbExpense, DbFeatureFlag, DbFulfillment, DbFulfillmentLine, DbHeldSale, DbIdempotency, DbInventoryReservation, DbInvoice, DbMovement, DbOrder, DbOrderAccessToken, DbOrderAccessTokenKind, DbOrderLine, DbOrderPageQuery, DbPayment, DbPlan, DbMembership, DbPort, DbPrinter, DbPrintJob, DbProduct, DbProductFamily, DbProductOption, DbProductOptionValue, DbProductVariantOptionValue, DbProductBundle, DbBundleComponent, DbSaleItemBundleComponent, DbReceiptDelivery, DbRefund, DbRefundCreate, DbRefundItem, DbRegister, DbResetToken, DbSale, DbSaleCreate, DbSaleItem, DbSession, DbShift, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbDisplayToken, DbUsageCounter, DbUser, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine, DbInventoryCount, DbInventoryCountLine } from "../db.port";
 import { PgContext } from "./context";
 import { settingsFamily } from "./pg-settings";
 import { auditFamily } from "./pg-audit";
@@ -16,6 +16,7 @@ import { integrationsFamily } from "./pg-integrations";
 import { procurementFamily } from "./pg-procurement";
 import { productModelFamily, type ProductModelFamily } from "./pg-product-model";
 import { valueFamily, type ValueFamily } from "./pg-value";
+import { ordersFamily } from "./pg-orders";
 import type { DbGiftCard, DbGiftCardTransaction, DbStoreCreditAccount, DbStoreCreditTransaction, DbLoyaltyProgram, DbLoyaltyAccount, DbLoyaltyTransaction, DbSaleGiftCardLoad, DbSaleLoyalty, DbSaleItemLoyaltyAllocation } from "../db.port";
 
 // Phase 12: the PostgreSQL-backed DbPort. Composed from per-family modules
@@ -38,6 +39,7 @@ export class PgDbPort implements DbPort {
   private readonly procurement: ReturnType<typeof procurementFamily>;
   private readonly productModels: ProductModelFamily;
   private readonly values: ValueFamily;
+  private readonly orders: ReturnType<typeof ordersFamily>;
 
   constructor(private readonly ctx: PgContext) {
     this.settings = settingsFamily(ctx);
@@ -56,6 +58,7 @@ export class PgDbPort implements DbPort {
     this.procurement = procurementFamily(ctx);
     this.productModels = productModelFamily(ctx);
     this.values = valueFamily(ctx);
+    this.orders = ordersFamily(ctx);
   }
 
   // withLock/withTransaction come straight from the context so every family
@@ -104,11 +107,17 @@ export class PgDbPort implements DbPort {
   setUserWorkspaceTourSeen(id: string, seen: boolean): Promise<void> {
     return this.tenants.setUserWorkspaceTourSeen(id, seen);
   }
-  createBusiness(b: Omit<DbBusiness, "id">): Promise<DbBusiness> {
+  createBusiness(b: DbBusinessCreate): Promise<DbBusiness> {
     return this.tenants.createBusiness(b);
   }
   findBusinessById(id: string): Promise<DbBusiness | null> {
     return this.tenants.findBusinessById(id);
+  }
+  findBusinessByStorefrontKey(key: string): Promise<DbBusiness | null> {
+    return this.tenants.findBusinessByStorefrontKey(key);
+  }
+  setBusinessStorefrontKey(id: string, key: string): Promise<DbBusiness | null> {
+    return this.tenants.setBusinessStorefrontKey(id, key);
   }
   listMembershipsByUser(userId: string): Promise<DbMembership[]> {
     return this.tenants.listMembershipsByUser(userId);
@@ -440,7 +449,7 @@ export class PgDbPort implements DbPort {
   updateSaleLoyalty(id: string, businessId: string, patch: Partial<Pick<DbSaleLoyalty, "redeemedPoints" | "redeemedValueMinor" | "earnedPoints">>): Promise<DbSaleLoyalty | null> { return this.values.updateSaleLoyalty(id, businessId, patch); }
   createSaleItemLoyaltyAllocation(a: Omit<DbSaleItemLoyaltyAllocation, "id" | "createdAt">): Promise<DbSaleItemLoyaltyAllocation> { return this.values.createSaleItemLoyaltyAllocation(a); }
   listSaleItemLoyaltyAllocations(saleLoyaltyId: string, businessId: string): Promise<DbSaleItemLoyaltyAllocation[]> { return this.values.listSaleItemLoyaltyAllocations(saleLoyaltyId, businessId); }
-  createRefund(r: Omit<DbRefund, "id">): Promise<DbRefund> {
+  createRefund(r: DbRefundCreate): Promise<DbRefund> {
     return this.people.createRefund(r);
   }
   listRefundsBySale(saleId: string, businessId: string): Promise<DbRefund[]> {
@@ -523,7 +532,7 @@ export class PgDbPort implements DbPort {
     return this.branches.listTransferLines(transferId, businessId);
   }
   // Sales family.
-  createSale(s: Omit<DbSale, "id">): Promise<DbSale> {
+  createSale(s: DbSaleCreate): Promise<DbSale> {
     return this.sales.createSale(s);
   }
   findSaleById(id: string, businessId: string): Promise<DbSale | null> {
@@ -537,6 +546,40 @@ export class PgDbPort implements DbPort {
   }
   updateSale(id: string, businessId: string, patch: Partial<Omit<DbSale, "id" | "businessId">>): Promise<DbSale | null> {
     return this.sales.updateSale(id, businessId, patch);
+  }
+  createOrder(o: Omit<DbOrder, "id">): Promise<DbOrder> { return this.orders.createOrder(o); }
+  findOrderById(id: string, businessId: string): Promise<DbOrder | null> { return this.orders.findOrderById(id, businessId); }
+  findOrderBySaleId(saleId: string, businessId: string): Promise<DbOrder | null> { return this.orders.findOrderBySaleId(saleId, businessId); }
+  updateOrder(id: string, businessId: string, patch: Partial<Omit<DbOrder, "id" | "businessId" | "version">>, expectedVersion: number): Promise<DbOrder | null> {
+    return this.orders.updateOrder(id, businessId, patch, expectedVersion);
+  }
+  listOrdersPage(businessId: string, query: DbOrderPageQuery): Promise<DbOrder[]> { return this.orders.listOrdersPage(businessId, query); }
+  listDueReservationOrders(now: Date, limit: number): Promise<DbOrder[]> { return this.orders.listDueReservationOrders(now, limit); }
+  createOrderLine(l: Omit<DbOrderLine, "id">): Promise<DbOrderLine> { return this.orders.createOrderLine(l); }
+  listOrderLines(orderId: string, businessId: string): Promise<DbOrderLine[]> { return this.orders.listOrderLines(orderId, businessId); }
+  createInventoryReservation(r: Omit<DbInventoryReservation, "id">): Promise<DbInventoryReservation> { return this.orders.createInventoryReservation(r); }
+  listReservationsByOrder(orderId: string, businessId: string): Promise<DbInventoryReservation[]> { return this.orders.listReservationsByOrder(orderId, businessId); }
+  listActiveReservationsByProduct(businessId: string, branchId: string, productId: string): Promise<DbInventoryReservation[]> {
+    return this.orders.listActiveReservationsByProduct(businessId, branchId, productId);
+  }
+  updateInventoryReservation(id: string, businessId: string, patch: Partial<Omit<DbInventoryReservation, "id" | "businessId" | "orderId" | "orderLineId" | "productId" | "branchId" | "idempotencyKey" | "createdAt">>): Promise<DbInventoryReservation | null> {
+    return this.orders.updateInventoryReservation(id, businessId, patch);
+  }
+  createFulfillment(f: Omit<DbFulfillment, "id">): Promise<DbFulfillment> { return this.orders.createFulfillment(f); }
+  findFulfillmentById(id: string, businessId: string): Promise<DbFulfillment | null> { return this.orders.findFulfillmentById(id, businessId); }
+  listFulfillmentsByOrder(orderId: string, businessId: string): Promise<DbFulfillment[]> { return this.orders.listFulfillmentsByOrder(orderId, businessId); }
+  updateFulfillment(id: string, businessId: string, patch: Partial<Omit<DbFulfillment, "id" | "businessId" | "orderId" | "version" | "createdAt">>, expectedVersion: number): Promise<DbFulfillment | null> {
+    return this.orders.updateFulfillment(id, businessId, patch, expectedVersion);
+  }
+  createFulfillmentLine(l: Omit<DbFulfillmentLine, "id">): Promise<DbFulfillmentLine> { return this.orders.createFulfillmentLine(l); }
+  listFulfillmentLines(fulfillmentId: string, businessId: string): Promise<DbFulfillmentLine[]> { return this.orders.listFulfillmentLines(fulfillmentId, businessId); }
+  createOrderAccessToken(t: Omit<DbOrderAccessToken, "id">): Promise<DbOrderAccessToken> { return this.orders.createOrderAccessToken(t); }
+  findOrderAccessTokenByHash(tokenHash: string): Promise<DbOrderAccessToken | null> { return this.orders.findOrderAccessTokenByHash(tokenHash); }
+  listActiveOrderAccessTokens(orderId: string, businessId: string, kind: DbOrderAccessTokenKind, now: Date): Promise<DbOrderAccessToken[]> {
+    return this.orders.listActiveOrderAccessTokens(orderId, businessId, kind, now);
+  }
+  revokeOrderAccessToken(id: string, businessId: string, revokedAt: Date): Promise<DbOrderAccessToken | null> {
+    return this.orders.revokeOrderAccessToken(id, businessId, revokedAt);
   }
   createSaleItem(
     i: Omit<DbSaleItem, "id" | "position"> & { position?: number },

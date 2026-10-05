@@ -14,7 +14,7 @@ import { PLAN_SEEDS } from "../../src/common/pg/pg-plans-seed";
 // base with PGTEST_BASE pointing at its service container (5432).
 const BASE_URL = process.env["PGTEST_BASE"] ?? "postgres://pos:pos@localhost:5433";
 const ADMIN_URL = `${BASE_URL}/postgres`;
-const TEST_DB = "pos_test_pg";
+const TEST_DB = process.env["PGTEST_DB"] ?? "pos_test_pg";
 const TEST_URL = `${BASE_URL}/${TEST_DB}`;
 const MIGRATIONS_DIR = join(__dirname, "../../../../packages/database/prisma/migrations");
 

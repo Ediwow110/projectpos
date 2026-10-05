@@ -11,7 +11,7 @@ import type { DbProduct, DbSale } from "../../src/common/db.port";
 // insertion ordering, null for missing/cross-tenant rows, [] for empty lists,
 // IDEMPOTENCY_REPLAY on a duplicate idempotency claim. Same disposable
 // database as helpers.ts; PGTEST_BASE lets CI point at its own container.
-const URL = `${process.env["PGTEST_BASE"] ?? "postgres://pos:pos@localhost:5433"}/pos_test_pg`;
+const URL = `${process.env["PGTEST_BASE"] ?? "postgres://pos:pos@localhost:5433"}/${process.env["PGTEST_DB"] ?? "pos_test_pg"}`;
 const uniq = (p: string) => `${p}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -83,6 +83,8 @@ function fullSale(businessId: string, receiptNo: string, overrides: Partial<DbSa
     subtotalMinor: 1000,
     discountMinor: 0,
     taxMinor: 120,
+    deliveryFeeMinor: 100,
+    deliveryTaxMinor: 12,
     totalMinor: 1120,
     paidMinor: 0,
     changeMinor: 0,
@@ -119,6 +121,8 @@ describe("phase12 pg sales: sales", () => {
     const created = await sales.createSale(fullSale(b.id, uniq("rcpt"), { completedAt }));
     expect(await sales.findSaleById(created.id, b.id)).toEqual(created);
     expect(await sales.findSaleById(created.id, b.id)).toEqual({ ...created });
+    expect(created.deliveryFeeMinor).toBe(100);
+    expect(created.deliveryTaxMinor).toBe(12);
   });
 
   it("partial-updates a sale and stamps the completion fields together", async () => {

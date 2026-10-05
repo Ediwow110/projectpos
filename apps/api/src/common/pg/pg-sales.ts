@@ -1,4 +1,4 @@
-import type { DbPayment, DbSale, DbSaleItem, DbHeldSale, DbIdempotency } from "../db.port";
+import type { DbPayment, DbSale, DbSaleCreate, DbSaleItem, DbHeldSale, DbIdempotency } from "../db.port";
 import { nid } from "./context";
 import type { PgContext } from "./context";
 
@@ -17,7 +17,7 @@ import type { PgContext } from "./context";
 //   ON CONFLICT DO NOTHING makes the race atomic, so concurrent callers can
 //   never both win — the loser's INSERT is ignored and it throws.
 const SALE_SELECT =
-  '"id", "businessId", "receiptNo", "status", "subtotalMinor", "discountMinor", "taxMinor", "totalMinor", ' +
+  '"id", "businessId", "receiptNo", "status", "subtotalMinor", "discountMinor", "taxMinor", "deliveryFeeMinor", "deliveryTaxMinor", "totalMinor", ' +
   '"paidMinor", "changeMinor", "currency", "customerId", "customerName", "notes", "actorId", "requestId", ' +
   '"idempotencyKey", "registerId", "branchId", "completedAt", "voidedAt", "voidReason", "createdAt"';
 const ITEM_SELECT =
@@ -53,18 +53,26 @@ function buildSet(patch: Record<string, unknown>): { sets: string[]; values: unk
 
 export function salesFamily(ctx: PgContext) {
   return {
-    async createSale(s: Omit<DbSale, "id">): Promise<DbSale> {
+    async createSale(s: DbSaleCreate): Promise<DbSale> {
       const c = await ctx.client();
       try {
         // Memory: { completedAt: null, ...s, id } — the caller's completion
         // stamp wins, drafts stay null.
-        const row = { completedAt: null as Date | null, voidedAt: null as Date | null, voidReason: null as string | null, ...s, id: nid("sale") };
+        const row: DbSale = {
+          completedAt: null,
+          voidedAt: null,
+          voidReason: null,
+          deliveryFeeMinor: 0,
+          deliveryTaxMinor: 0,
+          ...s,
+          id: nid("sale"),
+        };
         await c.query(
-          'INSERT INTO "Sale" ("id", "businessId", "receiptNo", "status", "subtotalMinor", "discountMinor", "taxMinor", "totalMinor", "paidMinor", "changeMinor", "currency", "customerId", "customerName", "notes", "actorId", "requestId", "idempotencyKey", "registerId", "branchId", "completedAt", "voidedAt", "voidReason", "createdAt", "updatedAt")' +
-            ' VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, CURRENT_TIMESTAMP)',
+          'INSERT INTO "Sale" ("id", "businessId", "receiptNo", "status", "subtotalMinor", "discountMinor", "taxMinor", "deliveryFeeMinor", "deliveryTaxMinor", "totalMinor", "paidMinor", "changeMinor", "currency", "customerId", "customerName", "notes", "actorId", "requestId", "idempotencyKey", "registerId", "branchId", "completedAt", "voidedAt", "voidReason", "createdAt", "updatedAt")' +
+            ' VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, CURRENT_TIMESTAMP)',
           [
             row.id, row.businessId, row.receiptNo, row.status, row.subtotalMinor, row.discountMinor,
-            row.taxMinor, row.totalMinor, row.paidMinor, row.changeMinor, row.currency,
+            row.taxMinor, row.deliveryFeeMinor, row.deliveryTaxMinor, row.totalMinor, row.paidMinor, row.changeMinor, row.currency,
             row.customerId ?? null, row.customerName ?? null, row.notes ?? null, row.actorId,
             row.requestId, row.idempotencyKey ?? null, row.registerId ?? null, row.branchId ?? null,
             row.completedAt ?? null, row.voidedAt ?? null, row.voidReason ?? null, row.createdAt,
