@@ -3,7 +3,7 @@ import { APP_FILTER } from "@nestjs/core";
 import { Test } from "@nestjs/testing";
 import type { INestApplication } from "@nestjs/common";
 import type { NestExpressApplication } from "@nestjs/platform-express";
-import type { RequestHandler } from "express";
+import type { NextFunction, Request, RequestHandler, Response } from "express";
 import cookieParser from "cookie-parser";
 import { AuthController } from "./auth/nest/auth.controller";
 import { ApprovalController } from "./auth/nest/approval.controller";
@@ -361,7 +361,7 @@ export async function createTestApp(options: { paymongo?: PayMongoPort; humanVer
   app.use(cookieParser() as RequestHandler);
   // createTestApp bypasses AppModule.configure(), so apply shared
   // middleware explicitly here (production covers it via configure()).
-  app.use((req, res, next) => new RequestIdMiddleware().use(req, res, next));
+  app.use((req: Request, res: Response, next: NextFunction) => new RequestIdMiddleware().use(req, res, next));
   app.use(securityHeaders as RequestHandler);
   app.use(httpMetrics as RequestHandler);
   app.useLogger(false);

@@ -45,3 +45,28 @@ Symptoms: unknown sessions, off-hours admin actions, customer report, or failed-
 3. Export the relevant audit slice (CSV) before any remediation writes; preserve it for review.
 Escalation: confirmed data exfiltration (bulk exports by unknown actor) → notify affected business owners; rotate everything.
 Audit: the `AuditLog` rows themselves, plus `auth.*` actions (logins, password changes, session revocations).
+# Phase 21 incident additions
+
+## Payment unknowns
+
+1. Freeze duplicate retries and capture the correlation ID plus provider event ID.
+2. Check `pos_payment_unknown_total`, webhook delivery status, and the sale/payment audit rows; do not manually edit a ledger.
+3. Reconcile through the provider and replay only the idempotent webhook/event path.
+
+## Inventory or stored-value mismatch
+
+1. Stop the affected mutation path and preserve the sale/adjustment request ID.
+2. Compare the append-only movement/transaction ledger with the balance projection and audit row.
+3. Correct with an authorized compensating transaction; never delete or rewrite history.
+
+## Deploy or migration failure
+
+1. Halt rollout and keep the last healthy release serving if readiness is failing.
+2. Inspect migration ledger and application logs by correlation ID; do not skip a migration.
+3. Restore only through the isolated backup drill or migrate forward after review.
+
+## Credential or support-access incident
+
+1. Revoke the affected session/device/token and rotate the provider secret.
+2. Preserve audit evidence without copying bearer material into tickets.
+3. Review cross-tenant access logs and notify the owner/security contact.

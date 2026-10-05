@@ -34,3 +34,13 @@
 
 - Structured JSON logs; every critical command carries `correlationId` (echoed in error envelopes — locked by `logging.test.ts`).
 - Never log: passwords, password hashes, session/CSRF tokens, full customer PII. Use `toSafeLogContext` (`apps/api/src/common/log-context.ts`) for any request-scoped log fields.
+# Phase 21 starting alerts
+
+- `Http5xxRateHigh`: 5xx responses >2% for 5 minutes.
+- `HttpLatencyHigh`: `pos_http_request_duration_bucket_total{bucket="gte500"}` >5% of requests for 5 minutes.
+- `PaymentUnknown`: any sustained `pos_payment_unknown_total` increase or payment outcome `unknown`.
+- `DatabaseOrMigrationFailure`: readiness, migration, backup, or reconnect failure.
+- `StoredValueOrInventoryError`: sustained rejected/error outcomes for stored value or inventory.
+- `CrossTenantAnomaly`: any alert from the tenant-isolation contract/monitoring checks.
+
+Thresholds are starting points and must be calibrated against staging traffic before paging production.
