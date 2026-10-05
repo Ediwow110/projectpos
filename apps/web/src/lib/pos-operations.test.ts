@@ -95,6 +95,31 @@ describe("POS operations", () => {
     expect(calls.find((call) => call.path === "/api/v1/sales/complete")!.body).not.toContain("approvalToken");
   });
 
+  it("forwards a new gift-card load into draft creation and returns one-time codes", async () => {
+    const calls: Array<{ path: string; body?: string | null }> = [];
+    const api: PosApiCall = async <T>(path: string, options?: { init?: RequestInit }) => {
+      calls.push({ path, body: options?.init?.body as string | null | undefined });
+      if (path === "/api/v1/auth/csrf") return { csrfToken: "csrf" } as T;
+      if (path === "/api/v1/sales/drafts") return { id: "sale-load", totalMinor: 3500 } as T;
+      if (path === "/api/v1/sales/complete") return { id: "sale-load", status: "COMPLETED", payments: [], giftCardCodes: ["NXP-GC-ONE-TIME"] } as T;
+      throw new Error("unexpected path " + path);
+    };
+    const result = await completePosSale({
+      cart: undiscountedCart,
+      registerId: "reg-1",
+      customerId: "",
+      walkIn: "",
+      received: "35",
+      method: "cash",
+      orderDiscountMinor: 0,
+      giftCardLoad: { kind: "NEW", amountMinor: 1000 },
+    }, { api, uuid: () => "load-complete-key" });
+    expect(result).toEqual({ kind: "completed", saleId: "sale-load", giftCardCodes: ["NXP-GC-ONE-TIME"] });
+    expect(JSON.parse(calls.find((call) => call.path === "/api/v1/sales/drafts")!.body!)).toMatchObject({
+      giftCardLoad: { kind: "NEW", amountMinor: 1000 },
+    });
+  });
+
   it("re-holds an existing resumed draft without creating a duplicate draft", async () => {
     const calls: Array<{ path: string; method?: string }> = [];
     const api: PosApiCall = async <T>(path: string, options?: { init?: RequestInit }) => {
@@ -113,6 +138,25 @@ describe("POS operations", () => {
       { path: "/api/v1/auth/csrf", method: undefined },
       { path: "/api/v1/sales/sale-held/hold", method: "POST" },
     ]);
+  });
+
+  it("preserves reload gift-card load data when holding a sale", async () => {
+    const calls: Array<{ path: string; body?: string | null }> = [];
+    const api: PosApiCall = async <T>(path: string, options?: { init?: RequestInit }) => {
+      calls.push({ path, body: options?.init?.body as string | null | undefined });
+      if (path === "/api/v1/auth/csrf") return { csrfToken: "csrf" } as T;
+      if (path === "/api/v1/sales/drafts") return { id: "sale-held-load" } as T;
+      return {} as T;
+    };
+    await holdPosSale({
+      cart: undiscountedCart,
+      registerId: "reg-1",
+      customerId: "",
+      walkIn: "",
+      orderDiscountMinor: 0,
+      giftCardLoad: { kind: "RELOAD", amountMinor: 1000, giftCardId: "card-1", maskedCode: "NXP-GC-••••1234", previousBalanceMinor: 0, status: "ACTIVE" },
+    }, { api });
+    expect(JSON.parse(calls.find((call) => call.path === "/api/v1/sales/drafts")!.body!)).toMatchObject({ giftCardLoad: { kind: "RELOAD", amountMinor: 1000, giftCardId: "card-1" } });
   });
 
   it("resumes a held draft through csrf + resume", async () => {

@@ -10,6 +10,7 @@ import {
   heldSaleToCart,
   isPayMongoMethodKey,
   posDiscountSummary,
+  parseMajorCurrencyToMinor,
   resolveTenderedMinor,
 } from "./pos-sale-model";
 
@@ -39,6 +40,25 @@ describe("POS sale model", () => {
       registerId: "reg1",
       customerId: "cust1",
     });
+  });
+
+  it("adds a gift-card load to the draft without leaking masked UI state", () => {
+    const cart = [{ productId: "p1", name: "Coffee", priceMinor: 1000, qty: 1, lineDiscountMinor: 0 }];
+    expect(buildDraftSaleInput(cart, "reg1", "", "", 0, undefined, { kind: "RELOAD", amountMinor: 2000, giftCardId: "card-1", maskedCode: "NXP-GC-••••1234", previousBalanceMinor: 5000, status: "ACTIVE" })).toMatchObject({
+      giftCardLoad: { kind: "RELOAD", amountMinor: 2000, giftCardId: "card-1" },
+    });
+    expect(buildDraftSaleInput(cart, "reg1", "", "", 0, undefined, { kind: "NEW", amountMinor: 1000 })).toMatchObject({
+      giftCardLoad: { kind: "NEW", amountMinor: 1000 },
+    });
+    expect(JSON.stringify(buildDraftSaleInput(cart, "reg1", "", "", 0, undefined, { kind: "RELOAD", amountMinor: 2000, giftCardId: "card-1", maskedCode: "NXP-GC-••••1234", previousBalanceMinor: 5000, status: "ACTIVE" }))).not.toContain("1234");
+  });
+
+  it("converts currency input with integer-safe minor units", () => {
+    expect(parseMajorCurrencyToMinor("10")).toBe(1000);
+    expect(parseMajorCurrencyToMinor("10.5")).toBe(1050);
+    expect(parseMajorCurrencyToMinor("1,234.56")).toBe(123456);
+    expect(parseMajorCurrencyToMinor("0.00")).toBeNull();
+    expect(parseMajorCurrencyToMinor("10.999")).toBeNull();
   });
 
   it("includes a manager approval token only when one is supplied", () => {

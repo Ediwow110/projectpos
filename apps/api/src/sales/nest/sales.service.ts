@@ -326,6 +326,20 @@ export class SalesService {
     for (const r of refundRows) {
       refunds.push({ ...r, items: await this.db.listRefundItems(r.id, businessId) });
     }
+    const rawGiftCardLoads = await this.db.listSaleGiftCardLoads(sale.id, businessId);
+    const giftCardLoads = await Promise.all(rawGiftCardLoads.map(async (load) => {
+      if (!load.giftCardId) return { ...load, refundedMinor: 0, refundableMinor: 0 };
+      const transactions = await this.db.listGiftCardTransactions(load.giftCardId, businessId);
+      const refundedMinor = transactions
+        .filter((transaction) => transaction.type === "LOAD_REFUND" && transaction.loadId === load.id)
+        .reduce((sum, transaction) => sum + Math.abs(transaction.amountDeltaMinor), 0);
+      const balanceMinor = transactions.reduce((sum, transaction) => sum + transaction.amountDeltaMinor, 0);
+      return {
+        ...load,
+        refundedMinor,
+        refundableMinor: Math.max(0, Math.min(load.amountMinor - refundedMinor, balanceMinor)),
+      };
+    }));
     const exchanges = await this.db.listExchangesByOriginalSale(sale.id, businessId);
     const exchangeOriginRow = await this.db.findExchangeByReplacementSale(sale.id, businessId);
     const exchangeOriginSale = exchangeOriginRow
@@ -341,7 +355,7 @@ export class SalesService {
         customer = role === "cashier" ? { ...row, phone: null, email: null, address: null } : row;
       }
     }
-    return { ...full, items, refunds, exchanges, exchangeOrigin, customer };
+    return { ...full, items, refunds, giftCardLoads, exchanges, exchangeOrigin, customer };
   }
 
   async listSales(

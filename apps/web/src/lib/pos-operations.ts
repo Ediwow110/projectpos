@@ -5,6 +5,7 @@ import {
   buildOfflineSalePayload,
   isPayMongoMethodKey,
   resolveTenderedMinor,
+  type PosGiftCardLoad,
   type PosCartEntry,
 } from "./pos-sale-model";
 import { fingerprintPayload, provisionalReceipt } from "./sync-state";
@@ -26,6 +27,7 @@ interface SaleIdentityInput {
   orderDiscountMinor: number;
   approvalToken?: string;
   existingDraftId?: string;
+  giftCardLoad?: PosGiftCardLoad;
 }
 
 export async function authorizePosDiscount(
@@ -76,6 +78,7 @@ export async function holdPosSale(
             input.walkIn,
             input.orderDiscountMinor,
             input.approvalToken,
+            input.giftCardLoad,
           )),
         },
       });
@@ -138,7 +141,7 @@ export async function queueOfflinePosSale(
 export type CompletePosSaleResult =
   | { kind: "redirect"; checkoutUrl: string }
   | { kind: "unknown"; saleId: string; paymentId: string | null }
-  | { kind: "completed"; saleId: string };
+  | { kind: "completed"; saleId: string; giftCardCodes?: string[] };
 
 export async function completePosSale(
   input: SaleIdentityInput & {
@@ -163,6 +166,7 @@ export async function completePosSale(
         input.walkIn,
         input.orderDiscountMinor,
         input.approvalToken,
+        input.giftCardLoad,
       )),
     },
   });
@@ -196,5 +200,6 @@ export async function completePosSale(
   if (sale.status === "PAYMENT_UNKNOWN") {
     return { kind: "unknown", saleId: sale.id, paymentId: sale.payments[0]?.id ?? null };
   }
-  return { kind: "completed", saleId: sale.id };
+  const giftCardCodes = response.giftCardCodes ?? sale.giftCardCodes ?? [];
+  return giftCardCodes.length > 0 ? { kind: "completed", saleId: sale.id, giftCardCodes } : { kind: "completed", saleId: sale.id };
 }

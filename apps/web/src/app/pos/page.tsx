@@ -21,6 +21,7 @@ import {
   posDiscountSummary,
   resolveTenderedMinor,
   type PosCartEntry,
+  type PosGiftCardLoad,
   type PosHeldSale,
   type PosProduct,
 } from "../../lib/pos-sale-model";
@@ -37,6 +38,8 @@ import { ManagerApprovalDialog } from "../../components/ManagerApprovalDialog";
 import { PosPaymentWorkspace } from "../../components/PosPaymentWorkspace";
 import { PosProductCatalog } from "../../components/PosProductCatalog";
 import { PosResponsiveCart } from "../../components/PosResponsiveCart";
+import { GiftCardLoadDialog } from "../../components/GiftCardLoadDialog";
+import { GiftCardLoadResultDialog } from "../../components/GiftCardLoadResultDialog";
 
 const METHODS: Array<{ key: string; label: string; tile: string }> = [
   { key: "cash", label: "Cash", tile: "bg-[#f35d3f]" },
@@ -80,6 +83,9 @@ export default function PosPage(): JSX.Element {
   const [paying, setPaying] = useState(false);
   const [resumingSaleId, setResumingSaleId] = useState<string | null>(null);
   const [activeDraft, setActiveDraft] = useState<{ id: string; totalMinor: number } | null>(null);
+  const [giftCardLoad, setGiftCardLoad] = useState<PosGiftCardLoad | null>(null);
+  const [showGiftCardLoad, setShowGiftCardLoad] = useState(false);
+  const [giftCardResult, setGiftCardResult] = useState<{ code: string; amountMinor: number } | null>(null);
 
   const {
     meQuery,
@@ -110,7 +116,9 @@ export default function PosPage(): JSX.Element {
   }, [registerId, scopedRegisters]);
   const canSell = role === "owner" || role === "manager" || role === "cashier";
   const discountSummary = posDiscountSummary(cart, orderDiscountMinor);
-  const cartDue = cartTotal(cart.map((c) => ({ qty: c.qty, priceMinor: c.priceMinor, lineDiscountMinor: c.lineDiscountMinor }))) - discountSummary.orderDiscountMinor;
+  const merchandiseDue = cartTotal(cart.map((c) => ({ qty: c.qty, priceMinor: c.priceMinor, lineDiscountMinor: c.lineDiscountMinor }))) - discountSummary.orderDiscountMinor;
+  const giftCardLoadMinor = giftCardLoad?.amountMinor ?? 0;
+  const cartDue = merchandiseDue + giftCardLoadMinor;
   const due = activeDraft?.totalMinor ?? Math.max(0, cartDue);
   const effectiveMethod = offline ? "cash" : method;
   const tenderedMinor = resolveTenderedMinor(received, due);
@@ -123,7 +131,7 @@ export default function PosPage(): JSX.Element {
   }));
   const configuredMethodKeys = new Set(paymentConfig.map((entry) => entry.key));
   const methodAvailable = (key: string): boolean => paymentConfig.find((entry) => entry.key === key)?.available ?? false;
-  const paymentTiles = METHODS.filter((entry) => configuredMethodKeys.has(entry.key));
+  const paymentTiles = METHODS.filter((entry) => configuredMethodKeys.has(entry.key)).filter((entry) => !giftCardLoad || !["gift_card", "store_credit", "loyalty"].includes(entry.key));
 
   const resumedSaleLocked = activeDraft !== null;
 
@@ -203,6 +211,23 @@ export default function PosPage(): JSX.Element {
     setShowDiscounts(true);
   }
 
+  function openGiftCardLoad(): void {
+    if (offline) {
+      setStatus("Reconnect to load a gift card.");
+      return;
+    }
+    if (resumedSaleLocked) {
+      lockedSaleMessage();
+      return;
+    }
+    if (cart.length === 0) {
+      setStatus("Add merchandise before adding a gift-card load. Load-only sales are not supported by the current sale contract.");
+      return;
+    }
+    setStatus("");
+    setShowGiftCardLoad(true);
+  }
+
   function openHeldSales(): void {
     if (offline) {
       setStatus("Held sales require connectivity.");
@@ -268,6 +293,10 @@ export default function PosPage(): JSX.Element {
       setStatus("Holding carts requires connectivity.");
       return false;
     }
+    if (giftCardLoad) {
+      setStatus("Gift-card load sales cannot be held. Complete or clear this sale first.");
+      return false;
+    }
     try {
       await holdPosSale({
         cart,
@@ -277,6 +306,7 @@ export default function PosPage(): JSX.Element {
         orderDiscountMinor,
         approvalToken,
         existingDraftId: activeDraft?.id,
+        giftCardLoad: giftCardLoad ?? undefined,
       });
       setCart([]);
       setActiveDraft(null);
@@ -284,6 +314,7 @@ export default function PosPage(): JSX.Element {
       setCustomerId("");
       setCustomerQ("");
       setWalkIn("");
+      setGiftCardLoad(null);
       await heldSalesQuery.refetch();
       setStatus("Sale held. Open Held sales to resume it later.");
       return true;
@@ -362,6 +393,10 @@ export default function PosPage(): JSX.Element {
       setStatus("PayMongo is not configured for this payment method yet.");
       return false;
     }
+    if (giftCardLoad && ["gift_card", "store_credit", "loyalty"].includes(method)) {
+      setStatus("Gift-card loads must be paid with an external tender.");
+      return false;
+    }
     setPaying(true);
     try {
       const result = await completePosSale({
@@ -375,6 +410,7 @@ export default function PosPage(): JSX.Element {
         orderDiscountMinor,
         approvalToken,
         existingDraft: activeDraft ?? undefined,
+        giftCardLoad: giftCardLoad ?? undefined,
       });
       if (result.kind === "redirect") {
         setStatus("Redirecting to PayMongo secure checkout…");
@@ -396,6 +432,8 @@ export default function PosPage(): JSX.Element {
       setShowPay(false);
       setReconcileSaleId(null);
       setReceiptId(result.saleId);
+      if (result.giftCardCodes?.[0] && giftCardLoad?.kind === "NEW") setGiftCardResult({ code: result.giftCardCodes[0], amountMinor: giftCardLoad.amountMinor });
+      setGiftCardLoad(null);
       setStatus("Sale completed.");
       return true;
     } catch (err) {
@@ -518,11 +556,13 @@ export default function PosPage(): JSX.Element {
           onHold={() => void holdCart()}
           onOpenHeldSales={openHeldSales}
           onOpenDiscounts={openDiscounts}
-          onClearCart={() => { setCart([]); setOrderDiscountMinor(0); }}
-          onResetSale={() => { setCart([]); setOrderDiscountMinor(0); setStatus(''); setReceiptId(null); }}
+          onClearCart={() => { setCart([]); setOrderDiscountMinor(0); setGiftCardLoad(null); }}
+          onResetSale={() => { setCart([]); setOrderDiscountMinor(0); setGiftCardLoad(null); setStatus(''); setReceiptId(null); }}
           onSetQty={setQty}
           onAssignCustomer={openCustomerAssignment}
           onOpenPayment={() => { setStatus(''); setShowPay(true); }}
+          giftCardLoadMinor={giftCardLoadMinor}
+          onOpenGiftCardLoad={openGiftCardLoad}
           onSelectShortcut={(key) => {
             if (key !== 'more') setMethod(key);
             setStatus('');
@@ -536,6 +576,7 @@ export default function PosPage(): JSX.Element {
           count={count}
           due={due}
           discountMinor={discountSummary.totalDiscountMinor}
+          giftCardLoadMinor={giftCardLoadMinor}
           canPay={canPay}
           saleLocked={resumedSaleLocked}
           heldCount={heldSalesQuery.data?.items.length ?? 0}
@@ -568,6 +609,7 @@ export default function PosPage(): JSX.Element {
             setStatus("");
             setShowPay(true);
           }}
+          onOpenGiftCardLoad={openGiftCardLoad}
         />
 
         {showHeldSales ? (
@@ -649,6 +691,7 @@ export default function PosPage(): JSX.Element {
           <PosPaymentWorkspace
             count={count}
             due={due}
+            giftCardLoadMinor={giftCardLoadMinor}
             changeMinor={changeMinor}
             registerSelected={registerId !== ""}
             now={now}
@@ -668,6 +711,8 @@ export default function PosPage(): JSX.Element {
             onPay={() => void pay()}
           />
         ) : null}
+        {showGiftCardLoad ? <GiftCardLoadDialog onClose={() => setShowGiftCardLoad(false)} onSave={(load) => { setGiftCardLoad(load); setShowGiftCardLoad(false); setMethod("cash"); setStatus("Gift-card load added. It will be funded only after payment completes."); }} /> : null}
+        {giftCardResult ? <GiftCardLoadResultDialog code={giftCardResult.code} amountMinor={giftCardResult.amountMinor} onClose={() => setGiftCardResult(null)} /> : null}
       </div>
     </AppShell>
   );

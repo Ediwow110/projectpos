@@ -49,7 +49,16 @@ export interface PosDraftInput {
   customerId?: string;
   customerName?: string;
   approvalToken?: string;
+  giftCardLoad?: PosGiftCardLoadDraft;
 }
+
+export type PosGiftCardLoad =
+  | { kind: "NEW"; amountMinor: number }
+  | { kind: "RELOAD"; amountMinor: number; giftCardId: string; maskedCode: string; previousBalanceMinor: number; status: string };
+
+export type PosGiftCardLoadDraft =
+  | { kind: "NEW"; amountMinor: number }
+  | { kind: "RELOAD"; amountMinor: number; giftCardId: string };
 
 export interface PosDiscountSummary {
   grossMinor: number;
@@ -77,6 +86,7 @@ export function buildDraftSaleInput(
   walkIn: string,
   orderDiscountMinor = 0,
   approvalToken?: string,
+  giftCardLoad?: PosGiftCardLoad,
 ): PosDraftInput {
   return {
     lines: cart.map((entry) => ({
@@ -89,7 +99,20 @@ export function buildDraftSaleInput(
     ...(customerId !== "" ? { customerId } : {}),
     ...(customerId === "" && walkIn.trim() !== "" ? { customerName: walkIn.trim() } : {}),
     ...(approvalToken?.trim() ? { approvalToken: approvalToken.trim() } : {}),
+    ...(giftCardLoad ? {
+      giftCardLoad: giftCardLoad.kind === "NEW"
+        ? { amountMinor: Math.max(0, Math.round(giftCardLoad.amountMinor)), kind: "NEW" as const }
+        : { amountMinor: Math.max(0, Math.round(giftCardLoad.amountMinor)), kind: "RELOAD" as const, giftCardId: giftCardLoad.giftCardId },
+    } : {}),
   };
+}
+
+export function parseMajorCurrencyToMinor(value: string): number | null {
+  const normalized = value.trim().replace(/,/g, "");
+  if (!/^\d+(?:\.\d{0,2})?$/.test(normalized)) return null;
+  const [whole, fraction = ""] = normalized.split(".");
+  const minor = Number(whole) * 100 + Number((fraction + "00").slice(0, 2));
+  return Number.isSafeInteger(minor) && minor > 0 ? minor : null;
 }
 
 export function buildOfflineSalePayload(

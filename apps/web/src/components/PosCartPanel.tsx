@@ -10,6 +10,7 @@ interface PosCartPanelProps {
   count: number;
   subtotalMinor: number;
   discountMinor: number;
+  giftCardLoadMinor?: number;
   due: number;
   selectedRegisterName: string;
   canSell: boolean;
@@ -32,6 +33,7 @@ interface PosCartPanelProps {
   onSetQty: (productId: string, delta: number) => void;
   onAssignCustomer: () => void;
   onOpenPayment: () => void;
+  onOpenGiftCardLoad?: () => void;
   onSelectShortcut: (key: string) => void;
 }
 
@@ -44,6 +46,7 @@ export function PosCartPanel({
   count,
   subtotalMinor,
   discountMinor,
+  giftCardLoadMinor = 0,
   due,
   selectedRegisterName,
   canSell,
@@ -66,6 +69,7 @@ export function PosCartPanel({
   onSetQty,
   onAssignCustomer,
   onOpenPayment,
+  onOpenGiftCardLoad = () => undefined,
   onSelectShortcut,
 }: PosCartPanelProps) {
   return (
@@ -75,11 +79,12 @@ export function PosCartPanel({
         <button
           type="button"
           onClick={onHold}
-          disabled={cart.length === 0}
+          disabled={cart.length === 0 || giftCardLoadMinor > 0}
           className="absolute right-[120px] top-[-4px] h-[34px] w-[68px] rounded-[9px] border border-[#3b3732] bg-[#252422] text-[9px] font-semibold text-[#d5cdc6] disabled:opacity-40"
         >
           {saleLocked ? "Re-hold" : "Hold"}
         </button>
+        <button type="button" onClick={onOpenGiftCardLoad} disabled={offline || saleLocked} className="absolute right-[192px] top-[-4px] h-[34px] rounded-[9px] border border-[#6b493d] bg-[#2b211d] px-2 text-[9px] font-semibold text-[#ffb7a4] disabled:opacity-40">Load card</button>
         <button
           type="button"
           onClick={onOpenHeldSales}
@@ -156,12 +161,13 @@ export function PosCartPanel({
           </button>
           <span className="money font-medium text-[#ff9a82]">−₱{money(discountMinor)}</span>
         </div>
-        <div className="absolute inset-x-0 top-[446px] flex items-center justify-between text-[9px] text-[#afa59d]">
+        {giftCardLoadMinor > 0 ? <div className="absolute inset-x-0 top-[438px] flex items-center justify-between text-[9px] text-[#ffb7a4]"><span>Gift-card load</span><span className="money font-medium">₱{money(giftCardLoadMinor)}</span></div> : null}
+        <div className={`absolute inset-x-0 ${giftCardLoadMinor > 0 ? "top-[470px]" : "top-[446px]"} flex items-center justify-between text-[9px] text-[#afa59d]`}>
           <span>Register</span>
           <span className="font-data max-w-48 truncate text-[8px] text-white/75">{selectedRegisterName}</span>
         </div>
-        <div aria-hidden className="absolute inset-x-0 top-[484px] border-t border-[#393530]" />
-        <div className="absolute inset-x-0 top-[499px] flex items-end justify-between">
+        <div aria-hidden className={`absolute inset-x-0 ${giftCardLoadMinor > 0 ? "top-[508px]" : "top-[484px]"} border-t border-[#393530]`} />
+        <div className={`absolute inset-x-0 ${giftCardLoadMinor > 0 ? "top-[523px]" : "top-[499px]"} flex items-end justify-between`}>
           <span className="font-display text-[16px] font-semibold">Total</span>
           <span className="money text-[24px] font-bold">₱{money(due)}</span>
         </div>
@@ -170,12 +176,12 @@ export function PosCartPanel({
           type="button"
           onClick={onOpenPayment}
           disabled={!canPay}
-          className="absolute inset-x-0 top-[552px] h-[58px] rounded-xl bg-[#f35d3f] font-display text-[13px] font-semibold text-white shadow-[0_5px_16px_-6px_rgb(26_18_13/0.07)] hover:bg-[#d94a30] disabled:opacity-40"
+          className={`absolute inset-x-0 ${giftCardLoadMinor > 0 ? "top-[576px]" : "top-[552px]"} h-[58px] rounded-xl bg-[#f35d3f] font-display text-[13px] font-semibold text-white shadow-[0_5px_16px_-6px_rgb(26_18_13/0.07)] hover:bg-[#d94a30] disabled:opacity-40`}
         >
           ▣ Pay ₱{money(due)} (F5) →
         </button>
 
-        <div className="absolute inset-x-0 top-[628px] grid grid-cols-4 gap-2">
+        <div className={`absolute inset-x-0 ${giftCardLoadMinor > 0 ? "top-[652px]" : "top-[628px]"} grid grid-cols-4 gap-2`}>
           {[
             { key: "cash", label: "Cash (F6)" },
             { key: "card", label: "Card (F7)" },
@@ -207,11 +213,11 @@ export function PosCartPanel({
           type="button"
           onClick={onResetSale}
           disabled={cart.length === 0 || reconcileId !== null || saleLocked}
-          className="absolute inset-x-0 top-[692px] h-12 rounded-[10px] border border-[#d94a30] text-[10px] font-semibold text-[#ff765a] hover:bg-[#2b1d19] disabled:opacity-35"
+          className={`absolute inset-x-0 ${giftCardLoadMinor > 0 ? "top-[716px]" : "top-[692px]"} h-12 rounded-[10px] border border-[#d94a30] text-[10px] font-semibold text-[#ff765a] hover:bg-[#2b1d19] disabled:opacity-35`}
         >
           ⌫ Clear sale
         </button>
-        <p className="absolute inset-x-0 top-[760px] font-data text-[7px] leading-4 text-[#756b63]">
+        <p className={`absolute inset-x-0 ${giftCardLoadMinor > 0 ? "top-[784px]" : "top-[760px]"} font-data text-[7px] leading-4 text-[#756b63]`}>
           Totals are server-validated before commit. Unknown payment status blocks blind retries.
         </p>
 

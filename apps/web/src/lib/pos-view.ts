@@ -7,6 +7,7 @@ export type CompletedSaleView = {
   id: string;
   status: string;
   payments: Array<{ id: string }>;
+  giftCardCodes?: string[];
 };
 
 export type CompleteSaleResponse =
@@ -15,6 +16,7 @@ export type CompleteSaleResponse =
       code: string;
       message: string;
       sale: CompletedSaleView;
+      giftCardCodes?: string[];
     };
 
 export function saleFromCompleteResponse(response: CompleteSaleResponse): CompletedSaleView {
