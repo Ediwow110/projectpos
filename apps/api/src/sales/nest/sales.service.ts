@@ -416,6 +416,7 @@ export class SalesService {
     status: string;
     customerName: string | null;
     items: DbSaleItem[];
+    giftCardLoads: Array<{ amountMinor: number; kind: "NEW" | "RELOAD"; maskedCode: string | null }>;
     subtotalMinor: number;
     discountMinor: number;
     taxMinor: number;
@@ -459,6 +460,7 @@ export class SalesService {
   async sharedReceipt(token: string): Promise<{
     receiptNo: string; status: string;
     items: Array<{ name: string; qty: number; lineTotalMinor: number }>;
+    giftCardLoads: Array<{ amountMinor: number; kind: "NEW" | "RELOAD"; maskedCode: string | null }>;
     subtotalMinor: number; discountMinor: number; taxMinor: number;
     totalMinor: number; paidMinor: number; changeMinor: number;
     tenders: Array<{ method: string; amountMinor: number }>;

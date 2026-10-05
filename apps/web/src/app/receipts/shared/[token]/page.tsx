@@ -11,6 +11,7 @@ interface SharedReceipt {
   receiptNo: string;
   status: string;
   items: Array<{ name: string; qty: number; lineTotalMinor: number }>;
+  giftCardLoads: Array<{ amountMinor: number; kind: "NEW" | "RELOAD"; maskedCode: string | null }>;
   subtotalMinor: number;
   discountMinor: number;
   taxMinor: number;
@@ -57,6 +58,12 @@ export default function SharedReceiptPage({ params }: { params: Promise<{ token:
                   <div key={`${item.name}-${index}`} className="flex items-start justify-between gap-4 text-[12px]">
                     <div><p className="font-semibold text-[#2a241f]">{item.name}</p><p className="font-data mt-1 text-[10px] text-[#9a8d83]">Qty {item.qty}</p></div>
                     <p className="font-data font-semibold text-[#2a241f]">₱{money(item.lineTotalMinor)}</p>
+                  </div>
+                ))}
+                {query.data.giftCardLoads.map((load, index) => (
+                  <div key={`gift-card-load-${index}`} className="flex items-start justify-between gap-4 text-[12px]">
+                    <div><p className="font-semibold text-[#2a241f]">{load.kind === "NEW" ? "Gift card load" : "Gift card reload"}</p><p className="font-data mt-1 text-[10px] text-[#9a8d83]">{load.maskedCode ?? "Stored-value load"}</p></div>
+                    <p className="font-data font-semibold text-[#2a241f]">₱{money(load.amountMinor)}</p>
                   </div>
                 ))}
               </div>

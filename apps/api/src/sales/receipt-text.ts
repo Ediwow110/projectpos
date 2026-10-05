@@ -14,6 +14,7 @@ export interface ReceiptTextInput {
   receiptNo: string;
   status: string;
   items: ReceiptTextLine[];
+  giftCardLoads: Array<{ amountMinor: number; kind: "NEW" | "RELOAD"; maskedCode: string | null }>;
   subtotalMinor: number;
   discountMinor: number;
   taxMinor: number;
@@ -36,6 +37,10 @@ export function renderReceiptText(input: ReceiptTextInput): string {
   lines.push("");
   for (const item of input.items) {
     lines.push(`${item.name} x ${item.qty} — ${money(item.lineTotalMinor)}`);
+  }
+  for (const load of input.giftCardLoads) {
+    const label = load.kind === "NEW" ? "Gift card load" : "Gift card reload";
+    lines.push(`${label} — ${money(load.amountMinor)}${load.maskedCode ? ` (${load.maskedCode})` : ""}`);
   }
   lines.push("");
   lines.push(`SUBTOTAL ${money(input.subtotalMinor)}`);
