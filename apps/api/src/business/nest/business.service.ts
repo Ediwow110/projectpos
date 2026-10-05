@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import { randomBytes } from "node:crypto";
 import {
   applyOnboardingPatch,
   defaultOnboardingState,
@@ -15,12 +16,23 @@ export class BusinessService {
   async getBusiness(businessId: string): Promise<{
     id: string;
     name: string;
+    storefrontKey: string | null;
     settings: Record<string, unknown>;
   }> {
     const business = await this.db.findBusinessById(businessId);
     if (!business) throw new Error("TENANT_REQUIRED");
     const settings = await this.db.getSettings(businessId);
-    return { id: business.id, name: business.name, settings };
+    return { id: business.id, name: business.name, storefrontKey: business.storefrontKey, settings };
+  }
+
+  async ensureStorefrontKey(businessId: string): Promise<string> {
+    const business = await this.db.findBusinessById(businessId);
+    if (!business) throw new Error("TENANT_REQUIRED");
+    if (business.storefrontKey) return business.storefrontKey;
+    const key = randomBytes(16).toString("hex");
+    const updated = await this.db.setBusinessStorefrontKey(businessId, key);
+    if (!updated) throw new Error("TENANT_REQUIRED");
+    return updated.storefrontKey!;
   }
 
   async patchSettings(
@@ -39,6 +51,28 @@ export class BusinessService {
     // the whole receipt* family rather than a single key spelling.
     if (Object.keys(patch).some((k) => k === "receipt" || k.startsWith("receipt"))) {
       await new BillingService(this.db).requireFeature(businessId, "receipt_customization");
+    }
+    if (patch["onlinePickupBranchIds"] !== undefined) {
+      const ids = patch["onlinePickupBranchIds"];
+      if (!Array.isArray(ids)) throw new Error("VALIDATION");
+      for (const id of ids) {
+        if (typeof id !== "string") throw new Error("VALIDATION");
+        const branch = await this.db.findBranchById(id, businessId);
+        if (!branch?.isActive) throw new Error("VALIDATION");
+      }
+    }
+    if (patch["onlineFulfillmentBranchId"] !== undefined && patch["onlineFulfillmentBranchId"] !== null) {
+      const id = patch["onlineFulfillmentBranchId"];
+      if (typeof id !== "string") throw new Error("VALIDATION");
+      const branch = await this.db.findBranchById(id, businessId);
+      if (!branch?.isActive) throw new Error("VALIDATION");
+    }
+    if (patch["deliveryFlatFeeMinor"] !== undefined) {
+      const fee = patch["deliveryFlatFeeMinor"];
+      if (typeof fee !== "number" || !Number.isSafeInteger(fee) || fee < 0) throw new Error("VALIDATION");
+    }
+    if (patch["onlineOrderingEnabled"] === true) {
+      await this.ensureStorefrontKey(businessId);
     }
     const next = mergeSettings(current, patch);
     await this.db.saveSettings(businessId, next);

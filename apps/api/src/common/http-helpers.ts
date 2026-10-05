@@ -81,6 +81,7 @@ export const CODE_STATUS: Record<string, number> = {
   CONFLICT: 409,
   APPROVAL_STALE: 409,
   REPLENISHMENT_STALE: 409,
+  RESERVATION_CONFLICT: 409,
 };
 
 export function statusFor(code: string, fallback = 400): number {

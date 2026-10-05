@@ -52,4 +52,76 @@ describe("phase11 settings gate and audit context", () => {
       ),
     ).resolves.toMatchObject({ currentStep: "receiptSetup" });
   });
+
+  it("validates online-order branches in-tenant and active", async () => {
+    const db = createMemoryDb();
+    const biz = await db.createBusiness({ name: "S", currency: "PHP" });
+    const other = await db.createBusiness({ name: "Other", currency: "PHP" });
+    const active = await db.createBranch({ businessId: biz.id, name: "Main", type: "store", isActive: true });
+    const inactive = await db.createBranch({ businessId: biz.id, name: "Old", type: "store", isActive: false });
+    const foreign = await db.createBranch({ businessId: other.id, name: "Foreign", type: "store", isActive: true });
+    const svc = new BusinessService(db);
+
+    await expect(svc.patchSettings(
+      biz.id,
+      "owner",
+      { onlinePickupBranchIds: [active.id], onlineFulfillmentBranchId: active.id },
+      "r-online-ok",
+      ["settings.write"],
+    )).resolves.toMatchObject({
+      onlinePickupBranchIds: [active.id],
+      onlineFulfillmentBranchId: active.id,
+    });
+
+    for (const badBranchId of [inactive.id, foreign.id, "missing"]) {
+      await expect(svc.patchSettings(
+        biz.id,
+        "owner",
+        { onlinePickupBranchIds: [badBranchId] },
+        "r-online-bad",
+        ["settings.write"],
+      )).rejects.toThrow("VALIDATION");
+      await expect(svc.patchSettings(
+        biz.id,
+        "owner",
+        { onlineFulfillmentBranchId: badBranchId },
+        "r-online-bad-delivery",
+        ["settings.write"],
+      )).rejects.toThrow("VALIDATION");
+    }
+  });
+
+  it("mints a stable public storefront key when online ordering is first enabled", async () => {
+    const db = createMemoryDb();
+    const biz = await db.createBusiness({ name: "S", currency: "PHP" });
+    const branch = await db.createBranch({ businessId: biz.id, name: "Main", type: "store", isActive: true });
+    const svc = new BusinessService(db);
+
+    await svc.patchSettings(
+      biz.id,
+      "owner",
+      { onlineOrderingEnabled: true, onlinePickupBranchIds: [branch.id] },
+      "r-enable-1",
+      ["settings.write"],
+    );
+    const first = await db.findBusinessById(biz.id);
+    expect(first?.storefrontKey).toMatch(/^[a-f0-9]{32}$/);
+
+    await svc.patchSettings(
+      biz.id,
+      "owner",
+      { onlineOrderingEnabled: false },
+      "r-disable",
+      ["settings.write"],
+    );
+    await svc.patchSettings(
+      biz.id,
+      "owner",
+      { onlineOrderingEnabled: true },
+      "r-enable-2",
+      ["settings.write"],
+    );
+    expect((await db.findBusinessById(biz.id))?.storefrontKey).toBe(first?.storefrontKey);
+    await expect(svc.getBusiness(biz.id)).resolves.toMatchObject({ storefrontKey: first?.storefrontKey });
+  });
 });

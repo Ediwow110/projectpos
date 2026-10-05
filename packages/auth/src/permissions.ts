@@ -26,6 +26,16 @@ export const SENSITIVE_ACTIONS = [
   "supplier_return.write",
   "supplier_return.post",
   "supplier_return.cancel",
+  "order.view",
+  "order.create",
+  "order.submit",
+  "order.accept",
+  "order.cancel",
+  "order.fulfill",
+  "order.collect",
+  "order.view_delivery_details",
+  "order.link_customer",
+  "order.manage_access",
 ] as const;
 
 export function hasPermission(

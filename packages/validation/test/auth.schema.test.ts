@@ -4,6 +4,7 @@ import {
   loginSchema,
   passwordResetConfirmSchema,
   onboardingPatchSchema,
+  businessSettingsSchema,
 } from "../src/auth.schema";
 
 describe("phase1 auth schemas", () => {
@@ -40,5 +41,15 @@ describe("phase1 auth schemas", () => {
       businessName: "Sari Store",
     });
     expect(out.email).toBe("ana@example.com");
+  });
+
+  it("validates online-ordering settings", () => {
+    expect(businessSettingsSchema.parse({
+      onlineOrderingEnabled: true,
+      onlinePickupBranchIds: ["br_1"],
+      onlineFulfillmentBranchId: "br_2",
+      deliveryFlatFeeMinor: 1500,
+    })).toMatchObject({ deliveryFlatFeeMinor: 1500 });
+    expect(() => businessSettingsSchema.parse({ deliveryFlatFeeMinor: -1 })).toThrow();
   });
 });
