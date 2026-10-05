@@ -20,6 +20,7 @@ const OWNER_DESTINATIONS = [
   { href: "/branches", title: "Branches", description: "Manage the store locations used by operational records.", icon: "⌘" },
   { href: "/registers", title: "Registers", description: "Maintain the registers used for shifts and selling.", icon: "▣" },
   { href: "/printers", title: "Printers", description: "Pair receipt printers, choose defaults, test output, and review print queues.", icon: "▧" },
+  { href: "/admin/loyalty", title: "Loyalty settings", description: "Configure earn and redeem rules for the customer loyalty program.", icon: "✦" },
 ] as const;
 
 export default function AdminPage(): JSX.Element {

@@ -150,4 +150,11 @@ export class ValueController {
     try { res.json(await this.service.saveLoyaltyProgram(req.auth!.businessId, { ...parsed.data, minimumRedeemPoints: parsed.data.minimumRedeemPoints ?? null })); }
     catch (error) { const code = error instanceof Error ? error.message : "VALIDATION"; fail(res, statusFor(code), code, "Loyalty configuration failed", req); }
   }
+
+  @Get("loyalty/program")
+  async getLoyaltyProgram(@Req() req: Request, @Res() res: Response): Promise<void> {
+    if (!this.granted(req).includes("loyalty.manage")) { fail(res, 403, "FORBIDDEN", "Loyalty configuration not permitted", req); return; }
+    try { res.json(await this.service.getLoyaltyProgram(req.auth!.businessId)); }
+    catch (error) { const code = error instanceof Error ? error.message : "VALIDATION"; fail(res, statusFor(code), code, "Loyalty configuration unavailable", req); }
+  }
 }

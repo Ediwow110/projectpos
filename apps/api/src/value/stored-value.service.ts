@@ -179,6 +179,10 @@ export class StoredValueService {
     return this.db.upsertLoyaltyProgram({ ...input, businessId, version: 1 });
   }
 
+  async getLoyaltyProgram(businessId: string): Promise<DbLoyaltyProgram | null> {
+    return this.db.getLoyaltyProgram(businessId);
+  }
+
   async ensureLoyaltyAccount(businessId: string, customerId: string) { if (!(await this.db.findCustomerById(customerId, businessId))) throw new Error("NOT_FOUND"); return this.db.createLoyaltyAccount({ businessId, customerId }); }
 
   async loyaltyBalance(businessId: string, customerId: string): Promise<number> { const account = await this.db.findLoyaltyAccount(customerId, businessId); if (!account) return 0; return (await this.db.listLoyaltyTransactions(account.id, businessId)).reduce((sum, row) => sum + row.pointsDelta, 0); }
