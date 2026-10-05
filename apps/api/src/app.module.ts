@@ -361,6 +361,7 @@ export async function createTestApp(options: { paymongo?: PayMongoPort; humanVer
   app.use(cookieParser() as RequestHandler);
   // createTestApp bypasses AppModule.configure(), so apply shared
   // middleware explicitly here (production covers it via configure()).
+  app.use((req, res, next) => new RequestIdMiddleware().use(req, res, next));
   app.use(securityHeaders as RequestHandler);
   app.use(httpMetrics as RequestHandler);
   app.useLogger(false);
