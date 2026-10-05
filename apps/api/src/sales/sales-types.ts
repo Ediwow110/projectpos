@@ -6,6 +6,7 @@ import type {
   DbRefundItem,
   DbSale,
   DbSaleItem,
+  DbSaleGiftCardLoad,
 } from "../common/db.port";
 
 export interface DraftLineInput {
@@ -43,6 +44,7 @@ export type SaleWithLines = DbSale & {
 
 export type SaleDetail = SaleWithLines & {
   refunds: Array<DbRefund & { items: DbRefundItem[] }>;
+  giftCardLoads: Array<DbSaleGiftCardLoad & { refundedMinor: number; refundableMinor: number }>;
   exchanges: DbExchange[];
   exchangeOrigin: (DbExchange & { originalReceiptNo: string }) | null;
   customer: DbCustomer | null;

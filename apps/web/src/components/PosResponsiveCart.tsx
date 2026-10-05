@@ -11,6 +11,7 @@ interface PosResponsiveCartProps {
   count: number;
   due: number;
   discountMinor: number;
+  giftCardLoadMinor?: number;
   canPay: boolean;
   saleLocked: boolean;
   heldCount: number;
@@ -27,6 +28,7 @@ interface PosResponsiveCartProps {
   onOpenDiscounts: () => void;
   onSetQty: (productId: string, delta: number) => void;
   onOpenPayment: () => void;
+  onOpenGiftCardLoad?: () => void;
 }
 
 function money(minor: number): string {
@@ -38,6 +40,7 @@ export function PosResponsiveCart({
   count,
   due,
   discountMinor,
+  giftCardLoadMinor = 0,
   canPay,
   saleLocked,
   heldCount,
@@ -54,6 +57,7 @@ export function PosResponsiveCart({
   onOpenDiscounts,
   onSetQty,
   onOpenPayment,
+  onOpenGiftCardLoad = () => undefined,
 }: PosResponsiveCartProps) {
   return (
     <>
@@ -181,6 +185,14 @@ export function PosResponsiveCart({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
+                  onClick={onOpenGiftCardLoad}
+                  disabled={saleLocked}
+                  className="rounded-lg border border-white/10 px-3 py-2 text-[10px] font-semibold text-[#ffb7a4] hover:text-white disabled:opacity-35"
+                >
+                  Load card
+                </button>
+                <button
+                  type="button"
                   onClick={onAssignCustomer}
                   disabled={saleLocked}
                   className="rounded-lg border border-white/10 px-3 py-2 text-[10px] font-semibold text-white/70 hover:text-white disabled:opacity-35"
@@ -198,7 +210,7 @@ export function PosResponsiveCart({
                 <button
                   type="button"
                   onClick={onOpenDiscounts}
-                  disabled={cart.length === 0 || saleLocked}
+                  disabled={cart.length === 0 || saleLocked || giftCardLoadMinor > 0}
                   className="rounded-lg border border-white/10 px-3 py-2 text-[10px] font-semibold text-[#ff9a82] hover:text-[#ffb5a3] disabled:opacity-35"
                 >
                   Discounts
@@ -262,6 +274,7 @@ export function PosResponsiveCart({
                   <span className="money font-semibold text-[#ff9a82]">−₱{money(discountMinor)}</span>
                 </div>
               ) : null}
+              {giftCardLoadMinor > 0 ? <div className="mb-3 flex items-center justify-between text-[11px] text-[#ffb7a4]"><span>Gift-card load</span><span className="money font-semibold">₱{money(giftCardLoadMinor)}</span></div> : null}
               <div className="flex items-end justify-between">
                 <div>
                   <p className="font-data text-[8px] uppercase tracking-[0.12em] text-white/45">Total</p>

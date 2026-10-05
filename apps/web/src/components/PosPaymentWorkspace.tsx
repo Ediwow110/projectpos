@@ -11,6 +11,7 @@ export interface PosPaymentTile {
 interface PosPaymentWorkspaceProps {
   count: number;
   due: number;
+  giftCardLoadMinor?: number;
   changeMinor: number;
   registerSelected: boolean;
   now: string;
@@ -37,6 +38,7 @@ function money(minor: number): string {
 export function PosPaymentWorkspace({
   count,
   due,
+  giftCardLoadMinor = 0,
   changeMinor,
   registerSelected,
   now,
@@ -77,6 +79,7 @@ export function PosPaymentWorkspace({
           </div>
           <p className="money mt-2 text-center text-[30px] font-extrabold">₱{money(due)}</p>
           <p className="text-center text-[11.5px] text-white/40">Total Amount</p>
+          {giftCardLoadMinor > 0 ? <p className="px-5 pt-2 text-center text-[11px] text-[#ffb7a4]">Includes gift-card load ₱{money(giftCardLoadMinor)} · external tender only</p> : null}
           <div className="grid grid-cols-3 gap-2 px-5 pt-3">
             {availableTiles.map((method) => (
               <button
@@ -141,6 +144,7 @@ export function PosPaymentWorkspace({
           </p>
           <h2 className="font-display mt-5 text-[34px] font-bold">Take payment</h2>
           <p className="font-data mt-4 text-[9px] font-medium uppercase tracking-[0.05em] text-[#9e948c]">Amount due</p>
+          {giftCardLoadMinor > 0 ? <p className="mt-2 text-[10px] text-[#ffb7a4]">Gift-card load ₱{money(giftCardLoadMinor)} · external tender only</p> : null}
           <p className="money mt-1 text-[50px] font-bold leading-none">₱{money(due)}</p>
 
           <div className="mt-[42px] grid w-[556px] grid-cols-3 gap-3.5">
