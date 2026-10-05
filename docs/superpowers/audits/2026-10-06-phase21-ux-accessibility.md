@@ -12,7 +12,7 @@ Date: 2026-10-06
 
 ## Regression evidence
 
-- `pnpm --filter @pos/web test` — 62 files / 227 tests passed.
+- `pnpm --filter @pos/web test` — 63 files / 228 tests passed (including the explicit family-dimension payload test).
 - `pnpm build` — all packages built; 47 web routes generated successfully.
 - `pnpm e2e` — 174/174 passed across all three configured viewport projects in 11 minutes.
 - `pnpm test:exit` — 16 files / 68 tests passed.

@@ -6,6 +6,7 @@ import { AppShell } from "../../../components/AppShell";
 import { PageHeader, Panel, SectionHeader } from "../../../components/premium";
 import { GhostButton, PrimaryButton } from "../../../components/ui";
 import { ApiError, apiFetch } from "../../../lib/api";
+import { buildFamilyOptionUpdate } from "../../../lib/family-dimensions";
 
 interface Family { id: string; name: string; brand: string | null; options?: Array<{ id: string; name: string; values: Array<{ id: string; value: string; isActive?: boolean }> }>; variants?: Array<{ product: { id: string; name: string; sku: string | null } }> }
 interface Csrf { csrfToken: string }
@@ -47,12 +48,7 @@ export default function ProductFamiliesPage(): JSX.Element {
   }
   async function updateOptions(): Promise<void> {
     if (!selectedId || !detailQuery.data?.options) return;
-    const options = detailQuery.data.options.map((option) => ({
-      id: option.id,
-      name: optionNames[option.id]?.trim() || option.name,
-      addValues: (newValues[option.id] ?? "").split(",").map((value) => value.trim()).filter(Boolean),
-      archiveValueIds: archiveIds[option.id] ?? [],
-    })).filter((option) => option.name || option.addValues.length || option.archiveValueIds.length);
+    const options = buildFamilyOptionUpdate(detailQuery.data.options, optionNames, newValues, archiveIds);
     try { await apiFetch(`/api/v1/product-families/${selectedId}/options`, { csrfToken: await csrf(), init: { method: "PATCH", body: JSON.stringify({ options }) } }); setMessage("Option values updated."); await queryClient.invalidateQueries({ queryKey: ["product-family", selectedId] }); }
     catch (error) { setMessage(error instanceof ApiError ? `${error.code}: ${error.message}` : "Option update failed."); }
   }
