@@ -66,6 +66,19 @@ describe("phase4 sales service", () => {
     expect((await db.findBalance(productId, "b1"))!.qtyOnHand).toBe(8);
     expect((await db.listAudit()).some((a) => a.action === "sale.complete")).toBe(true);
   });
+  it("persists the trimmed void reason and timestamp on the sale projection", async () => {
+    const { db, svc, productId, ALL } = await setupSale();
+    const draft = await svc.createDraft("b1", "u1", "r1", {
+      lines: [{ productId, qty: 1, lineDiscountMinor: 0 }], orderDiscountMinor: 0,
+    }, ALL);
+
+    const voided = await svc.voidSale("b1", "u1", "r-void", draft.id, "  Duplicate draft  ", ALL);
+
+    expect(voided.status).toBe("VOIDED");
+    expect(voided.voidReason).toBe("Duplicate draft");
+    expect(voided.voidedAt).toBeInstanceOf(Date);
+    expect((await db.findSaleById(draft.id, "b1"))?.voidReason).toBe("Duplicate draft");
+  });
   it("replays the same idempotency key without a second sale", async () => {
     const { db, svc, productId, ALL } = await setupSale();
     const draft = await svc.createDraft("b1", "u1", "r1", {
@@ -163,6 +176,20 @@ describe("phase4 sales service", () => {
     await completing;
     await expect(voiding).rejects.toThrow("SALE_INVALID_TRANSITION");
     expect((await db.findSaleById(draft.id, "b1"))?.status).toBe("COMPLETED");
+  });
+  it("allows only one concurrent void transition and one audit effect", async () => {
+    const { db, svc, productId, ALL } = await setupSale();
+    const draft = await svc.createDraft("b1", "u1", "r1", {
+      lines: [{ productId, qty: 1, lineDiscountMinor: 0 }], orderDiscountMinor: 0,
+    }, ALL);
+    const results = await Promise.allSettled([
+      svc.voidSale("b1", "u1", "r-void-a", draft.id, "duplicate", ALL),
+      svc.voidSale("b1", "u1", "r-void-b", draft.id, "operator cancel", ALL),
+    ]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected").map((result) => String(result.reason))).toEqual(expect.arrayContaining([expect.stringContaining("SALE_INVALID_TRANSITION")]));
+    expect((await db.listAudit()).filter((entry) => entry.action === "sale.void")).toHaveLength(1);
+    expect((await db.findSaleById(draft.id, "b1"))?.voidReason).toMatch(/duplicate|operator cancel/);
   });
 });
 

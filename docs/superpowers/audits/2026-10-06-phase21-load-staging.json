@@ -1,0 +1,84 @@
+{
+  "generatedAt": "2026-10-05T18:30:23.276Z",
+  "baseUrl": "https://nexpos-phase21-staging-api.onrender.com",
+  "durationMs": 60000,
+  "concurrency": 10,
+  "total": 1448,
+  "failures": {
+    "product_search": 0,
+    "barcode_lookup": 0,
+    "reports": 0,
+    "inventory": 0,
+    "procurement": 0,
+    "customer_lookup": 0,
+    "stored_value": 0,
+    "pos_completion": 0,
+    "receipts": 0
+  },
+  "operations": {
+    "product_search": {
+      "count": 160,
+      "p50Ms": 200.50660000000062,
+      "p95Ms": 336.565300000002,
+      "p99Ms": 547.8217000000004,
+      "throughputPerSecond": 2.6666666666666665
+    },
+    "barcode_lookup": {
+      "count": 160,
+      "p50Ms": 205.5613000000003,
+      "p95Ms": 505.6830999999984,
+      "p99Ms": 671.823900000003,
+      "throughputPerSecond": 2.6666666666666665
+    },
+    "reports": {
+      "count": 161,
+      "p50Ms": 299.5829999999987,
+      "p95Ms": 672.4232999999949,
+      "p99Ms": 767.4597000000067,
+      "throughputPerSecond": 2.683333333333333
+    },
+    "inventory": {
+      "count": 161,
+      "p50Ms": 211.77889999999934,
+      "p95Ms": 553.0694999999978,
+      "p99Ms": 592.1446999999971,
+      "throughputPerSecond": 2.683333333333333
+    },
+    "procurement": {
+      "count": 161,
+      "p50Ms": 205.19120000000112,
+      "p95Ms": 430.4827000000005,
+      "p99Ms": 700.0709000000002,
+      "throughputPerSecond": 2.683333333333333
+    },
+    "customer_lookup": {
+      "count": 161,
+      "p50Ms": 210.80309999999736,
+      "p95Ms": 475.17609999999695,
+      "p99Ms": 656.5647000000026,
+      "throughputPerSecond": 2.683333333333333
+    },
+    "stored_value": {
+      "count": 161,
+      "p50Ms": 199.8822,
+      "p95Ms": 504.969299999997,
+      "p99Ms": 566.4380999999994,
+      "throughputPerSecond": 2.683333333333333
+    },
+    "pos_completion": {
+      "count": 162,
+      "p50Ms": 764.6314999999959,
+      "p95Ms": 1473.0958000000028,
+      "p99Ms": 1906.8421000000017,
+      "throughputPerSecond": 2.7
+    },
+    "receipts": {
+      "count": 161,
+      "p50Ms": 1038.7107000000033,
+      "p95Ms": 1779.435000000005,
+      "p99Ms": 2258.4701,
+      "throughputPerSecond": 2.683333333333333
+    }
+  },
+  "samples": []
+}

@@ -83,7 +83,11 @@ export class SalesLifecycleService {
       if (sale.status === "COMPLETED") throw new Error("SALE_INVALID_TRANSITION");
       const status = transitionSale(sale.status, "VOIDED");
       const updated =
-        (await this.db.updateSale(sale.id, businessId, { status })) ?? sale;
+        (await this.db.updateSale(sale.id, businessId, {
+          status,
+          voidedAt: new Date(),
+          voidReason: reason.trim(),
+        })) ?? sale;
       await this.db.appendAudit({
         businessId,
         actorId,

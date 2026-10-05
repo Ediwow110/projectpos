@@ -54,11 +54,74 @@ export class ProductModelService {
     return next;
   }
 
+  async updateFamilyOptions(
+    businessId: string,
+    actorId: string,
+    requestId: string,
+    familyId: string,
+    input: { options: Array<{ id: string; name?: string; addValues?: string[]; archiveValueIds?: string[] }> },
+  ): Promise<unknown> {
+    const family = await this.db.findProductFamilyById(familyId, businessId);
+    if (!family) throw new Error("NOT_FOUND");
+    const options = await this.db.listProductOptions(familyId, businessId);
+    const requestedIds = new Set(input.options.map((option) => option.id));
+    if (requestedIds.size !== input.options.length) throw new Error("DUPLICATE_OPTION");
+    if (input.options.some((option) => !options.some((current) => current.id === option.id))) throw new Error("NOT_FOUND");
+
+    const optionValues = new Map<string, Awaited<ReturnType<DbPort["listProductOptionValues"]>>>();
+    for (const option of options) optionValues.set(option.id, await this.db.listProductOptionValues(option.id, businessId));
+    const products = (await this.db.listProducts(businessId)).filter((product) => product.familyId === familyId);
+    const links = (await Promise.all(products.map((product) => this.db.listVariantOptionValues(product.id, businessId)))).flat();
+    const usedOptionIds = new Set(links.map((link) => link.optionId));
+    const usedValueIds = new Set(links.map((link) => link.optionValueId));
+
+    const names = new Map(options.map((option) => [option.id, option.name.trim().toLowerCase()]));
+    for (const update of input.options) {
+      const current = options.find((option) => option.id === update.id)!;
+      if (update.name !== undefined) {
+        const name = update.name.trim();
+        const key = name.toLowerCase();
+        if ([...names.entries()].some(([id, existing]) => id !== current.id && existing === key)) throw new Error("DUPLICATE_OPTION");
+        if (usedOptionIds.has(current.id) && key !== current.name.trim().toLowerCase()) throw new Error("OPTION_IN_USE");
+        names.set(current.id, key);
+      }
+      const values = optionValues.get(current.id)!;
+      const addValues = (update.addValues ?? []).map((value) => value.trim()).filter(Boolean);
+      const requestedAdds = new Set(addValues.map((value) => value.toLowerCase()));
+      if (requestedAdds.size !== addValues.length) throw new Error("DUPLICATE_OPTION_VALUE");
+      if (addValues.some((value) => values.some((existing) => existing.value.trim().toLowerCase() === value.toLowerCase()))) throw new Error("DUPLICATE_OPTION_VALUE");
+      const archiveIds = update.archiveValueIds ?? [];
+      if (new Set(archiveIds).size !== archiveIds.length) throw new Error("DUPLICATE_OPTION_VALUE");
+      for (const valueId of archiveIds) {
+        const value = values.find((candidate) => candidate.id === valueId);
+        if (!value) throw new Error("NOT_FOUND");
+        if (usedValueIds.has(value.id)) throw new Error("OPTION_VALUE_IN_USE");
+        if (value.isActive === false) throw new Error("OPTION_VALUE_ARCHIVED");
+      }
+      if (values.filter((value) => value.isActive !== false).length - archiveIds.length + addValues.length < 1) throw new Error("OPTION_VALUE_REQUIRED");
+      if (values.length + addValues.length > MAX_VALUES) throw new Error("PHASE19_LIMIT");
+    }
+
+    for (const update of input.options) {
+      const current = options.find((option) => option.id === update.id)!;
+      if (update.name !== undefined && update.name.trim() !== current.name) await this.db.updateProductOption(current.id, businessId, { name: update.name.trim() });
+      const values = optionValues.get(current.id)!;
+      for (const valueId of update.archiveValueIds ?? []) await this.db.updateProductOptionValue(valueId, businessId, { isActive: false });
+      let position = values.reduce((max, value) => Math.max(max, value.position), -1) + 1;
+      for (const value of (update.addValues ?? []).map((entry) => entry.trim()).filter(Boolean)) {
+        await this.db.createProductOptionValue({ businessId, optionId: current.id, value, position: position++, isActive: true });
+      }
+    }
+    await this.db.appendAudit({ businessId, actorId, action: "product_family.options.update", entityType: "ProductFamily", entityId: familyId, requestId, after: input });
+    return this.listFamily(businessId, familyId);
+  }
+
   async createVariant(businessId: string, actorId: string, requestId: string, familyId: string, input: { name?: string; sku: string; barcode?: string | null; priceMinor: number; costMinor: number; taxRateBps?: number | null; reorderLevel: number; trackInventory: boolean; optionValueIds: string[] }): Promise<DbProduct> {
     const family = await this.db.findProductFamilyById(familyId, businessId); if (!family || !family.isActive) throw new Error("NOT_FOUND");
     const options = await this.db.listProductOptions(familyId, businessId); if (input.optionValueIds.length !== options.length) throw new Error("OPTION_COMBINATION_REQUIRED");
     const selected = await Promise.all(input.optionValueIds.map((id) => this.db.findProductOptionValueById(id, businessId)));
     if (selected.some((v) => !v)) throw new Error("VALIDATION");
+    if (selected.some((v) => v!.isActive === false)) throw new Error("INACTIVE_OPTION_VALUE");
     const optionIds = selected.map((v) => v!.optionId); if (selected.some((v) => !options.some((option) => option.id === v!.optionId)) || new Set(optionIds).size !== optionIds.length || new Set(optionIds).size !== options.length) throw new Error("OPTION_COMBINATION_REQUIRED");
     const existing = (await this.db.listProducts(businessId)).filter((p) => p.familyId === familyId);
     if (existing.length >= MAX_VARIANTS) throw new Error("PHASE19_LIMIT");

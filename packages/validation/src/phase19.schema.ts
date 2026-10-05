@@ -20,6 +20,15 @@ export const productFamilyUpdateSchema = z.object({
   isActive: z.boolean().optional(),
 }).refine((v) => Object.keys(v).length > 0, { message: "VALIDATION" });
 
+export const productFamilyOptionsUpdateSchema = z.object({
+  options: z.array(z.object({
+    id: z.string().min(1, "VALIDATION"),
+    name: z.string().trim().min(1, "VALIDATION").max(64, "VALIDATION").optional(),
+    addValues: z.array(slug).max(20).optional(),
+    archiveValueIds: z.array(z.string().min(1, "VALIDATION")).max(20).optional(),
+  }).refine((value) => value.name !== undefined || value.addValues !== undefined || value.archiveValueIds !== undefined, { message: "VALIDATION" })).min(1).max(3),
+});
+
 export const productVariantCreateSchema = z.object({
   name: name.optional(),
   sku: slug,

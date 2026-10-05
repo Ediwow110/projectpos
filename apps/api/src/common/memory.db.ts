@@ -411,9 +411,11 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     async createProductOption(o) { const now = new Date(); const row = { ...o, id: nid("popt"), createdAt: now, updatedAt: now }; productOptions.set(row.id, row); return row; },
     async listProductOptions(familyId, businessId) { return [...productOptions.values()].filter((r) => r.familyId === familyId && r.businessId === businessId).sort((a, b) => a.position - b.position); },
     async findProductOptionById(id, businessId) { const row = productOptions.get(id) ?? null; return row && row.businessId === businessId ? row : null; },
-    async createProductOptionValue(v) { const now = new Date(); const row = { ...v, id: nid("pval"), createdAt: now, updatedAt: now }; productOptionValues.set(row.id, row); return row; },
+    async updateProductOption(id, businessId, patch) { const row = productOptions.get(id) ?? null; if (!row || row.businessId !== businessId) return null; const next = { ...row, ...patch, updatedAt: new Date() }; productOptions.set(id, next); return next; },
+    async createProductOptionValue(v) { const now = new Date(); const row = { ...v, isActive: v.isActive ?? true, id: nid("pval"), createdAt: now, updatedAt: now }; productOptionValues.set(row.id, row); return row; },
     async listProductOptionValues(optionId, businessId) { return [...productOptionValues.values()].filter((r) => r.optionId === optionId && r.businessId === businessId).sort((a, b) => a.position - b.position); },
     async findProductOptionValueById(id, businessId) { const row = productOptionValues.get(id) ?? null; return row && row.businessId === businessId ? row : null; },
+    async updateProductOptionValue(id, businessId, patch) { const row = productOptionValues.get(id) ?? null; if (!row || row.businessId !== businessId) return null; const next = { ...row, ...patch, updatedAt: new Date() }; productOptionValues.set(id, next); return next; },
     async createVariantOptionValue(v) { const row = { ...v, id: nid("pvo"), createdAt: new Date() }; variantOptionValues.set(row.id, row); return row; },
     async listVariantOptionValues(productId, businessId) { return [...variantOptionValues.values()].filter((r) => r.productId === productId && r.businessId === businessId); },
     async deleteVariantOptionValues(productId, businessId) { for (const [id, row] of variantOptionValues) if (row.productId === productId && row.businessId === businessId) variantOptionValues.delete(id); },
@@ -507,7 +509,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       for (const [id, row] of inventoryCountLines) if (row.inventoryCountId === countId && row.businessId === businessId) inventoryCountLines.delete(id);
     },
     async createSale(s) {
-      const row = { completedAt: null, ...s, id: nid("sale") };
+      const row = { completedAt: null, voidedAt: null, voidReason: null, ...s, id: nid("sale") };
       sales.set(row.id, row);
       return row;
     },

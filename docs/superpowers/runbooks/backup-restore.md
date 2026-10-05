@@ -3,6 +3,8 @@
 **Date:** 2026-09-23
 **Tools:** `scripts/backup.sh`, `scripts/restore.sh` (`pg_dump`/`pg_restore` custom format).
 
+**Phase 21 safety:** both scripts fail closed when required environment variables are absent; backup files are created with owner-only permissions (`umask 077`), the dump must be non-empty, and restore refuses a missing `BACKUP_FILE`. Neither script echoes `DATABASE_URL` or sources a secrets file.
+
 ## Policy
 
 - **Retention [SPEC-DEFAULT]:** daily backups kept 7 days, weekly (Sunday) kept 4 weeks, monthly (1st) kept 6 months. Prune by filename timestamp; never prune the latest successful backup.
@@ -19,6 +21,8 @@
 4. `DROP SCHEMA public CASCADE; CREATE SCHEMA public;` (simulated loss).
 5. `pg_restore --clean --if-exists` from the file.
 6. Verify: `\dt` lists all tables; row counts match the pre-drop counts.
+
+For a real drill, export `DATABASE_URL` only in the shell environment and use an explicit throwaway database name. Never run `restore.sh` against production as a rollback mechanism; restore to an isolated database, validate migrations/readiness and row counts, then use the documented migrate-forward or provider recovery procedure.
 
 ## Drill transcript (2026-09-23, local Docker, postgres:16-alpine)
 

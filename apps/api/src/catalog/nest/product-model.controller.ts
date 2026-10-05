@@ -5,6 +5,7 @@ import {
   bundleUpdateSchema,
   productFamilyCreateSchema,
   productFamilyUpdateSchema,
+  productFamilyOptionsUpdateSchema,
   productVariantCreateSchema,
   labelQuerySchema,
 } from "@pos/validation";
@@ -74,6 +75,17 @@ export class ProductModelController {
     if (!parsed.success) { fail(res, 400, "VALIDATION", "Invalid product family payload", req); return; }
     try { res.json(await this.models.updateFamily(req.auth!.businessId, req.auth!.userId, rid(req), id, parsed.data)); }
     catch (error) { failFromError(res, error, "Product family update failed", req); }
+  }
+
+  @Patch("product-families/:id/options")
+  @UseGuards(CsrfGuard)
+  @Scopes("catalog:write")
+  async updateFamilyOptions(@Req() req: Request, @Res() res: Response, @Param("id") id: string, @Body() body: unknown): Promise<void> {
+    if (!this.guardWrite(req, res)) return;
+    const parsed = productFamilyOptionsUpdateSchema.safeParse(body);
+    if (!parsed.success) { fail(res, 400, "VALIDATION", "Invalid product family options payload", req); return; }
+    try { res.json(await this.models.updateFamilyOptions(req.auth!.businessId, req.auth!.userId, rid(req), id, parsed.data)); }
+    catch (error) { failFromError(res, error, "Product family options update failed", req); }
   }
 
   @Post("product-families/:id/variants")

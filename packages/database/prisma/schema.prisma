@@ -315,6 +315,7 @@ model ProductOptionValue {
   optionId   String
   value      String
   position   Int      @default(0)
+  isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   business   Business @relation(fields: [businessId], references: [id])
@@ -491,6 +492,9 @@ model Sale {
   branchId       String?
   // Phase 12: set when the sale reaches COMPLETED; usage metering buckets by this.
   completedAt    DateTime?
+  // Phase 21: retained explanation and timestamp for an audited void.
+  voidedAt       DateTime?
+  voidReason     String?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
   business       Business   @relation(fields: [businessId], references: [id])

@@ -16,6 +16,17 @@ export function canRequestRefund(granted: string[]): boolean {
   return granted.includes("sale.refund");
 }
 
+export function voidAuditLabel(sale: {
+  status: string;
+  voidReason?: string | null;
+  voidedAt?: string | null;
+}): string | null {
+  if (sale.status !== "VOIDED") return null;
+  const reason = sale.voidReason?.trim() || "No reason recorded";
+  const timestamp = sale.voidedAt ? new Date(sale.voidedAt).toLocaleString("en-PH") : "Timestamp unavailable";
+  return `${reason} · ${timestamp}`;
+}
+
 export function buildCompletePayload(
   saleId: string,
   payments: Array<{ method: string; amountMinor: number; internalInstrumentId?: string }>,
