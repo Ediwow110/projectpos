@@ -15,6 +15,7 @@ import { DangerButton, GhostButton, PrimaryButton, StatusPill } from "../../../c
 import { ApiError, apiFetch } from "../../../lib/api";
 import { buildProductSearch } from "../../../lib/catalog";
 import { parseMajorCurrencyToMinor } from "../../../lib/pos-sale-model";
+import { voidAuditLabel } from "../../../lib/sales";
 
 interface Me {
   role: string;
@@ -93,6 +94,8 @@ interface SaleDetail {
   id: string;
   receiptNo: string;
   status: string;
+  voidedAt?: string | null;
+  voidReason?: string | null;
   subtotalMinor: number;
   discountMinor: number;
   taxMinor: number;
@@ -177,6 +180,7 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
   const canRefund = role === "owner" || role === "manager" || role === "inventory" || role === "cashier";
   const canReconcile = role === "owner" || role === "manager";
   const sale = detailQuery.data;
+  const voidAudit = sale ? voidAuditLabel(sale) : null;
   const successfulPayments = sale?.payments.filter((payment) => payment.status === "SUCCEEDED") ?? [];
   const cashSettled = successfulPayments.length > 0 && successfulPayments.every((payment) => payment.method === "cash");
   const canExchange = Boolean(
@@ -400,6 +404,15 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
         ) : null}
 
         {statusMessage ? <div role="status" className="rounded-xl border border-[#eadfd6] bg-white px-4 py-3 text-sm font-medium text-[#655b53]">{statusMessage}</div> : null}
+
+        {voidAudit ? (
+          <section role="region" aria-label="Void details">
+            <Panel className="border-[#efb9b9] bg-[#fff7f7] p-5">
+            <SectionHeader title="Sale voided" description="This sale cannot continue. The persisted reason and timestamp are part of the audit record." />
+            <p className="mt-3 text-sm font-semibold text-[#7c2d2d]">{voidAudit}</p>
+            </Panel>
+          </section>
+        ) : null}
 
         {sale?.status === "PENDING_PAYMENT" && paymongoPayment ? (
           <Panel className={paymongoPayment.status === "SUCCEEDED" ? "border-[#f1d6a7] bg-[#fff8eb] p-5" : "border-[#cfdcf4] bg-[#f4f7ff] p-5"}>
