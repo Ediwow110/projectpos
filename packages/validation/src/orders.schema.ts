@@ -15,7 +15,7 @@ export const orderDeliveryAddressSchema = z.object({
 export const orderContactSchema = z.object({
   contactName: z.string().trim().min(1, "VALIDATION").max(120, "VALIDATION"),
   email: z.string().trim().email("VALIDATION").max(254, "VALIDATION"),
-  phone: z.string().trim().regex(/^\+?\d{7,15}$/, "VALIDATION"),
+  phone: z.string().trim().min(7, "VALIDATION").max(40, "VALIDATION"),
   deliveryAddress: orderDeliveryAddressSchema.nullable().optional(),
   fulfillmentInstructions: z.string().trim().max(500, "VALIDATION").nullable().optional(),
 });
@@ -38,3 +38,48 @@ export const orderListSchema = z.object({
   dateFrom: z.string().trim().min(1, "VALIDATION").optional(),
   dateTo: z.string().trim().min(1, "VALIDATION").optional(),
 });
+
+export const publicStorefrontQuerySchema = z.object({
+  key: storefrontKeySchema,
+});
+
+export const publicCatalogQuerySchema = z.object({
+  key: storefrontKeySchema,
+  branchId: z.string().trim().min(1, "VALIDATION"),
+  q: z.string().trim().max(120, "VALIDATION").optional(),
+  categoryId: z.string().trim().min(1, "VALIDATION").optional(),
+  page: z.coerce.number().int().min(1, "VALIDATION").default(1),
+  pageSize: z.coerce.number().int().min(1, "VALIDATION").max(100, "VALIDATION").default(20),
+});
+
+export const publicOrderCreateSchema = z.object({
+  storefrontKey: storefrontKeySchema,
+  captchaToken: z.string().trim().min(1).max(2048).optional(),
+}).strict();
+
+export const publicOrderLineSchema = z.object({
+  productId: z.string().trim().min(1, "VALIDATION"),
+  qty: z.number().int("AMOUNT_NOT_INTEGER").min(1, "VALIDATION").max(9999, "VALIDATION"),
+}).strict();
+
+export const publicOrderDraftSchema = z.object({
+  branchId: z.string().trim().min(1, "VALIDATION"),
+  fulfillmentMode: z.enum(["PICKUP", "DELIVERY"]),
+  lines: publicOrderLineSchema.array().min(1, "VALIDATION").max(100, "VALIDATION"),
+}).strict();
+
+export const publicOrderSubmitSchema = orderContactSchema.extend({
+  branchId: z.string().trim().min(1, "VALIDATION"),
+  fulfillmentMode: z.enum(["PICKUP", "DELIVERY"]),
+  paymentMode: z.enum(["PREPAID", "PAY_AT_PICKUP"]),
+  paymentMethod: z.enum(["card", "gcash", "maya", "qrph"]).optional(),
+  captchaToken: z.string().trim().min(1).max(2048).optional(),
+}).strict();
+
+export const publicOrderStatusSchema = z.object({
+  token: orderAccessTokenSchema,
+}).strict();
+
+export const publicOrderPaymentRetrySchema = z.object({
+  paymentMethod: z.enum(["card", "gcash", "maya", "qrph"]),
+}).strict();

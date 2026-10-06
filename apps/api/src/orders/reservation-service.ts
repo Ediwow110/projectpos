@@ -68,22 +68,33 @@ export class ReservationService {
     idempotencyKey: string,
     now: Date,
   ): Promise<DbInventoryReservation[]> {
-    return this.db.withLock("sales:" + businessId, async () => {
-      const order = await this.db.findOrderById(orderId, businessId);
+    return this.db.withLock("sales:" + businessId, () =>
+      this.holdSubmittedOrderLocked(this.db, businessId, orderId, idempotencyKey, now),
+    );
+  }
+
+  async holdSubmittedOrderLocked(
+    db: DbPort,
+    businessId: string,
+    orderId: string,
+    idempotencyKey: string,
+    now: Date,
+  ): Promise<DbInventoryReservation[]> {
+      const order = await db.findOrderById(orderId, businessId);
       if (!order) throw new Error("NOT_FOUND");
       if (order.status !== "SUBMITTED" || !order.branchId) throw new Error("INVALID_STATE");
       const branchId = order.branchId;
-      const existing = await this.db.listReservationsByOrder(orderId, businessId);
+      const existing = await db.listReservationsByOrder(orderId, businessId);
       if (existing.length) {
         if (!existing.every((row) => row.idempotencyKey.startsWith(idempotencyKey + ":"))) {
           throw new Error("IDEMPOTENCY_MISMATCH");
         }
         return existing;
       }
-      const needs = await this.needs(this.db, businessId, orderId);
+      const needs = await this.needs(db, businessId, orderId);
       const targets = needs.map((need) => ({ productId: need.productId, branchId }));
-      return withInventoryLocks(this.db, businessId, targets, async () =>
-        this.db.withTransaction(async (tx) => {
+      return withInventoryLocks(db, businessId, targets, async () =>
+        db.withTransaction(async (tx) => {
           const replay = await tx.listReservationsByOrder(orderId, businessId);
           if (replay.length) return replay;
           await new InventoryAvailabilityService(tx).assertDecreaseAllowed(
@@ -110,7 +121,6 @@ export class ReservationService {
           return out;
         }),
       );
-    });
   }
 
   async releaseOrder(

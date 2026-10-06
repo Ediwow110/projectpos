@@ -645,6 +645,11 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
         .filter((row) => row.orderId === orderId && row.businessId === businessId)
         .sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
     },
+    async deleteOrderLines(orderId, businessId) {
+      for (const [id, row] of orderLines) {
+        if (row.orderId === orderId && row.businessId === businessId) orderLines.delete(id);
+      }
+    },
     async createInventoryReservation(r) {
       if ([...inventoryReservations.values()].some((row) => row.businessId === r.businessId && row.idempotencyKey === r.idempotencyKey)) {
         throw new Error("CONFLICT");

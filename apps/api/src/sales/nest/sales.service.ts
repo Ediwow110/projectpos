@@ -20,6 +20,7 @@ import { SalesLifecycleService } from "../sale-lifecycle-service";
 import type { AppliedManagerApproval } from "../../auth/nest/manager-approval-policy.service";
 import { SalesPayMongoWebhookService } from "../paymongo-webhook-service";
 import { OrderSaleService } from "../../orders/order-sale-service";
+import { OrderNotificationService } from "../../orders/order-notification-service";
 import { SalesPaymentProviderService } from "../payment-provider-service";
 import { SalesPaymentReconciliationService } from "../payment-reconciliation-service";
 import { SalesReceiptService } from "../receipt-service";
@@ -43,6 +44,7 @@ export class SalesService {
   private readonly completion: SalesCompletionService;
   private readonly lifecycle: SalesLifecycleService;
   private readonly paymongoWebhooks: SalesPayMongoWebhookService;
+  private readonly orderNotifications: OrderNotificationService;
   private readonly orderSales: OrderSaleService;
 
   constructor(
@@ -56,7 +58,8 @@ export class SalesService {
     this.drafts = new SalesDraftService(db, this.stock);
     this.completion = new SalesCompletionService(db, this.stock, this.shifts);
     this.lifecycle = new SalesLifecycleService(db);
-    this.paymongoWebhooks = new SalesPayMongoWebhookService(db, paymongo, this.stock);
+    this.orderNotifications = new OrderNotificationService(db, email);
+    this.paymongoWebhooks = new SalesPayMongoWebhookService(db, paymongo, this.stock, this.orderNotifications);
     this.orderSales = new OrderSaleService(db);
     this.receipts = new SalesReceiptService(db, email);
     this.providers = new SalesPaymentProviderService(db, paymongo, {
@@ -74,7 +77,7 @@ export class SalesService {
         await this.shifts.postCashSale(businessId, actorId, requestId, registerId, saleId, amountMinor);
       },
       recordSale: (businessId, completedAt) => new BillingService(this.db).recordSale(businessId, completedAt),
-    });
+    }, this.orderNotifications);
   }
 
   private async requireSale(businessId: string, saleId: string): Promise<DbSale> {

@@ -144,6 +144,7 @@ describe("sales receipt service", () => {
       async sendReceiptShare(input) {
         sent.push({ to: input.to, receiptNo: input.receiptNo, token: input.token });
       },
+      async sendOrderUpdate() {},
     };
     const sale = await db.createSale({
       businessId: "b1", receiptNo: "2026-000900", status: "COMPLETED",
@@ -182,6 +183,7 @@ describe("sales receipt service", () => {
         attempts += 1;
         throw new Error("EMAIL_DELIVERY_FAILED");
       },
+      async sendOrderUpdate() {},
     };
     const sale = await db.createSale({
       businessId: "b1", receiptNo: "2026-000901", status: "COMPLETED",

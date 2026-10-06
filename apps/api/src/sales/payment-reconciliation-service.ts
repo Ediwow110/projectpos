@@ -1,5 +1,6 @@
 import type { DbPayment, DbPort, DbSale, DbSaleItem } from "../common/db.port";
 import { OrderSaleService } from "../orders/order-sale-service";
+import { OrderNotificationService } from "../orders/order-notification-service";
 import { fingerprintPayload } from "./idempotency";
 import { transitionSale } from "./state-machine";
 
@@ -39,6 +40,7 @@ export class SalesPaymentReconciliationService {
   constructor(
     private readonly db: DbPort,
     private readonly ops: ReconciliationOps,
+    private readonly notifications?: OrderNotificationService,
   ) {
     this.orderSales = new OrderSaleService(db);
   }
@@ -51,7 +53,7 @@ export class SalesPaymentReconciliationService {
     outcome: "SUCCEEDED" | "FAILED",
     key: string,
   ): Promise<{ sale: EmbeddedSale; payment: DbPayment }> {
-    return this.db.withLock(`sales:${businessId}`, async () => this.db.withTransaction(async () => {
+    const result = await this.db.withLock(`sales:${businessId}`, async () => this.db.withTransaction(async () => {
       const fingerprint = fingerprintPayload({ paymentId, outcome });
       const existing = await this.db.findIdempotency(businessId, key, "payment.reconcile");
       if (existing) {
@@ -59,7 +61,7 @@ export class SalesPaymentReconciliationService {
         const payment = await this.db.findPaymentById(paymentId, businessId);
         if (!payment) throw new Error("NOT_FOUND");
         const sale = await this.ops.requireSale(businessId, payment.saleId);
-        return { sale: await this.ops.embedSale(sale), payment };
+        return { sale: await this.ops.embedSale(sale), payment, confirmedOrderId: null as string | null };
       }
 
       const payment = await this.db.findPaymentById(paymentId, businessId);
@@ -90,7 +92,7 @@ export class SalesPaymentReconciliationService {
 
       const legs = await this.db.listPaymentsBySale(sale.id, businessId);
       if (legs.some((leg) => leg.status === "UNKNOWN")) {
-        return { sale: await this.ops.embedSale(sale), payment: updatedPayment };
+        return { sale: await this.ops.embedSale(sale), payment: updatedPayment, confirmedOrderId: null as string | null };
       }
 
       const succeeded = legs
@@ -103,11 +105,12 @@ export class SalesPaymentReconciliationService {
           (await this.db.updateSale(sale.id, businessId, {
             status: transitionSale(failed, "PAYMENT_FAILED"),
           })) ?? sale;
-        return { sale: await this.ops.embedSale(failedSale), payment: updatedPayment };
+        return { sale: await this.ops.embedSale(failedSale), payment: updatedPayment, confirmedOrderId: null as string | null };
       }
 
       const items = await this.db.listSaleItems(sale.id, businessId);
       const linkedOrder = await this.db.findOrderBySaleId(sale.id, businessId);
+      const shouldNotify = linkedOrder?.channel === "WEB" && linkedOrder.status === "SUBMITTED";
       await this.ops.applyStockEffect(
         businessId,
         actorId,
@@ -142,7 +145,11 @@ export class SalesPaymentReconciliationService {
         (await this.db.updateSale(sale.id, businessId, { status, completedAt })) ?? sale;
       await this.orderSales.settleLinkedSaleLocked(this.db, businessId, sale.id, completedAt);
       await this.ops.recordSale(businessId, completedAt);
-      return { sale: await this.ops.embedSale(updated), payment: updatedPayment };
+      return { sale: await this.ops.embedSale(updated), payment: updatedPayment, confirmedOrderId: shouldNotify ? linkedOrder!.id : null };
     }));
+    if (result.confirmedOrderId && this.notifications) {
+      await this.notifications.sendEvent(businessId, result.confirmedOrderId, "CONFIRMED");
+    }
+    return { sale: result.sale, payment: result.payment };
   }
 }

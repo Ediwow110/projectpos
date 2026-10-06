@@ -1,5 +1,6 @@
 import type { DbPort } from "../common/db.port";
 import { OrderSaleService } from "../orders/order-sale-service";
+import { OrderNotificationService } from "../orders/order-notification-service";
 import { incrementMetric } from "../common/metrics";
 import { BillingService } from "../billing/nest/billing.service";
 import {
@@ -19,6 +20,7 @@ export class SalesPayMongoWebhookService {
     private readonly db: DbPort,
     private readonly paymongo: PayMongoPort,
     private readonly stock: SalesStockService,
+    private readonly notifications?: OrderNotificationService,
   ) {
     this.billing = new BillingService(db);
     this.orderSales = new OrderSaleService(db);
@@ -27,8 +29,8 @@ export class SalesPayMongoWebhookService {
   private async settlePaid(
     event: PayMongoPaidEvent,
     requestId: string,
-  ): Promise<void> {
-    await this.db.withLock(`sales:${event.businessId}`, async () => this.db.withTransaction(async () => {
+  ): Promise<string | null> {
+    return this.db.withLock(`sales:${event.businessId}`, async () => this.db.withTransaction(async () => {
       const sale = await this.db.findSaleById(event.saleId, event.businessId);
       if (!sale) throw new Error("NOT_FOUND");
       const payments = await this.db.listPaymentsBySale(
@@ -55,7 +57,7 @@ export class SalesPayMongoWebhookService {
         throw new Error("PAYMENT_TOTAL_MISMATCH");
       }
       if (sale.status === "COMPLETED" && payment.status === "SUCCEEDED") {
-        return;
+        return null;
       }
       if (sale.status !== "PENDING_PAYMENT") {
         throw new Error("SALE_INVALID_TRANSITION");
@@ -66,6 +68,7 @@ export class SalesPayMongoWebhookService {
 
       const items = await this.db.listSaleItems(sale.id, event.businessId);
       const linkedOrder = await this.db.findOrderBySaleId(sale.id, event.businessId);
+      const shouldNotify = linkedOrder?.channel === "WEB" && linkedOrder.status === "SUBMITTED";
       await this.stock.applySale(
         event.businessId,
         "paymongo-webhook",
@@ -103,6 +106,7 @@ export class SalesPayMongoWebhookService {
         requestId,
       });
       incrementMetric("pos_sales_completed_total");
+      return shouldNotify ? linkedOrder!.id : null;
     }));
   }
 
@@ -131,8 +135,11 @@ export class SalesPayMongoWebhookService {
       });
       if (!claimed) return { handled: true, deduplicated: true };
       try {
-        await this.settlePaid(event, requestId);
+        const confirmedOrderId = await this.settlePaid(event, requestId);
         await this.db.updateWebhookEventStatus(claimed.id, "processed");
+        if (confirmedOrderId && this.notifications) {
+          await this.notifications.sendEvent(event.businessId, confirmedOrderId, "CONFIRMED");
+        }
         return { handled: true };
       } catch (error) {
         await this.db.deleteWebhookEvent(claimed.id);

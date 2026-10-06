@@ -1173,6 +1173,7 @@ export interface DbPort {
   listDueReservationOrders(now: Date, limit: number): Promise<DbOrder[]>;
   createOrderLine(l: Omit<DbOrderLine, "id">): Promise<DbOrderLine>;
   listOrderLines(orderId: string, businessId: string): Promise<DbOrderLine[]>;
+  deleteOrderLines(orderId: string, businessId: string): Promise<void>;
   createInventoryReservation(r: Omit<DbInventoryReservation, "id">): Promise<DbInventoryReservation>;
   listReservationsByOrder(orderId: string, businessId: string): Promise<DbInventoryReservation[]>;
   listActiveReservationsByProduct(businessId: string, branchId: string, productId: string): Promise<DbInventoryReservation[]>;

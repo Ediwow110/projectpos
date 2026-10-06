@@ -73,7 +73,11 @@ import { SecurityHeadersMiddleware, securityHeaders } from "./common/security-he
 import { MetricsMiddleware, httpMetrics } from "./common/metrics.middleware";
 import { MetricsController } from "./common/metrics.controller";
 import { OrderController } from "./orders/nest/order.controller";
+import { PublicOrderController } from "./orders/nest/public-order.controller";
 import { OrderService } from "./orders/order-service";
+import { OrderNotificationService } from "./orders/order-notification-service";
+import { OrderExpiryService } from "./orders/order-expiry-service";
+import { FirstPartyOriginGuard } from "./common/first-party-origin.guard";
 import { SessionGuard } from "./common/session.guard";
 import { CsrfGuard } from "./common/csrf.guard";
 import {
@@ -105,7 +109,7 @@ function runtimeDatabaseUrl(): string | undefined {
 }
 
 @Module({
-    controllers: [HealthController, AuthController, ApprovalController, TenantController, BusinessController, ProductModelController, CatalogController, InventoryController, InventoryCountController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, ProcurementController, ValueController, MetricsController, OrderController],
+    controllers: [HealthController, AuthController, ApprovalController, TenantController, BusinessController, ProductModelController, CatalogController, InventoryController, InventoryCountController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, ProcurementController, ValueController, MetricsController, OrderController, PublicOrderController],
   providers: [
     {
       provide: HUMAN_VERIFICATION_PORT,
@@ -154,6 +158,21 @@ function runtimeDatabaseUrl(): string | undefined {
     DisplayService,
     ProcurementService,
     OrderService,
+    FirstPartyOriginGuard,
+    {
+      provide: "OrderNotificationService",
+      useFactory: (d: DbPort, email: TransactionalEmailPort) => new OrderNotificationService(d, email),
+      inject: ["DbPort", TRANSACTIONAL_EMAIL_PORT],
+    },
+    {
+      provide: "OrderExpiryService",
+      useFactory: (d: DbPort, paymongo: PayMongoPort) => {
+        const service = new OrderExpiryService(d, paymongo);
+        service.start();
+        return service;
+      },
+      inject: ["DbPort", PAYMONGO_PORT],
+    },
     {
       provide: InventoryCountService,
       useFactory: (d: DbPort, procurement: ProcurementService) => new InventoryCountService(d, procurement),
@@ -211,7 +230,7 @@ export async function createTestApp(options: { paymongo?: PayMongoPort; humanVer
     ? new PgDbPort(new PgContext(databaseUrl))
     : createMemoryDb();
   const moduleRef = await Test.createTestingModule({
-  controllers: [HealthController, AuthController, ApprovalController, TenantController, BusinessController, ProductModelController, CatalogController, InventoryController, InventoryCountController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, ProcurementController, ValueController, MetricsController, OrderController],
+  controllers: [HealthController, AuthController, ApprovalController, TenantController, BusinessController, ProductModelController, CatalogController, InventoryController, InventoryCountController, SalesController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, ProcurementController, ValueController, MetricsController, OrderController, PublicOrderController],
     providers: [
       { provide: "DbPort", useValue: db },
       { provide: PAYMONGO_PORT, useValue: options.paymongo ?? createPayMongoFromEnv({}) },
@@ -347,6 +366,17 @@ export async function createTestApp(options: { paymongo?: PayMongoPort; humanVer
         provide: OrderService,
         useFactory: (d: DbPort) => new OrderService(d),
         inject: ["DbPort"],
+      },
+      FirstPartyOriginGuard,
+      {
+        provide: "OrderNotificationService",
+        useFactory: (d: DbPort, email: TransactionalEmailPort) => new OrderNotificationService(d, email),
+        inject: ["DbPort", TRANSACTIONAL_EMAIL_PORT],
+      },
+      {
+        provide: "OrderExpiryService",
+        useFactory: (d: DbPort, paymongo: PayMongoPort) => new OrderExpiryService(d, paymongo),
+        inject: ["DbPort", PAYMONGO_PORT],
       },
       {
         provide: InventoryCountService,

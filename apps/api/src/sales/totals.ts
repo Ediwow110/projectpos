@@ -17,11 +17,16 @@ function lineGross(line: TotalsLine): number {
   return line.qty * line.priceMinor;
 }
 
+export function computeTaxMinor(netMinor: number, rateBps: number | null): number {
+  const rate = rateBps;
+  if (rate === null || rate === 0) return 0;
+  return Math.round((Math.max(0, netMinor) * rate) / 10000);
+}
+
 function lineTax(line: TotalsLine, businessTaxRateBps: number | null): number {
   const rate = line.taxRateBps ?? businessTaxRateBps;
-  if (rate === null || rate === 0) return 0;
   const net = Math.max(0, lineGross(line) - line.lineDiscountMinor);
-  return Math.round((net * rate) / 10000);
+  return computeTaxMinor(net, rate);
 }
 
 export function computeSaleTotals(input: {

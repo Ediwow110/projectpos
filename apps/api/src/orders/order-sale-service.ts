@@ -7,6 +7,7 @@ import type {
   DbSaleItemBundleComponent,
 } from "../common/db.port";
 import { ReservationService } from "./reservation-service";
+import { OrderAccessService } from "./order-access-service";
 
 type FrozenBundleComponent = Pick<
   DbSaleItemBundleComponent,
@@ -274,6 +275,7 @@ export class OrderSaleService {
         order.version,
       );
       if (!confirmed) throw new Error("STALE_ORDER_VERSION");
+      await new OrderAccessService(db).revokeCheckoutTokens(businessId, order.id, completedAt);
       return confirmed;
     }
     if (order.channel === "POS") {

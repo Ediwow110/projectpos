@@ -184,6 +184,12 @@ export function ordersFamily(ctx: PgContext) {
         return r.rows as DbOrderLine[];
       } finally { if (ctx.owns()) c.release(); }
     },
+    async deleteOrderLines(orderId: string, businessId: string): Promise<void> {
+      const c = await ctx.client();
+      try {
+        await c.query('DELETE FROM "OrderLine" WHERE "orderId" = $1 AND "businessId" = $2', [orderId, businessId]);
+      } finally { if (ctx.owns()) c.release(); }
+    },
     async createInventoryReservation(r: Omit<DbInventoryReservation, "id">): Promise<DbInventoryReservation> {
       const c = await ctx.client();
       try {
