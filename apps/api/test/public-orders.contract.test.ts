@@ -64,7 +64,12 @@ describe("phase22 public ordering", () => {
   it("exposes a redacted storefront and reservation-aware catalog", async () => {
     const storefront = await request(app.getHttpServer()).get("/api/v1/public/storefront?key=" + storefrontKey);
     expect(storefront.status).toBe(200);
-    expect(storefront.body).toMatchObject({ name: "Public Shop", currency: "PHP", deliveryAvailable: true });
+    expect(storefront.body).toMatchObject({
+      name: "Public Shop",
+      currency: "PHP",
+      deliveryAvailable: true,
+      deliveryBranch: { id: branchId, name: "Main" },
+    });
     expect(storefront.body).not.toHaveProperty("businessId");
     const catalog = await request(app.getHttpServer())
       .get("/api/v1/public/storefront/catalog?key=" + storefrontKey + "&branchId=" + branchId);

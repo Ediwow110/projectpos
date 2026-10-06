@@ -508,13 +508,19 @@ export class OrderService {
         ? settings["onlinePickupBranchIds"].filter((value): value is string => typeof value === "string")
         : [],
     );
+    const deliveryBranchId =
+      typeof settings["onlineFulfillmentBranchId"] === "string"
+        ? settings["onlineFulfillmentBranchId"]
+        : null;
+    const deliveryBranch = deliveryBranchId
+      ? branches.find((branch) => branch.id === deliveryBranchId) ?? null
+      : null;
     return {
       name: business.name,
       currency: business.currency,
       pickupBranches: branches.filter((branch) => pickupIds.has(branch.id)),
-      deliveryAvailable:
-        typeof settings["onlineFulfillmentBranchId"] === "string"
-        && branches.some((branch) => branch.id === settings["onlineFulfillmentBranchId"]),
+      deliveryAvailable: deliveryBranch !== null,
+      deliveryBranch,
       deliveryFlatFeeMinor:
         typeof settings["deliveryFlatFeeMinor"] === "number" ? settings["deliveryFlatFeeMinor"] : 0,
       taxRateBps: typeof settings["taxRateBps"] === "number" ? settings["taxRateBps"] : null,
