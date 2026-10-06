@@ -10,6 +10,26 @@ export type PublicPaymentStatus =
   | "PARTIALLY_REFUNDED"
   | "REFUNDED";
 
+export type StaffOrderStatus =
+  | "DRAFT"
+  | "CHECKOUT"
+  | "SUBMITTED"
+  | "CONFIRMED"
+  | "COMPLETED"
+  | "CANCELLED"
+  | "EXPIRED"
+  | "REJECTED";
+
+export type StaffFulfillmentStatus =
+  | "PENDING"
+  | "READY"
+  | "PACKED"
+  | "DISPATCHED"
+  | "DELIVERED"
+  | "DELIVERY_FAILED"
+  | "COLLECTED"
+  | "CANCELLED";
+
 export interface PublicStorefront {
   name: string;
   currency: string;
@@ -171,4 +191,193 @@ export function formatOrderMoney(minor: number, currency: string): string {
 export function newOrderIdempotencyKey(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
   return "order-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+}
+
+export function buildOrderListPath(input: {
+  limit: number;
+  status?: StaffOrderStatus;
+  channel?: "POS" | "WEB";
+  fulfillmentMode?: "NONE" | PublicFulfillmentMode;
+  branchId?: string;
+  paymentStatus?: PublicPaymentStatus;
+  dateFrom?: string;
+  dateTo?: string;
+  cursor?: string;
+}): string {
+  if (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 100) throw new Error("VALIDATION");
+  const query = new URLSearchParams();
+  query.set("limit", String(input.limit));
+  if (input.status) query.set("status", input.status);
+  if (input.channel) query.set("channel", input.channel);
+  if (input.fulfillmentMode) query.set("fulfillmentMode", input.fulfillmentMode);
+  if (input.branchId) query.set("branchId", input.branchId);
+  if (input.paymentStatus) query.set("paymentStatus", input.paymentStatus);
+  if (input.dateFrom) query.set("dateFrom", input.dateFrom);
+  if (input.dateTo) query.set("dateTo", input.dateTo);
+  if (input.cursor) query.set("cursor", input.cursor);
+  return "/api/v1/orders?" + query.toString();
+}
+
+function pesosToMinor(value: string): number {
+  const normalized = value.trim();
+  if (!/^\d+(?:\.\d{1,2})?$/.test(normalized)) throw new Error("VALIDATION");
+  const [whole, fraction = ""] = normalized.split(".");
+  const minor = Number(whole) * 100 + Number((fraction + "00").slice(0, 2));
+  if (!Number.isSafeInteger(minor) || minor < 0) throw new Error("VALIDATION");
+  return minor;
+}
+
+export function onlineOrderingSettingsPayload(input: {
+  enabled: boolean;
+  pickupBranchIds: string[];
+  deliveryBranchId: string | null;
+  deliveryFeePesos: string;
+}): {
+  onlineOrderingEnabled: boolean;
+  onlinePickupBranchIds: string[];
+  onlineFulfillmentBranchId: string | null;
+  deliveryFlatFeeMinor: number;
+} {
+  const deliveryFlatFeeMinor = pesosToMinor(input.deliveryFeePesos);
+  return {
+    onlineOrderingEnabled: input.enabled,
+    onlinePickupBranchIds: [...new Set(input.pickupBranchIds.filter(Boolean))],
+    onlineFulfillmentBranchId: input.deliveryBranchId || null,
+    deliveryFlatFeeMinor,
+  };
+}
+
+export interface OrderCapabilities {
+  view: boolean;
+  settings: boolean;
+  accept: boolean;
+  cancel: boolean;
+  fulfill: boolean;
+  collect: boolean;
+  viewDelivery: boolean;
+  linkCustomer: boolean;
+  manageAccess: boolean;
+}
+
+const NO_ORDER_CAPABILITIES: OrderCapabilities = {
+  view: false,
+  settings: false,
+  accept: false,
+  cancel: false,
+  fulfill: false,
+  collect: false,
+  viewDelivery: false,
+  linkCustomer: false,
+  manageAccess: false,
+};
+
+export function orderCapabilitiesForRole(role?: string): OrderCapabilities {
+  if (role === "owner") {
+    return {
+      view: true,
+      settings: true,
+      accept: true,
+      cancel: true,
+      fulfill: true,
+      collect: true,
+      viewDelivery: true,
+      linkCustomer: true,
+      manageAccess: true,
+    };
+  }
+  if (role === "manager") {
+    return {
+      view: true,
+      settings: false,
+      accept: true,
+      cancel: true,
+      fulfill: true,
+      collect: true,
+      viewDelivery: true,
+      linkCustomer: true,
+      manageAccess: true,
+    };
+  }
+  if (role === "cashier") {
+    return {
+      view: true,
+      settings: false,
+      accept: true,
+      cancel: false,
+      fulfill: false,
+      collect: true,
+      viewDelivery: false,
+      linkCustomer: false,
+      manageAccess: false,
+    };
+  }
+  if (role === "inventory") {
+    return {
+      view: true,
+      settings: false,
+      accept: false,
+      cancel: false,
+      fulfill: true,
+      collect: false,
+      viewDelivery: true,
+      linkCustomer: false,
+      manageAccess: false,
+    };
+  }
+  return { ...NO_ORDER_CAPABILITIES };
+}
+
+export type StaffOrderAction =
+  | "accept"
+  | "reject"
+  | "cancel"
+  | "assign"
+  | "ready"
+  | "pack"
+  | "dispatch"
+  | "deliver"
+  | "fail"
+  | "collect"
+  | "resend-access"
+  | "revoke-access";
+
+export function orderDetailActions(input: {
+  role?: string;
+  orderStatus: StaffOrderStatus;
+  paymentMode: "POS" | PublicPaymentMode;
+  fulfillment: { type: "PICKUP" | "DELIVERY"; status: StaffFulfillmentStatus } | null;
+}): StaffOrderAction[] {
+  const caps = orderCapabilitiesForRole(input.role);
+  const actions: StaffOrderAction[] = [];
+  if (input.orderStatus === "SUBMITTED") {
+    if (caps.accept && input.paymentMode === "PAY_AT_PICKUP") actions.push("accept");
+    if (caps.cancel) actions.push("reject");
+  }
+  if (input.orderStatus === "CONFIRMED" && input.fulfillment) {
+    const row = input.fulfillment;
+    if (caps.fulfill && !["DELIVERED", "COLLECTED", "CANCELLED"].includes(row.status)) actions.push("assign");
+    if (caps.fulfill && row.type === "PICKUP" && row.status === "PENDING") actions.push("ready");
+    if (caps.fulfill && row.type === "DELIVERY" && row.status === "PENDING") actions.push("pack");
+    if (caps.fulfill && row.type === "DELIVERY" && ["PACKED", "DELIVERY_FAILED"].includes(row.status)) actions.push("dispatch");
+    if (caps.fulfill && row.type === "DELIVERY" && row.status === "DISPATCHED") actions.push("deliver", "fail");
+    if (caps.collect && row.type === "PICKUP" && row.status === "READY") actions.push("collect");
+    if (caps.cancel && !["DELIVERED", "COLLECTED"].includes(row.status)) actions.push("cancel");
+  } else if (input.orderStatus === "CONFIRMED" && caps.cancel) {
+    actions.push("cancel");
+  }
+  if (caps.manageAccess && ["SUBMITTED", "CONFIRMED", "COMPLETED"].includes(input.orderStatus)) {
+    actions.push("resend-access", "revoke-access");
+  }
+  return actions;
+}
+
+export function isAgedOperationalHold(
+  reservation: { status: string; expiresAt: string | null; createdAt: string },
+  now: Date = new Date(),
+  thresholdMs = 24 * 60 * 60 * 1000,
+): boolean {
+  if (reservation.status !== "HELD" || reservation.expiresAt !== null) return false;
+  const createdAt = new Date(reservation.createdAt);
+  if (Number.isNaN(createdAt.getTime())) return false;
+  return now.getTime() - createdAt.getTime() >= thresholdMs;
 }

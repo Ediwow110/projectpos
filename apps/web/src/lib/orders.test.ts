@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildOrderListPath,
+  isAgedOperationalHold,
+  onlineOrderingSettingsPayload,
+  orderCapabilitiesForRole,
+  orderDetailActions,
   paymentStatusCopy,
   reconcileCartForCatalog,
   replaceWithServerTotals,
@@ -106,5 +111,87 @@ describe("public ordering helpers", () => {
   it("explains disabled or unavailable online ordering without leaking tenant detail", () => {
     expect(storefrontErrorMessage("NOT_FOUND")).toBe("Online ordering is not available for this store.");
     expect(storefrontErrorMessage("NETWORK_ERROR")).toBe("Could not load this storefront. Try again.");
+  });
+
+  it("builds bounded staff Order queries and preserves the opaque cursor", () => {
+    expect(buildOrderListPath({
+      limit: 25,
+      status: "CONFIRMED",
+      fulfillmentMode: "PICKUP",
+      paymentStatus: "UNPAID",
+      cursor: "opaque+/cursor==",
+    })).toBe(
+      "/api/v1/orders?limit=25&status=CONFIRMED&fulfillmentMode=PICKUP&paymentStatus=UNPAID&cursor=opaque%2B%2Fcursor%3D%3D",
+    );
+    expect(() => buildOrderListPath({ limit: 101 })).toThrow("VALIDATION");
+  });
+
+  it("builds online-ordering settings without tenant IDs and converts delivery pesos to minor units", () => {
+    expect(onlineOrderingSettingsPayload({
+      enabled: true,
+      pickupBranchIds: ["br_pickup"],
+      deliveryBranchId: "br_delivery",
+      deliveryFeePesos: "49.50",
+    })).toEqual({
+      onlineOrderingEnabled: true,
+      onlinePickupBranchIds: ["br_pickup"],
+      onlineFulfillmentBranchId: "br_delivery",
+      deliveryFlatFeeMinor: 4950,
+    });
+    expect(() => onlineOrderingSettingsPayload({
+      enabled: true,
+      pickupBranchIds: [],
+      deliveryBranchId: null,
+      deliveryFeePesos: "-1",
+    })).toThrow("VALIDATION");
+  });
+
+  it("matches the seeded Order capabilities without granting settings or access management to lower roles", () => {
+    expect(orderCapabilitiesForRole("owner")).toMatchObject({
+      view: true, settings: true, accept: true, cancel: true, fulfill: true, collect: true, linkCustomer: true, manageAccess: true,
+    });
+    expect(orderCapabilitiesForRole("manager")).toMatchObject({ view: true, settings: false, fulfill: true, manageAccess: true });
+    expect(orderCapabilitiesForRole("cashier")).toMatchObject({ view: true, accept: true, collect: true, cancel: false, fulfill: false, manageAccess: false });
+    expect(orderCapabilitiesForRole("inventory")).toMatchObject({ view: true, accept: false, collect: false, cancel: false, fulfill: true, manageAccess: false });
+  });
+
+  it("derives only state-valid Order and fulfillment actions", () => {
+    expect(orderDetailActions({
+      role: "cashier",
+      orderStatus: "SUBMITTED",
+      paymentMode: "PAY_AT_PICKUP",
+      fulfillment: null,
+    })).toEqual(["accept"]);
+    expect(orderDetailActions({
+      role: "inventory",
+      orderStatus: "CONFIRMED",
+      paymentMode: "PREPAID",
+      fulfillment: { type: "DELIVERY", status: "PACKED" },
+    })).toEqual(["assign", "dispatch"]);
+    expect(orderDetailActions({
+      role: "owner",
+      orderStatus: "CONFIRMED",
+      paymentMode: "PREPAID",
+      fulfillment: { type: "PICKUP", status: "READY" },
+    })).toEqual(expect.arrayContaining(["assign", "collect", "cancel", "resend-access", "revoke-access"]));
+  });
+
+  it("flags only non-expiring HELD reservations older than 24 hours", () => {
+    const now = new Date("2026-10-06T12:00:00.000Z");
+    expect(isAgedOperationalHold({
+      status: "HELD",
+      expiresAt: null,
+      createdAt: "2026-10-05T11:59:59.000Z",
+    }, now)).toBe(true);
+    expect(isAgedOperationalHold({
+      status: "HELD",
+      expiresAt: "2026-10-06T12:20:00.000Z",
+      createdAt: "2026-10-05T00:00:00.000Z",
+    }, now)).toBe(false);
+    expect(isAgedOperationalHold({
+      status: "COMMITTED",
+      expiresAt: null,
+      createdAt: "2026-10-04T00:00:00.000Z",
+    }, now)).toBe(false);
   });
 });
