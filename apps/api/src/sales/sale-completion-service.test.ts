@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { createMemoryDb } from "../common/memory.db";
 import { OrderSaleService } from "../orders/order-sale-service";
+import { FulfillmentService } from "../orders/fulfillment-service";
 import { ReservationService } from "../orders/reservation-service";
 import { SalesService } from "./nest/sales.service";
 
-async function setupWebSale(opts: { hold?: boolean } = { hold: true }) {
+async function setupWebSale(opts: {
+  hold?: boolean;
+  fulfillmentMode?: "PICKUP" | "DELIVERY";
+  paymentMode?: "PREPAID" | "PAY_AT_PICKUP";
+} = { hold: true }) {
   const db = createMemoryDb();
   const business = await db.createBusiness({ name: "Web settle", currency: "PHP" });
   const branch = await db.createBranch({ businessId: business.id, name: "Main", type: "store", isActive: true });
@@ -15,11 +20,16 @@ async function setupWebSale(opts: { hold?: boolean } = { hold: true }) {
   });
   await db.upsertBalance({ businessId: business.id, branchId: branch.id, productId: product.id, qtyOnHand: 1 });
   const now = new Date("2026-10-06T12:00:00.000Z");
+  const fulfillmentMode = opts.fulfillmentMode ?? "PICKUP";
+  const paymentMode = opts.paymentMode ?? (fulfillmentMode === "PICKUP" ? "PAY_AT_PICKUP" : "PREPAID");
+  const delivery = fulfillmentMode === "DELIVERY";
   const order = await db.createOrder({
-    businessId: business.id, channel: "WEB", fulfillmentMode: "PICKUP", paymentMode: "PAY_AT_PICKUP",
+    businessId: business.id, channel: "WEB", fulfillmentMode, paymentMode,
     branchId: branch.id, customerId: null, contactName: "Ana", email: "ana@example.com", phone: "+639171234567",
-    deliveryAddress: null, fulfillmentInstructions: null, currency: "PHP", subtotalMinor: 100, discountMinor: 0,
-    taxMinor: 0, deliveryFeeMinor: 0, deliveryTaxMinor: 0, totalMinor: 100, saleId: null, status: "SUBMITTED",
+    deliveryAddress: delivery ? { line1: "1 Main" } : null, fulfillmentInstructions: delivery ? "Leave at door" : null,
+    currency: "PHP", subtotalMinor: 100, discountMinor: 0, taxMinor: 0,
+    deliveryFeeMinor: delivery ? 20 : 0, deliveryTaxMinor: delivery ? 2 : 0,
+    totalMinor: delivery ? 122 : 100, saleId: null, status: "SUBMITTED",
     version: 1, checkoutAt: now, submittedAt: now, confirmedAt: null, completedAt: null, cancelledAt: null,
     actorId: "public", requestId: "web-order", createdAt: now, updatedAt: now,
   });
@@ -63,6 +73,33 @@ describe("phase22 reservation-aware Sale completion", () => {
     });
     expect(replay.replayed).toBe(true);
     expect((await db.listMovements(product.id, business.id, branch.id)).filter((row) => row.type === "sale")).toHaveLength(1);
+  });
+
+  it("creates one full frozen-line fulfillment for prepaid pickup and delivery settlement", async () => {
+    for (const fulfillmentMode of ["PICKUP", "DELIVERY"] as const) {
+      const { db, business, branch, order, sale, sales } = await setupWebSale({
+        fulfillmentMode,
+        paymentMode: "PREPAID",
+      });
+      await sales.completeSale(business.id, "cashier", `complete-${fulfillmentMode}`, sale.id, {
+        payments: [{ method: "cash", amountMinor: sale.totalMinor }],
+        key: `complete-${fulfillmentMode}-key`, granted: [], branchId: branch.id,
+      });
+
+      const fulfillments = await db.listFulfillmentsByOrder(order.id, business.id);
+      expect(fulfillments).toHaveLength(1);
+      expect(fulfillments[0]).toMatchObject({
+        type: fulfillmentMode,
+        branchId: branch.id,
+        deliveryAddress: fulfillmentMode === "DELIVERY" ? { line1: "1 Main" } : null,
+      });
+      expect(await db.listFulfillmentLines(fulfillments[0]!.id, business.id)).toEqual([
+        expect.objectContaining({ orderLineId: expect.any(String), qty: 1 }),
+      ]);
+
+      await new FulfillmentService(db).ensureFulfillmentLocked(business.id, order.id);
+      expect(await db.listFulfillmentsByOrder(order.id, business.id)).toHaveLength(1);
+    }
   });
 
   it("rolls back stock and financial completion when linked WEB reservation coverage is missing", async () => {

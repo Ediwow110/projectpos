@@ -136,6 +136,11 @@ describe("sales payment reconciliation service", () => {
     const done = await sales.reconcilePayment(business.id, "staff", "rec-ok", payment.id, "SUCCEEDED", "rec-ok-key");
     expect(done.sale.status).toBe("COMPLETED");
     expect(await db.findOrderById(order.id, business.id)).toMatchObject({ status: "CONFIRMED" });
+    const reconciledFulfillments = await db.listFulfillmentsByOrder(order.id, business.id);
+    expect(reconciledFulfillments).toHaveLength(1);
+    expect(await db.listFulfillmentLines(reconciledFulfillments[0]!.id, business.id)).toEqual([
+      expect.objectContaining({ qty: 1 }),
+    ]);
     expect(await db.listReservationsByOrder(order.id, business.id)).toEqual([
       expect.objectContaining({ status: "COMMITTED", expiresAt: null }),
     ]);
@@ -143,6 +148,7 @@ describe("sales payment reconciliation service", () => {
     expect((await db.listMovements(product.id, business.id, branch.id)).filter((row) => row.type === "sale")).toHaveLength(1);
 
     await sales.reconcilePayment(business.id, "staff", "rec-replay", payment.id, "SUCCEEDED", "rec-ok-key");
+    expect(await db.listFulfillmentsByOrder(order.id, business.id)).toHaveLength(1);
     expect((await db.listMovements(product.id, business.id, branch.id)).filter((row) => row.type === "sale")).toHaveLength(1);
   });
 

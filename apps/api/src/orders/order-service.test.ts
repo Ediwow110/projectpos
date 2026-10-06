@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { createMemoryDb } from "../common/memory.db";
 import { OrderService } from "./order-service";
+import { OrderSaleService } from "./order-sale-service";
 import { ReservationService } from "./reservation-service";
+import { SalesService } from "../sales/nest/sales.service";
 
 async function seedOrder(
   db: ReturnType<typeof createMemoryDb>,
@@ -108,6 +110,20 @@ describe("phase22 order staff lifecycle", () => {
     expect(accepted.status).toBe("CONFIRMED");
     expect(sendEvent).toHaveBeenCalledWith(business.id, order.id, "CONFIRMED");
     expect((await db.listReservationsByOrder(order.id, business.id))[0]?.expiresAt).toBeNull();
+    const acceptedFulfillments = await db.listFulfillmentsByOrder(order.id, business.id);
+    expect(acceptedFulfillments).toHaveLength(1);
+    expect(await db.listFulfillmentLines(acceptedFulfillments[0]!.id, business.id)).toEqual([
+      expect.objectContaining({ qty: 1 }),
+    ]);
+
+    const sale = await new OrderSaleService(db).createSaleFromSubmittedOrder(
+      business.id, "staff", "accept-sale", order.id,
+    );
+    await new SalesService(db).completeSale(business.id, "staff", "accept-complete", sale.id, {
+      payments: [{ method: "cash", amountMinor: sale.totalMinor }],
+      key: "accept-complete-key", granted: [], branchId: branch.id,
+    });
+    expect(await db.listFulfillmentsByOrder(order.id, business.id)).toHaveLength(1);
   });
 
   it("does not cancel a confirmed order while linked payment outcome is unknown", async () => {

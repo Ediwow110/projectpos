@@ -8,6 +8,7 @@ import type {
 } from "../common/db.port";
 import { ReservationService } from "./reservation-service";
 import { OrderAccessService } from "./order-access-service";
+import { FulfillmentService } from "./fulfillment-service";
 import { recordOrderLifecycle } from "../common/metrics";
 
 type FrozenBundleComponent = Pick<
@@ -274,7 +275,11 @@ export class OrderSaleService {
     if (order.channel === "WEB") {
       if (order.status !== "SUBMITTED" && order.status !== "CONFIRMED") throw new Error("INVALID_STATE");
       await new ReservationService(db).commitForSaleLocked(db, businessId, order.id, saleId);
-      if (order.status === "CONFIRMED") return order;
+      const fulfillments = new FulfillmentService(db);
+      if (order.status === "CONFIRMED") {
+        await fulfillments.ensureFulfillmentLocked(businessId, order.id);
+        return order;
+      }
       const confirmed = await db.updateOrder(
         order.id,
         businessId,
@@ -282,6 +287,7 @@ export class OrderSaleService {
         order.version,
       );
       if (!confirmed) throw new Error("STALE_VERSION");
+      await fulfillments.ensureFulfillmentLocked(businessId, order.id);
       await new OrderAccessService(db).revokeCheckoutTokens(businessId, order.id, completedAt);
       recordOrderLifecycle("WEB", "CONFIRMED");
       return confirmed;
