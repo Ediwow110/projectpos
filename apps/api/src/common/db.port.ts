@@ -30,6 +30,28 @@ export interface DbMembership {
   approvalPinHash?: string | null;
 }
 
+export type RoleAssignmentType = "PERMANENT" | "TEMPORARY";
+
+export interface DbRoleAssignment {
+  id: string;
+  businessId: string;
+  membershipId: string;
+  role: string;
+  assignmentType: RoleAssignmentType;
+  branchId: string | null;
+  startsAt: Date;
+  expiresAt: Date | null;
+  assignedBy: string;
+  assignedAt: Date;
+  assignmentReason: string | null;
+  revokedAt: Date | null;
+  revokedBy: string | null;
+  revocationReason: string | null;
+  idempotencyKey: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface DbPlan {
   id: string;
   key: string;
@@ -1072,6 +1094,14 @@ export interface DbPort {
   listMembershipsByUser(userId: string): Promise<DbMembership[]>;
   findMembership(userId: string, businessId: string): Promise<DbMembership | null>;
   createMembership(m: Omit<DbMembership, "id">): Promise<DbMembership>;
+  listRoleAssignments(membershipId: string, businessId: string): Promise<DbRoleAssignment[]>;
+  listActiveRoleAssignments(userId: string, businessId: string, branchId: string | null, at: Date): Promise<DbRoleAssignment[]>;
+  createRoleAssignment(a: Omit<DbRoleAssignment, "id">): Promise<DbRoleAssignment>;
+  updateRoleAssignment(
+    id: string,
+    businessId: string,
+    patch: Partial<Pick<DbRoleAssignment, "expiresAt" | "revokedAt" | "revokedBy" | "revocationReason" | "assignmentReason">>,
+  ): Promise<DbRoleAssignment | null>;
   updateMembership(
     id: string,
     businessId: string,

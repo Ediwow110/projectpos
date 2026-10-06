@@ -62,7 +62,7 @@ export class SalesController {
   ) {}
 
   private perms(req: Request): string[] {
-    return this.auth.rolePermissions(req.auth!.role);
+    return req.rolePermissions ?? this.auth.rolePermissions(req.auth!.role);
   }
 
   @Post("sales/discount-approval")
@@ -99,6 +99,7 @@ export class SalesController {
           permission: "discount.override",
           fingerprint: discountApprovalFingerprint(parsed.data),
         },
+        auth.activeBranchId ?? null,
       );
       res.status(201).json({
         token: out.token,
@@ -134,6 +135,8 @@ export class SalesController {
           "discount.override",
           discountApprovalFingerprint(parsed.data),
           parsed.data.approvalToken,
+          false,
+          auth.activeBranchId ?? null,
         );
         granted = [...granted, "discount.override"];
         approval = { approverId: consumed.approverId, permission: "discount.override" };
@@ -428,6 +431,7 @@ export class SalesController {
         if (!parsed.data.approvalToken) throw new Error("FORBIDDEN");
         const consumed = await this.auth.consumeManagerApproval(
           auth.businessId, auth.userId, requirement.permission, requirement.fingerprint, parsed.data.approvalToken,
+          false, auth.activeBranchId ?? null,
         );
         granted = [...granted, requirement.permission];
         approval = { approverId: consumed.approverId, permission: requirement.permission };

@@ -34,6 +34,20 @@ export const membershipCreateSchema = z.object({
   role: z.enum(["manager", "cashier", "inventory"]),
 });
 
+export const roleAssignmentSchema = z.object({
+  role: z.enum(["manager", "cashier", "inventory"]),
+  assignmentType: z.enum(["PERMANENT", "TEMPORARY"]),
+  branchId: z.string().trim().min(1, "VALIDATION").max(80, "VALIDATION").nullable().optional(),
+  startsAt: z.string().datetime({ offset: true }).optional(),
+  expiresAt: z.string().datetime({ offset: true }).nullable().optional(),
+  reason: z.string().trim().max(240, "VALIDATION").nullable().optional(),
+  idempotencyKey: z.string().trim().min(1, "VALIDATION").max(160, "VALIDATION").nullable().optional(),
+});
+
+export const roleRevocationSchema = z.object({
+  reason: z.string().trim().min(3, "VALIDATION").max(240, "VALIDATION"),
+});
+
 export const approvalPinSchema = z.object({
   pin: z.string().regex(/^\d{6}$/, "VALIDATION"),
 });

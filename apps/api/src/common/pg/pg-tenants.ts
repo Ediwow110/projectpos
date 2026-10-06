@@ -1,4 +1,4 @@
-import type { DbBusiness, DbBusinessCreate, DbMembership, DbResetToken, DbSession, DbUser } from "../db.port";
+import type { DbBusiness, DbBusinessCreate, DbMembership, DbResetToken, DbRoleAssignment, DbSession, DbUser } from "../db.port";
 import { nid } from "./context";
 import type { PgContext } from "./context";
 
@@ -16,6 +16,9 @@ export function tenantsFamily(ctx: PgContext) {
   const SESSION_SELECT =
     'SELECT "id", "userId", "businessId", "activeBusinessId", "activeBranchId", "tokenHash", "expiresAt", "revokedAt",' +
     ' "authenticatedAt", "ip", "userAgent", "deviceId" FROM "Session"';
+  const ROLE_ASSIGNMENT_SELECT =
+    'SELECT a."id", a."businessId", a."membershipId", r."name" AS "role", a."assignmentType", a."branchId", a."startsAt", a."expiresAt", a."assignedBy", a."assignedAt", a."assignmentReason", a."revokedAt", a."revokedBy", a."revocationReason", a."idempotencyKey", a."createdAt", a."updatedAt"' +
+    ' FROM "RoleAssignment" a JOIN "Role" r ON r."id" = a."roleId"';
 
   return {
     async findUserByEmail(email: string): Promise<DbUser | null> {
@@ -202,6 +205,76 @@ export function tenantsFamily(ctx: PgContext) {
           [row.id, m.businessId, m.userId, role.rows[0].id as string, m.deactivatedAt ?? null, m.approvalPinHash ?? null],
         );
         return row;
+      } finally {
+        if (ctx.owns()) c.release();
+      }
+    },
+
+    async listRoleAssignments(membershipId: string, businessId: string): Promise<DbRoleAssignment[]> {
+      const c = await ctx.client();
+      try {
+        const r = await c.query(`${ROLE_ASSIGNMENT_SELECT} WHERE a."membershipId" = $1 AND a."businessId" = $2 ORDER BY a."startsAt" ASC, a."id" ASC`, [membershipId, businessId]);
+        return r.rows as DbRoleAssignment[];
+      } finally {
+        if (ctx.owns()) c.release();
+      }
+    },
+
+    async listActiveRoleAssignments(userId: string, businessId: string, branchId: string | null, at: Date): Promise<DbRoleAssignment[]> {
+      const c = await ctx.client();
+      try {
+        const r = await c.query(
+          `${ROLE_ASSIGNMENT_SELECT} JOIN "BusinessMembership" m ON m."id" = a."membershipId" WHERE m."userId" = $1 AND a."businessId" = $2 AND m."deactivatedAt" IS NULL AND a."startsAt" <= $4 AND (a."expiresAt" IS NULL OR a."expiresAt" > $4) AND a."revokedAt" IS NULL AND (a."branchId" IS NULL OR ($3::text IS NOT NULL AND a."branchId" = $3)) ORDER BY a."startsAt" ASC, a."id" ASC`,
+          [userId, businessId, branchId, at],
+        );
+        return r.rows as DbRoleAssignment[];
+      } finally {
+        if (ctx.owns()) c.release();
+      }
+    },
+
+    async createRoleAssignment(a: Omit<DbRoleAssignment, "id">): Promise<DbRoleAssignment> {
+      const c = await ctx.client();
+      try {
+        const role = await c.query(
+          'INSERT INTO "Role" ("id", "businessId", "name") VALUES ($1, $2, $3) ON CONFLICT ("businessId", "name") DO UPDATE SET "name" = EXCLUDED."name" RETURNING "id"',
+          [nid("role"), a.businessId, a.role],
+        );
+        const id = nid("role_assignment");
+        await c.query(
+          'INSERT INTO "RoleAssignment" ("id", "businessId", "membershipId", "roleId", "assignmentType", "branchId", "startsAt", "expiresAt", "assignedBy", "assignedAt", "assignmentReason", "revokedAt", "revokedBy", "revocationReason", "idempotencyKey", "createdAt", "updatedAt") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
+          [id, a.businessId, a.membershipId, role.rows[0].id as string, a.assignmentType, a.branchId, a.startsAt, a.expiresAt, a.assignedBy, a.assignedAt, a.assignmentReason, a.revokedAt, a.revokedBy, a.revocationReason, a.idempotencyKey],
+        );
+        return { ...a, id, createdAt: new Date(), updatedAt: new Date() };
+      } finally {
+        if (ctx.owns()) c.release();
+      }
+    },
+
+    async updateRoleAssignment(
+      id: string,
+      businessId: string,
+      patch: Partial<Pick<DbRoleAssignment, "expiresAt" | "revokedAt" | "revokedBy" | "revocationReason" | "assignmentReason">>,
+    ): Promise<DbRoleAssignment | null> {
+      const c = await ctx.client();
+      try {
+        const sets: string[] = [];
+        const values: unknown[] = [];
+        for (const key of ["expiresAt", "revokedAt", "revokedBy", "revocationReason", "assignmentReason"] as const) {
+          if (Object.prototype.hasOwnProperty.call(patch, key)) {
+            values.push(patch[key] ?? null);
+            sets.push(`"${key}" = $${values.length}`);
+          }
+        }
+        if (!sets.length) {
+          const current = await c.query(`${ROLE_ASSIGNMENT_SELECT} WHERE a."id" = $1 AND a."businessId" = $2`, [id, businessId]);
+          return (current.rows[0] as DbRoleAssignment | undefined) ?? null;
+        }
+        values.push(id, businessId);
+        const result = await c.query(`UPDATE "RoleAssignment" SET ${sets.join(", ")}, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $${values.length - 1} AND "businessId" = $${values.length} RETURNING "id"`, values);
+        if (!result.rowCount) return null;
+        const current = await c.query(`${ROLE_ASSIGNMENT_SELECT} WHERE a."id" = $1 AND a."businessId" = $2`, [id, businessId]);
+        return (current.rows[0] as DbRoleAssignment | undefined) ?? null;
       } finally {
         if (ctx.owns()) c.release();
       }

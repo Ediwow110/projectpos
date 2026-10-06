@@ -37,7 +37,7 @@ export class ExpenseController {
     @Res() res: Response,
     @Query() query: Record<string, string>,
   ): Promise<void> {
-    if (!this.auth.rolePermissions(req.auth!.role).includes("export.run")) {
+    if (!(req.rolePermissions ?? this.auth.rolePermissions(req.auth!.role)).includes("export.run")) {
       fail(res, 403, "FORBIDDEN", "Export requires export.run", req);
       return;
     }

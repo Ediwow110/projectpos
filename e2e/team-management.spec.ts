@@ -50,7 +50,9 @@ test("owner creates and deactivates a cashier while temporary credentials are di
   const confirm = page.getByRole("dialog", { name: "Deactivate team member?" });
   await expect(confirm).toBeVisible();
   await confirm.getByRole("button", { name: "Deactivate" }).click();
-  await expect(memberRow).toHaveCount(0);
+  await expect(memberRow).toBeVisible();
+  await expect(memberRow).toContainText("Deactivated");
+  await expect(memberRow.getByRole("button", { name: "Reactivate" })).toBeVisible();
 
   // Create a second cashier to verify lower-role direct access without reusing
   // the deactivated credentials.

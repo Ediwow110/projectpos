@@ -13,6 +13,7 @@ export class TenantService {
     businessId: string;
     businessName: string;
     role: string;
+    roles: string[];
     activeBranchId: string | null;
     activeBranchName: string | null;
     onboardingRequired: boolean;
@@ -25,6 +26,8 @@ export class TenantService {
     const settings = await this.db.getSettings(businessId);
     const onboarding = (settings["onboarding"] as OnboardingState | undefined) ?? defaultOnboardingState();
     const activeBranch = activeBranchId ? await this.db.findBranchById(activeBranchId, businessId) : null;
+    const assignments = await this.db.listActiveRoleAssignments(userId, businessId, activeBranch?.isActive ? activeBranch.id : null, new Date());
+    const roles = assignments.length > 0 ? [...new Set(assignments.map((assignment) => assignment.role))] : [membership.role];
     return {
       userId: user.id,
       email: user.email,
@@ -32,6 +35,7 @@ export class TenantService {
       businessId: business.id,
       businessName: business.name,
       role: membership.role,
+      roles,
       activeBranchId: activeBranch?.isActive ? activeBranch.id : null,
       activeBranchName: activeBranch?.isActive ? activeBranch.name : null,
       onboardingRequired: membership.role === "owner" && !isOnboardingComplete(onboarding),

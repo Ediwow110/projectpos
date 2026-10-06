@@ -45,7 +45,7 @@ export class ProcurementController {
   ) {}
 
   private perms(req: Request): string[] {
-    return this.auth.rolePermissions(req.auth!.role);
+    return req.rolePermissions ?? this.auth.rolePermissions(req.auth!.role);
   }
 
   private requireKey(req: Request, res: Response): string | null {

@@ -21,7 +21,7 @@ export class ReportingController {
   ) {}
 
   private perms(req: Request): string[] {
-    return this.auth.rolePermissions(req.auth!.role);
+    return req.rolePermissions ?? this.auth.rolePermissions(req.auth!.role);
   }
 
   @Get("dashboard/overview")

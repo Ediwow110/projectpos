@@ -56,6 +56,10 @@ export const ROLE_SEED: Record<"owner" | "manager" | "cashier" | "inventory", st
   ),
 };
 
+export function rolePermissionsForRoles(roles: string[]): string[] {
+  return [...new Set(roles.flatMap((role) => ROLE_SEED[role as keyof typeof ROLE_SEED] ?? []))];
+}
+
 export interface RegistrationInput {
   ownerName: string;
   email: string;

@@ -11,7 +11,7 @@ import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "..
 import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { apiFetch } from "../../lib/api";
 import { errorText } from "../../lib/billing";
-import { canDeactivateMember, canManageApprovalPin, teamRoleLabel, type TeamMemberRow } from "../../lib/team-view";
+import { canDeactivateMember, canManageApprovalPin, isActiveAssignment, teamRoleLabel, type TeamMemberRow, type TeamRoleAssignment } from "../../lib/team-view";
 
 interface Me {
   userId: string;
@@ -46,6 +46,12 @@ export default function TeamPage(): JSX.Element {
   const [temporaryCredential, setTemporaryCredential] = useState<TemporaryCredential | null>(null);
   const [copyStatus, setCopyStatus] = useState("");
   const [deactivateTarget, setDeactivateTarget] = useState<TeamMemberRow | null>(null);
+  const [roleTarget, setRoleTarget] = useState<TeamMemberRow | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<TeamRoleAssignment | null>(null);
+  const [delegationRole, setDelegationRole] = useState("manager");
+  const [delegationType, setDelegationType] = useState<"PERMANENT" | "TEMPORARY">("TEMPORARY");
+  const [delegationExpiresAt, setDelegationExpiresAt] = useState("");
+  const [delegationReason, setDelegationReason] = useState("");
   const [pinTarget, setPinTarget] = useState<TeamMemberRow | null>(null);
   const [approvalPin, setApprovalPin] = useState("");
   const [approvalPinConfirm, setApprovalPinConfirm] = useState("");
@@ -64,7 +70,8 @@ export default function TeamPage(): JSX.Element {
   });
 
   const members = membersQuery.data?.items ?? [];
-  const staffCount = members.filter((member) => member.role !== "owner").length;
+  const activeMembers = members.filter((member) => member.deactivatedAt === null);
+  const staffCount = activeMembers.filter((member) => member.role !== "owner").length;
 
   function resetCreate(): void {
     setName("");
@@ -159,6 +166,80 @@ export default function TeamPage(): JSX.Element {
     }
   }
 
+  async function reactivateMember(member: TeamMemberRow): Promise<void> {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    setSuccess("");
+    try {
+      const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
+      await apiFetch(`/api/v1/memberships/${member.id}/reactivate`, { csrfToken: csrf.csrfToken, init: { method: "POST" } });
+      setSuccess(`${member.name} was reactivated. Previous temporary roles were not restored.`);
+      await membersQuery.refetch();
+    } catch (err) {
+      setError(errorText(err, "Could not reactivate team member."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function assignRole(event: React.FormEvent): Promise<void> {
+    event.preventDefault();
+    if (!roleTarget || busy) return;
+    if (delegationType === "TEMPORARY" && !delegationReason.trim()) {
+      setError("A reason is required for temporary delegation.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setSuccess("");
+    try {
+      const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
+      await apiFetch(`/api/v1/memberships/${roleTarget.id}/role-assignments`, {
+        csrfToken: csrf.csrfToken,
+        init: {
+          method: "POST",
+          body: JSON.stringify({
+            role: delegationRole,
+            assignmentType: delegationType,
+            expiresAt: delegationType === "TEMPORARY" && delegationExpiresAt ? new Date(delegationExpiresAt).toISOString() : null,
+            reason: delegationReason.trim() || null,
+            idempotencyKey: `team-${roleTarget.id}-${delegationRole}-${delegationType}-${delegationExpiresAt || "manual"}`,
+          }),
+        },
+      });
+      setSuccess(`${teamRoleLabel(delegationRole)} was assigned to ${roleTarget.name}.`);
+      setRoleTarget(null);
+      await membersQuery.refetch();
+    } catch (err) {
+      setError(errorText(err, "Could not assign role."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function revokeRole(): Promise<void> {
+    if (!revokeTarget || busy) return;
+    setBusy(true);
+    setError("");
+    setSuccess("");
+    try {
+      const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
+      await apiFetch(`/api/v1/role-assignments/${revokeTarget.id}/revoke`, {
+        csrfToken: csrf.csrfToken,
+        init: { method: "POST", body: JSON.stringify({ reason: "Role coverage ended" }) },
+      });
+      setSuccess(`${teamRoleLabel(revokeTarget.role)} assignment was revoked.`);
+      setRevokeTarget(null);
+      setRoleTarget(null);
+      await membersQuery.refetch();
+    } catch (err) {
+      setError(errorText(err, "Could not revoke role."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveApprovalPin(event: React.FormEvent): Promise<void> {
     event.preventDefault();
     if (!pinTarget || busy) return;
@@ -219,9 +300,9 @@ export default function TeamPage(): JSX.Element {
         {isOwner ? (
           <>
             <section className="grid gap-4 sm:grid-cols-3" aria-label="Team summary">
-              <MetricCard label="Active users" value={members.length} icon="◎" meta="Current memberships" />
+              <MetricCard label="Active users" value={activeMembers.length} icon="◎" meta="Current memberships" />
               <MetricCard label="Staff" value={staffCount} icon="○" tone="info" meta="Non-owner users" />
-              <MetricCard label="Owner seats" value={members.filter((member) => member.role === "owner").length} icon="◆" tone="success" meta="Protected role" />
+              <MetricCard label="Owner seats" value={activeMembers.filter((member) => member.role === "owner").length} icon="◆" tone="success" meta="Protected role" />
             </section>
 
             {success ? <p role="status" className="rounded-xl border border-[#b9dfca] bg-[#f0faf5] px-4 py-3 text-sm font-medium text-[#1f6f4b]">{success}</p> : null}
@@ -249,10 +330,19 @@ export default function TeamPage(): JSX.Element {
                     </thead>
                     <tbody>
                       {members.map((member) => (
-                        <tr key={member.id}>
+                        <tr key={member.id} className={member.deactivatedAt ? "opacity-65" : undefined}>
                           <td className="px-5 py-3 font-semibold text-[#2a241f]">{member.name}</td>
                           <td className="px-5 py-3 text-[#655b53]">{member.email}</td>
-                          <td className="px-5 py-3"><StatusPill tone={member.role === "owner" ? "ok" : "info"}>{teamRoleLabel(member.role)}</StatusPill></td>
+                          <td className="px-5 py-3">
+                            <div className="flex flex-wrap gap-1.5">
+                              {(member.assignments === undefined || member.assignments.length === 0 ? [{ id: `${member.id}-legacy-role`, role: member.role, assignmentType: "PERMANENT" as const, branchId: null, startsAt: new Date().toISOString(), expiresAt: null, assignedBy: "", assignedAt: new Date().toISOString(), assignmentReason: null, revokedAt: null, revokedBy: null, revocationReason: null }] : member.assignments.filter((assignment) => isActiveAssignment(assignment))).map((assignment) => (
+                                <StatusPill key={assignment.id} tone={assignment.role === "owner" ? "ok" : "info"}>
+                                  {teamRoleLabel(assignment.role)}{assignment.assignmentType === "TEMPORARY" ? " · Temporary" : ""}
+                                </StatusPill>
+                              ))}
+                              {member.deactivatedAt ? <StatusPill tone="warn">Deactivated</StatusPill> : null}
+                            </div>
+                          </td>
                           <td className="px-5 py-3 text-right">
                             <div className="flex flex-wrap justify-end gap-2">
                               {canManageApprovalPin(member) ? (
@@ -267,6 +357,23 @@ export default function TeamPage(): JSX.Element {
                                   }}
                                 >
                                   {member.approvalPinSet ? "Rotate approval PIN" : "Set approval PIN"}
+                                </GhostButton>
+                              ) : null}
+                              {member.deactivatedAt === null && member.role !== "owner" ? (
+                                <GhostButton type="button" className="!min-h-8 !px-3 !py-1.5 text-xs" onClick={() => {
+                                  setRoleTarget(member);
+                                  setDelegationRole("manager");
+                                  setDelegationType("TEMPORARY");
+                                  setDelegationExpiresAt("");
+                                  setDelegationReason("");
+                                  setError("");
+                                }}>
+                                  Manage roles
+                                </GhostButton>
+                              ) : null}
+                              {member.deactivatedAt !== null ? (
+                                <GhostButton type="button" className="!min-h-8 !px-3 !py-1.5 text-xs" onClick={() => void reactivateMember(member)} disabled={busy}>
+                                  Reactivate
                                 </GhostButton>
                               ) : null}
                               {canDeactivateMember(meQuery.data?.userId ?? "", member) ? (
@@ -322,6 +429,64 @@ export default function TeamPage(): JSX.Element {
           </label>
           {error ? <p role="alert" className="rounded-xl bg-[#fff0f0] px-3 py-2 text-[12px] font-medium text-[#c43e3e]">{error}</p> : null}
         </form>
+      </Modal>
+
+      <Modal
+        open={roleTarget !== null}
+        onClose={() => { if (!busy) setRoleTarget(null); }}
+        title="Manage roles"
+        description={roleTarget ? `${roleTarget.name} keeps their own account and audit identity. Add or revoke role assignments here.` : undefined}
+        footer={
+          <div className="flex justify-end gap-2">
+            <GhostButton type="button" onClick={() => setRoleTarget(null)} disabled={busy}>Close</GhostButton>
+            <PrimaryButton type="submit" form="role-assignment-form" disabled={busy} aria-busy={busy}>{busy ? "Saving…" : "Assign role"}</PrimaryButton>
+          </div>
+        }
+      >
+        {roleTarget ? (
+          <div className="space-y-5">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8b8077]">Active assignments</p>
+              <div className="mt-2 space-y-2">
+                {(roleTarget.assignments ?? []).filter((assignment) => isActiveAssignment(assignment)).map((assignment) => (
+                  <div key={assignment.id} className="flex items-center justify-between gap-3 rounded-xl border border-[#f0e2d7] bg-[#fffaf6] px-3 py-2 text-[11px]">
+                    <div>
+                      <p className="font-semibold text-[#2a241f]">{teamRoleLabel(assignment.role)} · {assignment.assignmentType === "TEMPORARY" ? "Temporary" : "Permanent"}</p>
+                      <p className="text-[#73685f]">{assignment.expiresAt ? `Expires ${new Date(assignment.expiresAt).toLocaleString()}` : "No expiration"}</p>
+                    </div>
+                    {assignment.role !== "owner" ? <GhostButton type="button" className="!min-h-8 !px-2.5 !py-1 text-[11px]" onClick={() => setRevokeTarget(assignment)} disabled={busy}>Revoke</GhostButton> : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <form id="role-assignment-form" noValidate onSubmit={(event) => void assignRole(event)} className="space-y-4">
+              <label className="block text-[11px] font-semibold text-[#655b53]">
+                Role
+                <select value={delegationRole} onChange={(event) => setDelegationRole(event.target.value)} className="field mt-1.5">
+                  {ROLES.map((entry) => <option key={entry.value} value={entry.value}>{entry.label}</option>)}
+                </select>
+              </label>
+              <label className="block text-[11px] font-semibold text-[#655b53]">
+                Assignment type
+                <select value={delegationType} onChange={(event) => setDelegationType(event.target.value as "PERMANENT" | "TEMPORARY")} className="field mt-1.5">
+                  <option value="TEMPORARY">Temporary delegation</option>
+                  <option value="PERMANENT">Permanent role</option>
+                </select>
+              </label>
+              {delegationType === "TEMPORARY" ? (
+                <label className="block text-[11px] font-semibold text-[#655b53]">
+                  Expiration
+                  <input type="datetime-local" required value={delegationExpiresAt} onChange={(event) => setDelegationExpiresAt(event.target.value)} className="field mt-1.5" />
+                </label>
+              ) : null}
+              <label className="block text-[11px] font-semibold text-[#655b53]">
+                Reason
+                <textarea value={delegationReason} onChange={(event) => setDelegationReason(event.target.value)} className="field mt-1.5 min-h-20" maxLength={240} placeholder="Temporary coverage while hiring a replacement" />
+              </label>
+              {error ? <p role="alert" className="rounded-xl bg-[#fff0f0] px-3 py-2 text-[12px] font-medium text-[#c43e3e]">{error}</p> : null}
+            </form>
+          </div>
+        ) : null}
       </Modal>
 
       <Modal
@@ -424,6 +589,17 @@ export default function TeamPage(): JSX.Element {
         onCancel={() => setDeactivateTarget(null)}
         onConfirm={() => void deactivateMember()}
         details={deactivateTarget ? <span>{deactivateTarget.name} · {deactivateTarget.email}</span> : undefined}
+      />
+
+      <ConfirmDialog
+        open={revokeTarget !== null}
+        title="Revoke role assignment?"
+        description="This removes the selected role from the member while preserving the assignment and audit history."
+        confirmLabel="Revoke role"
+        busy={busy}
+        onCancel={() => setRevokeTarget(null)}
+        onConfirm={() => void revokeRole()}
+        details={revokeTarget ? <span>{teamRoleLabel(revokeTarget.role)} · {revokeTarget.assignmentType}</span> : undefined}
       />
     </AppShell>
   );

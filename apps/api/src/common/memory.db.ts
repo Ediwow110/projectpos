@@ -1,4 +1,4 @@
-import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbDisplayToken, DbExchange, DbFeatureFlag, DbFulfillment, DbFulfillmentLine, DbInvoice, DbMembership, DbMovement, DbOrder, DbOrderAccessToken, DbOrderLine, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbProductFamily, DbProductOption, DbProductOptionValue, DbProductVariantOptionValue, DbProductBundle, DbBundleComponent, DbSaleItemBundleComponent, DbReceiptDelivery, DbResetToken, DbSession, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine, DbInventoryCount, DbInventoryCountLine, DbInventoryReservation, DbGiftCard, DbGiftCardTransaction, DbStoreCreditAccount, DbStoreCreditTransaction, DbLoyaltyProgram, DbLoyaltyAccount, DbLoyaltyTransaction, DbSaleGiftCardLoad, DbSaleLoyalty, DbSaleItemLoyaltyAllocation } from "./db.port";
+import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbDisplayToken, DbExchange, DbFeatureFlag, DbFulfillment, DbFulfillmentLine, DbInvoice, DbMembership, DbRoleAssignment, DbMovement, DbOrder, DbOrderAccessToken, DbOrderLine, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbProductFamily, DbProductOption, DbProductOptionValue, DbProductVariantOptionValue, DbProductBundle, DbBundleComponent, DbSaleItemBundleComponent, DbReceiptDelivery, DbResetToken, DbSession, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine, DbInventoryCount, DbInventoryCountLine, DbInventoryReservation, DbGiftCard, DbGiftCardTransaction, DbStoreCreditAccount, DbStoreCreditTransaction, DbLoyaltyProgram, DbLoyaltyAccount, DbLoyaltyTransaction, DbSaleGiftCardLoad, DbSaleLoyalty, DbSaleItemLoyaltyAllocation } from "./db.port";
 
 let n = 0;
 const nid = (p: string): string => `${p}_${Date.now().toString(36)}_${(n += 1)}`;
@@ -7,6 +7,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const users = new Map<string, DbUser>();
   const businesses = new Map<string, DbBusiness>();
   const memberships = new Map<string, DbMembership>();
+  const roleAssignments = new Map<string, DbRoleAssignment>();
   const sessions = new Map<string, DbSession>();
   const resets = new Map<string, DbResetToken>();
   const settings = new Map<string, Record<string, unknown>>();
@@ -237,6 +238,34 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       const row = { ...m, id: nid("mem") };
       memberships.set(row.id, row);
       return row;
+    },
+    async listRoleAssignments(membershipId, businessId) {
+      return [...roleAssignments.values()]
+        .filter((a) => a.membershipId === membershipId && a.businessId === businessId)
+        .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime() || a.id.localeCompare(b.id));
+    },
+    async listActiveRoleAssignments(userId, businessId, branchId, at) {
+      const membershipsForUser = [...memberships.values()].filter((m) => m.userId === userId && m.businessId === businessId && !m.deactivatedAt);
+      const membershipIds = new Set(membershipsForUser.map((m) => m.id));
+      return [...roleAssignments.values()]
+        .filter((a) => membershipIds.has(a.membershipId))
+        .filter((a) => a.startsAt.getTime() <= at.getTime())
+        .filter((a) => a.expiresAt === null || a.expiresAt.getTime() > at.getTime())
+        .filter((a) => a.revokedAt === null)
+        .filter((a) => a.branchId === null || (branchId !== null && a.branchId === branchId))
+        .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime() || a.id.localeCompare(b.id));
+    },
+    async createRoleAssignment(a) {
+      const row = { ...a, id: nid("role_assignment") };
+      roleAssignments.set(row.id, row);
+      return row;
+    },
+    async updateRoleAssignment(id, businessId, patch) {
+      const current = roleAssignments.get(id);
+      if (!current || current.businessId !== businessId) return null;
+      const next = { ...current, ...patch, updatedAt: new Date() };
+      roleAssignments.set(id, next);
+      return next;
     },
     async updateMembership(id, businessId, patch) {
       const m = memberships.get(id);
