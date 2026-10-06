@@ -52,6 +52,7 @@ model Business {
   id        String   @id @default(cuid())
   name      String
   currency  String   @default("PHP")
+  storefrontKey String? @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   memberships BusinessMembership[]
@@ -119,6 +120,12 @@ model Business {
   saleGiftCardLoads SaleGiftCardLoad[]
   saleLoyaltySnapshots SaleLoyalty[]
   saleItemLoyaltyAllocations SaleItemLoyaltyAllocation[]
+  orders Order[]
+  orderLines OrderLine[]
+  inventoryReservations InventoryReservation[]
+  fulfillments Fulfillment[]
+  fulfillmentLines FulfillmentLine[]
+  orderAccessTokens OrderAccessToken[]
   activeSessions Session[] @relation("SessionActiveBusiness")
 }
 
@@ -477,6 +484,8 @@ model Sale {
   subtotalMinor  Int        @default(0)
   discountMinor  Int        @default(0)
   taxMinor       Int        @default(0)
+  deliveryFeeMinor Int      @default(0)
+  deliveryTaxMinor Int      @default(0)
   totalMinor     Int        @default(0)
   paidMinor      Int        @default(0)
   changeMinor    Int        @default(0)
@@ -683,6 +692,8 @@ model Refund {
   saleId            String
   status            String       @default("APPROVED")
   totalMinor        Int          @default(0)
+  deliveryFeeRefundMinor Int     @default(0)
+  deliveryTaxRefundMinor Int     @default(0)
   reason            String?
   requestedBy       String
   approvedBy        String
@@ -694,6 +705,153 @@ model Refund {
   items             RefundItem[]
   @@index([businessId, saleId])
   @@index([businessId, createdAt])
+}
+
+model Order {
+  id                      String   @id @default(cuid())
+  businessId              String
+  channel                 String
+  fulfillmentMode         String
+  paymentMode             String
+  branchId                String?
+  customerId              String?
+  contactName             String?
+  email                   String?
+  phone                    String?
+  deliveryAddress         Json?
+  fulfillmentInstructions String?
+  currency                String   @default("PHP")
+  subtotalMinor           Int      @default(0)
+  discountMinor           Int      @default(0)
+  taxMinor                Int      @default(0)
+  deliveryFeeMinor        Int      @default(0)
+  deliveryTaxMinor        Int      @default(0)
+  totalMinor              Int      @default(0)
+  saleId                  String?  @unique
+  status                  String   @default("DRAFT")
+  version                 Int      @default(1)
+  checkoutAt              DateTime?
+  submittedAt             DateTime?
+  confirmedAt             DateTime?
+  completedAt             DateTime?
+  cancelledAt             DateTime?
+  actorId                 String
+  requestId               String
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  business                Business @relation(fields: [businessId], references: [id])
+  lines                   OrderLine[]
+  reservations            InventoryReservation[]
+  fulfillments            Fulfillment[]
+  accessTokens            OrderAccessToken[]
+  @@index([businessId, createdAt, id])
+  @@index([businessId, status, createdAt])
+  @@index([businessId, branchId, createdAt])
+  @@index([businessId, channel, createdAt])
+}
+
+model OrderLine {
+  id                       String   @id @default(cuid())
+  businessId               String
+  orderId                  String
+  position                 Int      @default(0)
+  productId                String
+  name                     String
+  sku                      String?
+  barcode                  String?
+  unit                     String   @default("pc")
+  qty                      Int
+  priceMinor               Int
+  costMinor                Int      @default(0)
+  taxRateBps               Int?
+  discountMinor            Int      @default(0)
+  taxMinor                 Int      @default(0)
+  lineTotalMinor           Int
+  bundleComponentsSnapshot Json?
+  createdAt                DateTime @default(now())
+  business                 Business @relation(fields: [businessId], references: [id])
+  order                    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  reservations             InventoryReservation[]
+  fulfillmentLines         FulfillmentLine[]
+  @@unique([businessId, orderId, position])
+  @@index([businessId, orderId])
+}
+
+model InventoryReservation {
+  id             String   @id @default(cuid())
+  businessId     String
+  branchId       String
+  orderId        String
+  orderLineId    String
+  productId      String
+  qty            Int
+  status         String   @default("HELD")
+  expiresAt      DateTime?
+  idempotencyKey String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  business       Business @relation(fields: [businessId], references: [id])
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderLine      OrderLine @relation(fields: [orderLineId], references: [id], onDelete: Cascade)
+  @@unique([businessId, idempotencyKey])
+  @@index([businessId, branchId, productId, status, expiresAt])
+  @@index([businessId, orderId, status])
+}
+
+model Fulfillment {
+  id               String   @id @default(cuid())
+  businessId       String
+  orderId          String
+  type             String
+  status           String   @default("PENDING")
+  branchId         String
+  assignedUserId   String?
+  contactName      String?
+  email            String?
+  phone             String?
+  deliveryAddress  Json?
+  instructions     String?
+  version          Int      @default(1)
+  readyAt          DateTime?
+  dispatchedAt     DateTime?
+  deliveredAt      DateTime?
+  collectedAt      DateTime?
+  failedAt         DateTime?
+  cancelledAt      DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  business         Business @relation(fields: [businessId], references: [id])
+  order            Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  lines            FulfillmentLine[]
+  @@index([businessId, orderId, status])
+}
+
+model FulfillmentLine {
+  id            String   @id @default(cuid())
+  businessId    String
+  fulfillmentId String
+  orderLineId   String
+  qty           Int
+  createdAt     DateTime @default(now())
+  business      Business @relation(fields: [businessId], references: [id])
+  fulfillment   Fulfillment @relation(fields: [fulfillmentId], references: [id], onDelete: Cascade)
+  orderLine     OrderLine @relation(fields: [orderLineId], references: [id], onDelete: Cascade)
+  @@unique([businessId, fulfillmentId, orderLineId])
+  @@index([businessId, fulfillmentId])
+}
+
+model OrderAccessToken {
+  id        String    @id @default(cuid())
+  businessId String
+  orderId   String
+  kind      String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  business  Business  @relation(fields: [businessId], references: [id])
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  @@index([businessId, orderId, kind, revokedAt, expiresAt])
 }
 
 model RefundItem {

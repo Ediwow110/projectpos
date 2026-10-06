@@ -27,6 +27,16 @@ export function voidAuditLabel(sale: {
   return `${reason} · ${timestamp}`;
 }
 
+export function deliveryRefundRemaining(sale: {
+  deliveryFeeMinor: number;
+  deliveryTaxMinor: number;
+  refunds: Array<{ deliveryFeeRefundMinor: number; deliveryTaxRefundMinor: number }>;
+}): number {
+  const refundedFee = sale.refunds.reduce((sum, refund) => sum + refund.deliveryFeeRefundMinor, 0);
+  const refundedTax = sale.refunds.reduce((sum, refund) => sum + refund.deliveryTaxRefundMinor, 0);
+  return Math.max(0, sale.deliveryFeeMinor - refundedFee) + Math.max(0, sale.deliveryTaxMinor - refundedTax);
+}
+
 export function buildCompletePayload(
   saleId: string,
   payments: Array<{ method: string; amountMinor: number; internalInstrumentId?: string }>,

@@ -1,4 +1,4 @@
-import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbDisplayToken, DbExchange, DbFeatureFlag, DbInvoice, DbMembership, DbMovement, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbProductFamily, DbProductOption, DbProductOptionValue, DbProductVariantOptionValue, DbProductBundle, DbBundleComponent, DbSaleItemBundleComponent, DbReceiptDelivery, DbResetToken, DbSession, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine, DbInventoryCount, DbInventoryCountLine, DbGiftCard, DbGiftCardTransaction, DbStoreCreditAccount, DbStoreCreditTransaction, DbLoyaltyProgram, DbLoyaltyAccount, DbLoyaltyTransaction, DbSaleGiftCardLoad, DbSaleLoyalty, DbSaleItemLoyaltyAllocation } from "./db.port";
+import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbDisplayToken, DbExchange, DbFeatureFlag, DbFulfillment, DbFulfillmentLine, DbInvoice, DbMembership, DbMovement, DbOrder, DbOrderAccessToken, DbOrderLine, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbProductFamily, DbProductOption, DbProductOptionValue, DbProductVariantOptionValue, DbProductBundle, DbBundleComponent, DbSaleItemBundleComponent, DbReceiptDelivery, DbResetToken, DbSession, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine, DbInventoryCount, DbInventoryCountLine, DbInventoryReservation, DbGiftCard, DbGiftCardTransaction, DbStoreCreditAccount, DbStoreCreditTransaction, DbLoyaltyProgram, DbLoyaltyAccount, DbLoyaltyTransaction, DbSaleGiftCardLoad, DbSaleLoyalty, DbSaleItemLoyaltyAllocation } from "./db.port";
 
 let n = 0;
 const nid = (p: string): string => `${p}_${Date.now().toString(36)}_${(n += 1)}`;
@@ -25,6 +25,12 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const inventoryCountLines = new Map<string, DbInventoryCountLine>();
   const inventoryCountSeq = new Map<string, number>();
   const sales = new Map<string, DbSale>();
+  const orders = new Map<string, DbOrder>();
+  const orderLines = new Map<string, DbOrderLine>();
+  const inventoryReservations = new Map<string, DbInventoryReservation>();
+  const fulfillments = new Map<string, DbFulfillment>();
+  const fulfillmentLines = new Map<string, DbFulfillmentLine>();
+  const orderAccessTokens = new Map<string, DbOrderAccessToken>();
   const saleItems = new Map<string, DbSaleItem>();
   const payments = new Map<string, DbPayment>();
   const heldSales = new Map<string, DbHeldSale>();
@@ -124,6 +130,8 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
         supplierReturns: new Map(supplierReturns), supplierReturnLines: new Map(supplierReturnLines),
         movements: new Map(movements), balances: new Map(balances), idempotency: new Map(idempotency),
         sales: new Map(sales), saleItems: new Map(saleItems), payments: new Map(payments), refunds: new Map(refunds), refundItems: new Map(refundItems),
+        orders: new Map(orders), orderLines: new Map(orderLines), inventoryReservations: new Map(inventoryReservations),
+        fulfillments: new Map(fulfillments), fulfillmentLines: new Map(fulfillmentLines), orderAccessTokens: new Map(orderAccessTokens),
         giftCards: new Map(giftCards), giftCardTransactions: new Map(giftCardTransactions),
         storeCreditAccounts: new Map(storeCreditAccounts), storeCreditTransactions: new Map(storeCreditTransactions),
         loyaltyPrograms: new Map(loyaltyPrograms), loyaltyAccounts: new Map(loyaltyAccounts), loyaltyTransactions: new Map(loyaltyTransactions),
@@ -140,6 +148,8 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
         restore(supplierReturns, snapshot.supplierReturns); restore(supplierReturnLines, snapshot.supplierReturnLines);
         restore(movements, snapshot.movements); restore(balances, snapshot.balances); restore(idempotency, snapshot.idempotency);
         restore(sales, snapshot.sales); restore(saleItems, snapshot.saleItems); restore(payments, snapshot.payments); restore(refunds, snapshot.refunds); restore(refundItems, snapshot.refundItems);
+        restore(orders, snapshot.orders); restore(orderLines, snapshot.orderLines); restore(inventoryReservations, snapshot.inventoryReservations);
+        restore(fulfillments, snapshot.fulfillments); restore(fulfillmentLines, snapshot.fulfillmentLines); restore(orderAccessTokens, snapshot.orderAccessTokens);
         restore(giftCards, snapshot.giftCards); restore(giftCardTransactions, snapshot.giftCardTransactions);
         restore(storeCreditAccounts, snapshot.storeCreditAccounts); restore(storeCreditTransactions, snapshot.storeCreditTransactions);
         restore(loyaltyPrograms, snapshot.loyaltyPrograms); restore(loyaltyAccounts, snapshot.loyaltyAccounts); restore(loyaltyTransactions, snapshot.loyaltyTransactions);
@@ -175,12 +185,26 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       if (u) users.set(id, { ...u, workspaceTourSeen: seen });
     },
     async createBusiness(b) {
-      const row = { ...b, id: nid("biz") };
+      const row: DbBusiness = { ...b, storefrontKey: b.storefrontKey ?? null, id: nid("biz") };
       businesses.set(row.id, row);
       return row;
     },
     async findBusinessById(id) {
       return businesses.get(id) ?? null;
+    },
+    async findBusinessByStorefrontKey(key) {
+      for (const row of businesses.values()) if (row.storefrontKey === key) return row;
+      return null;
+    },
+    async setBusinessStorefrontKey(id, key) {
+      for (const row of businesses.values()) {
+        if (row.id !== id && row.storefrontKey === key) throw new Error("CONFLICT");
+      }
+      const current = businesses.get(id) ?? null;
+      if (!current) return null;
+      const next = { ...current, storefrontKey: key };
+      businesses.set(id, next);
+      return next;
     },
     async listMembershipsByUser(userId) {
       return [...memberships.values()].filter((m) => m.userId === userId);
@@ -509,7 +533,15 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       for (const [id, row] of inventoryCountLines) if (row.inventoryCountId === countId && row.businessId === businessId) inventoryCountLines.delete(id);
     },
     async createSale(s) {
-      const row = { completedAt: null, voidedAt: null, voidReason: null, ...s, id: nid("sale") };
+      const row: DbSale = {
+        completedAt: null,
+        voidedAt: null,
+        voidReason: null,
+        deliveryFeeMinor: 0,
+        deliveryTaxMinor: 0,
+        ...s,
+        id: nid("sale"),
+      };
       sales.set(row.id, row);
       return row;
     },
@@ -532,6 +564,176 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       if (!s || s.businessId !== businessId) return null;
       const next = { ...s, ...patch };
       sales.set(id, next);
+      return next;
+    },
+    async createOrder(o) {
+      if (o.saleId && [...orders.values()].some((row) => row.saleId === o.saleId)) throw new Error("CONFLICT");
+      const row: DbOrder = { ...o, id: nid("ord") };
+      orders.set(row.id, row);
+      return row;
+    },
+    async findOrderById(id, businessId) {
+      const row = orders.get(id) ?? null;
+      return row && row.businessId === businessId ? row : null;
+    },
+    async findOrderBySaleId(saleId, businessId) {
+      return [...orders.values()].find((row) => row.businessId === businessId && row.saleId === saleId) ?? null;
+    },
+    async updateOrder(id, businessId, patch, expectedVersion) {
+      const row = orders.get(id) ?? null;
+      if (!row || row.businessId !== businessId || row.version !== expectedVersion) return null;
+      if (patch.saleId && [...orders.values()].some((other) => other.id !== id && other.saleId === patch.saleId)) throw new Error("CONFLICT");
+      const next: DbOrder = { ...row, ...patch, version: expectedVersion + 1, updatedAt: new Date() };
+      orders.set(id, next);
+      return next;
+    },
+    async listOrdersPage(businessId, query) {
+      const paymentStatusFor = (row: DbOrder): string => {
+        if (!row.saleId) return "UNPAID";
+        const sale = sales.get(row.saleId);
+        if (!sale || sale.businessId !== businessId) return "UNPAID";
+        const saleRefunds = [...refunds.values()].filter((r) => r.businessId === businessId && r.saleId === sale.id && r.status === "APPROVED");
+        const refundTotal = saleRefunds.reduce((sum, r) => sum + r.totalMinor, 0);
+        if (sale.status === "REFUNDED" || (sale.totalMinor > 0 && refundTotal >= sale.totalMinor)) return "REFUNDED";
+        if (sale.status === "PARTIALLY_REFUNDED" || refundTotal > 0) return "PARTIALLY_REFUNDED";
+        const salePayments = [...payments.values()].filter((p) => p.businessId === businessId && p.saleId === sale.id);
+        if (salePayments.some((p) => p.status === "UNKNOWN")) return "UNKNOWN";
+        const succeeded = salePayments.filter((p) => p.status === "SUCCEEDED").reduce((sum, p) => sum + p.amountMinor, 0);
+        if (sale.totalMinor > 0 && succeeded >= sale.totalMinor) return "PAID";
+        if (sale.status === "PENDING_PAYMENT") return "PENDING";
+        if (sale.status === "PAYMENT_FAILED") return "FAILED";
+        if (sale.status === "PAYMENT_UNKNOWN") return "UNKNOWN";
+        if (sale.status === "RECONCILED") return salePayments.some((p) => p.status === "FAILED") ? "FAILED" : "PENDING";
+        if (["PAID", "COMPLETED", "REFUND_REQUESTED"].includes(sale.status)) return "PAID";
+        return "UNPAID";
+      };
+      return [...orders.values()]
+        .filter((row) => row.businessId === businessId)
+        .filter((row) => !query.status || row.status === query.status)
+        .filter((row) => !query.channel || row.channel === query.channel)
+        .filter((row) => !query.fulfillmentMode || row.fulfillmentMode === query.fulfillmentMode)
+        .filter((row) => !query.branchId || row.branchId === query.branchId)
+        .filter((row) => !query.paymentStatus || paymentStatusFor(row) === query.paymentStatus)
+        .filter((row) => !query.dateFrom || row.createdAt.getTime() >= query.dateFrom.getTime())
+        .filter((row) => !query.dateTo || row.createdAt.getTime() <= query.dateTo.getTime())
+        .filter((row) => !query.cursor || row.createdAt.getTime() < query.cursor.createdAt.getTime() ||
+          (row.createdAt.getTime() === query.cursor.createdAt.getTime() && row.id < query.cursor.id))
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id))
+        .slice(0, query.limit);
+    },
+    async listDueReservationOrders(now, limit) {
+      const ids = new Set(
+        [...inventoryReservations.values()]
+          .filter((row) => row.status === "HELD" && row.expiresAt !== null && row.expiresAt.getTime() <= now.getTime())
+          .map((row) => row.orderId),
+      );
+      return [...orders.values()]
+        .filter((row) => ids.has(row.id))
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id))
+        .slice(0, limit);
+    },
+    async listAgedOperationalReservations(cutoff, limit) {
+      return [...inventoryReservations.values()]
+        .filter((row) => row.status === "HELD" && row.expiresAt === null && row.createdAt.getTime() <= cutoff.getTime())
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id))
+        .slice(0, limit);
+    },
+    async createOrderLine(l) {
+      const row: DbOrderLine = { ...l, id: nid("ol") };
+      if ([...orderLines.values()].some((other) => other.businessId === row.businessId && other.orderId === row.orderId && other.position === row.position)) {
+        throw new Error("CONFLICT");
+      }
+      orderLines.set(row.id, row);
+      return row;
+    },
+    async listOrderLines(orderId, businessId) {
+      return [...orderLines.values()]
+        .filter((row) => row.orderId === orderId && row.businessId === businessId)
+        .sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
+    },
+    async deleteOrderLines(orderId, businessId) {
+      for (const [id, row] of orderLines) {
+        if (row.orderId === orderId && row.businessId === businessId) orderLines.delete(id);
+      }
+    },
+    async createInventoryReservation(r) {
+      if ([...inventoryReservations.values()].some((row) => row.businessId === r.businessId && row.idempotencyKey === r.idempotencyKey)) {
+        throw new Error("CONFLICT");
+      }
+      const row: DbInventoryReservation = { ...r, id: nid("res") };
+      inventoryReservations.set(row.id, row);
+      return row;
+    },
+    async listReservationsByOrder(orderId, businessId) {
+      return [...inventoryReservations.values()]
+        .filter((row) => row.orderId === orderId && row.businessId === businessId)
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
+    },
+    async listActiveReservationsByProduct(businessId, branchId, productId) {
+      return [...inventoryReservations.values()]
+        .filter((row) => row.businessId === businessId && row.branchId === branchId && row.productId === productId && row.status === "HELD")
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
+    },
+    async updateInventoryReservation(id, businessId, patch) {
+      const row = inventoryReservations.get(id) ?? null;
+      if (!row || row.businessId !== businessId) return null;
+      const next: DbInventoryReservation = { ...row, ...patch, updatedAt: new Date() };
+      inventoryReservations.set(id, next);
+      return next;
+    },
+    async createFulfillment(f) {
+      const row: DbFulfillment = { ...f, id: nid("ful") };
+      fulfillments.set(row.id, row);
+      return row;
+    },
+    async findFulfillmentById(id, businessId) {
+      const row = fulfillments.get(id) ?? null;
+      return row && row.businessId === businessId ? row : null;
+    },
+    async listFulfillmentsByOrder(orderId, businessId) {
+      return [...fulfillments.values()]
+        .filter((row) => row.orderId === orderId && row.businessId === businessId)
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
+    },
+    async updateFulfillment(id, businessId, patch, expectedVersion) {
+      const row = fulfillments.get(id) ?? null;
+      if (!row || row.businessId !== businessId || row.version !== expectedVersion) return null;
+      const next: DbFulfillment = { ...row, ...patch, version: expectedVersion + 1, updatedAt: new Date() };
+      fulfillments.set(id, next);
+      return next;
+    },
+    async createFulfillmentLine(l) {
+      if ([...fulfillmentLines.values()].some((row) => row.businessId === l.businessId && row.fulfillmentId === l.fulfillmentId && row.orderLineId === l.orderLineId)) {
+        throw new Error("CONFLICT");
+      }
+      const row: DbFulfillmentLine = { ...l, id: nid("fl") };
+      fulfillmentLines.set(row.id, row);
+      return row;
+    },
+    async listFulfillmentLines(fulfillmentId, businessId) {
+      return [...fulfillmentLines.values()]
+        .filter((row) => row.fulfillmentId === fulfillmentId && row.businessId === businessId)
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
+    },
+    async createOrderAccessToken(t) {
+      if ([...orderAccessTokens.values()].some((row) => row.tokenHash === t.tokenHash)) throw new Error("CONFLICT");
+      const row: DbOrderAccessToken = { ...t, id: nid("oat") };
+      orderAccessTokens.set(row.id, row);
+      return row;
+    },
+    async findOrderAccessTokenByHash(tokenHash) {
+      return [...orderAccessTokens.values()].find((row) => row.tokenHash === tokenHash) ?? null;
+    },
+    async listActiveOrderAccessTokens(orderId, businessId, kind, now) {
+      return [...orderAccessTokens.values()]
+        .filter((row) => row.orderId === orderId && row.businessId === businessId && row.kind === kind && row.revokedAt === null && row.expiresAt.getTime() > now.getTime())
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
+    },
+    async revokeOrderAccessToken(id, businessId, revokedAt) {
+      const row = orderAccessTokens.get(id) ?? null;
+      if (!row || row.businessId !== businessId) return null;
+      const next = { ...row, revokedAt };
+      orderAccessTokens.set(id, next);
       return next;
     },
     async createSaleItem(i) {
@@ -795,7 +997,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     async createSaleItemLoyaltyAllocation(a) { const row: DbSaleItemLoyaltyAllocation = { ...a, id: nid("sla"), createdAt: new Date() }; saleItemLoyaltyAllocations.set(row.id, row); return row; },
     async listSaleItemLoyaltyAllocations(saleLoyaltyId, businessId) { return [...saleItemLoyaltyAllocations.values()].filter((row) => row.saleLoyaltyId === saleLoyaltyId && row.businessId === businessId); },
     async createRefund(r) {
-      const row = { ...r, id: nid("ref") };
+      const row: DbRefund = { deliveryFeeRefundMinor: 0, deliveryTaxRefundMinor: 0, ...r, id: nid("ref") };
       refunds.set(row.id, row);
       return row;
     },

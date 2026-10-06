@@ -33,10 +33,26 @@ export const ROLE_SEED: Record<"owner" | "manager" | "cashier" | "inventory", st
       p !== "purchase_order.receive" &&
       p !== "supplier_return.write" &&
       p !== "supplier_return.post" &&
-      p !== "supplier_return.cancel",
+      p !== "supplier_return.cancel" &&
+      p !== "order.cancel" &&
+      p !== "order.fulfill" &&
+      p !== "order.view_delivery_details" &&
+      p !== "order.link_customer" &&
+      p !== "order.manage_access",
   ),
   inventory: ALL_PERMISSIONS.filter(
-    (p) => p !== "sale.refund" && p !== "refund.override" && p !== "user.manage" && p !== "settings.write",
+    (p) =>
+      p !== "sale.refund" &&
+      p !== "refund.override" &&
+      p !== "user.manage" &&
+      p !== "settings.write" &&
+      p !== "order.create" &&
+      p !== "order.submit" &&
+      p !== "order.accept" &&
+      p !== "order.cancel" &&
+      p !== "order.collect" &&
+      p !== "order.link_customer" &&
+      p !== "order.manage_access",
   ),
 };
 
@@ -75,6 +91,10 @@ export async function buildRegistrationSeed(input: RegistrationInput): Promise<R
       // FR-PAY-01: methods are data; every new business starts with the
       // plan's initial methods and can reconfigure them.
       { key: "paymentMethods", value: DEFAULT_PAYMENT_METHODS },
+      { key: "onlineOrderingEnabled", value: false },
+      { key: "onlinePickupBranchIds", value: [] },
+      { key: "onlineFulfillmentBranchId", value: null },
+      { key: "deliveryFlatFeeMinor", value: 0 },
     ],
     onboarding: {
       currentStep: "taxCurrency",

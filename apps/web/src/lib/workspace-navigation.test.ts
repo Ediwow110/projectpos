@@ -9,6 +9,7 @@ describe("workspace navigation", () => {
       .map((item) => item.href);
 
     expect(hrefs).toEqual(expect.arrayContaining([
+      "/orders",
       "/categories",
       "/registers",
       "/expenses",
@@ -22,6 +23,7 @@ describe("workspace navigation", () => {
       "/purchase-orders",
       "/supplier-returns",
       "/admin/loyalty",
+      "/admin/online-ordering",
     ]));
   });
 
@@ -31,6 +33,7 @@ describe("workspace navigation", () => {
       .map((item) => item.href);
 
     expect(hrefs).toContain("/pos");
+    expect(hrefs).toContain("/orders");
     expect(hrefs).toContain("/shifts");
     expect(hrefs).not.toContain("/team");
     expect(hrefs).not.toContain("/printers");
@@ -41,6 +44,13 @@ describe("workspace navigation", () => {
     expect(hrefs).not.toContain("/purchase-orders");
     expect(hrefs).not.toContain("/supplier-returns");
     expect(hrefs).not.toContain("/admin/loyalty");
+    expect(hrefs).not.toContain("/admin/online-ordering");
+  });
+
+  it.each(["manager", "inventory"])("shows Orders but keeps online-ordering settings out of %s navigation", (role) => {
+    const hrefs = flattenedWorkspaceNavigation(role).map((item) => item.href);
+    expect(hrefs).toContain("/orders");
+    expect(hrefs).not.toContain("/admin/online-ordering");
   });
 
   it.each(["owner", "manager", "cashier", "inventory"])("does not duplicate routes for %s", (role) => {

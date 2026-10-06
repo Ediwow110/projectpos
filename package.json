@@ -15,7 +15,7 @@
     "test": "turbo run test",
     "test:exit": "vitest run --root . tests/",
     "verify": "node scripts/verify-scaffold.test.mjs",
-    "e2e": "playwright test"
+    "e2e": "node scripts/run-e2e.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

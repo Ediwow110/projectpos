@@ -37,6 +37,11 @@ export interface PaymentInput {
   internalInstrumentId?: string;
 }
 
+export interface PaymentReturnPaths {
+  successPath: string;
+  cancelPath: string;
+}
+
 export type SaleWithLines = DbSale & {
   items: DbSaleItem[];
   payments: DbPayment[];

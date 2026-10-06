@@ -58,6 +58,32 @@ describe("ManagerApprovalPolicyService", () => {
     await expect(policy.resolveRequirement(businessId, requesterId, { ...action, items: [{ saleItemId: itemId, qty: 3 }] })).rejects.toThrow("REFUND_EXCEEDS_LIMIT");
   });
 
+  it("includes the normalized delivery refund in threshold selection and exact-action fingerprint", async () => {
+    const { db, policy, businessId, requesterId, saleId, itemId } = await setup();
+    await db.updateSale(saleId, businessId, {
+      deliveryFeeMinor: 1000,
+      deliveryTaxMinor: 120,
+      totalMinor: 6120,
+      paidMinor: 6120,
+    });
+    await db.saveSettings(businessId, { refundApprovalThresholdMinor: 1000 });
+    const action = {
+      kind: "refund" as const,
+      saleId,
+      items: [],
+      deliveryRefundMinor: 1120,
+    };
+    const requirement = await policy.resolveRequirement(businessId, requesterId, action);
+    expect(requirement).toMatchObject({ permission: "refund.override" });
+    const different = await policy.resolveRequirement(businessId, requesterId, {
+      kind: "refund",
+      saleId,
+      items: [{ saleItemId: itemId, qty: 1 }],
+      deliveryRefundMinor: 0,
+    });
+    expect(requirement?.fingerprint).not.toBe(different?.fingerprint);
+  });
+
   it("requires a distinct approver for a non-owner who requested the refund", async () => {
     const { db, policy, businessId, requesterId, saleId, itemId } = await setup();
     await db.updateSale(saleId, businessId, { status: "REFUND_REQUESTED" });

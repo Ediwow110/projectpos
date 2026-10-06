@@ -52,7 +52,14 @@ export class RefundService {
     actorId: string,
     requestId: string,
     saleId: string,
-    input: { items: RefundItemInput[]; loadRefunds?: GiftCardLoadRefundInput[]; reason?: string; destination?: "ORIGINAL_TENDER" | "STORE_CREDIT"; key: string },
+    input: {
+      items: RefundItemInput[];
+      loadRefunds?: GiftCardLoadRefundInput[];
+      deliveryRefundMinor?: number;
+      reason?: string;
+      destination?: "ORIGINAL_TENDER" | "STORE_CREDIT";
+      key: string;
+    },
     granted: string[],
     role: string,
     approval?: AppliedManagerApproval,
@@ -75,8 +82,19 @@ export class RefundService {
       const normalizedLoads = [...requestedLoads.entries()]
         .map(([loadId, amountMinor]) => ({ loadId, amountMinor }))
         .sort((left, right) => left.loadId.localeCompare(right.loadId));
+      const requestedDeliveryRefundMinor = input.deliveryRefundMinor ?? 0;
+      if (!Number.isInteger(requestedDeliveryRefundMinor) || requestedDeliveryRefundMinor < 0) {
+        throw new Error("VALIDATION");
+      }
       const destination = input.destination ?? "ORIGINAL_TENDER";
-      const fingerprint = fingerprintPayload({ saleId, items: requestedItems, loadRefunds: normalizedLoads, reason: input.reason ?? null, destination });
+      const fingerprint = fingerprintPayload({
+        saleId,
+        items: requestedItems,
+        loadRefunds: normalizedLoads,
+        deliveryRefundMinor: requestedDeliveryRefundMinor,
+        reason: input.reason ?? null,
+        destination,
+      });
       const existing = await this.db.findIdempotency(businessId, input.key, "refund.approve");
       if (existing) {
         if (existing.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
@@ -98,6 +116,9 @@ export class RefundService {
       }
       const lines = await this.db.listSaleItems(sale.id, businessId);
       const loads = await this.db.listSaleGiftCardLoads(sale.id, businessId);
+      const priorRefunds = (await this.db.listRefundsBySale(sale.id, businessId)).filter(
+        (row) => row.status === "APPROVED",
+      );
       const prior = await this.db.listRefundItemsBySale(sale.id, businessId);
       const refundedByLine = new Map<string, number>();
       for (const ri of prior) {
@@ -125,9 +146,32 @@ export class RefundService {
         resolvedLoadRows.push({ load, amountMinor: req.amountMinor });
       }
       if (resolvedLoadRows.length > 0 && destination !== "ORIGINAL_TENDER") throw new Error("GIFT_CARD_LOAD_ORIGINAL_TENDER_ONLY");
+      const alreadyDeliveryFeeRefunded = priorRefunds.reduce(
+        (sum, row) => sum + row.deliveryFeeRefundMinor,
+        0,
+      );
+      const alreadyDeliveryTaxRefunded = priorRefunds.reduce(
+        (sum, row) => sum + row.deliveryTaxRefundMinor,
+        0,
+      );
+      let deliveryFeeRefundMinor = 0;
+      let deliveryTaxRefundMinor = 0;
+      if (requestedDeliveryRefundMinor > 0) {
+        const remainingFee = Math.max(0, sale.deliveryFeeMinor - alreadyDeliveryFeeRefunded);
+        const remainingTax = Math.max(0, sale.deliveryTaxMinor - alreadyDeliveryTaxRefunded);
+        const remainingDelivery = remainingFee + remainingTax;
+        if (remainingDelivery <= 0 || requestedDeliveryRefundMinor > remainingDelivery) {
+          throw new Error("REFUND_EXCEEDS_LIMIT");
+        }
+        if (requestedDeliveryRefundMinor !== remainingDelivery) throw new Error("VALIDATION");
+        deliveryFeeRefundMinor = remainingFee;
+        deliveryTaxRefundMinor = remainingTax;
+      }
       const merchandiseTotalMinor = resolved.reduce((sum, r) => sum + r.amount, 0);
       const loadRefundTotalMinor = resolvedLoadRows.reduce((sum, row) => sum + row.amountMinor, 0);
-      const totalMinor = merchandiseTotalMinor + loadRefundTotalMinor;
+      const deliveryRefundTotalMinor = deliveryFeeRefundMinor + deliveryTaxRefundMinor;
+      const totalMinor = merchandiseTotalMinor + loadRefundTotalMinor + deliveryRefundTotalMinor;
+      if (totalMinor <= 0) throw new Error("VALIDATION");
       // FR-REFUND-02: approval follows role AND threshold policy. Above the
       // configured threshold only a role holding refund.override may approve.
       const threshold = (await this.db.getSettings(businessId))["refundApprovalThresholdMinor"];
@@ -139,6 +183,7 @@ export class RefundService {
         (p) => p.status === "SUCCEEDED",
       );
       let remaining = totalMinor;
+      let priorTenderConsumption = priorRefunds.reduce((sum, row) => sum + row.totalMinor, 0);
       const allocations: Array<{ method: string; amount: number; internalInstrumentType?: "gift_card" | "store_credit" | "loyalty"; internalInstrumentId?: string }> = [];
       if (destination === "STORE_CREDIT") {
         if (!sale.customerId) throw new Error("CUSTOMER_REQUIRED");
@@ -149,7 +194,11 @@ export class RefundService {
       for (const p of succeeded) {
         if (destination === "STORE_CREDIT") break;
         if (remaining <= 0) break;
-        const portion = Math.min(remaining, p.amountMinor);
+        const previouslyConsumed = Math.min(priorTenderConsumption, p.amountMinor);
+        priorTenderConsumption -= previouslyConsumed;
+        const available = p.amountMinor - previouslyConsumed;
+        if (available <= 0) continue;
+        const portion = Math.min(remaining, available);
         allocations.push({ method: p.method, amount: portion, internalInstrumentType: p.internalInstrumentType ?? undefined, internalInstrumentId: p.internalInstrumentId ?? undefined });
         remaining -= portion;
       }
@@ -167,6 +216,8 @@ export class RefundService {
         saleId: sale.id,
         status: "APPROVED",
         totalMinor,
+        deliveryFeeRefundMinor,
+        deliveryTaxRefundMinor,
         reason,
         requestedBy: singleStep ? actorId : ((await this.findRequester(businessId, saleId)) ?? actorId),
         approvedBy: actorId,
@@ -338,7 +389,13 @@ export class RefundService {
         refundedTotals.set(ri.saleItemId, (refundedTotals.get(ri.saleItemId) ?? 0) + ri.qty);
       }
       const fully = allLines.length > 0 && allLines.every((l) => (refundedTotals.get(l.id) ?? 0) >= l.qty);
-      const target = fully ? "REFUNDED" : "PARTIALLY_REFUNDED";
+      const allApprovedRefunds = (await this.db.listRefundsBySale(sale.id, businessId)).filter(
+        (row) => row.status === "APPROVED",
+      );
+      const deliveryFullyRefunded =
+        allApprovedRefunds.reduce((sum, row) => sum + row.deliveryFeeRefundMinor, 0) >= sale.deliveryFeeMinor
+        && allApprovedRefunds.reduce((sum, row) => sum + row.deliveryTaxRefundMinor, 0) >= sale.deliveryTaxMinor;
+      const target = fully && deliveryFullyRefunded ? "REFUNDED" : "PARTIALLY_REFUNDED";
       const status = transitionSale(sale.status, target);
       const updated =
         (await this.db.updateSale(sale.id, businessId, { status })) ?? sale;

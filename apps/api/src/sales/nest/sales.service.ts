@@ -19,6 +19,8 @@ import {
 import { SalesLifecycleService } from "../sale-lifecycle-service";
 import type { AppliedManagerApproval } from "../../auth/nest/manager-approval-policy.service";
 import { SalesPayMongoWebhookService } from "../paymongo-webhook-service";
+import { OrderSaleService } from "../../orders/order-sale-service";
+import { OrderNotificationService } from "../../orders/order-notification-service";
 import { SalesPaymentProviderService } from "../payment-provider-service";
 import { SalesPaymentReconciliationService } from "../payment-reconciliation-service";
 import { SalesReceiptService } from "../receipt-service";
@@ -27,9 +29,9 @@ import { SalesDraftService } from "../sale-draft-service";
 import { SalesStockService } from "../sale-stock-service";
 import { ShiftService } from "../../shifts/nest/shift.service";
 import { NOOP_TRANSACTIONAL_EMAIL, type TransactionalEmailPort } from "../../email/email.service";
-import type { DraftInput, PaymentInput, SaleDetail, SaleWithLines } from "../sales-types";
+import type { DraftInput, PaymentInput, PaymentReturnPaths, SaleDetail, SaleWithLines } from "../sales-types";
 
-export type { DraftInput, PaymentInput, SaleDetail, SaleWithLines } from "../sales-types";
+export type { DraftInput, PaymentInput, PaymentReturnPaths, SaleDetail, SaleWithLines } from "../sales-types";
 
 @Injectable()
 export class SalesService {
@@ -42,6 +44,8 @@ export class SalesService {
   private readonly completion: SalesCompletionService;
   private readonly lifecycle: SalesLifecycleService;
   private readonly paymongoWebhooks: SalesPayMongoWebhookService;
+  private readonly orderNotifications: OrderNotificationService;
+  private readonly orderSales: OrderSaleService;
 
   constructor(
     @Inject("DbPort") private readonly db: DbPort,
@@ -54,23 +58,26 @@ export class SalesService {
     this.drafts = new SalesDraftService(db, this.stock);
     this.completion = new SalesCompletionService(db, this.stock, this.shifts);
     this.lifecycle = new SalesLifecycleService(db);
-    this.paymongoWebhooks = new SalesPayMongoWebhookService(db, paymongo, this.stock);
+    this.orderNotifications = new OrderNotificationService(db, email);
+    this.paymongoWebhooks = new SalesPayMongoWebhookService(db, paymongo, this.stock, this.orderNotifications);
+    this.orderSales = new OrderSaleService(db);
     this.receipts = new SalesReceiptService(db, email);
     this.providers = new SalesPaymentProviderService(db, paymongo, {
       requireSale: (businessId, saleId) => this.requireSale(businessId, saleId),
       embedSale: (sale) => this.embed(sale),
-      assertStockAvailable: (businessId, items, branchId) => this.stock.assertAvailable(businessId, items, branchId),
+      assertStockAvailable: (businessId, items, branchId, ownerOrderId) =>
+        this.stock.assertAvailable(businessId, items, branchId, ownerOrderId),
     });
     this.reconciliation = new SalesPaymentReconciliationService(db, {
       requireSale: (businessId, saleId) => this.requireSale(businessId, saleId),
       embedSale: (sale) => this.embed(sale),
-      applyStockEffect: (businessId, actorId, requestId, saleId, items, branchId) =>
-        this.stock.applySale(businessId, actorId, requestId, saleId, items, branchId),
+      applyStockEffect: (businessId, actorId, requestId, saleId, items, branchId, ownerOrderId) =>
+        this.stock.applySale(businessId, actorId, requestId, saleId, items, branchId, ownerOrderId),
       postCashSale: async (businessId, actorId, requestId, registerId, saleId, amountMinor) => {
         await this.shifts.postCashSale(businessId, actorId, requestId, registerId, saleId, amountMinor);
       },
       recordSale: (businessId, completedAt) => new BillingService(this.db).recordSale(businessId, completedAt),
-    });
+    }, this.orderNotifications);
   }
 
   private async requireSale(businessId: string, saleId: string): Promise<DbSale> {
@@ -98,7 +105,12 @@ export class SalesService {
     approval?: { approverId: string; permission: "discount.override" },
   ): Promise<DbSale> {
     withScope(businessId, {});
-    const sale = await this.drafts.createDraft(businessId, actorId, requestId, input, granted);
+    const sale = await this.db.withTransaction(async (tx) => {
+      void tx;
+      const created = await this.drafts.createDraft(businessId, actorId, requestId, input, granted);
+      await this.orderSales.createPosOrderForSaleLocked(this.db, businessId, actorId, requestId, created.id);
+      return created;
+    });
     if (approval) {
       await this.db.appendAudit({
         businessId,
@@ -138,6 +150,7 @@ export class SalesService {
     method: PayMongoMethod,
     key: string,
     webUrl: string,
+    returnPaths?: PaymentReturnPaths,
   ): Promise<{
     sale: SaleWithLines;
     payment: DbPayment;
@@ -146,7 +159,16 @@ export class SalesService {
     replayed: boolean;
   }> {
     withScope(businessId, {});
-    return this.providers.startPayMongoCheckout(businessId, actorId, requestId, saleId, method, key, webUrl);
+    return this.providers.startPayMongoCheckout(
+      businessId,
+      actorId,
+      requestId,
+      saleId,
+      method,
+      key,
+      webUrl,
+      returnPaths,
+    );
   }
 
   async handlePayMongoWebhook(

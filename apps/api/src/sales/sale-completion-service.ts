@@ -1,5 +1,5 @@
 import type { DbPort, DbSale } from "../common/db.port";
-import { incrementMetric } from "../common/metrics";
+import { incrementMetric, recordPaymentHandoff, recordSaleChannel } from "../common/metrics";
 import { BillingService } from "../billing/nest/billing.service";
 import { ShiftService } from "../shifts/nest/shift.service";
 import { computeSaleTotals } from "./totals";
@@ -9,16 +9,21 @@ import { transitionSale } from "./state-machine";
 import type { PaymentInput, SaleWithLines } from "./sales-types";
 import { SalesStockService } from "./sale-stock-service";
 import { StoredValueService } from "../value/stored-value.service";
+import { OrderSaleService } from "../orders/order-sale-service";
 
 const CASH_METHODS = new Set(["cash"]);
 
 export class SalesCompletionService {
+  private readonly orderSales: OrderSaleService;
+
   constructor(
     private readonly db: DbPort,
     private readonly stock: SalesStockService,
     private readonly shifts: ShiftService,
     private readonly storedValue = new StoredValueService(db),
-  ) {}
+  ) {
+    this.orderSales = new OrderSaleService(db);
+  }
 
   private async requireSale(businessId: string, saleId: string): Promise<DbSale> {
     const sale = await this.db.findSaleById(saleId, businessId);
@@ -53,6 +58,7 @@ export class SalesCompletionService {
   ): Promise<{ sale: SaleWithLines; replayed: boolean; giftCardCodes?: string[] }> {
     return this.db.withLock(`sales:${businessId}`, async () => this.db.withTransaction(async () => {
       const sale = await this.requireSale(businessId, saleId);
+      const linkedOrder = await this.db.findOrderBySaleId(sale.id, businessId);
       const registerId = input.registerId ?? sale.registerId ?? null;
       let registerBranchId: string | null = null;
       if (input.registerId !== undefined && input.registerId !== null) {
@@ -97,7 +103,7 @@ export class SalesCompletionService {
         if (!configured.has(payment.method)) throw new Error("VALIDATION");
       }
 
-      const totals = computeSaleTotals({
+      const recomputedTotals = computeSaleTotals({
         lines: items.map((item) => ({
           qty: item.qty,
           priceMinor: item.priceMinor,
@@ -108,9 +114,19 @@ export class SalesCompletionService {
         orderDiscountMinor: sale.discountMinor,
         businessTaxRateBps: await this.businessTaxRateBps(businessId),
       });
+      const totals = linkedOrder?.channel === "WEB"
+        ? {
+            subtotalMinor: sale.subtotalMinor,
+            discountMinor: sale.discountMinor,
+            taxMinor: sale.taxMinor,
+            totalMinor: Math.max(0, sale.totalMinor - sale.deliveryFeeMinor - sale.deliveryTaxMinor),
+          }
+        : recomputedTotals;
       const giftLoads = await this.db.listSaleGiftCardLoads(sale.id, businessId);
       const giftLoadMinor = giftLoads.reduce((sum, load) => sum + load.amountMinor, 0);
-      const saleTotalMinor = totals.totalMinor + giftLoadMinor;
+      const saleTotalMinor = linkedOrder?.channel === "WEB"
+        ? sale.totalMinor + giftLoadMinor
+        : totals.totalMinor + sale.deliveryFeeMinor + sale.deliveryTaxMinor + giftLoadMinor;
       const paid = input.payments.reduce((sum, payment) => sum + payment.amountMinor, 0);
       if (paid < saleTotalMinor) throw new Error("PAYMENT_TOTAL_MISMATCH");
       if (paid > saleTotalMinor && input.payments.some((payment) => !CASH_METHODS.has(payment.method))) {
@@ -168,10 +184,19 @@ export class SalesCompletionService {
           requestId,
         });
         incrementMetric("pos_payment_unknown_total");
+        recordPaymentHandoff("unknown");
         return { sale: await this.embed(updated), replayed: false };
       }
 
-      await this.stock.applySale(businessId, actorId, requestId, sale.id, items, branchId);
+      await this.stock.applySale(
+        businessId,
+        actorId,
+        requestId,
+        sale.id,
+        items,
+        branchId,
+        linkedOrder?.id,
+      );
       let redeemedPointsTotal = 0;
       let redeemedValueTotal = 0;
       for (const [legIndex, payment] of input.payments.entries()) {
@@ -279,6 +304,12 @@ export class SalesCompletionService {
           completedAt,
           ...(input.registerId !== undefined ? { registerId: input.registerId } : {}),
         })) ?? sale;
+      await this.orderSales.settleLinkedSaleLocked(
+        this.db,
+        businessId,
+        sale.id,
+        completedAt,
+      );
       await this.db.claimIdempotency({
         businessId,
         key: input.key,
@@ -296,6 +327,7 @@ export class SalesCompletionService {
       });
       await new BillingService(this.db).recordSale(businessId);
       incrementMetric("pos_sales_completed_total");
+      recordSaleChannel(linkedOrder?.channel === "WEB" ? "WEB" : "POS");
       return { sale: await this.embed(updated), replayed: false, ...(giftCardCodes.length ? { giftCardCodes } : {}) };
     }));
   }

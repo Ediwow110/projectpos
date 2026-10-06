@@ -1,6 +1,9 @@
 import type { DbPayment, DbPort, DbSale, DbSaleItem } from "../common/db.port";
+import { OrderSaleService } from "../orders/order-sale-service";
+import { OrderNotificationService } from "../orders/order-notification-service";
 import { fingerprintPayload } from "./idempotency";
 import { transitionSale } from "./state-machine";
+import { recordIdempotencyConflict, recordPaymentHandoff, recordSaleChannel } from "../common/metrics";
 
 type EmbeddedSale = DbSale & {
   items: DbSaleItem[];
@@ -17,6 +20,7 @@ interface ReconciliationOps {
     saleId: string,
     items: DbSaleItem[],
     branchId: string | null,
+    ownerOrderId?: string,
   ) => Promise<void>;
   postCashSale: (
     businessId: string,
@@ -32,10 +36,15 @@ interface ReconciliationOps {
 const CASH_METHODS = new Set(["cash"]);
 
 export class SalesPaymentReconciliationService {
+  private readonly orderSales: OrderSaleService;
+
   constructor(
     private readonly db: DbPort,
     private readonly ops: ReconciliationOps,
-  ) {}
+    private readonly notifications?: OrderNotificationService,
+  ) {
+    this.orderSales = new OrderSaleService(db);
+  }
 
   async reconcilePayment(
     businessId: string,
@@ -45,15 +54,18 @@ export class SalesPaymentReconciliationService {
     outcome: "SUCCEEDED" | "FAILED",
     key: string,
   ): Promise<{ sale: EmbeddedSale; payment: DbPayment }> {
-    return this.db.withLock(`sales:${businessId}`, async () => {
+    const result = await this.db.withLock(`sales:${businessId}`, async () => this.db.withTransaction(async () => {
       const fingerprint = fingerprintPayload({ paymentId, outcome });
       const existing = await this.db.findIdempotency(businessId, key, "payment.reconcile");
       if (existing) {
-        if (existing.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
+        if (existing.fingerprint !== fingerprint) {
+          recordIdempotencyConflict("payment");
+          throw new Error("IDEMPOTENCY_MISMATCH");
+        }
         const payment = await this.db.findPaymentById(paymentId, businessId);
         if (!payment) throw new Error("NOT_FOUND");
         const sale = await this.ops.requireSale(businessId, payment.saleId);
-        return { sale: await this.ops.embedSale(sale), payment };
+        return { sale: await this.ops.embedSale(sale), payment, confirmedOrderId: null as string | null };
       }
 
       const payment = await this.db.findPaymentById(paymentId, businessId);
@@ -84,7 +96,7 @@ export class SalesPaymentReconciliationService {
 
       const legs = await this.db.listPaymentsBySale(sale.id, businessId);
       if (legs.some((leg) => leg.status === "UNKNOWN")) {
-        return { sale: await this.ops.embedSale(sale), payment: updatedPayment };
+        return { sale: await this.ops.embedSale(sale), payment: updatedPayment, confirmedOrderId: null as string | null };
       }
 
       const succeeded = legs
@@ -97,11 +109,22 @@ export class SalesPaymentReconciliationService {
           (await this.db.updateSale(sale.id, businessId, {
             status: transitionSale(failed, "PAYMENT_FAILED"),
           })) ?? sale;
-        return { sale: await this.ops.embedSale(failedSale), payment: updatedPayment };
+        recordPaymentHandoff("reconciled");
+        return { sale: await this.ops.embedSale(failedSale), payment: updatedPayment, confirmedOrderId: null as string | null };
       }
 
       const items = await this.db.listSaleItems(sale.id, businessId);
-      await this.ops.applyStockEffect(businessId, actorId, requestId, sale.id, items, sale.branchId ?? null);
+      const linkedOrder = await this.db.findOrderBySaleId(sale.id, businessId);
+      const shouldNotify = linkedOrder?.channel === "WEB" && linkedOrder.status === "SUBMITTED";
+      await this.ops.applyStockEffect(
+        businessId,
+        actorId,
+        requestId,
+        sale.id,
+        items,
+        sale.branchId ?? null,
+        linkedOrder?.id,
+      );
       const cashMinor = legs
         .filter((leg) => leg.status === "SUCCEEDED" && CASH_METHODS.has(leg.method))
         .reduce((sum, leg) => sum + leg.amountMinor, 0);
@@ -125,8 +148,15 @@ export class SalesPaymentReconciliationService {
       const completedAt = new Date();
       const updated =
         (await this.db.updateSale(sale.id, businessId, { status, completedAt })) ?? sale;
+      await this.orderSales.settleLinkedSaleLocked(this.db, businessId, sale.id, completedAt);
       await this.ops.recordSale(businessId, completedAt);
-      return { sale: await this.ops.embedSale(updated), payment: updatedPayment };
-    });
+      recordPaymentHandoff("reconciled");
+      recordSaleChannel(linkedOrder?.channel === "WEB" ? "WEB" : "POS");
+      return { sale: await this.ops.embedSale(updated), payment: updatedPayment, confirmedOrderId: shouldNotify ? linkedOrder!.id : null };
+    }));
+    if (result.confirmedOrderId && this.notifications) {
+      await this.notifications.sendEvent(businessId, result.confirmedOrderId, "CONFIRMED");
+    }
+    return { sale: result.sale, payment: result.payment };
   }
 }

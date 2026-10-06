@@ -11,14 +11,15 @@ import { PLAN_SEEDS } from "../../src/common/pg/pg-plans-seed";
 import type { DbPort } from "../../src/common/db.port";
 
 const BASE = process.env["PGTEST_BASE"] ?? "postgres://pos:pos@localhost:5433";
-const URL = `${BASE}/pos_test_pg`;
+const TEST_DB = process.env["PGTEST_DB"] ?? "pos_test_pg";
+const URL = `${BASE}/${TEST_DB}`;
 const MIGRATIONS_DIR = join(__dirname, "../../../../packages/database/prisma/migrations");
 
 async function resetSharedDb(): Promise<void> {
   const admin = new Client({ connectionString: `${BASE}/postgres` });
   await admin.connect();
-  const exists = await admin.query("SELECT 1 FROM pg_database WHERE datname = $1", ["pos_test_pg"]);
-  if (exists.rowCount === 0) await admin.query(`CREATE DATABASE pos_test_pg OWNER pos`);
+  const exists = await admin.query("SELECT 1 FROM pg_database WHERE datname = $1", [TEST_DB]);
+  if (exists.rowCount === 0) await admin.query(`CREATE DATABASE "${TEST_DB.replace(/"/g, '""')}" OWNER pos`);
   await admin.end();
   const client = new Client({ connectionString: URL });
   await client.connect();
@@ -62,6 +63,109 @@ async function withTwoPorts(fn: (a: DbPort, b: DbPort, ctxA: PgContext, ctxB: Pg
 }
 
 describe("phase12 two-instance concurrency proof", () => {
+  it("races the same last unit across two Order reservations: exactly one HELD row wins", async () => {
+    await resetSharedDb();
+    await withTwoPorts(async (a, b) => {
+      const { ReservationService } = await import("../../src/orders/reservation-service");
+      const biz = await a.createBusiness({ name: "Reservation Race", currency: "PHP" });
+      const branch = await a.createBranch({ businessId: biz.id, name: "Main", type: "store", isActive: true });
+      const product = await a.createProduct({
+        businessId: biz.id, categoryId: null, name: "Last Unit", sku: "RACE-LAST", barcode: null,
+        brand: null, unit: "pc", costMinor: 100, priceMinor: 500, taxRateBps: null,
+        reorderLevel: 0, trackInventory: true, isActive: true, imageUrl: null,
+      });
+      await a.upsertBalance({ businessId: biz.id, branchId: branch.id, productId: product.id, qtyOnHand: 1 });
+      const makeOrder = async (db: DbPort, suffix: string) => {
+        const now = new Date("2026-10-06T12:00:00.000Z");
+        const order = await db.createOrder({
+          businessId: biz.id, channel: "WEB", fulfillmentMode: "PICKUP", paymentMode: "PAY_AT_PICKUP",
+          branchId: branch.id, customerId: null, contactName: "Ana", email: "ana@example.com", phone: "+639171234567",
+          deliveryAddress: null, fulfillmentInstructions: null, currency: "PHP", subtotalMinor: 500, discountMinor: 0,
+          taxMinor: 0, deliveryFeeMinor: 0, deliveryTaxMinor: 0, totalMinor: 500, saleId: null, status: "SUBMITTED",
+          version: 1, checkoutAt: now, submittedAt: now, confirmedAt: null, completedAt: null, cancelledAt: null,
+          actorId: "public", requestId: "reservation-race-" + suffix, createdAt: now, updatedAt: now,
+        });
+        await db.createOrderLine({
+          businessId: biz.id, orderId: order.id, position: 0, productId: product.id, name: product.name,
+          sku: product.sku, barcode: null, unit: product.unit, qty: 1, priceMinor: 500, costMinor: 100,
+          taxRateBps: null, discountMinor: 0, taxMinor: 0, lineTotalMinor: 500, bundleComponentsSnapshot: null,
+          createdAt: now,
+        });
+        return order;
+      };
+      const orderA = await makeOrder(a, "a");
+      const orderB = await makeOrder(b, "b");
+      const holdNow = new Date();
+      const serviceA = new ReservationService(a);
+      const serviceB = new ReservationService(b);
+      const results = await Promise.allSettled([
+        serviceA.holdSubmittedOrder(biz.id, orderA.id, "hold-a", holdNow),
+        serviceB.holdSubmittedOrder(biz.id, orderB.id, "hold-b", holdNow),
+      ]);
+      expect(results.filter((row) => row.status === "fulfilled")).toHaveLength(1);
+      expect(results.filter((row) => row.status === "rejected")).toHaveLength(1);
+      expect((results.find((row) => row.status === "rejected") as PromiseRejectedResult).reason.message)
+        .toBe("RESERVATION_CONFLICT");
+      const held = [
+        ...(await a.listReservationsByOrder(orderA.id, biz.id)),
+        ...(await a.listReservationsByOrder(orderB.id, biz.id)),
+      ].filter((row) => row.status === "HELD");
+      expect(held).toHaveLength(1);
+      expect((await a.findBalance(product.id, biz.id, branch.id))?.qtyOnHand).toBe(1);
+    });
+  });
+
+  it("races a WEB hold against POS completion for the last unit across two instances", async () => {
+    await resetSharedDb();
+    await withTwoPorts(async (a, b) => {
+      const { ReservationService } = await import("../../src/orders/reservation-service");
+      const { SalesService } = await import("../../src/sales/nest/sales.service");
+      const biz = await a.createBusiness({ name: "Hold vs POS", currency: "PHP" });
+      const branch = await a.createBranch({ businessId: biz.id, name: "Main", type: "store", isActive: true });
+      const product = await a.createProduct({
+        businessId: biz.id, categoryId: null, name: "Last Unit", sku: "HOLD-POS", barcode: null,
+        brand: null, unit: "pc", costMinor: 100, priceMinor: 500, taxRateBps: null,
+        reorderLevel: 0, trackInventory: true, isActive: true, imageUrl: null,
+      });
+      await a.upsertBalance({ businessId: biz.id, branchId: branch.id, productId: product.id, qtyOnHand: 1 });
+      const now = new Date();
+      const order = await a.createOrder({
+        businessId: biz.id, channel: "WEB", fulfillmentMode: "PICKUP", paymentMode: "PAY_AT_PICKUP",
+        branchId: branch.id, customerId: null, contactName: "Ana", email: "ana@example.com", phone: "+639171234567",
+        deliveryAddress: null, fulfillmentInstructions: null, currency: "PHP", subtotalMinor: 500, discountMinor: 0,
+        taxMinor: 0, deliveryFeeMinor: 0, deliveryTaxMinor: 0, totalMinor: 500, saleId: null, status: "SUBMITTED",
+        version: 1, checkoutAt: now, submittedAt: now, confirmedAt: null, completedAt: null, cancelledAt: null,
+        actorId: "public", requestId: "hold-pos-order", createdAt: now, updatedAt: now,
+      });
+      await a.createOrderLine({
+        businessId: biz.id, orderId: order.id, position: 0, productId: product.id, name: product.name,
+        sku: product.sku, barcode: null, unit: product.unit, qty: 1, priceMinor: 500, costMinor: 100,
+        taxRateBps: null, discountMinor: 0, taxMinor: 0, lineTotalMinor: 500, bundleComponentsSnapshot: null,
+        createdAt: now,
+      });
+      const sales = new SalesService(b);
+      const draft = await sales.createDraft(biz.id, "cashier", "pos-draft", {
+        lines: [{ productId: product.id, qty: 1, lineDiscountMinor: 0 }],
+        orderDiscountMinor: 0,
+        branchId: branch.id,
+      }, []);
+      const [holdResult, saleResult] = await Promise.allSettled([
+        new ReservationService(a).holdSubmittedOrder(biz.id, order.id, "hold-pos-key", now),
+        sales.completeSale(biz.id, "cashier", "pos-complete", draft.id, {
+          payments: [{ method: "cash", amountMinor: draft.totalMinor }],
+          key: "hold-pos-sale-key",
+          granted: [],
+          branchId: branch.id,
+        }),
+      ]);
+      expect([holdResult, saleResult].filter((row) => row.status === "fulfilled")).toHaveLength(1);
+      expect([holdResult, saleResult].filter((row) => row.status === "rejected")).toHaveLength(1);
+      const held = (await a.listReservationsByOrder(order.id, biz.id)).filter((row) => row.status === "HELD");
+      const balance = (await a.findBalance(product.id, biz.id, branch.id))?.qtyOnHand ?? 0;
+      expect((held.length === 1 && balance === 1) || (held.length === 0 && balance === 0)).toBe(true);
+    });
+  });
+
   it("races the last unit of stock across two instances: exactly one sale wins", async () => {
     await resetSharedDb();
     await withTwoPorts(async (a, b) => {

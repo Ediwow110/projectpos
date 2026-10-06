@@ -16,6 +16,7 @@ export interface TransactionalEmailPort {
   sendPasswordReset(input: { to: string; name: string; token: string }): Promise<void>;
   sendEmailVerification(input: { to: string; name: string; token: string }): Promise<void>;
   sendReceiptShare(input: { to: string; customerName: string | null; receiptNo: string; token: string }): Promise<void>;
+  sendOrderUpdate(input: { to: string; contactName: string | null; orderId: string; event: string; token: string }): Promise<void>;
 }
 
 export const TRANSACTIONAL_EMAIL_PORT = "TransactionalEmailPort";
@@ -24,6 +25,7 @@ export const NOOP_TRANSACTIONAL_EMAIL: TransactionalEmailPort = {
   async sendPasswordReset(): Promise<void> {},
   async sendEmailVerification(): Promise<void> {},
   async sendReceiptShare(): Promise<void> {},
+  async sendOrderUpdate(): Promise<void> {},
 };
 
 export type EmailRuntimeConfig =
@@ -186,6 +188,10 @@ function receiptShareUrl(webUrl: string, token: string): string {
   return `${webUrl}/receipts/shared/${encodeURIComponent(token)}`;
 }
 
+function orderStatusUrl(webUrl: string, token: string): string {
+  return `${webUrl}/order-status#token=${encodeURIComponent(token)}`;
+}
+
 function htmlShell(input: { eyebrow: string; title: string; body: string; href: string; cta: string; note: string }): string {
   return `<!doctype html>
 <html><body style="margin:0;background:#FCF8F3;font-family:Arial,sans-serif;color:#211814">
@@ -263,6 +269,27 @@ export class TransactionalEmailService implements TransactionalEmailPort {
         href,
         cta: "View receipt",
         note: "This secure receipt link expires in 24 hours.",
+      }),
+    });
+  }
+
+  async sendOrderUpdate(input: { to: string; contactName: string | null; orderId: string; event: string; token: string }): Promise<void> {
+    const href = orderStatusUrl(this.config.webUrl, input.token);
+    const safeName = escapeHtml(input.contactName || "there");
+    const safeOrderId = escapeHtml(input.orderId);
+    const safeEvent = escapeHtml(input.event.replaceAll("_", " ").toLowerCase());
+    await this.transport.send({
+      from: this.config.from,
+      to: input.to,
+      subject: `NexPOS order ${input.orderId} · ${input.event}`,
+      text: `Hi ${input.contactName || "there"},\n\nYour order ${input.orderId} is now ${input.event}.\nView status:\n${href}\n\nKeep this private link secure.`,
+      html: htmlShell({
+        eyebrow: "NexPOS order",
+        title: `Order ${safeOrderId}`,
+        body: `Hi ${safeName}. Your order is now ${safeEvent}.`,
+        href,
+        cta: "View order status",
+        note: "This secure link is private. Do not forward it.",
       }),
     });
   }

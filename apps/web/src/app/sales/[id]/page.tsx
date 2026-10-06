@@ -15,7 +15,7 @@ import { DangerButton, GhostButton, PrimaryButton, StatusPill } from "../../../c
 import { ApiError, apiFetch } from "../../../lib/api";
 import { buildProductSearch } from "../../../lib/catalog";
 import { parseMajorCurrencyToMinor } from "../../../lib/pos-sale-model";
-import { voidAuditLabel } from "../../../lib/sales";
+import { deliveryRefundRemaining, voidAuditLabel } from "../../../lib/sales";
 
 interface Me {
   role: string;
@@ -48,6 +48,8 @@ interface RefundRow {
   reason: string | null;
   requestedBy: string;
   approvedBy: string;
+  deliveryFeeRefundMinor: number;
+  deliveryTaxRefundMinor: number;
   items: Array<{ saleItemId: string; qty: number; amountMinor: number }>;
 }
 
@@ -99,6 +101,8 @@ interface SaleDetail {
   subtotalMinor: number;
   discountMinor: number;
   taxMinor: number;
+  deliveryFeeMinor: number;
+  deliveryTaxMinor: number;
   totalMinor: number;
   paidMinor: number;
   changeMinor: number;
@@ -137,6 +141,7 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
   const { id } = use(params);
   const [qtyByLine, setQtyByLine] = useState<Record<string, string>>({});
   const [loadAmountById, setLoadAmountById] = useState<Record<string, string>>({});
+  const [refundDelivery, setRefundDelivery] = useState(false);
   const [reason, setReason] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -253,6 +258,9 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
               .length > 0
               ? { loadRefunds: sale.giftCardLoads.filter((load) => (parseMajorCurrencyToMinor(loadAmountById[load.id] ?? "") ?? 0) > 0).map((load) => ({ loadId: load.id, amountMinor: parseMajorCurrencyToMinor(loadAmountById[load.id] ?? "") ?? 0 })) }
               : {}),
+            ...(refundDelivery && deliveryRefundRemaining(sale) > 0
+              ? { deliveryRefundMinor: deliveryRefundRemaining(sale) }
+              : {}),
             ...(reason.trim() ? { reason: reason.trim() } : {}),
           }
         : { reason: reason.trim() };
@@ -271,6 +279,7 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
       setReason("");
       setQtyByLine({});
       setLoadAmountById({});
+      setRefundDelivery(false);
       return true;
     } catch (err) {
       if (err instanceof ApiError && err.code === "FORBIDDEN" && mode === "approve" && !approvalToken) {
@@ -374,7 +383,9 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
     return total + (line ? Math.round((line.lineTotalMinor / line.qty) * item.qty) : 0);
   }, 0);
   const refundLoadTotalMinor = selectedLoadRefunds.reduce((total, load) => total + load.amountMinor, 0);
-  const selectedRefundTotalMinor = refundTotalMinor + refundLoadTotalMinor;
+  const deliveryRefundRemainingMinor = sale ? deliveryRefundRemaining(sale) : 0;
+  const selectedDeliveryRefundMinor = refundDelivery ? deliveryRefundRemainingMinor : 0;
+  const selectedRefundTotalMinor = refundTotalMinor + refundLoadTotalMinor + selectedDeliveryRefundMinor;
   const threshold = businessQuery.data?.settings?.["refundApprovalThresholdMinor"];
   const refundPermission = typeof threshold === "number" && selectedRefundTotalMinor > threshold ? "refund.override" : "sale.refund";
 
@@ -481,7 +492,7 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
                 <tbody>{sale.items.map((line) => <tr key={line.id}><td className="px-5 py-3 font-semibold text-[#2a241f]">{line.name}</td><td className="font-data px-5 py-3 text-right">{line.qty}</td><td className="font-data px-5 py-3 text-right text-[#73685f]">₱{money(line.priceMinor)}</td><td className="font-data px-5 py-3 text-right font-semibold">₱{money(line.lineTotalMinor)}</td></tr>)}</tbody>
               </table>
               {sale.giftCardLoads.length > 0 ? <div className="border-t border-[#eee6de] px-5 py-4"><SectionHeader title="Gift-card loads" description="Load amounts are part of this sale and can only be refunded to the original gift card tender." /><div className="mt-3 space-y-2">{sale.giftCardLoads.map((load) => <div key={load.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-[#fff8f3] px-3 py-2.5 text-[11px]"><span className="font-semibold text-[#2a241f]">{load.kind === "NEW" ? "New gift card" : "Gift-card reload"}<span className="ml-2 font-normal text-[#8b8077]">₱{money(load.amountMinor)} · {load.id.slice(0, 8)}</span></span><span className="font-data text-[#73685f]">Refundable ₱{money(load.refundableMinor)}</span></div>)}</div></div> : null}
-              <div className="grid gap-2 border-t border-[#eee6de] px-5 py-4 text-[11px] sm:grid-cols-3"><div><span className="text-[#9a8d83]">Subtotal</span><p className="font-data mt-1 font-semibold">₱{money(sale.subtotalMinor)}</p></div><div><span className="text-[#9a8d83]">Discount / tax</span><p className="font-data mt-1 font-semibold">−₱{money(sale.discountMinor)} / ₱{money(sale.taxMinor)}</p></div><div className="sm:text-right"><span className="text-[#9a8d83]">Total</span><p className="font-data mt-1 font-bold">₱{money(sale.totalMinor)}</p></div></div>
+              <div className="grid gap-2 border-t border-[#eee6de] px-5 py-4 text-[11px] sm:grid-cols-4"><div><span className="text-[#9a8d83]">Subtotal</span><p className="font-data mt-1 font-semibold">₱{money(sale.subtotalMinor)}</p></div><div><span className="text-[#9a8d83]">Discount / tax</span><p className="font-data mt-1 font-semibold">−₱{money(sale.discountMinor)} / ₱{money(sale.taxMinor)}</p></div><div><span className="text-[#9a8d83]">Delivery / tax</span><p className="font-data mt-1 font-semibold">₱{money(sale.deliveryFeeMinor)} / ₱{money(sale.deliveryTaxMinor)}</p></div><div className="sm:text-right"><span className="text-[#9a8d83]">Total</span><p className="font-data mt-1 font-bold">₱{money(sale.totalMinor)}</p></div></div>
             </DataTableFrame>
 
             <Panel className="p-5">
@@ -558,11 +569,11 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
         open={refundMode !== null && sale !== undefined}
         onClose={() => !busy && setRefundMode(null)}
         title={refundMode === "request" ? "Request refund" : refundMode === "approve" ? "Approve refund" : "Reject refund request"}
-        description={refundMode === "approve" ? "Choose exact merchandise quantities and/or gift-card load amounts. Gift-card loads return only to the original gift card." : "Record a clear reason so the refund decision remains auditable."}
-        footer={<div className="flex justify-end gap-2"><GhostButton type="button" onClick={() => setRefundMode(null)} disabled={busy}>Cancel</GhostButton>{refundMode === "reject" ? <DangerButton type="button" disabled={busy || !reason.trim()} onClick={() => void refundAction("reject")}>{busy ? "Working…" : "Reject request"}</DangerButton> : <PrimaryButton type="button" disabled={busy || (refundMode === "request" && !reason.trim()) || (refundMode === "approve" && selectedRefundItems.length === 0 && selectedLoadRefunds.length === 0)} onClick={() => refundMode && void refundAction(refundMode)}>{busy ? "Working…" : refundMode === "request" ? "Submit request" : "Approve refund"}</PrimaryButton>}</div>}
+        description={refundMode === "approve" ? "Choose exact merchandise quantities, gift-card load amounts, and/or the full remaining delivery charge. Gift-card loads return only to the original gift card." : "Record a clear reason so the refund decision remains auditable."}
+        footer={<div className="flex justify-end gap-2"><GhostButton type="button" onClick={() => setRefundMode(null)} disabled={busy}>Cancel</GhostButton>{refundMode === "reject" ? <DangerButton type="button" disabled={busy || !reason.trim()} onClick={() => void refundAction("reject")}>{busy ? "Working…" : "Reject request"}</DangerButton> : <PrimaryButton type="button" disabled={busy || (refundMode === "request" && !reason.trim()) || (refundMode === "approve" && selectedRefundItems.length === 0 && selectedLoadRefunds.length === 0 && selectedDeliveryRefundMinor === 0)} onClick={() => refundMode && void refundAction(refundMode)}>{busy ? "Working…" : refundMode === "request" ? "Submit request" : "Approve refund"}</PrimaryButton>}</div>}
       >
         <div className="space-y-4">
-          {refundMode === "approve" && sale ? <div className="space-y-3">{sale.items.map((line) => <label key={line.id} className="grid grid-cols-[minmax(0,1fr)_120px] items-end gap-3 rounded-xl border border-[#eee4db] bg-white p-3"><span className="text-[11px] font-semibold text-[#655b53]">{line.name}<span className="mt-1 block font-normal text-[#9a8d83]">Sold {line.qty} · ₱{money(line.lineTotalMinor)}</span></span><input type="number" min={0} max={Math.max(0, line.qty - (refundedQtyByLine.get(line.id) ?? 0))} step={1} value={qtyByLine[line.id] ?? ""} onChange={(event) => setQtyByLine((previous) => ({ ...previous, [line.id]: event.target.value }))} className="field" placeholder="0" /></label>)}{sale.giftCardLoads.map((load) => <label key={load.id} className="grid grid-cols-[minmax(0,1fr)_120px] items-end gap-3 rounded-xl border border-[#f1d6a7] bg-[#fff8eb] p-3"><span className="text-[11px] font-semibold text-[#655b53]">{load.kind === "NEW" ? "New gift-card load" : "Gift-card reload"}<span className="mt-1 block font-normal text-[#8b8077]">Loaded ₱{money(load.amountMinor)} · refundable ₱{money(load.refundableMinor)}</span></span><input type="number" min={0} max={(load.refundableMinor / 100).toFixed(2)} step={0.01} value={loadAmountById[load.id] ?? ""} onChange={(event) => setLoadAmountById((previous) => ({ ...previous, [load.id]: event.target.value }))} className="field" placeholder="PHP amount" /></label>)}</div> : null}
+          {refundMode === "approve" && sale ? <div className="space-y-3">{sale.items.map((line) => <label key={line.id} className="grid grid-cols-[minmax(0,1fr)_120px] items-end gap-3 rounded-xl border border-[#eee4db] bg-white p-3"><span className="text-[11px] font-semibold text-[#655b53]">{line.name}<span className="mt-1 block font-normal text-[#9a8d83]">Sold {line.qty} · ₱{money(line.lineTotalMinor)}</span></span><input type="number" min={0} max={Math.max(0, line.qty - (refundedQtyByLine.get(line.id) ?? 0))} step={1} value={qtyByLine[line.id] ?? ""} onChange={(event) => setQtyByLine((previous) => ({ ...previous, [line.id]: event.target.value }))} className="field" placeholder="0" /></label>)}{sale.giftCardLoads.map((load) => <label key={load.id} className="grid grid-cols-[minmax(0,1fr)_120px] items-end gap-3 rounded-xl border border-[#f1d6a7] bg-[#fff8eb] p-3"><span className="text-[11px] font-semibold text-[#655b53]">{load.kind === "NEW" ? "New gift-card load" : "Gift-card reload"}<span className="mt-1 block font-normal text-[#8b8077]">Loaded ₱{money(load.amountMinor)} · refundable ₱{money(load.refundableMinor)}</span></span><input type="number" min={0} max={(load.refundableMinor / 100).toFixed(2)} step={0.01} value={loadAmountById[load.id] ?? ""} onChange={(event) => setLoadAmountById((previous) => ({ ...previous, [load.id]: event.target.value }))} className="field" placeholder="PHP amount" /></label>)}{deliveryRefundRemainingMinor > 0 ? <label className="flex items-center justify-between gap-3 rounded-xl border border-[#d9e6d4] bg-[#f6fbf4] p-3"><span className="text-[11px] font-semibold text-[#476141]">Delivery charge<span className="mt-1 block font-normal text-[#74836f]">Refund the full remaining fee + tax · ₱{money(deliveryRefundRemainingMinor)}</span></span><input type="checkbox" checked={refundDelivery} onChange={(event) => setRefundDelivery(event.target.checked)} className="h-4 w-4" /></label> : null}</div> : null}
           <label className="block text-[11px] font-semibold text-[#655b53]">Reason {refundMode === "approve" ? "(optional)" : "(required)"}<textarea autoFocus={refundMode !== "approve"} value={reason} onChange={(event) => setReason(event.target.value)} rows={3} className="field mt-1.5 resize-none" placeholder="Reason for this refund decision" /></label>
           {statusMessage.includes(":") ? <p role="alert" className="rounded-xl bg-[#fff0f0] px-3 py-2.5 text-[12px] font-medium text-[#c43e3e]">{statusMessage}</p> : null}
         </div>
@@ -570,7 +581,7 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
 
       <Modal open={voidOpen && sale !== undefined} onClose={() => !busy && setVoidOpen(false)} title="Void sale" description="Voiding prevents this unsettled sale from continuing. The reason is retained in the audit trail." footer={<div className="flex justify-end gap-2"><GhostButton type="button" onClick={() => setVoidOpen(false)} disabled={busy}>Cancel</GhostButton><DangerButton type="button" disabled={busy || voidReason.trim().length < 3} onClick={() => void voidSale()}>{busy ? "Voiding…" : "Void sale"}</DangerButton></div>}><label className="block text-[11px] font-semibold text-[#655b53]">Reason<textarea autoFocus value={voidReason} onChange={(event) => setVoidReason(event.target.value)} rows={3} className="field mt-1.5 resize-none" placeholder="Why this sale is being voided" /></label>{statusMessage.includes(":") ? <p role="alert" className="mt-3 rounded-xl bg-[#fff0f0] px-3 py-2.5 text-[12px] font-medium text-[#c43e3e]">{statusMessage}</p> : null}</Modal>
 
-      {sale && approvalKind === "refund" ? <ManagerApprovalDialog open permission={refundPermission} action={{ kind: "refund", saleId: sale.id, items: selectedRefundItems, ...(selectedLoadRefunds.length > 0 ? { loadRefunds: selectedLoadRefunds } : {}), ...(reason.trim() ? { reason: reason.trim() } : {}) }} title={`Manager approval · approve refund of ₱${money(selectedRefundTotalMinor)}`} description="Approving this refund requires a manager authorization for the exact selected merchandise and gift-card load amounts." summary={`${selectedRefundItems.length} item line(s) · ${selectedLoadRefunds.length} gift-card load(s) · ₱${money(selectedRefundTotalMinor)}`} onApproved={(grant) => refundAction("approve", grant.token)} onClose={() => setApprovalKind(null)} /> : null}
+      {sale && approvalKind === "refund" ? <ManagerApprovalDialog open permission={refundPermission} action={{ kind: "refund", saleId: sale.id, items: selectedRefundItems, ...(selectedLoadRefunds.length > 0 ? { loadRefunds: selectedLoadRefunds } : {}), ...(selectedDeliveryRefundMinor > 0 ? { deliveryRefundMinor: selectedDeliveryRefundMinor } : {}), ...(reason.trim() ? { reason: reason.trim() } : {}) }} title={`Manager approval · approve refund of ₱${money(selectedRefundTotalMinor)}`} description="Approving this refund requires manager authorization for the exact merchandise, gift-card load, and delivery-charge selection." summary={`${selectedRefundItems.length} item line(s) · ${selectedLoadRefunds.length} gift-card load(s) · ₱${money(selectedRefundTotalMinor)}`} onApproved={(grant) => refundAction("approve", grant.token)} onClose={() => setApprovalKind(null)} /> : null}
       {sale && approvalKind === "void" ? <ManagerApprovalDialog open permission="sale.void" action={{ kind: "sale_void", saleId: sale.id, reason: voidReason.trim() }} title={`Manager approval · approve void of sale ${sale.receiptNo}`} description="Voiding an unsettled sale requires manager authorization for this exact sale and reason." summary={`Sale ${sale.receiptNo} · ${voidReason.trim()}`} onApproved={(grant) => voidSale(grant.token)} onClose={() => setApprovalKind(null)} /> : null}
 
       {exchangeOpen && sale ? (

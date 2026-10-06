@@ -123,6 +123,47 @@ describe("phase10 ledger export accounting", () => {
     expect(accountTotal(after.rows, "5000", 5)).toBe(1000);
   });
 
+  it("books delivery fee/tax and their refunds outside merchandise revenue", async () => {
+    const { db, business, product, exports } = await setup();
+    const createdAt = new Date("2026-09-15T00:00:00.000Z");
+    const sale = await db.createSale({
+      businessId: business.id, receiptNo: "DELIVERY-LEDGER", status: "PARTIALLY_REFUNDED",
+      subtotalMinor: 2500, discountMinor: 0, taxMinor: 0,
+      deliveryFeeMinor: 1000, deliveryTaxMinor: 120, totalMinor: 3620,
+      paidMinor: 3620, changeMinor: 0, currency: "PHP", customerId: null, customerName: null,
+      notes: null, actorId: "u1", requestId: "delivery-ledger", idempotencyKey: null,
+      registerId: null, branchId: null, completedAt: createdAt, createdAt,
+    });
+    await db.createSaleItem({
+      businessId: business.id, saleId: sale.id, productId: product.id, name: product.name, unit: product.unit,
+      qty: 1, priceMinor: 2500, costMinor: product.costMinor, taxRateBps: null,
+      lineDiscountMinor: 0, lineTotalMinor: 2500,
+    });
+    await db.createPayment({
+      businessId: business.id, saleId: sale.id, method: "card", amountMinor: 3620,
+      status: "SUCCEEDED", providerRef: null, idempotencyKey: "delivery-ledger-pay",
+    });
+    await db.createPayment({
+      businessId: business.id, saleId: sale.id, method: "card", amountMinor: 1120,
+      status: "REFUNDED", providerRef: null, idempotencyKey: "delivery-ledger-refund-pay",
+    });
+    await db.createRefund({
+      businessId: business.id, saleId: sale.id, status: "APPROVED", totalMinor: 1120,
+      deliveryFeeRefundMinor: 1000, deliveryTaxRefundMinor: 120, reason: "Delivery issue",
+      requestedBy: "u1", approvedBy: "u1", requestId: "delivery-ledger-refund",
+      approvedRequestId: "delivery-ledger-refund", singleStep: true,
+    });
+    const { rows } = await exports.buildLedger(business.id, "u1", "delivery-ledger-export", {});
+    expect(accountTotal(rows, "4000", 5)).toBeGreaterThanOrEqual(2500);
+    expect(accountTotal(rows, "4010", 5)).toBe(1000);
+    expect(accountTotal(rows, "4010", 4)).toBe(1000);
+    expect(accountTotal(rows, "2210", 5)).toBe(120);
+    expect(accountTotal(rows, "2210", 4)).toBe(120);
+    expect(accountTotal(rows, "4000", 4)).toBe(0);
+    const sum = totals(rows);
+    expect(sum.debit).toBe(sum.credit);
+  });
+
   it("books change to a change-payable account so overpayment stays balanced", async () => {
     const { business, sales, product, exports } = await setup();
     await sell(

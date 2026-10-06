@@ -99,6 +99,26 @@ export class ManagerApprovalPolicyService {
     return membership?.role !== "owner";
   }
 
+  private async normalizedDeliveryRefund(
+    businessId: string,
+    saleId: string,
+    requestedMinor: number | undefined,
+  ): Promise<{ amountMinor: number; feeMinor: number; taxMinor: number }> {
+    const requested = requestedMinor ?? 0;
+    if (!Number.isInteger(requested) || requested < 0) throw new Error("VALIDATION");
+    if (requested === 0) return { amountMinor: 0, feeMinor: 0, taxMinor: 0 };
+    const sale = await this.requireSale(businessId, saleId);
+    const prior = (await this.db.listRefundsBySale(saleId, businessId)).filter((row) => row.status === "APPROVED");
+    const refundedFee = prior.reduce((sum, row) => sum + row.deliveryFeeRefundMinor, 0);
+    const refundedTax = prior.reduce((sum, row) => sum + row.deliveryTaxRefundMinor, 0);
+    const feeMinor = Math.max(0, sale.deliveryFeeMinor - refundedFee);
+    const taxMinor = Math.max(0, sale.deliveryTaxMinor - refundedTax);
+    const remaining = feeMinor + taxMinor;
+    if (remaining <= 0 || requested > remaining) throw new Error("REFUND_EXCEEDS_LIMIT");
+    if (requested !== remaining) throw new Error("VALIDATION");
+    return { amountMinor: remaining, feeMinor, taxMinor };
+  }
+
   async resolveRequirement(
     businessId: string,
     requesterId: string,
@@ -117,6 +137,11 @@ export class ManagerApprovalPolicyService {
         };
       case "refund": {
         const items = await this.normalizedRefund(businessId, action.saleId, action.items);
+        const deliveryRefund = await this.normalizedDeliveryRefund(
+          businessId,
+          action.saleId,
+          action.deliveryRefundMinor,
+        );
         const loads = await this.db.listSaleGiftCardLoads(action.saleId, businessId);
         const loadRefunds = new Map<string, number>();
         for (const row of action.loadRefunds ?? []) loadRefunds.set(row.loadId, (loadRefunds.get(row.loadId) ?? 0) + row.amountMinor);
@@ -132,7 +157,11 @@ export class ManagerApprovalPolicyService {
           normalizedLoadRefunds.push({ loadId, amountMinor });
         }
         normalizedLoadRefunds.sort((left, right) => left.loadId.localeCompare(right.loadId));
-        const totalMinor = items.reduce((sum, item) => sum + item.amountMinor, 0) + normalizedLoadRefunds.reduce((sum, item) => sum + item.amountMinor, 0);
+        const totalMinor =
+          items.reduce((sum, item) => sum + item.amountMinor, 0)
+          + normalizedLoadRefunds.reduce((sum, item) => sum + item.amountMinor, 0)
+          + deliveryRefund.amountMinor;
+        if (totalMinor <= 0) throw new Error("VALIDATION");
         const threshold = (await this.db.getSettings(businessId))["refundApprovalThresholdMinor"];
         const permission: ManagerApprovalPermission = typeof threshold === "number" && totalMinor > threshold
           ? "refund.override"
@@ -144,6 +173,7 @@ export class ManagerApprovalPolicyService {
             saleId: action.saleId,
             items: items.map(({ saleItemId, qty }) => ({ saleItemId, qty })),
             loadRefunds: normalizedLoadRefunds,
+            deliveryRefundMinor: deliveryRefund.amountMinor,
             reason: trimOrNull(action.reason),
           }),
           requireDistinctApprover: await this.refundRequiresDistinctApprover(businessId, requesterId, action.saleId),

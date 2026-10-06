@@ -1,5 +1,6 @@
 import type { DbPort, DbProduct, DbSaleItem } from "../common/db.port";
 import { incrementMetric } from "../common/metrics";
+import { InventoryAvailabilityService } from "../inventory/availability-service";
 import { withInventoryLocks } from "../inventory/inventory-locks";
 
 export class SalesStockService {
@@ -15,15 +16,19 @@ export class SalesStockService {
     businessId: string,
     items: DbSaleItem[],
     branchId: string | null,
+    ownerOrderId?: string,
   ): Promise<void> {
     const requirements = await this.stockRequirements(businessId, items);
-    for (const [productId, required] of requirements) {
-      const current = await this.db.findBalance(productId, businessId, branchId);
-      const onHand = current?.qtyOnHand ?? 0;
-      if (onHand - required < 0) {
-        incrementMetric("pos_inventory_failures_total");
-        throw new Error("INSUFFICIENT_STOCK");
-      }
+    try {
+      await new InventoryAvailabilityService(this.db).assertDecreaseAllowed(
+        businessId,
+        branchId,
+        [...requirements].map(([productId, qty]) => ({ productId, qty })),
+        ownerOrderId,
+      );
+    } catch (error) {
+      incrementMetric("pos_inventory_failures_total");
+      throw error;
     }
   }
 
@@ -57,13 +62,14 @@ export class SalesStockService {
     saleId: string,
     items: DbSaleItem[],
     branchId: string | null = null,
+    ownerOrderId?: string,
   ): Promise<void> {
     await withInventoryLocks(
       this.db,
       businessId,
       [...(await this.stockRequirements(businessId, items)).keys()].map((productId) => ({ productId, branchId })),
       async () => {
-        await this.assertAvailable(businessId, items, branchId);
+        await this.assertAvailable(businessId, items, branchId, ownerOrderId);
         const requirements = await this.stockRequirements(businessId, items);
         for (const [productId, required] of requirements) {
           const current = await this.db.findBalance(productId, businessId, branchId);

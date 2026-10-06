@@ -63,4 +63,8 @@ export const businessSettingsSchema = z.object({
   taxRateBps: z.number().int().min(0).max(10000).optional(),
   receiptHeader: z.string().max(200).optional(),
   receiptFooter: z.string().max(200).optional(),
+  onlineOrderingEnabled: z.boolean().optional(),
+  onlinePickupBranchIds: z.array(z.string().min(1, "VALIDATION")).max(100, "VALIDATION").optional(),
+  onlineFulfillmentBranchId: z.string().min(1, "VALIDATION").nullable().optional(),
+  deliveryFlatFeeMinor: z.number().int().min(0, "VALIDATION").max(Number.MAX_SAFE_INTEGER, "VALIDATION").optional(),
 });

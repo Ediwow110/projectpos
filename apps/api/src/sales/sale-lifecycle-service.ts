@@ -3,9 +3,14 @@ import { fingerprintPayload } from "./idempotency";
 import { transitionSale } from "./state-machine";
 import { refundLockKey } from "../refunds/refund-lock";
 import type { AppliedManagerApproval } from "../auth/nest/manager-approval-policy.service";
+import { OrderSaleService } from "../orders/order-sale-service";
 
 export class SalesLifecycleService {
-  constructor(private readonly db: DbPort) {}
+  private readonly orderSales: OrderSaleService;
+
+  constructor(private readonly db: DbPort) {
+    this.orderSales = new OrderSaleService(db);
+  }
 
   private async requireSale(businessId: string, saleId: string): Promise<DbSale> {
     const sale = await this.db.findSaleById(saleId, businessId);
@@ -78,16 +83,23 @@ export class SalesLifecycleService {
   ): Promise<DbSale> {
     if (!granted.includes("sale.void")) throw new Error("FORBIDDEN");
     if (!reason || reason.trim().length < 3) throw new Error("VALIDATION");
-    return this.db.withLock(`sales:${businessId}`, async () => {
+    return this.db.withLock(`sales:${businessId}`, async () => this.db.withTransaction(async () => {
       const sale = await this.requireSale(businessId, saleId);
       if (sale.status === "COMPLETED") throw new Error("SALE_INVALID_TRANSITION");
       const status = transitionSale(sale.status, "VOIDED");
+      const voidedAt = new Date();
       const updated =
         (await this.db.updateSale(sale.id, businessId, {
           status,
-          voidedAt: new Date(),
+          voidedAt,
           voidReason: reason.trim(),
         })) ?? sale;
+      await this.orderSales.cancelPosOrderForVoidedSaleLocked(
+        this.db,
+        businessId,
+        sale.id,
+        voidedAt,
+      );
       await this.db.appendAudit({
         businessId,
         actorId,
@@ -98,7 +110,7 @@ export class SalesLifecycleService {
         ...(approval ? { after: { approval } } : {}),
       });
       return updated;
-    });
+    }));
   }
 
   async requestRefund(

@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest";
 import { createMemoryDb } from "../common/memory.db";
 import type { DbPayment, DbSale } from "../common/db.port";
 import { SalesPaymentReconciliationService } from "./payment-reconciliation-service";
+import { OrderSaleService } from "../orders/order-sale-service";
+import { ReservationService } from "../orders/reservation-service";
+import { SalesService } from "./nest/sales.service";
 
 async function setup() {
   const db = createMemoryDb();
@@ -94,5 +97,99 @@ describe("sales payment reconciliation service", () => {
     expect(failed.sale.status).toBe("PAYMENT_FAILED");
     expect((failed.payment as DbPayment).status).toBe("FAILED");
     expect(effects()).toEqual({ stockApplications: 0, metered: 0 });
+  });
+
+  it("commits a linked WEB reservation once when UNKNOWN reconciliation succeeds", async () => {
+    const db = createMemoryDb();
+    const business = await db.createBusiness({ name: "Reconcile web", currency: "PHP" });
+    const branch = await db.createBranch({ businessId: business.id, name: "Main", type: "store", isActive: true });
+    const product = await db.createProduct({
+      businessId: business.id, categoryId: null, name: "Unit", sku: "U", barcode: null, brand: null,
+      unit: "pc", costMinor: 50, priceMinor: 100, taxRateBps: null, reorderLevel: 0,
+      trackInventory: true, isActive: true, imageUrl: null,
+    });
+    await db.upsertBalance({ businessId: business.id, branchId: branch.id, productId: product.id, qtyOnHand: 1 });
+    const now = new Date("2026-10-06T12:00:00.000Z");
+    const order = await db.createOrder({
+      businessId: business.id, channel: "WEB", fulfillmentMode: "PICKUP", paymentMode: "PREPAID",
+      branchId: branch.id, customerId: null, contactName: "Ana", email: "ana@example.com", phone: "+639171234567",
+      deliveryAddress: null, fulfillmentInstructions: null, currency: "PHP", subtotalMinor: 100, discountMinor: 0,
+      taxMinor: 0, deliveryFeeMinor: 0, deliveryTaxMinor: 0, totalMinor: 100, saleId: null, status: "SUBMITTED",
+      version: 1, checkoutAt: now, submittedAt: now, confirmedAt: null, completedAt: null, cancelledAt: null,
+      actorId: "public", requestId: "rec-order", createdAt: now, updatedAt: now,
+    });
+    await db.createOrderLine({
+      businessId: business.id, orderId: order.id, position: 0, productId: product.id, name: product.name,
+      sku: product.sku, barcode: null, unit: product.unit, qty: 1, priceMinor: 100, costMinor: 50,
+      taxRateBps: null, discountMinor: 0, taxMinor: 0, lineTotalMinor: 100, bundleComponentsSnapshot: null, createdAt: now,
+    });
+    await new ReservationService(db).holdSubmittedOrder(business.id, order.id, "rec-hold", now);
+    const sale = await new OrderSaleService(db).createSaleFromSubmittedOrder(business.id, "staff", "rec-sale", order.id);
+    const sales = new SalesService(db);
+    const unknown = await sales.completeSale(business.id, "staff", "rec-unknown", sale.id, {
+      payments: [{ method: "card", amountMinor: sale.totalMinor, providerRef: "unknown-rec" }],
+      key: "rec-unknown-key", granted: [], branchId: branch.id,
+    });
+    expect(unknown.sale.status).toBe("PAYMENT_UNKNOWN");
+    const payment = (await db.listPaymentsBySale(sale.id, business.id))[0]!;
+
+    const done = await sales.reconcilePayment(business.id, "staff", "rec-ok", payment.id, "SUCCEEDED", "rec-ok-key");
+    expect(done.sale.status).toBe("COMPLETED");
+    expect(await db.findOrderById(order.id, business.id)).toMatchObject({ status: "CONFIRMED" });
+    const reconciledFulfillments = await db.listFulfillmentsByOrder(order.id, business.id);
+    expect(reconciledFulfillments).toHaveLength(1);
+    expect(await db.listFulfillmentLines(reconciledFulfillments[0]!.id, business.id)).toEqual([
+      expect.objectContaining({ qty: 1 }),
+    ]);
+    expect(await db.listReservationsByOrder(order.id, business.id)).toEqual([
+      expect.objectContaining({ status: "COMMITTED", expiresAt: null }),
+    ]);
+    expect((await db.findBalance(product.id, business.id, branch.id))?.qtyOnHand).toBe(0);
+    expect((await db.listMovements(product.id, business.id, branch.id)).filter((row) => row.type === "sale")).toHaveLength(1);
+
+    await sales.reconcilePayment(business.id, "staff", "rec-replay", payment.id, "SUCCEEDED", "rec-ok-key");
+    expect(await db.listFulfillmentsByOrder(order.id, business.id)).toHaveLength(1);
+    expect((await db.listMovements(product.id, business.id, branch.id)).filter((row) => row.type === "sale")).toHaveLength(1);
+  });
+
+  it("leaves a linked WEB reservation HELD when UNKNOWN reconciliation definitively fails", async () => {
+    const db = createMemoryDb();
+    const business = await db.createBusiness({ name: "Reconcile fail", currency: "PHP" });
+    const branch = await db.createBranch({ businessId: business.id, name: "Main", type: "store", isActive: true });
+    const product = await db.createProduct({
+      businessId: business.id, categoryId: null, name: "Unit", sku: "UF", barcode: null, brand: null,
+      unit: "pc", costMinor: 50, priceMinor: 100, taxRateBps: null, reorderLevel: 0,
+      trackInventory: true, isActive: true, imageUrl: null,
+    });
+    await db.upsertBalance({ businessId: business.id, branchId: branch.id, productId: product.id, qtyOnHand: 1 });
+    const now = new Date();
+    const order = await db.createOrder({
+      businessId: business.id, channel: "WEB", fulfillmentMode: "PICKUP", paymentMode: "PREPAID",
+      branchId: branch.id, customerId: null, contactName: "Ana", email: "ana@example.com", phone: "+639171234567",
+      deliveryAddress: null, fulfillmentInstructions: null, currency: "PHP", subtotalMinor: 100, discountMinor: 0,
+      taxMinor: 0, deliveryFeeMinor: 0, deliveryTaxMinor: 0, totalMinor: 100, saleId: null, status: "SUBMITTED",
+      version: 1, checkoutAt: now, submittedAt: now, confirmedAt: null, completedAt: null, cancelledAt: null,
+      actorId: "public", requestId: "rec-fail-order", createdAt: now, updatedAt: now,
+    });
+    await db.createOrderLine({
+      businessId: business.id, orderId: order.id, position: 0, productId: product.id, name: product.name,
+      sku: product.sku, barcode: null, unit: product.unit, qty: 1, priceMinor: 100, costMinor: 50,
+      taxRateBps: null, discountMinor: 0, taxMinor: 0, lineTotalMinor: 100, bundleComponentsSnapshot: null, createdAt: now,
+    });
+    await new ReservationService(db).holdSubmittedOrder(business.id, order.id, "rec-fail-hold", now);
+    const sale = await new OrderSaleService(db).createSaleFromSubmittedOrder(business.id, "staff", "rec-fail-sale", order.id);
+    const sales = new SalesService(db);
+    await sales.completeSale(business.id, "staff", "rec-fail-unknown", sale.id, {
+      payments: [{ method: "card", amountMinor: sale.totalMinor, providerRef: "unknown-rec-fail" }],
+      key: "rec-fail-unknown-key", granted: [], branchId: branch.id,
+    });
+    const payment = (await db.listPaymentsBySale(sale.id, business.id))[0]!;
+    const failed = await sales.reconcilePayment(business.id, "staff", "rec-fail", payment.id, "FAILED", "rec-fail-key");
+    expect(failed.sale.status).toBe("PAYMENT_FAILED");
+    expect(await db.findOrderById(order.id, business.id)).toMatchObject({ status: "SUBMITTED" });
+    expect(await db.listReservationsByOrder(order.id, business.id)).toEqual([
+      expect.objectContaining({ status: "HELD" }),
+    ]);
+    expect((await db.findBalance(product.id, business.id, branch.id))?.qtyOnHand).toBe(1);
   });
 });

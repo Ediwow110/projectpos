@@ -8,6 +8,7 @@ import {
 import { fingerprintPayload } from "./idempotency";
 import { resolvePaymentMethods } from "./payment-methods";
 import { transitionSale } from "./state-machine";
+import { recordIdempotencyConflict, recordPaymentHandoff } from "../common/metrics";
 
 type EmbeddedSale = DbSale & {
   items: DbSaleItem[];
@@ -17,7 +18,12 @@ type EmbeddedSale = DbSale & {
 interface PaymentProviderOps {
   requireSale: (businessId: string, saleId: string) => Promise<DbSale>;
   embedSale: (sale: DbSale) => Promise<EmbeddedSale>;
-  assertStockAvailable: (businessId: string, items: DbSaleItem[], branchId: string | null) => Promise<void>;
+  assertStockAvailable: (
+    businessId: string,
+    items: DbSaleItem[],
+    branchId: string | null,
+    ownerOrderId?: string,
+  ) => Promise<void>;
 }
 
 export class SalesPaymentProviderService {
@@ -35,6 +41,7 @@ export class SalesPaymentProviderService {
     method: PayMongoMethod,
     key: string,
     webUrl: string,
+    returnPaths?: { successPath: string; cancelPath: string },
   ): Promise<{
     sale: EmbeddedSale;
     payment: DbPayment;
@@ -52,12 +59,16 @@ export class SalesPaymentProviderService {
       if (!configuredMethods.has(method)) throw new Error("VALIDATION");
       const items = await this.db.listSaleItems(sale.id, businessId);
       if (items.length === 0) throw new Error("VALIDATION");
-      await this.ops.assertStockAvailable(businessId, items, sale.branchId ?? null);
+      const ownerOrder = await this.db.findOrderBySaleId(sale.id, businessId);
+      await this.ops.assertStockAvailable(businessId, items, sale.branchId ?? null, ownerOrder?.id);
 
       const fingerprint = fingerprintPayload({ saleId, method });
       const existingKey = await this.db.findIdempotency(businessId, key, "paymongo.checkout");
       if (existingKey) {
-        if (existingKey.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
+        if (existingKey.fingerprint !== fingerprint) {
+          recordIdempotencyConflict("payment");
+          throw new Error("IDEMPOTENCY_MISMATCH");
+        }
         const payment = await this.db.findPaymentById(existingKey.resultId, businessId);
         if (!payment || !payment.providerRef) throw new Error("PAYMENT_PROVIDER_INVALID_RESPONSE");
         const snapshot = await this.paymongo.retrieveCheckout(payment.providerRef);
@@ -96,6 +107,7 @@ export class SalesPaymentProviderService {
         }
         if (snapshot.status === "expired") {
           await this.db.updatePayment(pending.id, businessId, { status: "FAILED" });
+          recordPaymentHandoff("failed");
           if (sale.status === "PENDING_PAYMENT") {
             sale = (await this.db.updateSale(sale.id, businessId, {
               status: transitionSale(sale.status, "PAYMENT_FAILED"),
@@ -110,14 +122,24 @@ export class SalesPaymentProviderService {
       }
 
       const base = webUrl.replace(/\/$/, "");
+      const safePath = (value: string): string => {
+        if (!value.startsWith("/") || value.startsWith("//")) throw new Error("VALIDATION");
+        return value;
+      };
+      const successPath = returnPaths
+        ? safePath(returnPaths.successPath)
+        : `/sales/${encodeURIComponent(sale.id)}?paymongo=success`;
+      const cancelPath = returnPaths
+        ? safePath(returnPaths.cancelPath)
+        : `/sales/${encodeURIComponent(sale.id)}?paymongo=cancelled`;
       const remote = await this.paymongo.createCheckout({
         saleId: sale.id,
         receiptNo: sale.receiptNo,
         businessId,
         method,
         idempotencyKey: key,
-        successUrl: `${base}/sales/${encodeURIComponent(sale.id)}?paymongo=success`,
-        cancelUrl: `${base}/sales/${encodeURIComponent(sale.id)}?paymongo=cancelled`,
+        successUrl: `${base}${successPath}`,
+        cancelUrl: `${base}${cancelPath}`,
         lineItems: [{ name: `NexPOS sale ${sale.receiptNo}`, amount: sale.totalMinor, quantity: 1 }],
       });
 
@@ -150,6 +172,7 @@ export class SalesPaymentProviderService {
         entityId: payment.id,
         requestId,
       });
+      recordPaymentHandoff("started");
       return {
         sale: await this.ops.embedSale(sale),
         payment,

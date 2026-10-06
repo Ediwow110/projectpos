@@ -1,4 +1,4 @@
-import type { DbCustomer, DbExchange, DbExpense, DbRefund, DbRefundItem } from "../db.port";
+import type { DbCustomer, DbExchange, DbExpense, DbRefund, DbRefundCreate, DbRefundItem } from "../db.port";
 import { nid } from "./context";
 import type { PgContext } from "./context";
 
@@ -16,7 +16,7 @@ import type { PgContext } from "./context";
 //   Expense DDL has no updatedAt column.
 const CUSTOMER_COLUMNS = '"id", "businessId", "name", "phone", "email", "address", "notes", "isActive"';
 const REFUND_COLUMNS =
-  '"id", "businessId", "saleId", "status", "totalMinor", "reason", "requestedBy", ' +
+  '"id", "businessId", "saleId", "status", "totalMinor", "deliveryFeeRefundMinor", "deliveryTaxRefundMinor", "reason", "requestedBy", ' +
   '"approvedBy", "requestId", "approvedRequestId", "singleStep"';
 const REFUND_ITEM_COLUMNS =
   '"id", "businessId", "refundId", "saleItemId", "productId", "qty", "amountMinor", "restocked"';
@@ -104,15 +104,20 @@ export function peopleFamily(ctx: PgContext) {
       }
     },
 
-    async createRefund(r: Omit<DbRefund, "id">): Promise<DbRefund> {
+    async createRefund(r: DbRefundCreate): Promise<DbRefund> {
       const cl = await ctx.client();
       try {
-        const row = { ...r, id: nid("ref") };
+        const row: DbRefund = {
+          deliveryFeeRefundMinor: 0,
+          deliveryTaxRefundMinor: 0,
+          ...r,
+          id: nid("ref"),
+        };
         await cl.query(
-          'INSERT INTO "Refund" ("id", "businessId", "saleId", "status", "totalMinor", "reason", "requestedBy", "approvedBy", "requestId", "approvedRequestId", "singleStep", "createdAt")' +
-            ' VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP)',
+          'INSERT INTO "Refund" ("id", "businessId", "saleId", "status", "totalMinor", "deliveryFeeRefundMinor", "deliveryTaxRefundMinor", "reason", "requestedBy", "approvedBy", "requestId", "approvedRequestId", "singleStep", "createdAt")' +
+            ' VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP)',
           [
-            row.id, row.businessId, row.saleId, row.status, row.totalMinor, row.reason,
+            row.id, row.businessId, row.saleId, row.status, row.totalMinor, row.deliveryFeeRefundMinor, row.deliveryTaxRefundMinor, row.reason,
             row.requestedBy, row.approvedBy, row.requestId, row.approvedRequestId, row.singleStep,
           ],
         );

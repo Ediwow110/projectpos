@@ -15,7 +15,9 @@ export interface DbBusiness {
   id: string;
   name: string;
   currency: string;
+  storefrontKey: string | null;
 }
+export type DbBusinessCreate = Omit<DbBusiness, "id" | "storefrontKey"> & { storefrontKey?: string | null };
 
 export interface DbMembership {
   id: string;
@@ -396,6 +398,8 @@ export interface DbSale {
   subtotalMinor: number;
   discountMinor: number;
   taxMinor: number;
+  deliveryFeeMinor: number;
+  deliveryTaxMinor: number;
   totalMinor: number;
   paidMinor: number;
   changeMinor: number;
@@ -416,6 +420,11 @@ export interface DbSale {
   voidedAt?: Date | null;
   voidReason?: string | null;
 }
+export type DbSaleCreate =
+  Omit<DbSale, "id" | "deliveryFeeMinor" | "deliveryTaxMinor"> & {
+    deliveryFeeMinor?: number;
+    deliveryTaxMinor?: number;
+  };
 
 export interface DbSaleItem {
   id: string;
@@ -518,6 +527,157 @@ export interface DbCustomer {
   address: string | null;
   notes: string | null;
   isActive: boolean;
+}
+
+export type DbOrderChannel = "POS" | "WEB";
+export type DbFulfillmentMode = "NONE" | "PICKUP" | "DELIVERY";
+export type DbOrderPaymentMode = "POS" | "PREPAID" | "PAY_AT_PICKUP";
+export type DbOrderStatus = "DRAFT" | "CHECKOUT" | "SUBMITTED" | "CONFIRMED" | "COMPLETED" | "CANCELLED" | "EXPIRED" | "REJECTED";
+export type DbReservationStatus = "HELD" | "COMMITTED" | "RELEASED" | "EXPIRED";
+export type DbFulfillmentType = "PICKUP" | "DELIVERY";
+export type DbFulfillmentStatus =
+  | "PENDING"
+  | "READY"
+  | "PACKED"
+  | "DISPATCHED"
+  | "DELIVERED"
+  | "DELIVERY_FAILED"
+  | "COLLECTED"
+  | "CANCELLED";
+export type DbOrderAccessTokenKind = "CHECKOUT" | "STATUS";
+export type DbOrderPaymentStatus =
+  | "UNPAID"
+  | "PENDING"
+  | "UNKNOWN"
+  | "FAILED"
+  | "PAID"
+  | "PARTIALLY_REFUNDED"
+  | "REFUNDED";
+
+export interface DbOrder {
+  id: string;
+  businessId: string;
+  channel: DbOrderChannel;
+  fulfillmentMode: DbFulfillmentMode;
+  paymentMode: DbOrderPaymentMode;
+  branchId: string | null;
+  customerId: string | null;
+  contactName: string | null;
+  email: string | null;
+  phone: string | null;
+  deliveryAddress: unknown | null;
+  fulfillmentInstructions: string | null;
+  currency: string;
+  subtotalMinor: number;
+  discountMinor: number;
+  taxMinor: number;
+  deliveryFeeMinor: number;
+  deliveryTaxMinor: number;
+  totalMinor: number;
+  saleId: string | null;
+  status: DbOrderStatus;
+  version: number;
+  checkoutAt: Date | null;
+  submittedAt: Date | null;
+  confirmedAt: Date | null;
+  completedAt: Date | null;
+  cancelledAt: Date | null;
+  actorId: string;
+  requestId: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DbOrderLine {
+  id: string;
+  businessId: string;
+  orderId: string;
+  position: number;
+  productId: string;
+  name: string;
+  sku: string | null;
+  barcode: string | null;
+  unit: string;
+  qty: number;
+  priceMinor: number;
+  costMinor: number;
+  taxRateBps: number | null;
+  discountMinor: number;
+  taxMinor: number;
+  lineTotalMinor: number;
+  bundleComponentsSnapshot: unknown | null;
+  createdAt: Date;
+}
+
+export interface DbInventoryReservation {
+  id: string;
+  businessId: string;
+  branchId: string;
+  orderId: string;
+  orderLineId: string;
+  productId: string;
+  qty: number;
+  status: DbReservationStatus;
+  expiresAt: Date | null;
+  idempotencyKey: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DbFulfillment {
+  id: string;
+  businessId: string;
+  orderId: string;
+  type: DbFulfillmentType;
+  status: DbFulfillmentStatus;
+  branchId: string;
+  assignedUserId: string | null;
+  contactName: string | null;
+  email: string | null;
+  phone: string | null;
+  deliveryAddress: unknown | null;
+  instructions: string | null;
+  version: number;
+  readyAt: Date | null;
+  dispatchedAt: Date | null;
+  deliveredAt: Date | null;
+  collectedAt: Date | null;
+  failedAt: Date | null;
+  cancelledAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DbFulfillmentLine {
+  id: string;
+  businessId: string;
+  fulfillmentId: string;
+  orderLineId: string;
+  qty: number;
+  createdAt: Date;
+}
+
+export interface DbOrderAccessToken {
+  id: string;
+  businessId: string;
+  orderId: string;
+  kind: DbOrderAccessTokenKind;
+  tokenHash: string;
+  expiresAt: Date;
+  revokedAt: Date | null;
+  createdAt: Date;
+}
+
+export interface DbOrderPageQuery {
+  cursor: { createdAt: Date; id: string } | null;
+  limit: number;
+  status?: DbOrderStatus;
+  channel?: DbOrderChannel;
+  fulfillmentMode?: DbFulfillmentMode;
+  branchId?: string;
+  paymentStatus?: DbOrderPaymentStatus;
+  dateFrom?: Date;
+  dateTo?: Date;
 }
 
 export type GiftCardStatus = "PENDING" | "ACTIVE" | "SUSPENDED" | "EXHAUSTED" | "VOID";
@@ -660,6 +820,8 @@ export interface DbRefund {
   saleId: string;
   status: string;
   totalMinor: number;
+  deliveryFeeRefundMinor: number;
+  deliveryTaxRefundMinor: number;
   reason: string | null;
   requestedBy: string;
   approvedBy: string;
@@ -667,6 +829,11 @@ export interface DbRefund {
   approvedRequestId: string;
   singleStep: boolean;
 }
+export type DbRefundCreate =
+  Omit<DbRefund, "id" | "deliveryFeeRefundMinor" | "deliveryTaxRefundMinor"> & {
+    deliveryFeeRefundMinor?: number;
+    deliveryTaxRefundMinor?: number;
+  };
 
 export interface DbRefundItem {
   id: string;
@@ -898,8 +1065,10 @@ export interface DbPort {
   updateUserPassword(id: string, passwordHash: string): Promise<void>;
   setUserEmailVerified(id: string, verified: boolean): Promise<void>;
   setUserWorkspaceTourSeen(id: string, seen: boolean): Promise<void>;
-  createBusiness(b: Omit<DbBusiness, "id">): Promise<DbBusiness>;
+  createBusiness(b: DbBusinessCreate): Promise<DbBusiness>;
   findBusinessById(id: string): Promise<DbBusiness | null>;
+  findBusinessByStorefrontKey(key: string): Promise<DbBusiness | null>;
+  setBusinessStorefrontKey(id: string, key: string): Promise<DbBusiness | null>;
   listMembershipsByUser(userId: string): Promise<DbMembership[]>;
   findMembership(userId: string, businessId: string): Promise<DbMembership | null>;
   createMembership(m: Omit<DbMembership, "id">): Promise<DbMembership>;
@@ -991,11 +1160,35 @@ export interface DbPort {
   listInventoryCountLines(countId: string, businessId: string): Promise<DbInventoryCountLine[]>;
   updateInventoryCountLine(id: string, businessId: string, patch: Partial<Omit<DbInventoryCountLine, "id" | "businessId" | "inventoryCountId" | "createdAt">>): Promise<DbInventoryCountLine | null>;
   deleteInventoryCountLines(countId: string, businessId: string): Promise<void>;
-  createSale(s: Omit<DbSale, "id">): Promise<DbSale>;
+  createSale(s: DbSaleCreate): Promise<DbSale>;
   findSaleById(id: string, businessId: string): Promise<DbSale | null>;
   listSalesByBusiness(businessId: string): Promise<DbSale[]>;
   listSalesPage(businessId: string, afterId: string | null, limit: number): Promise<DbSale[]>;
   updateSale(id: string, businessId: string, patch: Partial<Omit<DbSale, "id" | "businessId">>): Promise<DbSale | null>;
+  createOrder(o: Omit<DbOrder, "id">): Promise<DbOrder>;
+  findOrderById(id: string, businessId: string): Promise<DbOrder | null>;
+  findOrderBySaleId(saleId: string, businessId: string): Promise<DbOrder | null>;
+  updateOrder(id: string, businessId: string, patch: Partial<Omit<DbOrder, "id" | "businessId" | "version">>, expectedVersion: number): Promise<DbOrder | null>;
+  listOrdersPage(businessId: string, query: DbOrderPageQuery): Promise<DbOrder[]>;
+  listDueReservationOrders(now: Date, limit: number): Promise<DbOrder[]>;
+  listAgedOperationalReservations(cutoff: Date, limit: number): Promise<DbInventoryReservation[]>;
+  createOrderLine(l: Omit<DbOrderLine, "id">): Promise<DbOrderLine>;
+  listOrderLines(orderId: string, businessId: string): Promise<DbOrderLine[]>;
+  deleteOrderLines(orderId: string, businessId: string): Promise<void>;
+  createInventoryReservation(r: Omit<DbInventoryReservation, "id">): Promise<DbInventoryReservation>;
+  listReservationsByOrder(orderId: string, businessId: string): Promise<DbInventoryReservation[]>;
+  listActiveReservationsByProduct(businessId: string, branchId: string, productId: string): Promise<DbInventoryReservation[]>;
+  updateInventoryReservation(id: string, businessId: string, patch: Partial<Omit<DbInventoryReservation, "id" | "businessId" | "orderId" | "orderLineId" | "productId" | "branchId" | "idempotencyKey" | "createdAt">>): Promise<DbInventoryReservation | null>;
+  createFulfillment(f: Omit<DbFulfillment, "id">): Promise<DbFulfillment>;
+  findFulfillmentById(id: string, businessId: string): Promise<DbFulfillment | null>;
+  listFulfillmentsByOrder(orderId: string, businessId: string): Promise<DbFulfillment[]>;
+  updateFulfillment(id: string, businessId: string, patch: Partial<Omit<DbFulfillment, "id" | "businessId" | "orderId" | "version" | "createdAt">>, expectedVersion: number): Promise<DbFulfillment | null>;
+  createFulfillmentLine(l: Omit<DbFulfillmentLine, "id">): Promise<DbFulfillmentLine>;
+  listFulfillmentLines(fulfillmentId: string, businessId: string): Promise<DbFulfillmentLine[]>;
+  createOrderAccessToken(t: Omit<DbOrderAccessToken, "id">): Promise<DbOrderAccessToken>;
+  findOrderAccessTokenByHash(tokenHash: string): Promise<DbOrderAccessToken | null>;
+  listActiveOrderAccessTokens(orderId: string, businessId: string, kind: DbOrderAccessTokenKind, now: Date): Promise<DbOrderAccessToken[]>;
+  revokeOrderAccessToken(id: string, businessId: string, revokedAt: Date): Promise<DbOrderAccessToken | null>;
   createSaleItem(
     i: Omit<DbSaleItem, "id" | "position"> & { position?: number },
   ): Promise<DbSaleItem>;
@@ -1060,7 +1253,7 @@ export interface DbPort {
   updateSaleLoyalty(id: string, businessId: string, patch: Partial<Pick<DbSaleLoyalty, "redeemedPoints" | "redeemedValueMinor" | "earnedPoints">>): Promise<DbSaleLoyalty | null>;
   createSaleItemLoyaltyAllocation(a: Omit<DbSaleItemLoyaltyAllocation, "id" | "createdAt">): Promise<DbSaleItemLoyaltyAllocation>;
   listSaleItemLoyaltyAllocations(saleLoyaltyId: string, businessId: string): Promise<DbSaleItemLoyaltyAllocation[]>;
-  createRefund(r: Omit<DbRefund, "id">): Promise<DbRefund>;
+  createRefund(r: DbRefundCreate): Promise<DbRefund>;
   listRefundsBySale(saleId: string, businessId: string): Promise<DbRefund[]>;
   // Phase 12 bulk read: reporting maps refund items to sales in one round-trip.
   listRefundsByBusiness(businessId: string): Promise<DbRefund[]>;

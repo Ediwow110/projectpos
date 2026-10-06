@@ -107,6 +107,23 @@ describe("Phase 17 receiving and supplier returns", () => {
     await expect(svc.createSupplierReturn(businessId, "cashier", "cashier-r2", "key-cashier-17b", { supplierId: "s", purchaseOrderId: "p", reason: "No", lines: [] }, [])).rejects.toThrow("FORBIDDEN");
   });
 
+  it("rejects supplier-return posting that would consume HELD Order stock", async () => {
+    const { db, svc, businessId, branchId, productA } = await setup();
+    const supplier = await svc.createSupplier(businessId, "owner", "h1", "h-supplier", { name: "Held Supplier" }, WRITE);
+    const draft = await svc.createPurchaseOrder(businessId, "owner", "h2", "h-po", { supplierId: supplier.supplier.id, branchId, lines: [{ productId: productA.id, quantity: 1 }] }, WRITE);
+    const ordered = await svc.orderPurchaseOrder(businessId, "owner", "h3", draft.purchaseOrder.id, "h-order", draft.purchaseOrder.version, WRITE);
+    await svc.receivePurchaseOrder(businessId, "owner", "h4", draft.purchaseOrder.id, "h-receive", { lines: [{ purchaseOrderLineId: ordered.purchaseOrder.lines[0]!.id, quantityReceived: 1 }] }, WRITE);
+    expect((await db.findBalance(productA.id, businessId, branchId))?.qtyOnHand).toBe(9);
+    const returned = await svc.createSupplierReturn(businessId, "owner", "h5", "h-return", { supplierId: supplier.supplier.id, purchaseOrderId: draft.purchaseOrder.id, reason: "Return", lines: [{ purchaseOrderLineId: ordered.purchaseOrder.lines[0]!.id, quantity: 1 }] }, WRITE);
+    const now = new Date();
+    const order = await db.createOrder({ businessId, channel: "WEB", fulfillmentMode: "PICKUP", paymentMode: "PAY_AT_PICKUP", branchId, customerId: null, contactName: "Ana", email: "ana@example.com", phone: "+639171234567", deliveryAddress: null, fulfillmentInstructions: null, currency: "PHP", subtotalMinor: 900, discountMinor: 0, taxMinor: 0, deliveryFeeMinor: 0, deliveryTaxMinor: 0, totalMinor: 900, saleId: null, status: "SUBMITTED", version: 1, checkoutAt: now, submittedAt: now, confirmedAt: null, completedAt: null, cancelledAt: null, actorId: "public", requestId: "h-order", createdAt: now, updatedAt: now });
+    const line = await db.createOrderLine({ businessId, orderId: order.id, position: 0, productId: productA.id, name: productA.name, sku: productA.sku, barcode: null, unit: productA.unit, qty: 9, priceMinor: 100, costMinor: 100, taxRateBps: null, discountMinor: 0, taxMinor: 0, lineTotalMinor: 900, bundleComponentsSnapshot: null, createdAt: now });
+    await db.createInventoryReservation({ businessId, branchId, orderId: order.id, orderLineId: line.id, productId: productA.id, qty: 9, status: "HELD", expiresAt: new Date(Date.now() + 60_000), idempotencyKey: "h-res", createdAt: now, updatedAt: now });
+    await expect(svc.postSupplierReturn(businessId, "owner", "h6", returned.supplierReturn.id, "h-post", returned.supplierReturn.version, WRITE)).rejects.toThrow("RESERVATION_CONFLICT");
+    expect((await db.findBalance(productA.id, businessId, branchId))?.qtyOnHand).toBe(9);
+    expect((await db.listMovements(productA.id, businessId, branchId)).filter((m) => m.type === "supplier_return")).toHaveLength(0);
+  });
+
   it("includes supplier-return audit events in purchase-order history", async () => {
     const { svc, businessId, branchId, productA } = await setup();
     const supplier = await svc.createSupplier(businessId, "owner", "audit-r1", "audit-supplier-key", { name: "Audit Supplier" }, WRITE);

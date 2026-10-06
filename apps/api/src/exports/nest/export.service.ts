@@ -18,7 +18,9 @@ const ACCT = {
   walletClearing: "2110",
   otherClearing: "2120",
   changePayable: "2200",
+  deliveryTaxPayable: "2210",
   revenue: "4000",
+  deliveryRevenue: "4010",
   cogs: "5000",
   expenses: "6000",
   purchases: "7000",
@@ -161,7 +163,10 @@ export class ExportService {
     const rows: JournalRow[] = [];
     const giftLoads = await this.db.listSaleGiftCardLoads(sale.id, businessId);
     const giftLoadMinor = giftLoads.reduce((sum, load) => sum + load.amountMinor, 0);
-    const merchandiseRevenueMinor = Math.max(0, sale.totalMinor - giftLoadMinor);
+    const merchandiseRevenueMinor = Math.max(
+      0,
+      sale.totalMinor - giftLoadMinor - sale.deliveryFeeMinor - sale.deliveryTaxMinor,
+    );
     const payments = (await this.db.listPaymentsBySale(sale.id, businessId)).filter(
       (p: DbPayment) => p.status === "SUCCEEDED" && p.amountMinor > 0,
     );
@@ -174,6 +179,28 @@ export class ExportService {
       rows.push({ date: iso, type: "sale", ref: sale.receiptNo, account: leg.account, debitMinor: leg.amountMinor, creditMinor: 0, memo: sale.receiptNo });
     }
     rows.push({ date: iso, type: "sale", ref: sale.receiptNo, account: ACCT.revenue, debitMinor: 0, creditMinor: merchandiseRevenueMinor, memo: sale.receiptNo });
+    if (sale.deliveryFeeMinor > 0) {
+      rows.push({
+        date: iso,
+        type: "delivery",
+        ref: sale.receiptNo,
+        account: ACCT.deliveryRevenue,
+        debitMinor: 0,
+        creditMinor: sale.deliveryFeeMinor,
+        memo: `Delivery fee ${sale.receiptNo}`,
+      });
+    }
+    if (sale.deliveryTaxMinor > 0) {
+      rows.push({
+        date: iso,
+        type: "delivery_tax",
+        ref: sale.receiptNo,
+        account: ACCT.deliveryTaxPayable,
+        debitMinor: 0,
+        creditMinor: sale.deliveryTaxMinor,
+        memo: `Delivery tax ${sale.receiptNo}`,
+      });
+    }
     if (giftLoadMinor > 0) rows.push({ date: iso, type: "stored_value", ref: sale.receiptNo, account: ACCT.giftCardLiability, debitMinor: 0, creditMinor: giftLoadMinor, memo: `Gift card load ${sale.receiptNo}` });
     // Cash handed back as change is a liability, not revenue: without this the
     // tender debits would not balance against the sale total.
@@ -214,9 +241,45 @@ export class ExportService {
     if (refundTotal > 0) {
       const iso = sale.createdAt.toISOString();
       const memo = `Refund ${sale.receiptNo}`;
-      const merchandiseRefundTotal = refunds.reduce((sum, refund) => sum + Math.max(0, refund.totalMinor - (refundLoadAmounts.get(refund.id) ?? 0)), 0);
+      const merchandiseRefundTotal = refunds.reduce(
+        (sum, refund) =>
+          sum
+          + Math.max(
+            0,
+            refund.totalMinor
+              - (refundLoadAmounts.get(refund.id) ?? 0)
+              - refund.deliveryFeeRefundMinor
+              - refund.deliveryTaxRefundMinor,
+          ),
+        0,
+      );
       if (merchandiseRefundTotal > 0) rows.push({ date: iso, type: "refund", ref: sale.receiptNo, account: ACCT.revenue, debitMinor: merchandiseRefundTotal, creditMinor: 0, memo });
-      const liabilityRefundTotal = refundTotal - merchandiseRefundTotal;
+      const deliveryFeeRefundTotal = refunds.reduce((sum, refund) => sum + refund.deliveryFeeRefundMinor, 0);
+      const deliveryTaxRefundTotal = refunds.reduce((sum, refund) => sum + refund.deliveryTaxRefundMinor, 0);
+      if (deliveryFeeRefundTotal > 0) {
+        rows.push({
+          date: iso,
+          type: "refund",
+          ref: sale.receiptNo,
+          account: ACCT.deliveryRevenue,
+          debitMinor: deliveryFeeRefundTotal,
+          creditMinor: 0,
+          memo: `Delivery fee refund ${sale.receiptNo}`,
+        });
+      }
+      if (deliveryTaxRefundTotal > 0) {
+        rows.push({
+          date: iso,
+          type: "refund",
+          ref: sale.receiptNo,
+          account: ACCT.deliveryTaxPayable,
+          debitMinor: deliveryTaxRefundTotal,
+          creditMinor: 0,
+          memo: `Delivery tax refund ${sale.receiptNo}`,
+        });
+      }
+      const liabilityRefundTotal =
+        refundTotal - merchandiseRefundTotal - deliveryFeeRefundTotal - deliveryTaxRefundTotal;
       if (liabilityRefundTotal > 0) rows.push({ date: iso, type: "stored_value", ref: sale.receiptNo, account: ACCT.giftCardLiability, debitMinor: liabilityRefundTotal, creditMinor: 0, memo: `Gift card load refund ${sale.receiptNo}` });
       const recorded = new Map<string, number>();
       for (const payment of await this.db.listPaymentsBySale(sale.id, businessId)) {

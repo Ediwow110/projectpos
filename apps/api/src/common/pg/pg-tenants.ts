@@ -1,4 +1,4 @@
-import type { DbBusiness, DbMembership, DbResetToken, DbSession, DbUser } from "../db.port";
+import type { DbBusiness, DbBusinessCreate, DbMembership, DbResetToken, DbSession, DbUser } from "../db.port";
 import { nid } from "./context";
 import type { PgContext } from "./context";
 
@@ -96,13 +96,13 @@ export function tenantsFamily(ctx: PgContext) {
       }
     },
 
-    async createBusiness(b: Omit<DbBusiness, "id">): Promise<DbBusiness> {
+    async createBusiness(b: DbBusinessCreate): Promise<DbBusiness> {
       const c = await ctx.client();
       try {
-        const row = { ...b, id: nid("biz") };
+        const row: DbBusiness = { ...b, storefrontKey: b.storefrontKey ?? null, id: nid("biz") };
         await c.query(
-          'INSERT INTO "Business" ("id", "name", "currency", "createdAt", "updatedAt") VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
-          [row.id, row.name, row.currency],
+          'INSERT INTO "Business" ("id", "name", "currency", "storefrontKey", "createdAt", "updatedAt") VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
+          [row.id, row.name, row.currency, row.storefrontKey],
         );
         return row;
       } finally {
@@ -113,7 +113,33 @@ export function tenantsFamily(ctx: PgContext) {
     async findBusinessById(id: string): Promise<DbBusiness | null> {
       const c = await ctx.client();
       try {
-        const r = await c.query('SELECT "id", "name", "currency" FROM "Business" WHERE "id" = $1', [id]);
+        const r = await c.query('SELECT "id", "name", "currency", "storefrontKey" FROM "Business" WHERE "id" = $1', [id]);
+        return (r.rows[0] as DbBusiness | undefined) ?? null;
+      } finally {
+        if (ctx.owns()) c.release();
+      }
+    },
+
+    async findBusinessByStorefrontKey(key: string): Promise<DbBusiness | null> {
+      const c = await ctx.client();
+      try {
+        const r = await c.query(
+          'SELECT "id", "name", "currency", "storefrontKey" FROM "Business" WHERE "storefrontKey" = $1',
+          [key],
+        );
+        return (r.rows[0] as DbBusiness | undefined) ?? null;
+      } finally {
+        if (ctx.owns()) c.release();
+      }
+    },
+
+    async setBusinessStorefrontKey(id: string, key: string): Promise<DbBusiness | null> {
+      const c = await ctx.client();
+      try {
+        const r = await c.query(
+          'UPDATE "Business" SET "storefrontKey" = $1, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $2 RETURNING "id", "name", "currency", "storefrontKey"',
+          [key, id],
+        );
         return (r.rows[0] as DbBusiness | undefined) ?? null;
       } finally {
         if (ctx.owns()) c.release();

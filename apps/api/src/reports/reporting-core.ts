@@ -36,7 +36,14 @@ export interface SaleWithLines {
   sale: DbSale;
   items: DbSaleItem[];
   refunded: number;
+  merchandiseRefunded: number;
+  deliveryRefunded: number;
   refundedCost: number;
+  giftLoadMinor: number;
+  merchandiseRevenue: number;
+  deliveryRevenue: number;
+  deliveryTax: number;
+  netRevenue: number;
 }
 
 export class ReportingCore {
@@ -94,12 +101,46 @@ export class ReportingCore {
         (refundedCostBySale.get(saleId) ?? 0) + (itemCost.get(item.saleItemId) ?? 0) * item.qty,
       );
     }
-    return sales.map((sale) => ({
-      sale,
-      items: itemsBySale.get(sale.id) ?? [],
-      refunded: refundedBySale.get(sale.id) ?? 0,
-      refundedCost: refundedCostBySale.get(sale.id) ?? 0,
+    const approvedRefundsBySale = new Map<string, typeof allRefunds>();
+    for (const refund of allRefunds) {
+      if (refund.status !== "APPROVED") continue;
+      const list = approvedRefundsBySale.get(refund.saleId) ?? [];
+      list.push(refund);
+      approvedRefundsBySale.set(refund.saleId, list);
+    }
+    const loadAmounts = new Map<string, number>();
+    await Promise.all(sales.map(async (sale) => {
+      const loads = await this.db.listSaleGiftCardLoads(sale.id, businessId);
+      loadAmounts.set(sale.id, loads.reduce((sum, row) => sum + row.amountMinor, 0));
     }));
+    return sales.map((sale) => {
+      const merchandiseRefunded = refundedBySale.get(sale.id) ?? 0;
+      const approved = approvedRefundsBySale.get(sale.id) ?? [];
+      const deliveryFeeRefunded = approved.reduce((sum, row) => sum + row.deliveryFeeRefundMinor, 0);
+      const deliveryTaxRefunded = approved.reduce((sum, row) => sum + row.deliveryTaxRefundMinor, 0);
+      const deliveryRefunded = deliveryFeeRefunded + deliveryTaxRefunded;
+      const giftLoadMinor = loadAmounts.get(sale.id) ?? 0;
+      const merchandiseGross = Math.max(
+        0,
+        sale.totalMinor - giftLoadMinor - sale.deliveryFeeMinor - sale.deliveryTaxMinor,
+      );
+      const merchandiseRevenue = Math.max(0, merchandiseGross - merchandiseRefunded);
+      const deliveryRevenue = Math.max(0, sale.deliveryFeeMinor - deliveryFeeRefunded);
+      const deliveryTax = Math.max(0, sale.deliveryTaxMinor - deliveryTaxRefunded);
+      return {
+        sale,
+        items: itemsBySale.get(sale.id) ?? [],
+        refunded: merchandiseRefunded + deliveryRefunded,
+        merchandiseRefunded,
+        deliveryRefunded,
+        refundedCost: refundedCostBySale.get(sale.id) ?? 0,
+        giftLoadMinor,
+        merchandiseRevenue,
+        deliveryRevenue,
+        deliveryTax,
+        netRevenue: merchandiseRevenue + deliveryRevenue + deliveryTax,
+      };
+    });
   }
 
   kpi(value: number, previous: number | null): Kpi {
@@ -125,18 +166,23 @@ export class ReportingCore {
 
   metricsFromLines(lines: SaleWithLines[]): {
     netRevenue: number;
+    merchandiseRevenue: number;
+    deliveryRevenue: number;
+    deliveryTax: number;
     orders: number;
     avgOrder: number;
     grossProfit: number;
     refundTotal: number;
     discountTotal: number;
   } {
-    const gross = lines.reduce((sum, sale) => sum + sale.sale.totalMinor, 0);
     const refundTotal = lines.reduce((sum, sale) => sum + sale.refunded, 0);
-    const netRevenue = gross - refundTotal;
+    const netRevenue = lines.reduce((sum, sale) => sum + sale.netRevenue, 0);
     const orders = lines.length;
     return {
       netRevenue,
+      merchandiseRevenue: lines.reduce((sum, sale) => sum + sale.merchandiseRevenue, 0),
+      deliveryRevenue: lines.reduce((sum, sale) => sum + sale.deliveryRevenue, 0),
+      deliveryTax: lines.reduce((sum, sale) => sum + sale.deliveryTax, 0),
       orders,
       avgOrder: orders === 0 ? 0 : netRevenue / orders,
       grossProfit: this.profitOf(lines),
@@ -152,6 +198,9 @@ export class ReportingCore {
     branchId?: string,
   ): Promise<{
     netRevenue: number;
+    merchandiseRevenue: number;
+    deliveryRevenue: number;
+    deliveryTax: number;
     orders: number;
     avgOrder: number;
     grossProfit: number;

@@ -15,11 +15,12 @@ export const refundApproveSchema = z.object({
   saleId: z.string().min(1, "VALIDATION"),
   items: refundItemSchema.array().max(100, "VALIDATION").default([]),
   loadRefunds: giftCardLoadRefundSchema.array().max(100, "VALIDATION").default([]),
+  deliveryRefundMinor: z.number().int("AMOUNT_NOT_INTEGER").min(0, "VALIDATION").optional(),
   reason: z.string().trim().max(500, "VALIDATION").optional(),
   destination: z.enum(["ORIGINAL_TENDER", "STORE_CREDIT"]).default("ORIGINAL_TENDER"),
   approvalToken: managerApprovalTokenSchema.optional(),
 }).superRefine((value, context) => {
-  if (value.items.length === 0 && value.loadRefunds.length === 0) {
+  if (value.items.length === 0 && value.loadRefunds.length === 0 && (value.deliveryRefundMinor ?? 0) <= 0) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: "VALIDATION", path: ["items"] });
   }
 });

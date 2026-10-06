@@ -17,6 +17,7 @@ class CaptureEmail implements TransactionalEmailPort {
   }
 
   async sendReceiptShare(): Promise<void> {}
+  async sendOrderUpdate(): Promise<void> {}
 }
 
 describe("auth transactional email delivery", () => {

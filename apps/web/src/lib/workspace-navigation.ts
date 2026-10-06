@@ -14,6 +14,7 @@ const ITEMS = {
   dashboard: { href: "/", label: "Dashboard", icon: "⌂", tour: "dashboard" },
   pos: { href: "/pos", label: "POS", icon: "▣", tour: "pos" },
   sales: { href: "/sales", label: "Sales", icon: "↗", tour: "sales" },
+  orders: { href: "/orders", label: "Orders", icon: "▰", tour: "orders" },
   customers: { href: "/customers", label: "Customers", icon: "○", tour: "customers" },
   giftCards: { href: "/gift-cards", label: "Gift cards", icon: "▤", tour: "gift-cards" },
   products: { href: "/products", label: "Products", icon: "◇", tour: "products" },
@@ -33,6 +34,7 @@ const ITEMS = {
   printers: { href: "/printers", label: "Printers", icon: "▧", tour: "printers" },
   admin: { href: "/admin", label: "Administration / Help", icon: "?", tour: "admin" },
   loyaltySettings: { href: "/admin/loyalty", label: "Loyalty settings", icon: "✦", tour: "loyalty-settings" },
+  onlineOrdering: { href: "/admin/online-ordering", label: "Online ordering", icon: "◫", tour: "online-ordering" },
   suppliers: { href: "/suppliers", label: "Suppliers", icon: "⌁", tour: "suppliers" },
   purchaseOrders: { href: "/purchase-orders", label: "Purchase Orders", icon: "▱", tour: "purchase-orders" },
   supplierReturns: { href: "/supplier-returns", label: "Supplier Returns", icon: "↩", tour: "supplier-returns" },
@@ -45,7 +47,7 @@ function group(label: string, keys: Array<keyof typeof ITEMS>): WorkspaceNavigat
 export function workspaceNavigationForRole(role?: string): WorkspaceNavigationGroup[] {
   if (role === "cashier") {
     return [
-      group("Sell", ["dashboard", "pos", "sales", "customers", "giftCards"]),
+      group("Sell", ["dashboard", "pos", "sales", "orders", "customers", "giftCards"]),
       group("Operations", ["inventory", "stockCounts", "replenishment", "registers", "shifts", "devices", "sync"]),
     ];
   }
@@ -53,13 +55,13 @@ export function workspaceNavigationForRole(role?: string): WorkspaceNavigationGr
     return [
       group("Catalog & stock", ["dashboard", "products", "categories", "inventory", "stockCounts", "replenishment"]),
       group("Procurement", ["suppliers", "purchaseOrders", "supplierReturns"]),
-      group("Operations", ["transfers", "branches", "devices", "sync"]),
+      group("Operations", ["orders", "transfers", "branches", "devices", "sync"]),
       group("Insights", ["reports"]),
     ];
   }
   if (role === "manager") {
     return [
-      group("Sell", ["dashboard", "pos", "sales", "customers", "giftCards"]),
+      group("Sell", ["dashboard", "pos", "sales", "orders", "customers", "giftCards"]),
       group("Catalog & stock", ["products", "categories", "inventory", "stockCounts", "replenishment"]),
       group("Procurement", ["suppliers", "purchaseOrders", "supplierReturns"]),
       group("Operations", ["registers", "shifts", "transfers", "expenses"]),
@@ -68,12 +70,12 @@ export function workspaceNavigationForRole(role?: string): WorkspaceNavigationGr
     ];
   }
   return [
-    group("Sell", ["dashboard", "pos", "sales", "customers", "giftCards"]),
+    group("Sell", ["dashboard", "pos", "sales", "orders", "customers", "giftCards"]),
     group("Catalog & stock", ["products", "categories", "inventory", "stockCounts", "replenishment"]),
     group("Procurement", ["suppliers", "purchaseOrders", "supplierReturns"]),
     group("Operations", ["registers", "shifts", "transfers", "expenses"]),
     group("Insights", ["reports"]),
-    group("Administration", ["branches", "devices", "printers", "sync", "team", "admin", "loyaltySettings"]),
+    group("Administration", ["branches", "devices", "printers", "sync", "team", "admin", "loyaltySettings", "onlineOrdering"]),
   ];
 }
 

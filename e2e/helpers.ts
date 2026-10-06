@@ -77,7 +77,15 @@ export async function registerOperationalBusiness(
   await expect(page).toHaveURL(/\/$/, { timeout: 30_000 });
   const tour = page.getByRole("dialog", { name: "Welcome to NexPOS" });
   await expect(tour).toBeVisible({ timeout: 30_000 });
+  const persisted = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/v1/me/tour/seen")
+      && response.request().method() === "POST"
+      && response.ok(),
+    { timeout: 30_000 },
+  );
   await tour.getByRole("button", { name: "Skip tour" }).click();
+  await persisted;
   await expect(tour).toBeHidden();
   return email;
 }

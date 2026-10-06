@@ -12,6 +12,7 @@ class CaptureReceiptEmail implements TransactionalEmailPort {
   async sendReceiptShare(input: { to: string; customerName: string | null; receiptNo: string; token: string }): Promise<void> {
     this.receipts.push({ to: input.to, receiptNo: input.receiptNo, token: input.token });
   }
+  async sendOrderUpdate(): Promise<void> {}
 }
 
 function jar(header: unknown): string {

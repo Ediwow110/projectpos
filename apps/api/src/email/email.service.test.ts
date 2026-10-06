@@ -85,6 +85,27 @@ describe("transactional email", () => {
     expect(message.html).not.toContain("Ana <Cruz>");
   });
 
+  it("sends Order status links in the URL fragment, not the query string", async () => {
+    const transport = new CaptureTransport();
+    const service = new TransactionalEmailService(transport, {
+      from: "NexPOS <noreply@example.com>",
+      webUrl: "https://pos.example.com",
+    });
+
+    await service.sendOrderUpdate({
+      to: "ana@example.com",
+      contactName: "Ana",
+      orderId: "ord_1",
+      event: "SUBMITTED",
+      token: "secret-status-token",
+    });
+
+    const message = transport.messages[0]!;
+    expect(message.text).toContain("https://pos.example.com/order-status#token=secret-status-token");
+    expect(message.html).toContain("/order-status#token=secret-status-token");
+    expect(message.text).not.toContain("?token=");
+  });
+
   it("requires complete SMTP configuration in production", () => {
     expect(() => loadEmailConfig({ NODE_ENV: "production" })).toThrow("ENV_MISSING_EMAIL_CONFIG");
     expect(() =>

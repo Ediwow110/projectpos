@@ -57,6 +57,7 @@ export const managerApprovalActionSchema = z.discriminatedUnion("kind", [
     saleId: z.string().min(1, "VALIDATION"),
     items: refundItemSchema.array().max(100, "VALIDATION").default([]),
     loadRefunds: giftCardLoadRefundSchema.array().max(100, "VALIDATION").optional(),
+    deliveryRefundMinor: moneyMinorSchema.optional(),
     reason: optionalReasonSchema,
   }).strict(),
   z.object({
@@ -92,7 +93,12 @@ export const managerApprovalActionSchema = z.discriminatedUnion("kind", [
 ]);
 
 export const managerApprovalActionWithValidationSchema = managerApprovalActionSchema.superRefine((value, context) => {
-  if (value.kind === "refund" && value.items.length === 0 && (value.loadRefunds?.length ?? 0) === 0) {
+  if (
+    value.kind === "refund"
+    && value.items.length === 0
+    && (value.loadRefunds?.length ?? 0) === 0
+    && (value.deliveryRefundMinor ?? 0) <= 0
+  ) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: "VALIDATION", path: ["items"] });
   }
 });

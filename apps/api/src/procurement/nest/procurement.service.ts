@@ -19,6 +19,7 @@ import {
   computePurchaseOrderTotals,
 } from "../purchase-order-math";
 import { normalizeSupplierCode, normalizeSupplierPayload, parseExpectedDate, parsePurchaseOrderFilterDate } from "../normalize";
+import { InventoryAvailabilityService } from "../../inventory/availability-service";
 import { withInventoryLocks } from "../../inventory/inventory-locks";
 
 export interface SupplierPage {
@@ -546,19 +547,25 @@ export class ProcurementService {
 
   async postSupplierReturn(businessId: string, actorId: string, requestId: string, id: string, key: string, expectedVersion: number, granted: string[]): Promise<{ supplierReturn: SupplierReturnWithLines; replayed: boolean }> {
     withScope(businessId, {}); this.requireGrant(granted, "supplier_return.post"); const fingerprint = fingerprintPayload({ supplierReturnId: id, expectedVersion });
-    return this.db.withLock(`supplier-return:${businessId}:${id}`, async () => {
+    return this.db.withLock(`sales:${businessId}`, () => this.db.withLock(`supplier-return:${businessId}:${id}`, async () => {
       const existing = await this.db.findIdempotency(businessId, key, "supplier_return.post"); if (existing) { if (existing.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH"); return { supplierReturn: await this.getSupplierReturn(businessId, existing.resultId), replayed: true }; }
       return this.db.withTransaction(async (tx) => {
         const current = await this.requireSupplierReturn(businessId, id); if (current.status !== "DRAFT") throw new Error("SUPPLIER_RETURN_INVALID_STATE");
         const order = await this.requireOrder(businessId, current.purchaseOrderId); await this.requireBranch(businessId, current.branchId); const draftLines = await tx.listSupplierReturnLines(id, businessId); const resolved = await this.resolveReturnLines(businessId, order, draftLines.map((line) => ({ purchaseOrderLineId: line.purchaseOrderLineId, quantity: line.quantity })), tx);
         return withInventoryLocks(tx, businessId, resolved.map(({ source }) => ({ productId: source.productId, branchId: current.branchId })), async () => {
-          for (const { source, quantity } of resolved) { const balance = await tx.findBalance(source.productId, businessId, current.branchId); if ((balance?.qtyOnHand ?? 0) < quantity) throw new Error("INSUFFICIENT_STOCK"); }
+          const grouped = new Map<string, number>();
+          for (const { source, quantity } of resolved) grouped.set(source.productId, (grouped.get(source.productId) ?? 0) + quantity);
+          await new InventoryAvailabilityService(tx).assertDecreaseAllowed(
+            businessId,
+            current.branchId,
+            [...grouped].map(([productId, qty]) => ({ productId, qty })),
+          );
           const next = await tx.updateSupplierReturn(id, businessId, { status: "POSTED", postedBy: actorId, postedAt: new Date() }, expectedVersion); if (!next) throw new Error("STALE_VERSION");
           for (const { source, quantity } of resolved) { const balance = await tx.findBalance(source.productId, businessId, current.branchId); await tx.createMovement({ businessId, productId: source.productId, type: "supplier_return", qtyDelta: -quantity, reason: current.reason, referenceType: "SupplierReturn", referenceId: id, actorId, requestId, branchId: current.branchId }); await tx.upsertBalance({ businessId, productId: source.productId, branchId: current.branchId, qtyOnHand: (balance?.qtyOnHand ?? 0) - quantity }); }
           await tx.claimIdempotency({ businessId, key, commandType: "supplier_return.post", fingerprint, resultId: id }); const detail = await this.getSupplierReturn(businessId, id); await tx.appendAudit({ businessId, actorId, action: "supplier_return.posted", entityType: "SupplierReturn", entityId: id, requestId, before: snapshot(current), after: snapshot(detail) }); return { supplierReturn: detail, replayed: false };
         });
       });
-    });
+    }));
   }
 
   async cancelSupplierReturn(businessId: string, actorId: string, requestId: string, id: string, expectedVersion: number, granted: string[]): Promise<SupplierReturnWithLines> {
