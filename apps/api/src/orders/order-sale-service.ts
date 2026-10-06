@@ -98,7 +98,13 @@ export class OrderSaleService {
   ): Promise<DbSale> {
     const order = await db.findOrderById(orderId, businessId);
     if (!order) throw new Error("NOT_FOUND");
-    if (order.channel !== "WEB" || order.status !== "SUBMITTED") throw new Error("INVALID_STATE");
+    const eligibleWebOrder =
+      order.channel === "WEB"
+      && (
+        order.status === "SUBMITTED"
+        || (order.status === "CONFIRMED" && order.paymentMode === "PAY_AT_PICKUP")
+      );
+    if (!eligibleWebOrder) throw new Error("INVALID_STATE");
     if (order.saleId) {
       const existing = await db.findSaleById(order.saleId, businessId);
       if (!existing) throw new Error("CONFLICT");
@@ -135,7 +141,7 @@ export class OrderSaleService {
     });
     for (const line of lines) await this.copyOrderLineToSale(db, businessId, sale.id, line);
     const linked = await db.updateOrder(order.id, businessId, { saleId: sale.id }, order.version);
-    if (!linked) throw new Error("STALE_ORDER_VERSION");
+    if (!linked) throw new Error("STALE_VERSION");
     await db.appendAudit({
       businessId,
       actorId,
@@ -274,7 +280,7 @@ export class OrderSaleService {
         { status: "CONFIRMED", confirmedAt: completedAt },
         order.version,
       );
-      if (!confirmed) throw new Error("STALE_ORDER_VERSION");
+      if (!confirmed) throw new Error("STALE_VERSION");
       await new OrderAccessService(db).revokeCheckoutTokens(businessId, order.id, completedAt);
       return confirmed;
     }
@@ -287,7 +293,7 @@ export class OrderSaleService {
         { status: "COMPLETED", completedAt },
         order.version,
       );
-      if (!completed) throw new Error("STALE_ORDER_VERSION");
+      if (!completed) throw new Error("STALE_VERSION");
       return completed;
     }
     return order;
@@ -309,7 +315,7 @@ export class OrderSaleService {
       { status: "CANCELLED", cancelledAt },
       order.version,
     );
-    if (!cancelled) throw new Error("STALE_ORDER_VERSION");
+    if (!cancelled) throw new Error("STALE_VERSION");
     return cancelled;
   }
 }

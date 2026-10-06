@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { paymentInputSchema } from "./sales.schema";
 
 export const storefrontKeySchema = z.string().regex(/^[a-f0-9]{32}$/i, "VALIDATION");
 export const orderAccessTokenSchema = z.string().regex(/^[a-f0-9]{64}$/i, "VALIDATION");
@@ -82,4 +83,33 @@ export const publicOrderStatusSchema = z.object({
 
 export const publicOrderPaymentRetrySchema = z.object({
   paymentMethod: z.enum(["card", "gcash", "maya", "qrph"]),
+}).strict();
+
+export const orderStaffVersionSchema = z.object({
+  expectedVersion: z.number().int("VALIDATION").min(1, "VALIDATION"),
+}).strict();
+
+export const orderStaffCancelSchema = orderStaffVersionSchema.extend({
+  reason: z.string().trim().max(500, "VALIDATION").optional(),
+  returnedToMerchant: z.boolean().optional(),
+}).strict();
+
+export const orderLinkCustomerSchema = orderStaffVersionSchema.extend({
+  customerId: z.string().min(1, "VALIDATION"),
+  overrideReason: z.string().trim().max(500, "VALIDATION").optional(),
+}).strict();
+
+export const fulfillmentAssignSchema = z.object({
+  expectedVersion: z.number().int("VALIDATION").min(1, "VALIDATION"),
+  assignedUserId: z.string().min(1, "VALIDATION").nullable(),
+}).strict();
+
+export const fulfillmentActionSchema = z.object({
+  expectedVersion: z.number().int("VALIDATION").min(1, "VALIDATION"),
+}).strict();
+
+export const fulfillmentCollectSchema = fulfillmentActionSchema.extend({
+  payments: paymentInputSchema.array().min(1, "VALIDATION").max(10, "VALIDATION").optional(),
+  registerId: z.string().min(1, "VALIDATION").optional(),
+  branchId: z.string().min(1, "VALIDATION").optional(),
 }).strict();

@@ -17,6 +17,9 @@ import { transitionOrder } from "./order-state";
 import { ReservationService } from "./reservation-service";
 import { OrderAccessService } from "./order-access-service";
 import { normalizeOrderEmail, normalizeOrderPhone } from "./order-contact";
+import { FulfillmentService } from "./fulfillment-service";
+import type { OrderNotificationService } from "./order-notification-service";
+import { withInventoryLocks } from "../inventory/inventory-locks";
 import { deriveOrderPaymentStatus } from "./payment-status";
 import type { OrderListItem } from "./order-types";
 
@@ -58,7 +61,342 @@ function decodeCursor(value: string | undefined): { createdAt: Date; id: string 
 
 @Injectable()
 export class OrderService {
-  constructor(@Inject("DbPort") private readonly db: DbPort) {}
+  constructor(
+    @Inject("DbPort") private readonly db: DbPort,
+    private readonly notifications?: OrderNotificationService,
+  ) {}
+
+  private async reservationRequirements(db: DbPort, businessId: string, orderId: string): Promise<Map<string, number>> {
+    const required = new Map<string, number>();
+    for (const line of await db.listOrderLines(orderId, businessId)) {
+      if (line.bundleComponentsSnapshot !== null) {
+        if (!Array.isArray(line.bundleComponentsSnapshot) || line.bundleComponentsSnapshot.length === 0) {
+          throw new Error("INVALID_BUNDLE_SNAPSHOT");
+        }
+        for (const raw of line.bundleComponentsSnapshot) {
+          const component = raw as { componentProductId?: unknown; quantityPerBundleSnapshot?: unknown };
+          if (
+            typeof component.componentProductId !== "string"
+            || !Number.isInteger(component.quantityPerBundleSnapshot)
+            || Number(component.quantityPerBundleSnapshot) <= 0
+          ) throw new Error("INVALID_BUNDLE_SNAPSHOT");
+          required.set(
+            component.componentProductId,
+            (required.get(component.componentProductId) ?? 0) + line.qty * Number(component.quantityPerBundleSnapshot),
+          );
+        }
+      } else {
+        const product = await db.findProductById(line.productId, businessId);
+        if (!product) throw new Error("NOT_FOUND");
+        if (product.trackInventory) {
+          required.set(line.productId, (required.get(line.productId) ?? 0) + line.qty);
+        }
+      }
+    }
+    return required;
+  }
+
+  async acceptPayAtPickup(
+    businessId: string,
+    actorId: string,
+    requestId: string,
+    orderId: string,
+    expectedVersion: number,
+    key: string,
+    now: Date = new Date(),
+  ): Promise<DbOrder> {
+    const fingerprint = fingerprintPayload({ orderId, expectedVersion });
+    const result = await this.db.withLock("sales:" + businessId, () =>
+      this.db.withTransaction(async (tx) => {
+        const replay = await tx.findIdempotency(businessId, key, "order.accept");
+        if (replay) {
+          if (replay.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
+          const row = await tx.findOrderById(orderId, businessId);
+          if (!row) throw new Error("NOT_FOUND");
+          return { order: row, notify: false };
+        }
+        const order = await tx.findOrderById(orderId, businessId);
+        if (!order) throw new Error("NOT_FOUND");
+        if (
+          order.version !== expectedVersion
+          || order.channel !== "WEB"
+          || order.fulfillmentMode !== "PICKUP"
+          || order.paymentMode !== "PAY_AT_PICKUP"
+          || order.status !== "SUBMITTED"
+          || !order.branchId
+        ) throw new Error(order.version !== expectedVersion ? "STALE_VERSION" : "INVALID_STATE");
+        const expected = await this.reservationRequirements(tx, businessId, order.id);
+        const held = (await tx.listReservationsByOrder(order.id, businessId)).filter((row) => row.status === "HELD");
+        const actual = new Map<string, number>();
+        for (const row of held) {
+          if (row.expiresAt !== null && row.expiresAt.getTime() <= now.getTime()) throw new Error("RESERVATION_EXPIRED");
+          actual.set(row.productId, (actual.get(row.productId) ?? 0) + row.qty);
+        }
+        if (
+          expected.size !== actual.size
+          || [...expected].some(([productId, qty]) => actual.get(productId) !== qty)
+        ) throw new Error("RESERVATION_CONFLICT");
+        const targets = held.map((row) => ({ productId: row.productId, branchId: row.branchId }));
+        return withInventoryLocks(tx, businessId, targets, async () => {
+          const currentHeld = (await tx.listReservationsByOrder(order.id, businessId)).filter((row) => row.status === "HELD");
+          if (currentHeld.length !== held.length || currentHeld.some((row) => row.expiresAt !== null && row.expiresAt.getTime() <= now.getTime())) {
+            throw new Error("RESERVATION_EXPIRED");
+          }
+          for (const row of currentHeld) {
+            const updated = await tx.updateInventoryReservation(row.id, businessId, { expiresAt: null });
+            if (!updated) throw new Error("RESERVATION_CONFLICT");
+          }
+          const confirmed = await tx.updateOrder(order.id, businessId, {
+            status: transitionOrder(order.status, "CONFIRMED"),
+            confirmedAt: now,
+          }, order.version);
+          if (!confirmed) throw new Error("STALE_VERSION");
+          const lines = await tx.listOrderLines(order.id, businessId);
+          await new FulfillmentService(tx).createFulfillment(
+            businessId,
+            order.id,
+            "PICKUP",
+            order.branchId!,
+            lines.map((line) => ({ orderLineId: line.id, qty: line.qty })),
+          );
+          await tx.claimIdempotency({ businessId, key, commandType: "order.accept", fingerprint, resultId: order.id });
+          await tx.appendAudit({
+            businessId, actorId, action: "order.accept", entityType: "Order",
+            entityId: order.id, requestId,
+          });
+          return { order: confirmed, notify: true };
+        });
+      }),
+    );
+    if (result.notify && this.notifications) await this.notifications.sendEvent(businessId, orderId, "CONFIRMED");
+    return result.order;
+  }
+
+  async rejectOrder(
+    businessId: string,
+    actorId: string,
+    requestId: string,
+    orderId: string,
+    expectedVersion: number,
+    key: string,
+    reason?: string,
+  ): Promise<DbOrder> {
+    const cleanReason = reason?.trim() || null;
+    const fingerprint = fingerprintPayload({ orderId, expectedVersion, reason: cleanReason });
+    return this.db.withLock("sales:" + businessId, () =>
+      this.db.withTransaction(async (tx) => {
+        const replay = await tx.findIdempotency(businessId, key, "order.reject");
+        if (replay) {
+          if (replay.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
+          const row = await tx.findOrderById(orderId, businessId);
+          if (!row) throw new Error("NOT_FOUND");
+          return row;
+        }
+        const order = await tx.findOrderById(orderId, businessId);
+        if (!order) throw new Error("NOT_FOUND");
+        if (order.version !== expectedVersion) throw new Error("STALE_VERSION");
+        if (order.status !== "SUBMITTED" || (await tx.listFulfillmentsByOrder(order.id, businessId)).length > 0) {
+          throw new Error("INVALID_STATE");
+        }
+        await new ReservationService(tx).releaseOrderLocked(tx, businessId, order.id, "RELEASED");
+        const next = await tx.updateOrder(order.id, businessId, { status: "REJECTED" }, order.version);
+        if (!next) throw new Error("STALE_VERSION");
+        await tx.claimIdempotency({ businessId, key, commandType: "order.reject", fingerprint, resultId: order.id });
+        await tx.appendAudit({
+          businessId, actorId, action: "order.reject", entityType: "Order",
+          entityId: order.id, requestId, reason: cleanReason ?? undefined,
+        });
+        return next;
+      }),
+    );
+  }
+
+  async cancelOrder(
+    businessId: string,
+    actorId: string,
+    requestId: string,
+    orderId: string,
+    expectedVersion: number,
+    key: string,
+    reason?: string,
+    returnedToMerchant = false,
+  ): Promise<DbOrder> {
+    const cleanReason = reason?.trim() || null;
+    const fingerprint = fingerprintPayload({ orderId, expectedVersion, reason: cleanReason, returnedToMerchant });
+    return this.db.withLock("sales:" + businessId, () =>
+      this.db.withTransaction(async (tx) => {
+        const replay = await tx.findIdempotency(businessId, key, "order.cancel");
+        if (replay) {
+          if (replay.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
+          const row = await tx.findOrderById(orderId, businessId);
+          if (!row) throw new Error("NOT_FOUND");
+          return row;
+        }
+        const order = await tx.findOrderById(orderId, businessId);
+        if (!order) throw new Error("NOT_FOUND");
+        if (order.version !== expectedVersion) throw new Error("STALE_VERSION");
+        if (order.status !== "CONFIRMED") throw new Error("INVALID_STATE");
+        const fulfillments = await tx.listFulfillmentsByOrder(order.id, businessId);
+        if (fulfillments.some((row) => ["COLLECTED", "DELIVERED"].includes(row.status))) throw new Error("INVALID_STATE");
+        if (order.saleId) {
+          const sale = await tx.findSaleById(order.saleId, businessId);
+          if (!sale) throw new Error("CONFLICT");
+          if (["COMPLETED", "PAID", "PARTIALLY_REFUNDED", "REFUND_REQUESTED", "PAYMENT_UNKNOWN", "RECONCILED"].includes(sale.status)) {
+            throw new Error("FULL_REFUND_REQUIRED");
+          }
+          if (sale.status === "REFUNDED") {
+            // already financially reversed; proceed
+          } else if (!["DRAFT", "PENDING_PAYMENT", "PAYMENT_FAILED", "PAYMENT_UNKNOWN", "RECONCILED", "VOIDED"].includes(sale.status)) {
+            throw new Error("FULL_REFUND_REQUIRED");
+          }
+        }
+        await new ReservationService(tx).releaseOrderLocked(tx, businessId, order.id, "RELEASED");
+        for (const fulfillment of fulfillments) {
+          if (fulfillment.status === "CANCELLED") continue;
+          if (fulfillment.status === "DISPATCHED") throw new Error("INVALID_STATE");
+          if (fulfillment.status === "DELIVERY_FAILED" && !returnedToMerchant) throw new Error("RETURN_TO_MERCHANT_REQUIRED");
+          await tx.updateFulfillment(fulfillment.id, businessId, {
+            status: "CANCELLED",
+            cancelledAt: new Date(),
+          }, fulfillment.version);
+        }
+        const next = await tx.updateOrder(order.id, businessId, {
+          status: transitionOrder(order.status, "CANCELLED"),
+          cancelledAt: new Date(),
+        }, order.version);
+        if (!next) throw new Error("STALE_VERSION");
+        await tx.claimIdempotency({ businessId, key, commandType: "order.cancel", fingerprint, resultId: order.id });
+        await tx.appendAudit({
+          businessId, actorId, action: "order.cancel", entityType: "Order",
+          entityId: order.id, requestId, reason: cleanReason ?? undefined,
+        });
+        return next;
+      }),
+    );
+  }
+
+  async linkCustomer(
+    businessId: string,
+    actorId: string,
+    requestId: string,
+    orderId: string,
+    customerId: string,
+    expectedVersion: number,
+    role: string,
+    key: string,
+    overrideReason?: string,
+  ): Promise<DbOrder> {
+    const cleanReason = overrideReason?.trim() || null;
+    const fingerprint = fingerprintPayload({ orderId, customerId, expectedVersion, overrideReason: cleanReason });
+    return this.db.withLock("order-link:" + businessId + ":" + orderId, () =>
+      this.db.withTransaction(async (tx) => {
+        const replay = await tx.findIdempotency(businessId, key, "order.link_customer");
+        if (replay) {
+          if (replay.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
+          const row = await tx.findOrderById(orderId, businessId);
+          if (!row) throw new Error("NOT_FOUND");
+          return row;
+        }
+        const order = await tx.findOrderById(orderId, businessId);
+        const customer = await tx.findCustomerById(customerId, businessId);
+        if (!order || !customer?.isActive) throw new Error("NOT_FOUND");
+        if (order.version !== expectedVersion) throw new Error("STALE_VERSION");
+        const emailMatch = Boolean(
+          order.email && customer.email
+          && normalizeOrderEmail(order.email) === normalizeOrderEmail(customer.email),
+        );
+        let phoneMatch = false;
+        if (order.phone && customer.phone) {
+          try { phoneMatch = normalizeOrderPhone(order.phone) === normalizeOrderPhone(customer.phone); }
+          catch { phoneMatch = false; }
+        }
+        const matched = emailMatch || phoneMatch;
+        let reason: string | null = null;
+        if (!matched) {
+          if (!["owner", "manager"].includes(role)) throw new Error("CUSTOMER_VERIFICATION_REQUIRED");
+          reason = cleanReason ?? "";
+          if (reason.length < 3 || reason.length > 500) throw new Error("VALIDATION");
+        }
+        const next = await tx.updateOrder(order.id, businessId, { customerId }, order.version);
+        if (!next) throw new Error("STALE_VERSION");
+        await tx.claimIdempotency({
+          businessId,
+          key,
+          commandType: "order.link_customer",
+          fingerprint,
+          resultId: order.id,
+        });
+        await tx.appendAudit({
+          businessId, actorId, action: "order.link_customer", entityType: "Order",
+          entityId: order.id, requestId, reason: reason ?? undefined, after: { customerId, matched },
+        });
+        return next;
+      }),
+    );
+  }
+
+  async resendAccess(
+    businessId: string,
+    actorId: string,
+    requestId: string,
+    orderId: string,
+    key: string,
+  ): Promise<{ sent: boolean; replayed: boolean }> {
+    const fingerprint = fingerprintPayload({ orderId });
+    return this.db.withLock("order-access:" + businessId + ":" + orderId, async () => {
+      const replay = await this.db.findIdempotency(businessId, key, "order.access.resend");
+      if (replay) {
+        if (replay.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
+        return { sent: replay.resultId === "sent", replayed: true };
+      }
+      if (!this.notifications) throw new Error("EMAIL_DELIVERY_FAILED");
+      const sent = await this.notifications.resend(businessId, orderId);
+      await this.db.claimIdempotency({
+        businessId,
+        key,
+        commandType: "order.access.resend",
+        fingerprint,
+        resultId: sent ? "sent" : "not-sent",
+      });
+      await this.db.appendAudit({
+        businessId, actorId, action: "order.access.resend", entityType: "Order",
+        entityId: orderId, requestId, after: { sent },
+      });
+      return { sent, replayed: false };
+    });
+  }
+
+  async revokeAccess(
+    businessId: string,
+    actorId: string,
+    requestId: string,
+    orderId: string,
+    key: string,
+  ): Promise<{ revoked: number; replayed: boolean }> {
+    const fingerprint = fingerprintPayload({ orderId });
+    return this.db.withLock("order-access:" + businessId + ":" + orderId, async () => {
+      const replay = await this.db.findIdempotency(businessId, key, "order.access.revoke");
+      if (replay) {
+        if (replay.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
+        return { revoked: Number(replay.resultId) || 0, replayed: true };
+      }
+      const revoked = this.notifications
+        ? await this.notifications.revoke(businessId, orderId)
+        : await new OrderAccessService(this.db).revokeStatusTokens(businessId, orderId);
+      await this.db.claimIdempotency({
+        businessId,
+        key,
+        commandType: "order.access.revoke",
+        fingerprint,
+        resultId: String(revoked),
+      });
+      await this.db.appendAudit({
+        businessId, actorId, action: "order.access.revoke", entityType: "Order",
+        entityId: orderId, requestId, after: { revoked },
+      });
+      return { revoked, replayed: false };
+    });
+  }
 
   private async paymentStatus(order: DbOrder): Promise<DbOrderPaymentStatus> {
     if (!order.saleId) return "UNPAID";
@@ -354,7 +692,7 @@ export class OrderService {
           branchId: input.branchId,
           fulfillmentMode: input.fulfillmentMode,
         }, order.version);
-        if (!updated) throw new Error("STALE_ORDER_VERSION");
+        if (!updated) throw new Error("STALE_VERSION");
         await tx.deleteOrderLines(order.id, businessId);
         const rate = typeof settings["taxRateBps"] === "number" ? settings["taxRateBps"] : null;
         for (const [position, line] of input.lines.entries()) {
@@ -443,12 +781,12 @@ export class OrderService {
           totalMinor: totals.totalMinor + deliveryFeeMinor + deliveryTaxMinor,
           requestId,
         }, order.version);
-        if (!checkout) throw new Error("STALE_ORDER_VERSION");
+        if (!checkout) throw new Error("STALE_VERSION");
         const submitted = await tx.updateOrder(order.id, businessId, {
           status: transitionOrder(checkout.status, "SUBMITTED"),
           submittedAt: now,
         }, checkout.version);
-        if (!submitted) throw new Error("STALE_ORDER_VERSION");
+        if (!submitted) throw new Error("STALE_VERSION");
         await new ReservationService(tx).holdSubmittedOrderLocked(tx, businessId, order.id, idempotencyKey, now);
         const minted = await new OrderAccessService(tx).mint(
           businessId, order.id, "STATUS", new Date(now.getTime() + 30 * 24 * 60 * 60_000), now,

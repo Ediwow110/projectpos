@@ -3,6 +3,8 @@ import request from "supertest";
 import type { INestApplication } from "@nestjs/common";
 import { createTestApp } from "../src/app.module";
 import type { DbPort } from "../src/common/db.port";
+import { ReservationService } from "../src/orders/reservation-service";
+import { ShiftService } from "../src/shifts/nest/shift.service";
 
 let app: INestApplication;
 let db: DbPort;
@@ -89,5 +91,106 @@ describe("phase22 staff Order HTTP reads", () => {
     const res = await request(app.getHttpServer()).get("/api/v1/orders");
     expect(res.status).toBe(401);
     expect(res.body.code).toBe("TENANT_REQUIRED");
+  });
+
+  it("accepts, readies, settles, and collects a pay-at-pickup order through staff routes", async () => {
+    const product = await db.createProduct({
+      businessId, categoryId: null, name: "Pickup unit", sku: "PICKUP-1", barcode: null, brand: null,
+      unit: "pc", costMinor: 40, priceMinor: 100, taxRateBps: null, reorderLevel: 0,
+      trackInventory: true, isActive: true, imageUrl: null,
+    });
+    await db.upsertBalance({ businessId, branchId: branchA.id, productId: product.id, qtyOnHand: 5 });
+    const order = await createOrder(branchA.id, "staff-flow");
+    const now = new Date();
+    await db.createOrderLine({
+      businessId, orderId: order.id, position: 0, productId: product.id, name: product.name,
+      sku: product.sku, barcode: null, unit: product.unit, qty: 1, priceMinor: 100, costMinor: 40,
+      taxRateBps: null, discountMinor: 0, taxMinor: 0, lineTotalMinor: 100,
+      bundleComponentsSnapshot: null, createdAt: now,
+    });
+    await new ReservationService(db).holdSubmittedOrder(businessId, order.id, "staff-flow-hold", now);
+
+    const accept = await request(app.getHttpServer()).post(`/api/v1/orders/${order.id}/accept`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf).set("Idempotency-Key", "staff-flow-accept")
+      .send({ expectedVersion: order.version });
+    expect(accept.status).toBe(200);
+    expect(accept.body.status).toBe("CONFIRMED");
+
+    const fulfillment = (await db.listFulfillmentsByOrder(order.id, businessId))[0]!;
+    const ready = await request(app.getHttpServer())
+      .post(`/api/v1/orders/${order.id}/fulfillments/${fulfillment.id}/ready`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf).set("Idempotency-Key", "staff-flow-ready")
+      .send({ expectedVersion: fulfillment.version });
+    expect(ready.status).toBe(200);
+    expect(ready.body.status).toBe("READY");
+
+    const shifts = new ShiftService(db);
+    const register = await shifts.createRegister(businessId, "staff", "staff-flow-register", { name: "Pickup Register", branchId: branchA.id }, "owner");
+    await shifts.openShift(businessId, "staff", "staff-flow-shift", register.id, { openingFloatMinor: 0 }, "cashier");
+    const collect = await request(app.getHttpServer())
+      .post(`/api/v1/orders/${order.id}/fulfillments/${fulfillment.id}/collect`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf).set("Idempotency-Key", "staff-flow-collect")
+      .send({
+        expectedVersion: ready.body.version,
+        payments: [{ method: "cash", amountMinor: 100 }],
+        registerId: register.id,
+        branchId: branchA.id,
+      });
+    expect(collect.status).toBe(200);
+    expect(collect.body.status).toBe("COLLECTED");
+    expect((await db.findOrderById(order.id, businessId))?.status).toBe("COMPLETED");
+    expect((await db.listReservationsByOrder(order.id, businessId))[0]?.status).toBe("COMMITTED");
+    expect((await db.findBalance(product.id, businessId, branchA.id))?.qtyOnHand).toBe(4);
+  });
+
+  it("links an exact-match customer and requires an audited owner override for mismatch", async () => {
+    const exactOrder = await createOrder(branchA.id, "crm-exact");
+    const exactCustomer = await db.createCustomer({
+      businessId, name: "Ana", phone: null, email: "ana@example.com", address: null, notes: null, isActive: true,
+    });
+    const exact = await request(app.getHttpServer()).post(`/api/v1/orders/${exactOrder.id}/link-customer`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf).set("Idempotency-Key", "crm-exact-key")
+      .send({ expectedVersion: exactOrder.version, customerId: exactCustomer.id });
+    expect(exact.status).toBe(200);
+    expect(exact.body.customerId).toBe(exactCustomer.id);
+
+    const mismatchOrder = await createOrder(branchA.id, "crm-mismatch");
+    const mismatchCustomer = await db.createCustomer({
+      businessId, name: "Other", phone: "09170000000", email: "other@example.com", address: null, notes: null, isActive: true,
+    });
+    const denied = await request(app.getHttpServer()).post(`/api/v1/orders/${mismatchOrder.id}/link-customer`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf).set("Idempotency-Key", "crm-mismatch-denied")
+      .send({ expectedVersion: mismatchOrder.version, customerId: mismatchCustomer.id });
+    expect(denied.status).toBe(400);
+    expect(denied.body.code).toBe("VALIDATION");
+
+    const override = await request(app.getHttpServer()).post(`/api/v1/orders/${mismatchOrder.id}/link-customer`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf).set("Idempotency-Key", "crm-mismatch-override")
+      .send({
+        expectedVersion: mismatchOrder.version,
+        customerId: mismatchCustomer.id,
+        overrideReason: "Verified customer identity at counter",
+      });
+    expect(override.status).toBe(200);
+    expect(override.body.customerId).toBe(mismatchCustomer.id);
+  });
+
+  it("rotates and revokes status access idempotently", async () => {
+    const order = await createOrder(branchA.id, "access-actions");
+    const first = await request(app.getHttpServer()).post(`/api/v1/orders/${order.id}/access/resend`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf).set("Idempotency-Key", "access-resend-key").send({});
+    expect(first.status).toBe(200);
+    expect(first.body).toMatchObject({ sent: true, replayed: false });
+    const replay = await request(app.getHttpServer()).post(`/api/v1/orders/${order.id}/access/resend`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf).set("Idempotency-Key", "access-resend-key").send({});
+    expect(replay.status).toBe(200);
+    expect(replay.body).toMatchObject({ sent: true, replayed: true });
+    expect(await db.listActiveOrderAccessTokens(order.id, businessId, "STATUS", new Date())).toHaveLength(1);
+
+    const revoke = await request(app.getHttpServer()).post(`/api/v1/orders/${order.id}/access/revoke`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf).set("Idempotency-Key", "access-revoke-key").send({});
+    expect(revoke.status).toBe(200);
+    expect(revoke.body.revoked).toBe(1);
+    expect(await db.listActiveOrderAccessTokens(order.id, businessId, "STATUS", new Date())).toHaveLength(0);
   });
 });

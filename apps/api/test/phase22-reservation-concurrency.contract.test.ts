@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createMemoryDb } from "../src/common/memory.db";
 import { ReservationService } from "../src/orders/reservation-service";
+import { OrderService } from "../src/orders/order-service";
+import { OrderExpiryService } from "../src/orders/order-expiry-service";
+import { DisabledPayMongo } from "../src/payments/paymongo";
 
 async function setupLastUnit() {
   const db = createMemoryDb();
@@ -48,5 +51,27 @@ describe("phase22 reservation concurrency contract", () => {
     expect(await db.listMovements(product.id, business.id, null)).toEqual([]);
     expect((await db.listReservationsByOrder(a.id, business.id)).filter((row) => row.status === "HELD").length +
       (await db.listReservationsByOrder(b.id, business.id)).filter((row) => row.status === "HELD").length).toBe(1);
+  });
+
+  it("acceptance versus expiry produces exactly one coherent terminal outcome", async () => {
+    const { db, business, makeOrder } = await setupLastUnit();
+    const order = await makeOrder("accept-expire");
+    const reservations = new ReservationService(db);
+    const now = new Date("2026-10-06T12:00:00.000Z");
+    await reservations.holdSubmittedOrder(business.id, order.id, "hold-race", now);
+    const hold = (await db.listReservationsByOrder(order.id, business.id))[0]!;
+    await db.updateInventoryReservation(hold.id, business.id, { expiresAt: now });
+    const orders = new OrderService(db);
+    const expiry = new OrderExpiryService(db, new DisabledPayMongo());
+    await Promise.allSettled([
+      orders.acceptPayAtPickup(business.id, "staff", "accept", order.id, order.version, "accept-key", now),
+      expiry.sweep(now),
+    ]);
+    const finalOrder = (await db.findOrderById(order.id, business.id))!;
+    const finalHold = (await db.listReservationsByOrder(order.id, business.id))[0]!;
+    const coherent =
+      (finalOrder.status === "CONFIRMED" && finalHold.status === "HELD" && finalHold.expiresAt === null)
+      || (finalOrder.status === "EXPIRED" && finalHold.status === "EXPIRED");
+    expect(coherent).toBe(true);
   });
 });

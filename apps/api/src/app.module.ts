@@ -157,7 +157,11 @@ function runtimeDatabaseUrl(): string | undefined {
     PrintService,
     DisplayService,
     ProcurementService,
-    OrderService,
+    {
+      provide: OrderService,
+      useFactory: (d: DbPort, notifications: OrderNotificationService) => new OrderService(d, notifications),
+      inject: ["DbPort", "OrderNotificationService"],
+    },
     FirstPartyOriginGuard,
     {
       provide: "OrderNotificationService",
@@ -364,8 +368,8 @@ export async function createTestApp(options: { paymongo?: PayMongoPort; humanVer
       },
       {
         provide: OrderService,
-        useFactory: (d: DbPort) => new OrderService(d),
-        inject: ["DbPort"],
+        useFactory: (d: DbPort, notifications: OrderNotificationService) => new OrderService(d, notifications),
+        inject: ["DbPort", "OrderNotificationService"],
       },
       FirstPartyOriginGuard,
       {
