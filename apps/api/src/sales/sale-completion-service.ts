@@ -1,5 +1,5 @@
 import type { DbPort, DbSale } from "../common/db.port";
-import { incrementMetric } from "../common/metrics";
+import { incrementMetric, recordPaymentHandoff, recordSaleChannel } from "../common/metrics";
 import { BillingService } from "../billing/nest/billing.service";
 import { ShiftService } from "../shifts/nest/shift.service";
 import { computeSaleTotals } from "./totals";
@@ -184,6 +184,7 @@ export class SalesCompletionService {
           requestId,
         });
         incrementMetric("pos_payment_unknown_total");
+        recordPaymentHandoff("unknown");
         return { sale: await this.embed(updated), replayed: false };
       }
 
@@ -326,6 +327,7 @@ export class SalesCompletionService {
       });
       await new BillingService(this.db).recordSale(businessId);
       incrementMetric("pos_sales_completed_total");
+      recordSaleChannel(linkedOrder?.channel === "WEB" ? "WEB" : "POS");
       return { sale: await this.embed(updated), replayed: false, ...(giftCardCodes.length ? { giftCardCodes } : {}) };
     }));
   }

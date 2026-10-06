@@ -3,6 +3,7 @@ import type { PayMongoPort } from "../payments/paymongo";
 import { withInventoryLocks } from "../inventory/inventory-locks";
 import { ReservationService } from "./reservation-service";
 import { OrderAccessService } from "./order-access-service";
+import { incrementMetric, recordOrderLifecycle, setMetric } from "../common/metrics";
 
 export class OrderExpiryService {
   constructor(private readonly db: DbPort, private readonly paymongo: PayMongoPort) {}
@@ -55,12 +56,15 @@ export class OrderExpiryService {
           entityId: order.id,
           requestId: "order-expiry",
         });
+        recordOrderLifecycle(order.channel, "EXPIRED");
         return true;
       }),
     );
   }
 
   async sweep(now: Date = new Date()): Promise<number> {
+    const aged = await this.db.listAgedOperationalReservations(new Date(now.getTime() - 24 * 60 * 60_000), 1000);
+    setMetric("pos_order_aged_operational_holds", aged.length);
     const due = await this.db.listDueReservationOrders(now, 100);
     let count = 0;
     for (const order of due) if (await this.expireOne(order, now)) count += 1;
@@ -68,8 +72,13 @@ export class OrderExpiryService {
   }
 
   start(): NodeJS.Timeout {
-    void this.sweep();
-    const timer = setInterval(() => { void this.sweep(); }, 60_000);
+    const run = (): void => {
+      void this.sweep().catch(() => {
+        incrementMetric("pos_order_expiry_worker_failures_total");
+      });
+    };
+    run();
+    const timer = setInterval(run, 60_000);
     timer.unref();
     return timer;
   }

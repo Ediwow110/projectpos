@@ -555,6 +555,7 @@ export class PgDbPort implements DbPort {
   }
   listOrdersPage(businessId: string, query: DbOrderPageQuery): Promise<DbOrder[]> { return this.orders.listOrdersPage(businessId, query); }
   listDueReservationOrders(now: Date, limit: number): Promise<DbOrder[]> { return this.orders.listDueReservationOrders(now, limit); }
+  listAgedOperationalReservations(cutoff: Date, limit: number): Promise<DbInventoryReservation[]> { return this.orders.listAgedOperationalReservations(cutoff, limit); }
   createOrderLine(l: Omit<DbOrderLine, "id">): Promise<DbOrderLine> { return this.orders.createOrderLine(l); }
   listOrderLines(orderId: string, businessId: string): Promise<DbOrderLine[]> { return this.orders.listOrderLines(orderId, businessId); }
   deleteOrderLines(orderId: string, businessId: string): Promise<void> { return this.orders.deleteOrderLines(orderId, businessId); }

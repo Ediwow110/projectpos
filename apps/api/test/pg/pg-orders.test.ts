@@ -129,6 +129,33 @@ describe("phase22 pg order persistence", () => {
     });
   });
 
+  it("lists only aged non-expiring HELD operational reservations", async () => {
+    await withPg(async (raw) => {
+      const db = raw as any;
+      const { business, branch, product } = await seed(db);
+      const now = new Date("2026-10-06T12:00:00.000Z");
+      const make = async (suffix: string, createdAt: Date, expiresAt: Date | null, status = "HELD") => {
+        const order = await db.createOrder({ ...orderInput(business.id, branch.id), requestId: "aged-" + suffix, createdAt, updatedAt: createdAt });
+        const line = await db.createOrderLine({
+          businessId: business.id, orderId: order.id, position: 0, productId: product.id, name: "Coffee",
+          sku: "COF-1", barcode: null, unit: "pc", qty: 1, priceMinor: 1000, costMinor: 500,
+          taxRateBps: 1200, discountMinor: 0, taxMinor: 120, lineTotalMinor: 1120,
+          bundleComponentsSnapshot: null, createdAt,
+        });
+        return db.createInventoryReservation({
+          businessId: business.id, branchId: branch.id, orderId: order.id, orderLineId: line.id,
+          productId: product.id, qty: 1, status, expiresAt,
+          idempotencyKey: "aged:" + suffix, createdAt, updatedAt: createdAt,
+        });
+      };
+      const aged = await make("old", new Date("2026-10-05T11:59:59.000Z"), null);
+      await make("fresh", new Date("2026-10-06T11:30:00.000Z"), null);
+      await make("timed", new Date("2026-10-04T00:00:00.000Z"), new Date("2026-10-06T12:20:00.000Z"));
+      await make("committed", new Date("2026-10-04T00:00:00.000Z"), null, "COMMITTED");
+      expect((await db.listAgedOperationalReservations(new Date(now.getTime() - 24 * 60 * 60_000), 100)).map((row: { id: string }) => row.id)).toEqual([aged.id]);
+    });
+  });
+
   it("stores Fulfillment + FulfillmentLine allocation", async () => {
     await withPg(async (raw) => {
       const db = raw as any;

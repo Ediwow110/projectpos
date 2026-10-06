@@ -8,6 +8,7 @@ import {
 import { fingerprintPayload } from "./idempotency";
 import { resolvePaymentMethods } from "./payment-methods";
 import { transitionSale } from "./state-machine";
+import { recordIdempotencyConflict, recordPaymentHandoff } from "../common/metrics";
 
 type EmbeddedSale = DbSale & {
   items: DbSaleItem[];
@@ -64,7 +65,10 @@ export class SalesPaymentProviderService {
       const fingerprint = fingerprintPayload({ saleId, method });
       const existingKey = await this.db.findIdempotency(businessId, key, "paymongo.checkout");
       if (existingKey) {
-        if (existingKey.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
+        if (existingKey.fingerprint !== fingerprint) {
+          recordIdempotencyConflict("payment");
+          throw new Error("IDEMPOTENCY_MISMATCH");
+        }
         const payment = await this.db.findPaymentById(existingKey.resultId, businessId);
         if (!payment || !payment.providerRef) throw new Error("PAYMENT_PROVIDER_INVALID_RESPONSE");
         const snapshot = await this.paymongo.retrieveCheckout(payment.providerRef);
@@ -103,6 +107,7 @@ export class SalesPaymentProviderService {
         }
         if (snapshot.status === "expired") {
           await this.db.updatePayment(pending.id, businessId, { status: "FAILED" });
+          recordPaymentHandoff("failed");
           if (sale.status === "PENDING_PAYMENT") {
             sale = (await this.db.updateSale(sale.id, businessId, {
               status: transitionSale(sale.status, "PAYMENT_FAILED"),
@@ -167,6 +172,7 @@ export class SalesPaymentProviderService {
         entityId: payment.id,
         requestId,
       });
+      recordPaymentHandoff("started");
       return {
         sale: await this.ops.embedSale(sale),
         payment,

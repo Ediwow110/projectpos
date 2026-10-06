@@ -1,4 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
+import { resolve } from "node:path";
+
+const externalServers = process.env["E2E_EXTERNAL_SERVERS"] === "1";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -9,7 +12,12 @@ export default defineConfig({
     // keep locator assertions aligned with the suite's cold-start tolerance.
     timeout: 15_000,
   },
-  workers: 2,
+  // Two concurrent browser workers can destabilize Playwright-owned Next/API
+  // dev servers on Windows during the full multi-project matrix (transient
+  // connection-refused/setup failures across otherwise-unrelated specs).
+  // Keep CI/Linux parallel, but serialize Windows locally for deterministic
+  // closure evidence without adding retries or weakening assertions.
+  workers: process.platform === "win32" ? 1 : 2,
   use: {
     baseURL: "http://localhost:3100",
     // Playwright 1.63 on Windows can race its retained-trace network files
@@ -30,15 +38,18 @@ export default defineConfig({
       },
     },
   ],
-  webServer: [
+  webServer: externalServers ? undefined : [
     {
-      command: "pnpm --filter @pos/api exec tsx src/main.ts",
+      // Launch through the API package so its local tsx devDependency is
+      // resolved from apps/api/node_modules rather than the workspace root.
+      command: "pnpm --filter @pos/api start",
       port: 3101,
       reuseExistingServer: false,
       timeout: 120_000,
       env: {
         ...process.env,
         NODE_ENV: "development",
+        TSX_TSCONFIG_PATH: resolve(process.cwd(), "apps/api/tsconfig.json"),
         API_PORT: "3101",
         WEB_URL: "http://localhost:3100",
         REGISTRATION_RATE_LIMIT: "1000",
@@ -57,16 +68,17 @@ export default defineConfig({
       } as Record<string, string>,
     },
     {
-      // A production `next build` and `next dev` use different artifacts in
-      // the same .next directory. Clear that generated cache before E2E dev
-      // startup so a build->browser-test sequence cannot cross-contaminate.
-      command: "node -e \"require('fs').rmSync('apps/web/.next',{recursive:true,force:true})\" && pnpm --filter @pos/web exec next dev -p 3100",
+      // The e2e runner prepares the same standard production build path used
+      // by normal Next builds before Playwright starts. Keep the long-lived
+      // webServer process to serving only; chaining build + start inside
+      // Playwright is unstable on Windows shells.
+      command: "node apps/web/node_modules/next/dist/bin/next start apps/web -p 3100",
       port: 3100,
       reuseExistingServer: false,
       timeout: 120_000,
       env: {
         ...process.env,
-        NODE_ENV: "development",
+        NODE_ENV: "production",
         // Match production's same-origin browser contract: Next proxies
         // /api/* to the API service, so navigation-based endpoints such as
         // CSV exports behave exactly like normal apiFetch calls.

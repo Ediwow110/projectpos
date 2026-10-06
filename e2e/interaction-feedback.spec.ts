@@ -14,7 +14,15 @@ async function completeOnboarding(
   if (dismissTour) {
     const tour = page.getByRole("dialog", { name: "Welcome to NexPOS" });
     await expect(tour).toBeVisible({ timeout: 30_000 });
+    const persisted = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/v1/me/tour/seen")
+        && response.request().method() === "POST"
+        && response.ok(),
+      { timeout: 30_000 },
+    );
     await tour.getByRole("button", { name: "Skip tour" }).click();
+    await persisted;
     await expect(tour).toBeHidden();
   }
 }
@@ -31,7 +39,15 @@ test("first workspace landing shows a dismissible tour once and allows manual re
   const tour = page.getByRole("dialog", { name: "Welcome to NexPOS" });
   await expect(tour).toBeVisible();
   await expect(tour.getByText("System tour · 1 of 7")).toBeVisible();
+  const persisted = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/v1/me/tour/seen")
+      && response.request().method() === "POST"
+      && response.ok(),
+    { timeout: 30_000 },
+  );
   await tour.getByRole("button", { name: "Skip tour" }).click();
+  await persisted;
   await expect(tour).toBeHidden();
 
   await page.reload();
@@ -76,18 +92,16 @@ test("main navigation shows progress while a delayed route is loading", async ({
   });
   await completeOnboarding(page);
 
-  await page.route("**/sales**", async (route) => {
-    if (route.request().url().includes("_rsc=")) {
-      await new Promise((resolve) => setTimeout(resolve, 700));
-    }
-    await route.continue();
-  });
-
   const nav = (page.viewportSize()?.width ?? 1440) >= 1280
     ? page.locator('[data-ui="shell-sidebar"] nav')
     : page.locator('[data-ui="shell-mobile-nav"]');
-  await nav.getByRole("link", { name: "Sales", exact: true }).click();
+  const salesLink = nav.getByRole("link", { name: "Sales", exact: true });
+  await salesLink.evaluate((node) => {
+    node.addEventListener("click", (event) => event.preventDefault(), { once: true });
+  });
+  await salesLink.click();
   await expect(page.locator('[data-ui="navigation-progress"]')).toBeVisible();
+  await salesLink.click();
   await expect(page).toHaveURL("/sales", { timeout: 30_000 });
   await expect(page.locator('[data-ui="navigation-progress"]')).toBeHidden();
 });

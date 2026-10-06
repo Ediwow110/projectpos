@@ -158,6 +158,18 @@ export function ordersFamily(ctx: PgContext) {
         return r.rows as DbOrder[];
       } finally { if (ctx.owns()) c.release(); }
     },
+    async listAgedOperationalReservations(cutoff: Date, limit: number): Promise<DbInventoryReservation[]> {
+      const c = await ctx.client();
+      try {
+        const r = await c.query(
+          'SELECT ' + RESERVATION_SELECT + ' FROM "InventoryReservation"' +
+            ' WHERE "status" = \'HELD\' AND "expiresAt" IS NULL AND "createdAt" <= $1' +
+            ' ORDER BY "createdAt" ASC, "id" ASC LIMIT $2',
+          [cutoff, limit],
+        );
+        return r.rows as DbInventoryReservation[];
+      } finally { if (ctx.owns()) c.release(); }
+    },
     async createOrderLine(l: Omit<DbOrderLine, "id">): Promise<DbOrderLine> {
       const c = await ctx.client();
       try {

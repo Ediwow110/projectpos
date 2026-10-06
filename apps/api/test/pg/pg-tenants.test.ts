@@ -79,7 +79,12 @@ describe("phase12 pg tenants: businesses", () => {
   it("creates a business and finds it by id", async () => {
     await withPg(async (db) => {
       const b = await seedBusiness(db, "PG Store");
-      expect(await db.findBusinessById(b.id)).toEqual({ id: b.id, name: "PG Store", currency: "PHP" });
+      expect(await db.findBusinessById(b.id)).toEqual({
+        id: b.id,
+        name: "PG Store",
+        currency: "PHP",
+        storefrontKey: null,
+      });
     });
   });
 

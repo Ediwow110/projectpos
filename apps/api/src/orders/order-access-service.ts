@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { DbOrderAccessToken, DbOrderAccessTokenKind, DbPort } from "../common/db.port";
+import { recordGuestAccess } from "../common/metrics";
 
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -115,7 +116,10 @@ export class OrderAccessService {
     orderId?: string,
     now: Date = new Date(),
   ): Promise<DbOrderAccessToken> {
-    if (!token || token.length < 32) throw new Error("NOT_FOUND");
+    if (!token || token.length < 32) {
+      recordGuestAccess("failure");
+      throw new Error("NOT_FOUND");
+    }
     const row = await this.db.findOrderAccessTokenByHash(hashToken(token));
     if (
       !row ||
@@ -124,6 +128,7 @@ export class OrderAccessService {
       row.expiresAt.getTime() <= now.getTime() ||
       (orderId !== undefined && row.orderId !== orderId)
     ) {
+      recordGuestAccess("failure");
       throw new Error("NOT_FOUND");
     }
     return row;
@@ -140,6 +145,7 @@ export class OrderAccessService {
     for (const row of rows) {
       if (await this.db.revokeOrderAccessToken(row.id, businessId, revokedAt)) count += 1;
     }
+    if (count > 0) recordGuestAccess("revoked");
     return count;
   }
 }

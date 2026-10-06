@@ -1171,6 +1171,7 @@ export interface DbPort {
   updateOrder(id: string, businessId: string, patch: Partial<Omit<DbOrder, "id" | "businessId" | "version">>, expectedVersion: number): Promise<DbOrder | null>;
   listOrdersPage(businessId: string, query: DbOrderPageQuery): Promise<DbOrder[]>;
   listDueReservationOrders(now: Date, limit: number): Promise<DbOrder[]>;
+  listAgedOperationalReservations(cutoff: Date, limit: number): Promise<DbInventoryReservation[]>;
   createOrderLine(l: Omit<DbOrderLine, "id">): Promise<DbOrderLine>;
   listOrderLines(orderId: string, businessId: string): Promise<DbOrderLine[]>;
   deleteOrderLines(orderId: string, businessId: string): Promise<void>;

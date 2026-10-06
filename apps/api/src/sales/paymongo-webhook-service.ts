@@ -1,7 +1,7 @@
 import type { DbPort } from "../common/db.port";
 import { OrderSaleService } from "../orders/order-sale-service";
 import { OrderNotificationService } from "../orders/order-notification-service";
-import { incrementMetric } from "../common/metrics";
+import { incrementMetric, recordSaleChannel } from "../common/metrics";
 import { BillingService } from "../billing/nest/billing.service";
 import {
   isPayMongoMethod,
@@ -106,6 +106,7 @@ export class SalesPayMongoWebhookService {
         requestId,
       });
       incrementMetric("pos_sales_completed_total");
+      recordSaleChannel(linkedOrder?.channel === "WEB" ? "WEB" : "POS");
       return shouldNotify ? linkedOrder!.id : null;
     }));
   }

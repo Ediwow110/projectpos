@@ -39,9 +39,10 @@ describe("phase22 reservation service", () => {
     const a = await makeOrder("a");
     const b = await makeOrder("b");
     const service = new ReservationService(db);
+    const now = new Date();
     const [one, two] = await Promise.allSettled([
-      service.holdSubmittedOrder(business.id, a.order.id, "hold-a", new Date("2026-10-06T12:00:00.000Z")),
-      service.holdSubmittedOrder(business.id, b.order.id, "hold-b", new Date("2026-10-06T12:00:00.000Z")),
+      service.holdSubmittedOrder(business.id, a.order.id, "hold-a", now),
+      service.holdSubmittedOrder(business.id, b.order.id, "hold-b", now),
     ]);
     expect([one.status, two.status].sort()).toEqual(["fulfilled", "rejected"]);
     const rejected = one.status === "rejected" ? one.reason : two.status === "rejected" ? two.reason : null;

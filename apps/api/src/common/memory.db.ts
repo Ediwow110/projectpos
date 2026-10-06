@@ -632,6 +632,12 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
         .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id))
         .slice(0, limit);
     },
+    async listAgedOperationalReservations(cutoff, limit) {
+      return [...inventoryReservations.values()]
+        .filter((row) => row.status === "HELD" && row.expiresAt === null && row.createdAt.getTime() <= cutoff.getTime())
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id))
+        .slice(0, limit);
+    },
     async createOrderLine(l) {
       const row: DbOrderLine = { ...l, id: nid("ol") };
       if ([...orderLines.values()].some((other) => other.businessId === row.businessId && other.orderId === row.orderId && other.position === row.position)) {

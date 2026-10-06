@@ -22,6 +22,7 @@ import type { OrderNotificationService } from "./order-notification-service";
 import { withInventoryLocks } from "../inventory/inventory-locks";
 import { deriveOrderPaymentStatus } from "./payment-status";
 import type { OrderListItem } from "./order-types";
+import { recordIdempotencyConflict, recordOrderLifecycle } from "../common/metrics";
 
 export interface OrderListQuery {
   cursor?: string;
@@ -33,6 +34,11 @@ export interface OrderListQuery {
   paymentStatus?: DbOrderPaymentStatus;
   dateFrom?: string;
   dateTo?: string;
+}
+
+function orderIdempotencyMismatch(): never {
+  recordIdempotencyConflict("order");
+  throw new Error("IDEMPOTENCY_MISMATCH");
 }
 
 function parseDate(value: string | undefined): Date | undefined {
@@ -110,7 +116,7 @@ export class OrderService {
       this.db.withTransaction(async (tx) => {
         const replay = await tx.findIdempotency(businessId, key, "order.accept");
         if (replay) {
-          if (replay.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
+          if (replay.fingerprint !== fingerprint) orderIdempotencyMismatch();
           const row = await tx.findOrderById(orderId, businessId);
           if (!row) throw new Error("NOT_FOUND");
           return { order: row, notify: false };
@@ -169,6 +175,7 @@ export class OrderService {
       }),
     );
     if (result.notify && this.notifications) await this.notifications.sendEvent(businessId, orderId, "CONFIRMED");
+    if (result.notify) recordOrderLifecycle("WEB", "CONFIRMED");
     return result.order;
   }
 
@@ -187,7 +194,7 @@ export class OrderService {
       this.db.withTransaction(async (tx) => {
         const replay = await tx.findIdempotency(businessId, key, "order.reject");
         if (replay) {
-          if (replay.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
+          if (replay.fingerprint !== fingerprint) orderIdempotencyMismatch();
           const row = await tx.findOrderById(orderId, businessId);
           if (!row) throw new Error("NOT_FOUND");
           return row;
@@ -206,6 +213,7 @@ export class OrderService {
           businessId, actorId, action: "order.reject", entityType: "Order",
           entityId: order.id, requestId, reason: cleanReason ?? undefined,
         });
+        recordOrderLifecycle(order.channel, "REJECTED");
         return next;
       }),
     );
@@ -227,7 +235,7 @@ export class OrderService {
       this.db.withTransaction(async (tx) => {
         const replay = await tx.findIdempotency(businessId, key, "order.cancel");
         if (replay) {
-          if (replay.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
+          if (replay.fingerprint !== fingerprint) orderIdempotencyMismatch();
           const row = await tx.findOrderById(orderId, businessId);
           if (!row) throw new Error("NOT_FOUND");
           return row;
@@ -270,6 +278,7 @@ export class OrderService {
           businessId, actorId, action: "order.cancel", entityType: "Order",
           entityId: order.id, requestId, reason: cleanReason ?? undefined,
         });
+        recordOrderLifecycle(order.channel, "CANCELLED");
         return next;
       }),
     );
@@ -292,7 +301,7 @@ export class OrderService {
       this.db.withTransaction(async (tx) => {
         const replay = await tx.findIdempotency(businessId, key, "order.link_customer");
         if (replay) {
-          if (replay.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
+          if (replay.fingerprint !== fingerprint) orderIdempotencyMismatch();
           const row = await tx.findOrderById(orderId, businessId);
           if (!row) throw new Error("NOT_FOUND");
           return row;
@@ -346,7 +355,7 @@ export class OrderService {
     return this.db.withLock("order-access:" + businessId + ":" + orderId, async () => {
       const replay = await this.db.findIdempotency(businessId, key, "order.access.resend");
       if (replay) {
-        if (replay.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
+        if (replay.fingerprint !== fingerprint) orderIdempotencyMismatch();
         return { sent: replay.resultId === "sent", replayed: true };
       }
       if (!this.notifications) throw new Error("EMAIL_DELIVERY_FAILED");
@@ -377,7 +386,7 @@ export class OrderService {
     return this.db.withLock("order-access:" + businessId + ":" + orderId, async () => {
       const replay = await this.db.findIdempotency(businessId, key, "order.access.revoke");
       if (replay) {
-        if (replay.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
+        if (replay.fingerprint !== fingerprint) orderIdempotencyMismatch();
         return { revoked: Number(replay.resultId) || 0, replayed: true };
       }
       const revoked = this.notifications
@@ -572,7 +581,7 @@ export class OrderService {
     return this.db.withLock("orders-public-create:" + business.id, async () => {
       const existing = await this.db.findIdempotency(business.id, idempotencyKey, "order.public.create");
       if (existing) {
-        if (existing.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
+        if (existing.fingerprint !== fingerprint) orderIdempotencyMismatch();
         const order = await this.db.findOrderById(existing.resultId, business.id);
         if (!order) throw new Error("NOT_FOUND");
         const access = new OrderAccessService(this.db);
@@ -732,7 +741,7 @@ export class OrderService {
       this.db.withTransaction(async (tx) => {
         const existing = await tx.findIdempotency(businessId, idempotencyKey, "order.public.submit");
         if (existing) {
-          if (existing.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
+          if (existing.fingerprint !== fingerprint) orderIdempotencyMismatch();
           const order = await tx.findOrderById(existing.resultId, businessId);
           if (!order) throw new Error("NOT_FOUND");
           const minted = await new OrderAccessService(tx).mint(
@@ -800,6 +809,7 @@ export class OrderService {
         await tx.claimIdempotency({
           businessId, key: idempotencyKey, commandType: "order.public.submit", fingerprint, resultId: order.id,
         });
+        recordOrderLifecycle("WEB", "SUBMITTED");
         return { order: submitted, statusToken: minted.token, replayed: false };
       }),
     );

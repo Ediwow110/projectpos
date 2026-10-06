@@ -8,6 +8,7 @@ import type {
 } from "../common/db.port";
 import { ReservationService } from "./reservation-service";
 import { OrderAccessService } from "./order-access-service";
+import { recordOrderLifecycle } from "../common/metrics";
 
 type FrozenBundleComponent = Pick<
   DbSaleItemBundleComponent,
@@ -282,6 +283,7 @@ export class OrderSaleService {
       );
       if (!confirmed) throw new Error("STALE_VERSION");
       await new OrderAccessService(db).revokeCheckoutTokens(businessId, order.id, completedAt);
+      recordOrderLifecycle("WEB", "CONFIRMED");
       return confirmed;
     }
     if (order.channel === "POS") {
@@ -294,6 +296,7 @@ export class OrderSaleService {
         order.version,
       );
       if (!completed) throw new Error("STALE_VERSION");
+      recordOrderLifecycle("POS", "COMPLETED");
       return completed;
     }
     return order;
@@ -316,6 +319,7 @@ export class OrderSaleService {
       order.version,
     );
     if (!cancelled) throw new Error("STALE_VERSION");
+    recordOrderLifecycle("POS", "CANCELLED");
     return cancelled;
   }
 }

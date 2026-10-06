@@ -3,6 +3,7 @@ import { OrderSaleService } from "../orders/order-sale-service";
 import { OrderNotificationService } from "../orders/order-notification-service";
 import { fingerprintPayload } from "./idempotency";
 import { transitionSale } from "./state-machine";
+import { recordIdempotencyConflict, recordPaymentHandoff, recordSaleChannel } from "../common/metrics";
 
 type EmbeddedSale = DbSale & {
   items: DbSaleItem[];
@@ -57,7 +58,10 @@ export class SalesPaymentReconciliationService {
       const fingerprint = fingerprintPayload({ paymentId, outcome });
       const existing = await this.db.findIdempotency(businessId, key, "payment.reconcile");
       if (existing) {
-        if (existing.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
+        if (existing.fingerprint !== fingerprint) {
+          recordIdempotencyConflict("payment");
+          throw new Error("IDEMPOTENCY_MISMATCH");
+        }
         const payment = await this.db.findPaymentById(paymentId, businessId);
         if (!payment) throw new Error("NOT_FOUND");
         const sale = await this.ops.requireSale(businessId, payment.saleId);
@@ -105,6 +109,7 @@ export class SalesPaymentReconciliationService {
           (await this.db.updateSale(sale.id, businessId, {
             status: transitionSale(failed, "PAYMENT_FAILED"),
           })) ?? sale;
+        recordPaymentHandoff("reconciled");
         return { sale: await this.ops.embedSale(failedSale), payment: updatedPayment, confirmedOrderId: null as string | null };
       }
 
@@ -145,6 +150,8 @@ export class SalesPaymentReconciliationService {
         (await this.db.updateSale(sale.id, businessId, { status, completedAt })) ?? sale;
       await this.orderSales.settleLinkedSaleLocked(this.db, businessId, sale.id, completedAt);
       await this.ops.recordSale(businessId, completedAt);
+      recordPaymentHandoff("reconciled");
+      recordSaleChannel(linkedOrder?.channel === "WEB" ? "WEB" : "POS");
       return { sale: await this.ops.embedSale(updated), payment: updatedPayment, confirmedOrderId: shouldNotify ? linkedOrder!.id : null };
     }));
     if (result.confirmedOrderId && this.notifications) {

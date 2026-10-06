@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createMemoryDb } from "../common/memory.db";
+import { renderMetrics, resetMetricsForTests } from "../common/metrics";
 import type { PayMongoCheckoutSnapshot, PayMongoPort } from "../payments/paymongo";
 import { OrderExpiryService } from "./order-expiry-service";
 
@@ -56,6 +57,17 @@ async function dueFixture(linkSale: boolean) {
 }
 
 describe("phase22 Order expiry", () => {
+  it("contains background sweep failures instead of surfacing an unhandled rejection", async () => {
+    resetMetricsForTests();
+    const db = createMemoryDb();
+    vi.spyOn(db, "listAgedOperationalReservations").mockRejectedValueOnce(new Error("db unavailable"));
+    const svc = new OrderExpiryService(db, new FakeProvider());
+    const timer = svc.start();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    clearInterval(timer);
+    expect(renderMetrics()).toContain("pos_order_expiry_worker_failures_total 1");
+  });
+
   it("expires an ordinary timed hold exactly once", async () => {
     const { db, business, order, now } = await dueFixture(false);
     const svc = new OrderExpiryService(db, new FakeProvider());

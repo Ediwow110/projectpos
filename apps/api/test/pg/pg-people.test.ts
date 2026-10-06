@@ -160,7 +160,12 @@ describe("phase12 pg people: refunds and items", () => {
     const input = fullRefund(b.id, saleId);
     const created = (await people.createRefund(input)) as DbRefund;
     expect(created.id).toBeTruthy();
-    expect(await people.findRefundById(created.id, b.id)).toEqual({ ...input, id: created.id });
+    expect(await people.findRefundById(created.id, b.id)).toEqual({
+      ...input,
+      id: created.id,
+      deliveryFeeRefundMinor: 0,
+      deliveryTaxRefundMinor: 0,
+    });
     const rows = await people.listRefundsBySale(saleId, b.id);
     expect(rows.map((r) => r.id)).toEqual([created.id]);
   });

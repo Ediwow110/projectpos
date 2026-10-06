@@ -7,8 +7,14 @@ import type {
 import { fingerprintPayload } from "../sales/idempotency";
 import { transitionFulfillment, transitionOrder } from "./order-state";
 import type { OrderNotificationService } from "./order-notification-service";
+import { recordFulfillmentOutcome, recordIdempotencyConflict, recordOrderLifecycle } from "../common/metrics";
 
 type Allocation = { orderLineId: string; qty: number };
+
+function fulfillmentIdempotencyMismatch(): never {
+  recordIdempotencyConflict("fulfillment");
+  throw new Error("IDEMPOTENCY_MISMATCH");
+}
 
 export class FulfillmentService {
   constructor(
@@ -104,7 +110,7 @@ export class FulfillmentService {
       this.db.withTransaction(async (tx) => {
         const replay = await tx.findIdempotency(businessId, key, "fulfillment.assign");
         if (replay) {
-          if (replay.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
+          if (replay.fingerprint !== fingerprint) fulfillmentIdempotencyMismatch();
           const row = await tx.findFulfillmentById(fulfillmentId, businessId);
           if (!row) throw new Error("NOT_FOUND");
           return row;
@@ -154,7 +160,7 @@ export class FulfillmentService {
       this.db.withTransaction(async (tx) => {
         const replay = await tx.findIdempotency(businessId, key, commandType);
         if (replay) {
-          if (replay.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
+          if (replay.fingerprint !== fingerprint) fulfillmentIdempotencyMismatch();
           const row = await tx.findFulfillmentById(fulfillmentId, businessId);
           if (!row) throw new Error("NOT_FOUND");
           return { row, notify: false };
@@ -184,6 +190,11 @@ export class FulfillmentService {
     if (result.notify && this.notifications) {
       await this.notifications.sendEvent(businessId, orderId, result.row.status);
     }
+    recordFulfillmentOutcome(
+      result.row.type,
+      result.row.status,
+      Math.max(0, result.row.updatedAt.getTime() - result.row.createdAt.getTime()),
+    );
     return result.row;
   }
 
@@ -225,6 +236,7 @@ export class FulfillmentService {
       status: transitionOrder(order.status, "COMPLETED"),
       completedAt: new Date(),
     }, order.version);
+    if (next) recordOrderLifecycle(order.channel, "COMPLETED");
     return Boolean(next);
   }
 }

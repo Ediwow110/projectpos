@@ -1,6 +1,7 @@
 import type { DbInventoryReservation, DbOrderLine, DbPort } from "../common/db.port";
 import { InventoryAvailabilityService } from "../inventory/availability-service";
 import { withInventoryLocks } from "../inventory/inventory-locks";
+import { recordIdempotencyConflict, recordReservationOutcome } from "../common/metrics";
 
 interface ReservationNeed {
   orderLineId: string;
@@ -87,14 +88,16 @@ export class ReservationService {
       const existing = await db.listReservationsByOrder(orderId, businessId);
       if (existing.length) {
         if (!existing.every((row) => row.idempotencyKey.startsWith(idempotencyKey + ":"))) {
+          recordIdempotencyConflict("reservation");
           throw new Error("IDEMPOTENCY_MISMATCH");
         }
         return existing;
       }
       const needs = await this.needs(db, businessId, orderId);
       const targets = needs.map((need) => ({ productId: need.productId, branchId }));
-      return withInventoryLocks(db, businessId, targets, async () =>
-        db.withTransaction(async (tx) => {
+      try {
+        const result = await withInventoryLocks(db, businessId, targets, async () =>
+          db.withTransaction(async (tx) => {
           const replay = await tx.listReservationsByOrder(orderId, businessId);
           if (replay.length) return replay;
           await new InventoryAvailabilityService(tx).assertDecreaseAllowed(
@@ -119,8 +122,14 @@ export class ReservationService {
             }));
           }
           return out;
-        }),
-      );
+          }),
+        );
+        if (result.length > 0) recordReservationOutcome("held");
+        return result;
+      } catch (error) {
+        if (error instanceof Error && error.message === "RESERVATION_CONFLICT") recordReservationOutcome("conflict");
+        throw error;
+      }
   }
 
   async releaseOrder(
@@ -140,7 +149,7 @@ export class ReservationService {
     target: "RELEASED" | "EXPIRED",
   ): Promise<DbInventoryReservation[]> {
     const rows = (await db.listReservationsByOrder(orderId, businessId)).filter((row) => row.status === "HELD");
-    return withInventoryLocks(
+    const result = await withInventoryLocks(
       db,
       businessId,
       rows.map((row) => ({ productId: row.productId, branchId: row.branchId })),
@@ -154,6 +163,8 @@ export class ReservationService {
         return out;
       }),
     );
+    if (result.length > 0) recordReservationOutcome(target === "EXPIRED" ? "expired" : "released");
+    return result;
   }
 
   async commitForSale(businessId: string, orderId: string, saleId: string): Promise<void> {
@@ -186,5 +197,6 @@ export class ReservationService {
         }
       }),
     );
+    recordReservationOutcome("committed");
   }
 }
