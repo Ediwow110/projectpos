@@ -16,6 +16,9 @@ import {
 } from "../lib/workspace-navigation";
 import { branchScopeLabel } from "../lib/workspace-branch";
 import { GuidedTour } from "./GuidedTour";
+import { useBranchSwitcher } from "./use-branch-switcher";
+import { useNavigationProgress } from "./use-navigation-progress";
+import { useWorkspaceTour } from "./use-workspace-tour";
 
 function isActive(pathname: string, href: string): boolean {
   return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
@@ -116,12 +119,10 @@ export function AppShell({
   });
   const [signingOut, setSigningOut] = React.useState(false);
   const [signOutError, setSignOutError] = React.useState("");
-  const [branchError, setBranchError] = React.useState("");
-  const [switchingBranch, setSwitchingBranch] = React.useState(false);
-  const [pendingHref, setPendingHref] = React.useState<string | null>(null);
-  const [showNavigationProgress, setShowNavigationProgress] = React.useState(false);
-  const [showTour, setShowTour] = React.useState(false);
   const [showMobileMenu, setShowMobileMenu] = React.useState(false);
+  const { branchError, switchingBranch, switchBranch } = useBranchSwitcher(shellMe.data, queryClient);
+  const { showNavigationProgress, beginNavigation } = useNavigationProgress(pathname);
+  const { showTour, setShowTour, dismissTour } = useWorkspaceTour(shellMe.data, queryClient);
   const today = new Date().toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
   const year = new Date().getFullYear();
   const name = businessName ?? "NexPOS";
@@ -139,16 +140,8 @@ export function AppShell({
   const showSessionControls = businessName !== undefined || role !== undefined;
 
   React.useEffect(() => {
-    setPendingHref(null);
-    setShowNavigationProgress(false);
     setShowMobileMenu(false);
   }, [pathname]);
-
-  React.useEffect(() => {
-    const restartTour = (): void => setShowTour(true);
-    window.addEventListener("nexpos:restart-tour", restartTour);
-    return () => window.removeEventListener("nexpos:restart-tour", restartTour);
-  }, []);
 
   React.useEffect(() => {
     if (!showMobileMenu) return;
@@ -158,15 +151,6 @@ export function AppShell({
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [showMobileMenu]);
-
-  React.useEffect(() => {
-    if (pendingHref === null) {
-      setShowNavigationProgress(false);
-      return;
-    }
-    const timer = window.setTimeout(() => setShowNavigationProgress(true), 120);
-    return () => window.clearTimeout(timer);
-  }, [pendingHref]);
 
   // Redirect exactly once per signed-out denial. Clearing the ["me"] query
   // forces an immediate refetch, which settles back into the same denial;
@@ -185,32 +169,6 @@ export function AppShell({
     }
   }, [queryClient, router, signInRequired, shellMe.data?.onboardingRequired]);
 
-  React.useEffect(() => {
-    const profile = shellMe.data;
-    if (!profile || profile.onboardingRequired || profile.workspaceTourSeen) return;
-    const localKey = `nexpos-workspace-tour-seen:${profile.userId}`;
-    if (window.localStorage.getItem(localKey) === "1") return;
-    setShowTour(true);
-  }, [shellMe.data]);
-
-  async function dismissTour(): Promise<void> {
-    const profile = shellMe.data;
-    setShowTour(false);
-    if (!profile) return;
-    window.localStorage.setItem(`nexpos-workspace-tour-seen:${profile.userId}`, "1");
-    queryClient.setQueryData(["me"], { ...profile, workspaceTourSeen: true });
-    try {
-      const csrf = await apiFetch<{ csrfToken: string }>("/api/v1/auth/csrf");
-      await apiFetch("/api/v1/me/tour/seen", {
-        csrfToken: csrf.csrfToken,
-        init: { method: "POST" },
-      });
-    } catch {
-      // Local suppression prevents a failed preference write from interrupting
-      // daily work; the server remains the cross-device source of truth.
-    }
-  }
-
   async function signOut(): Promise<void> {
     if (signingOut) return;
     setSigningOut(true);
@@ -227,38 +185,6 @@ export function AppShell({
     clearActiveSyncScope();
     queryClient.clear();
     router.replace("/login");
-  }
-
-  async function switchBranch(branchId: string): Promise<void> {
-    const profile = shellMe.data;
-    if (!profile || switchingBranch) return;
-    setSwitchingBranch(true);
-    setBranchError("");
-    try {
-      const csrf = await apiFetch<{ csrfToken: string }>("/api/v1/auth/csrf");
-      const result = await apiFetch<{ activeBranchId: string | null; activeBranchName: string | null }>(
-        "/api/v1/me/active-branch",
-        {
-          csrfToken: csrf.csrfToken,
-          init: {
-            method: "POST",
-            body: JSON.stringify({ branchId: branchId || null }),
-          },
-        },
-      );
-      queryClient.setQueryData(["me"], {
-        ...profile,
-        activeBranchId: result.activeBranchId,
-        activeBranchName: result.activeBranchName,
-      });
-      await queryClient.invalidateQueries({
-        predicate: (query) => query.queryKey[0] !== "me" && query.queryKey[0] !== "branches",
-      });
-    } catch (error) {
-      setBranchError(error instanceof ApiError ? error.message : "Could not switch branch.");
-    } finally {
-      setSwitchingBranch(false);
-    }
   }
 
   if (meUnavailable) {
@@ -436,7 +362,7 @@ export function AppShell({
                 pathname={pathname}
                 onNavigateStart={(href) => {
                   setShowMobileMenu(false);
-                  setPendingHref(href);
+                  beginNavigation(href);
                 }}
               />
             ))}
@@ -479,7 +405,7 @@ export function AppShell({
                         compact
                         onNavigateStart={(href) => {
                           setShowMobileMenu(false);
-                          setPendingHref(href);
+                          beginNavigation(href);
                         }}
                       />
                     ))}
@@ -524,7 +450,7 @@ export function AppShell({
                   </p>
                   <div className="space-y-1">
                     {group.items.map((item) => (
-                      <NavLink key={item.href} item={item} pathname={pathname} compact onNavigateStart={setPendingHref} />
+                      <NavLink key={item.href} item={item} pathname={pathname} compact onNavigateStart={beginNavigation} />
                     ))}
                   </div>
                 </div>

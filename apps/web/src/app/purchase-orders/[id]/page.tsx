@@ -13,6 +13,8 @@ import { ApiError, apiFetch } from "../../../lib/api";
 import { formatMinor, requestKey } from "../../../lib/suppliers";
 import { PROCUREMENT_ONLINE_ONLY_MESSAGE, purchaseOrderStatusLabel, purchaseOrderStatusTone, supplierReturnActions, type PurchaseOrder, type PurchaseOrderLine, type SupplierReturn } from "../../../lib/purchase-orders";
 import type { Supplier } from "../../../lib/suppliers";
+import { mutateProcurementRequest } from "../../../lib/procurement-mutation";
+import { receivedPurchaseOrderQty as receivedQty, returnedPurchaseOrderQty as returnedQty } from "../../../lib/purchase-orders";
 
 interface Me { role: string; businessName?: string }
 interface Branch { id: string; name: string; isActive: boolean }
@@ -38,14 +40,21 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   const productsQuery = useQuery({ queryKey: ["purchase-products"], queryFn: () => apiFetch<{ items: Product[] }>("/api/v1/products?active=all&page=1&pageSize=100"), retry: false });
   useEffect(() => { const sync = (): void => setOnline(navigator.onLine); sync(); window.addEventListener("online", sync); window.addEventListener("offline", sync); return () => { window.removeEventListener("online", sync); window.removeEventListener("offline", sync); }; }, []);
   const detail = detailQuery.data; const role = meQuery.data?.role ?? "cashier"; const canWrite = WRITE_ROLES.has(role); const editable = canWrite && detail?.status === "DRAFT"; const suppliers = suppliersQuery.data?.items ?? []; const branches = branchesQuery.data?.items ?? []; const products = productsQuery.data?.items ?? [];
-  function receivedQty(order: PurchaseOrder, lineId: string): number { return (order.receipts ?? []).flatMap((receipt) => receipt.lines).filter((line) => line.purchaseOrderLineId === lineId).reduce((sum, line) => sum + line.quantityReceived, 0); }
-  function returnedQty(order: PurchaseOrder, lineId: string): number { return (order.supplierReturns ?? []).filter((item) => item.status === "POSTED").flatMap((item) => item.lines).filter((line) => line.purchaseOrderLineId === lineId).reduce((sum, line) => sum + line.quantity, 0); }
   useEffect(() => { if (!detail) return; setNotes(detail.notes ?? ""); setExpectedDate(detail.expectedDate ? detail.expectedDate.slice(0, 10) : ""); setEditLines(detail.lines.map((line) => ({ productId: line.productId, quantity: line.quantity, unitCostMinor: line.unitCostMinor, notes: line.notes ?? "" }))); setReceiveLines(detail.lines.map((line) => ({ purchaseOrderLineId: line.id, quantityReceived: 0 }))); setReturnLines(detail.lines.map((line) => ({ purchaseOrderLineId: line.id, quantityReceived: 0 }))); }, [detail]);
   const supplierName = (supplierId: string): string => suppliers.find((supplier) => supplier.id === supplierId)?.name ?? supplierId.slice(0, 8);
   const branchName = (branchId: string | null): string => branchId ? branches.find((branch) => branch.id === branchId)?.name ?? branchId.slice(0, 8) : "All branches";
   const productName = (productId: string, fallback?: string): string => products.find((product) => product.id === productId)?.name ?? fallback ?? productId.slice(0, 8);
   const visibleTotal = editLines.reduce((sum, line) => sum + line.quantity * line.unitCostMinor, 0);
-  async function mutate(path: string, init: RequestInit): Promise<void> { if (!online) throw new ApiError("NETWORK_ERROR", PROCUREMENT_ONLINE_ONLY_MESSAGE, "", 0); const csrf = await apiFetch<{ csrfToken: string }>("/api/v1/auth/csrf"); await apiFetch(path, { csrfToken: csrf.csrfToken, init }); await detailQuery.refetch(); await eventsQuery.refetch(); }
+  async function mutate(path: string, init: RequestInit): Promise<void> {
+    await mutateProcurementRequest({
+      online,
+      path,
+      init,
+      offlineMessage: PROCUREMENT_ONLINE_ONLY_MESSAGE,
+    });
+    await detailQuery.refetch();
+    await eventsQuery.refetch();
+  }
   async function saveDraft(event: FormEvent): Promise<void> { event.preventDefault(); if (!detail) return; setBusy(true); setError(""); try { await mutate(`/api/v1/purchase-orders/${id}`, { method: "PATCH", body: JSON.stringify({ expectedVersion: detail.version, notes: notes || null, expectedDate: expectedDate || null, lines: editLines.map((line) => ({ productId: line.productId, quantity: line.quantity, unitCostMinor: line.unitCostMinor, notes: line.notes || undefined })) }) }); setSuccess("Draft purchase order saved."); } catch (caught) { setError(caught instanceof ApiError ? `${caught.code}: ${caught.message}` : "Purchase-order update failed."); } finally { setBusy(false); } }
   async function order(): Promise<void> { if (!detail) return; setBusy(true); setError(""); try { await mutate(`/api/v1/purchase-orders/${id}/order`, { method: "POST", headers: { "Idempotency-Key": requestKey("po-order") }, body: JSON.stringify({ expectedVersion: detail.version }) }); setOrderOpen(false); setSuccess("Purchase order ordered. Inventory remains unchanged until receiving."); } catch (caught) { setError(caught instanceof ApiError ? `${caught.code}: ${caught.message}` : "Purchase-order order failed."); } finally { setBusy(false); } }
   async function cancel(event: FormEvent): Promise<void> { event.preventDefault(); if (!detail) return; setBusy(true); setError(""); try { await mutate(`/api/v1/purchase-orders/${id}/cancel`, { method: "POST", headers: { "Idempotency-Key": requestKey("po-cancel") }, body: JSON.stringify({ expectedVersion: detail.version, reason: cancelReason }) }); setCancelOpen(false); setCancelReason(""); setSuccess("Purchase order cancelled."); } catch (caught) { setError(caught instanceof ApiError ? `${caught.code}: ${caught.message}` : "Purchase-order cancellation failed."); } finally { setBusy(false); } }

@@ -12,6 +12,7 @@ import { DangerButton, GhostButton, PrimaryButton, StatusPill } from "../../../c
 import { ApiError, apiFetch } from "../../../lib/api";
 import { formatMinor, type ProductSupplier, type Supplier } from "../../../lib/suppliers";
 import type { PurchaseOrder } from "../../../lib/purchase-orders";
+import { mutateProcurementRequest } from "../../../lib/procurement-mutation";
 
 interface Me { role: string; businessName?: string }
 interface Product { id: string; name: string; sku: string | null; isActive: boolean; costMinor: number }
@@ -35,7 +36,15 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
   const productName = (product: ProductSupplier): string => products.find((item) => item.id === product.productId)?.name ?? product.productId.slice(0, 8);
 
   function openEdit(): void { if (!supplier) return; setName(supplier.name); setCode(supplier.code ?? ""); setEmail(supplier.email ?? ""); setPhone(supplier.phone ?? ""); setError(""); setEditOpen(true); }
-  async function mutate(path: string, init: RequestInit): Promise<void> { if (!online) throw new ApiError("NETWORK_ERROR", "Purchase orders require an internet connection.", "", 0); const csrf = await apiFetch<{ csrfToken: string }>("/api/v1/auth/csrf"); await apiFetch(path, { csrfToken: csrf.csrfToken, init }); await detailQuery.refetch(); }
+  async function mutate(path: string, init: RequestInit): Promise<void> {
+    await mutateProcurementRequest({
+      online,
+      path,
+      init,
+      offlineMessage: "Purchase orders require an internet connection.",
+    });
+    await detailQuery.refetch();
+  }
   async function saveEdit(event: FormEvent): Promise<void> { event.preventDefault(); setBusy(true); setError(""); try { await mutate(`/api/v1/suppliers/${id}`, { method: "PATCH", body: JSON.stringify({ name, code: code || undefined, email: email || undefined, phone: phone || undefined }) }); setEditOpen(false); setSuccess("Supplier updated."); } catch (err) { setError(err instanceof ApiError ? `${err.code}: ${err.message}` : "Supplier update failed."); } finally { setBusy(false); } }
   async function setActive(active: boolean): Promise<void> { setBusy(true); setError(""); try { await mutate(`/api/v1/suppliers/${id}/${active ? "reactivate" : "deactivate"}`, { method: "POST" }); setDeactivateOpen(false); setSuccess(active ? "Supplier reactivated." : "Supplier deactivated."); } catch (err) { setError(err instanceof ApiError ? `${err.code}: ${err.message}` : "Supplier status update failed."); } finally { setBusy(false); } }
   async function createMapping(event: FormEvent): Promise<void> { event.preventDefault(); if (!productId) { setError("Select a product."); return; } setBusy(true); setError(""); try { await mutate(`/api/v1/suppliers/${id}/products`, { method: "POST", body: JSON.stringify({ productId, supplierSku: supplierSku || undefined, unitCostMinor: unitCost === "" ? undefined : Math.round(Number(unitCost) * 100), leadTimeDays: leadTime === "" ? undefined : Number(leadTime), isPreferred: preferred }) }); setMappingOpen(false); setProductId(""); setSupplierSku(""); setUnitCost(""); setLeadTime(""); setPreferred(false); setSuccess("Product relationship saved."); } catch (err) { setError(err instanceof ApiError ? `${err.code}: ${err.message}` : "Product mapping failed."); } finally { setBusy(false); } }

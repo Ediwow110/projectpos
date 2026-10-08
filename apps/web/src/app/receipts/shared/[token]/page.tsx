@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { NexposLogo } from "../../../../components/brand/NexposLogo";
 import { apiBase } from "../../../../lib/api";
+import { formatMoneyMinor } from "../../../../lib/money";
 
 interface SharedReceipt {
   receiptNo: string;
@@ -22,7 +23,7 @@ interface SharedReceipt {
 }
 
 function money(minor: number): string {
-  return (minor / 100).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatMoneyMinor(minor);
 }
 
 export default function SharedReceiptPage({ params }: { params: Promise<{ token: string }> }): JSX.Element {

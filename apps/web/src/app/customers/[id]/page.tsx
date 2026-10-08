@@ -12,6 +12,7 @@ import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "..
 import { GhostButton, PrimaryButton, StatusPill } from "../../../components/ui";
 import { ApiError, apiFetch } from "../../../lib/api";
 import { canManageCustomers } from "../../../lib/customers";
+import { formatMoneyMinor } from "../../../lib/money";
 
 interface CustomerDetail {
   id: string;
@@ -36,7 +37,7 @@ interface Me {
 }
 
 function money(minor: number): string {
-  return (minor / 100).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatMoneyMinor(minor);
 }
 
 export default function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }): JSX.Element {

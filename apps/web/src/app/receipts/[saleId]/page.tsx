@@ -12,6 +12,7 @@ import { ReceiptPrinterDialog, type ReceiptPrinterOption } from "../../../compon
 import { PageHeader, Panel } from "../../../components/premium";
 import { GhostButton, PrimaryButton, StatusPill } from "../../../components/ui";
 import { ApiError, apiFetch } from "../../../lib/api";
+import { formatMoneyMinor } from "../../../lib/money";
 
 interface Me {
   role: string;
@@ -57,7 +58,7 @@ interface Receipt {
 }
 
 function money(minor: number): string {
-  return (minor / 100).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatMoneyMinor(minor);
 }
 
 function methodLabel(method: string): string {

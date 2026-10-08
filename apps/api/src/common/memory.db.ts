@@ -1,4 +1,10 @@
 import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbDisplayToken, DbExchange, DbFeatureFlag, DbInvoice, DbMembership, DbMovement, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbProductFamily, DbProductOption, DbProductOptionValue, DbProductVariantOptionValue, DbProductBundle, DbBundleComponent, DbSaleItemBundleComponent, DbReceiptDelivery, DbResetToken, DbSession, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine, DbInventoryCount, DbInventoryCountLine, DbGiftCard, DbGiftCardTransaction, DbStoreCreditAccount, DbStoreCreditTransaction, DbLoyaltyProgram, DbLoyaltyAccount, DbLoyaltyTransaction, DbSaleGiftCardLoad, DbSaleLoyalty, DbSaleItemLoyaltyAllocation } from "./db.port";
+import type { MemoryState } from "./memory/context";
+import { createMemoryPlatform } from "./memory/platform.family";
+import { createMemorySales } from "./memory/sales.family";
+import { createMemoryInventory } from "./memory/inventory.family";
+import { createMemoryCatalog } from "./memory/catalog.family";
+import { createMemoryProcurement } from "./memory/procurement.family";
 
 let n = 0;
 const nid = (p: string): string => `${p}_${Date.now().toString(36)}_${(n += 1)}`;
@@ -84,10 +90,44 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const supplierReturns = new Map<string, DbSupplierReturn>();
   const supplierReturnLines = new Map<string, DbSupplierReturnLine>();
   const supplierReturnSeq = new Map<string, number>();
+  const procurement = createMemoryProcurement({
+    suppliers,
+    productSuppliers,
+    purchaseOrders,
+    purchaseOrderLines,
+    poSeq,
+    purchaseReceipts,
+    purchaseReceiptLines,
+    receiptSeq,
+    supplierReturns,
+    supplierReturnLines,
+    supplierReturnSeq,
+    nextId: nid,
+  });
   const audit: AuditEntry[] = [];
+  const catalog = createMemoryCatalog({
+    categories,
+    products,
+    productFamilies,
+    productOptions,
+    productOptionValues,
+    variantOptionValues,
+    productBundles,
+    bundleComponents,
+    nextId: nid,
+  });
 
   const balanceKey = (businessId: string, branchId: string | null | undefined, productId: string): string =>
     `${businessId}:${branchId ?? ""}:${productId}`;
+  const inventory = createMemoryInventory({
+    movements,
+    balances,
+    inventoryCounts,
+    inventoryCountLines,
+    inventoryCountSeq,
+    balanceKey,
+    nextId: nid,
+  });
 
   // Phase 12: the promise-chain locks move out of the individual services
   // into the port, so the PostgreSQL implementation can swap them for
@@ -109,6 +149,89 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       if (locks.get(key) === next) locks.delete(key);
     }
   }
+
+  const memoryState: MemoryState = {
+    users,
+    businesses,
+    memberships,
+    sessions,
+    resets,
+    settings,
+    categories,
+    products,
+    productFamilies,
+    productOptions,
+    productOptionValues,
+    variantOptionValues,
+    productBundles,
+    bundleComponents,
+    saleItemBundleComponents,
+    movements,
+    balances,
+    inventoryCounts,
+    inventoryCountLines,
+    inventoryCountSeq,
+    sales,
+    saleItems,
+    payments,
+    heldSales,
+    idempotency,
+    purchaseReceiptSeq,
+    registers,
+    shifts,
+    cashMovements,
+    customers,
+    giftCards,
+    giftCardTransactions,
+    storeCreditAccounts,
+    storeCreditTransactions,
+    loyaltyPrograms,
+    loyaltyAccounts,
+    loyaltyTransactions,
+    saleGiftCardLoads,
+    saleLoyalty,
+    saleItemLoyaltyAllocations,
+    refunds,
+    refundItems,
+    exchanges,
+    expenses,
+    branches,
+    transfers,
+    transferLines,
+    devices,
+    plans,
+    subscriptions,
+    invoices,
+    counters,
+    flags,
+    webhookEvents,
+    apiTokens,
+    printers,
+    printJobs,
+    displayTokens,
+    emailVerifications,
+    supportGrants,
+    managerApprovalGrants,
+    shiftCorrections,
+    receiptShares,
+    receiptDeliveries,
+    suppliers,
+    productSuppliers,
+    purchaseOrders,
+    purchaseOrderLines,
+    poSeq,
+    purchaseReceipts,
+    purchaseReceiptLines,
+    receiptSeq,
+    supplierReturns,
+    supplierReturnLines,
+    supplierReturnSeq,
+    audit,
+    nextId: nid,
+    balanceKey,
+  };
+  const platform = createMemoryPlatform(memoryState);
+  const salesFamily = createMemorySales(memoryState);
 
   const memoryDb: DbPort & { audit: AuditEntry[] } = {
     audit,
@@ -157,1111 +280,11 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     async findUserById(id) {
       return users.get(id) ?? null;
     },
-    async createUser(u) {
-      const row = { workspaceTourSeen: false, ...u, id: nid("user") };
-      users.set(row.id, row);
-      return row;
-    },
-    async updateUserPassword(id, passwordHash) {
-      const u = users.get(id);
-      if (u) users.set(id, { ...u, passwordHash });
-    },
-    async setUserEmailVerified(id, verified) {
-      const u = users.get(id);
-      if (u) users.set(id, { ...u, emailVerified: verified });
-    },
-    async setUserWorkspaceTourSeen(id, seen) {
-      const u = users.get(id);
-      if (u) users.set(id, { ...u, workspaceTourSeen: seen });
-    },
-    async createBusiness(b) {
-      const row = { ...b, id: nid("biz") };
-      businesses.set(row.id, row);
-      return row;
-    },
-    async findBusinessById(id) {
-      return businesses.get(id) ?? null;
-    },
-    async listMembershipsByUser(userId) {
-      return [...memberships.values()].filter((m) => m.userId === userId);
-    },
-    async listMembershipsByBusiness(businessId) {
-      return [...memberships.values()].filter((m) => m.businessId === businessId);
-    },
-    async findLatestSaleForRegister(businessId, registerId) {
-      let latest = null;
-      for (const s of sales.values()) {
-        if (s.businessId !== businessId || s.registerId !== registerId) continue;
-        if (s.status !== "COMPLETED") continue;
-        if (!latest || s.createdAt.getTime() > latest.createdAt.getTime()) latest = s;
-      }
-      return latest;
-    },
-    async hasShiftForRegister(businessId, registerId) {
-      for (const s of shifts.values()) {
-        if (s.businessId === businessId && s.registerId === registerId) return true;
-      }
-      return false;
-    },
-    async findMembership(userId, businessId) {
-      for (const m of memberships.values()) {
-        if (m.userId === userId && m.businessId === businessId) return m;
-      }
-      return null;
-    },
-    async createMembership(m) {
-      const row = { ...m, id: nid("mem") };
-      memberships.set(row.id, row);
-      return row;
-    },
-    async updateMembership(id, businessId, patch) {
-      const m = memberships.get(id);
-      if (m && m.businessId === businessId) memberships.set(id, { ...m, ...patch });
-    },
-    async createSession(s) {
-      const row = { ...s, id: nid("sess") };
-      sessions.set(row.id, row);
-      return row;
-    },
-    async updateSession(id, patch) {
-      const s = sessions.get(id);
-      if (s) sessions.set(id, { ...s, ...patch });
-    },
-    async findSessionByTokenHash(tokenHash) {
-      for (const s of sessions.values()) if (s.tokenHash === tokenHash) return s;
-      return null;
-    },
-    async listSessionsByUser(userId) {
-      return [...sessions.values()].filter((s) => s.userId === userId && s.revokedAt === null);
-    },
-    async revokeSession(id) {
-      const s = sessions.get(id);
-      if (s) sessions.set(id, { ...s, revokedAt: new Date() });
-    },
-    async revokeAllUserSessions(userId, exceptId) {
-      for (const s of sessions.values()) {
-        if (s.userId === userId && s.id !== exceptId) sessions.set(s.id, { ...s, revokedAt: new Date() });
-      }
-    },
-    async saveResetToken(t) {
-      resets.set(t.tokenHash, t);
-    },
-    async findResetToken(tokenHash) {
-      return resets.get(tokenHash) ?? null;
-    },
-    async markResetTokenUsed(tokenHash, usedAt) {
-      const t = resets.get(tokenHash);
-      if (t) resets.set(tokenHash, { ...t, usedAt });
-    },
-    async createEmailVerificationToken(t) {
-      const row = { ...t, usedAt: null, id: nid("evt") };
-      emailVerifications.set(row.tokenHash, row);
-      return { id: row.id };
-    },
-    async findEmailVerificationToken(tokenHash) {
-      return emailVerifications.get(tokenHash) ?? null;
-    },
-    async markEmailVerificationTokenUsed(id) {
-      for (const t of emailVerifications.values()) {
-        if (t.id === id) emailVerifications.set(t.tokenHash, { ...t, usedAt: new Date() });
-      }
-    },
-    async createSupportGrant(g) {
-      const row = { ...g, usedAt: null, id: nid("sup") };
-      supportGrants.set(row.tokenHash, row);
-      return { id: row.id };
-    },
-    async findValidSupportGrant(tokenHash) {
-      const g = supportGrants.get(tokenHash);
-      if (!g || g.usedAt !== null || g.expiresAt.getTime() <= Date.now()) return null;
-      return g;
-    },
-    async markSupportGrantUsed(id) {
-      for (const g of supportGrants.values()) {
-        if (g.id === id) supportGrants.set(g.tokenHash, { ...g, usedAt: new Date() });
-      }
-    },
-    async createManagerApprovalGrant(g) {
-      const row = { ...g, usedAt: null, id: nid("mag") };
-      managerApprovalGrants.set(row.tokenHash, row);
-      return { id: row.id };
-    },
-    async findValidManagerApprovalGrant(tokenHash, businessId, requesterId, permission) {
-      const g = managerApprovalGrants.get(tokenHash);
-      if (
-        !g ||
-        g.usedAt !== null ||
-        g.expiresAt.getTime() <= Date.now() ||
-        g.businessId !== businessId ||
-        g.requesterId !== requesterId ||
-        g.permission !== permission
-      ) return null;
-      return { id: g.id, approverId: g.approverId, fingerprint: g.fingerprint, expiresAt: g.expiresAt };
-    },
-    async markManagerApprovalGrantUsed(id) {
-      for (const g of managerApprovalGrants.values()) {
-        if (g.id === id) managerApprovalGrants.set(g.tokenHash, { ...g, usedAt: new Date() });
-      }
-    },
-    async createShiftCorrection(c) {
-      const row = { ...c, id: nid("shcor"), createdAt: new Date() };
-      shiftCorrections.set(row.id, row);
-      return row;
-    },
-    async listShiftCorrections(businessId, shiftId) {
-      return [...shiftCorrections.values()]
-        .filter((c) => c.businessId === businessId && c.shiftId === shiftId)
-        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-    },
-    async createReceiptShare(s) {
-      const row = { ...s, id: nid("rsh") };
-      receiptShares.set(row.tokenHash, row);
-      return { id: row.id };
-    },
-    async findValidReceiptShare(tokenHash) {
-      const r = receiptShares.get(tokenHash);
-      if (!r || r.expiresAt.getTime() <= Date.now()) return null;
-      return r;
-    },
-    async claimReceiptDelivery(d) {
-      const existing = [...receiptDeliveries.values()].find(
-        (row) => row.businessId === d.businessId && row.idempotencyKey === d.idempotencyKey,
-      );
-      if (existing) return { delivery: existing, claimed: false };
-      const row: DbReceiptDelivery = { ...d, id: nid("rdl"), createdAt: new Date() };
-      receiptDeliveries.set(row.id, row);
-      return { delivery: row, claimed: true };
-    },
-    async updateReceiptDelivery(id, businessId, patch) {
-      const row = receiptDeliveries.get(id) ?? null;
-      if (!row || row.businessId !== businessId) return null;
-      const next = { ...row, ...patch };
-      receiptDeliveries.set(id, next);
-      return next;
-    },
-    async listReceiptDeliveries(businessId, saleId) {
-      return [...receiptDeliveries.values()]
-        .filter((row) => row.businessId === businessId && row.saleId === saleId)
-        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-    },
-    async getSettings(businessId) {
-      return settings.get(businessId) ?? {};
-    },
-    async saveSettings(businessId, next) {
-      settings.set(businessId, next);
-    },
-    async appendAudit(e) {
-      // Phase 11: every audit row is orderable (PLAN 6.7) — stamp the time
-      // when the caller does not supply one.
-      audit.push({ ...e, at: e.at ?? new Date() });
-    },
-    async listAudit() {
-      return audit;
-    },
-    async createCategory(c) {
-      const row = { ...c, id: nid("cat") };
-      categories.set(row.id, row);
-      return row;
-    },
-    async listCategories(businessId) {
-      return [...categories.values()].filter((c) => c.businessId === businessId);
-    },
-    async findCategoryById(id, businessId) {
-      const c = categories.get(id) ?? null;
-      if (!c || c.businessId !== businessId) return null;
-      return c;
-    },
-    async updateCategory(id, businessId, patch) {
-      const c = categories.get(id) ?? null;
-      if (!c || c.businessId !== businessId) return null;
-      const next = { ...c, ...patch };
-      categories.set(id, next);
-      return next;
-    },
-    async createProduct(p) {
-      const row = { ...p, id: nid("prod") };
-      products.set(row.id, row);
-      return row;
-    },
-    async listProducts(businessId) {
-      return [...products.values()].filter((p) => p.businessId === businessId);
-    },
-    async findProductById(id, businessId) {
-      const p = products.get(id) ?? null;
-      if (!p || p.businessId !== businessId) return null;
-      return p;
-    },
-    async updateProduct(id, businessId, patch) {
-      const p = products.get(id) ?? null;
-      if (!p || p.businessId !== businessId) return null;
-      const next = { ...p, ...patch };
-      products.set(id, next);
-      return next;
-    },
-    async createProductFamily(f) {
-      const now = new Date(); const row = { ...f, id: nid("pfam"), createdAt: now, updatedAt: now };
-      productFamilies.set(row.id, row); return row;
-    },
-    async listProductFamilies(businessId) { return [...productFamilies.values()].filter((r) => r.businessId === businessId); },
-    async findProductFamilyById(id, businessId) { const row = productFamilies.get(id) ?? null; return row && row.businessId === businessId ? row : null; },
-    async updateProductFamily(id, businessId, patch) {
-      const row = productFamilies.get(id) ?? null; if (!row || row.businessId !== businessId) return null;
-      const next = { ...row, ...patch, updatedAt: new Date() }; productFamilies.set(id, next); return next;
-    },
-    async createProductOption(o) { const now = new Date(); const row = { ...o, id: nid("popt"), createdAt: now, updatedAt: now }; productOptions.set(row.id, row); return row; },
-    async listProductOptions(familyId, businessId) { return [...productOptions.values()].filter((r) => r.familyId === familyId && r.businessId === businessId).sort((a, b) => a.position - b.position); },
-    async findProductOptionById(id, businessId) { const row = productOptions.get(id) ?? null; return row && row.businessId === businessId ? row : null; },
-    async createProductOptionValue(v) { const now = new Date(); const row = { ...v, id: nid("pval"), createdAt: now, updatedAt: now }; productOptionValues.set(row.id, row); return row; },
-    async listProductOptionValues(optionId, businessId) { return [...productOptionValues.values()].filter((r) => r.optionId === optionId && r.businessId === businessId).sort((a, b) => a.position - b.position); },
-    async findProductOptionValueById(id, businessId) { const row = productOptionValues.get(id) ?? null; return row && row.businessId === businessId ? row : null; },
-    async createVariantOptionValue(v) { const row = { ...v, id: nid("pvo"), createdAt: new Date() }; variantOptionValues.set(row.id, row); return row; },
-    async listVariantOptionValues(productId, businessId) { return [...variantOptionValues.values()].filter((r) => r.productId === productId && r.businessId === businessId); },
-    async deleteVariantOptionValues(productId, businessId) { for (const [id, row] of variantOptionValues) if (row.productId === productId && row.businessId === businessId) variantOptionValues.delete(id); },
-    async createProductBundle(b) { const now = new Date(); const row = { ...b, id: nid("bun"), createdAt: now, updatedAt: now }; productBundles.set(row.id, row); return row; },
-    async findProductBundleByProductId(productId, businessId) { return [...productBundles.values()].find((r) => r.bundleProductId === productId && r.businessId === businessId) ?? null; },
-    async findProductBundleById(id, businessId) { const row = productBundles.get(id) ?? null; return row && row.businessId === businessId ? row : null; },
-    async updateProductBundle(id, businessId, patch) { const row = productBundles.get(id) ?? null; if (!row || row.businessId !== businessId) return null; const next = { ...row, ...patch, updatedAt: new Date() }; productBundles.set(id, next); return next; },
-    async createBundleComponent(c) { const now = new Date(); const row = { ...c, id: nid("bc"), createdAt: now, updatedAt: now }; bundleComponents.set(row.id, row); return row; },
-    async listBundleComponents(bundleId, businessId) { return [...bundleComponents.values()].filter((r) => r.bundleId === bundleId && r.businessId === businessId).sort((a, b) => a.position - b.position); },
-    async deleteBundleComponents(bundleId, businessId) { for (const [id, row] of bundleComponents) if (row.bundleId === bundleId && row.businessId === businessId) bundleComponents.delete(id); },
-    async createMovement(m) {
-      const row = { ...m, id: nid("mov") };
-      movements.set(row.id, row);
-      return row;
-    },
-    async listMovements(productId, businessId, branchId?) {
-      return [...movements.values()].filter(
-        (m) =>
-          m.productId === productId &&
-          m.businessId === businessId &&
-          (branchId === undefined || (m.branchId ?? null) === (branchId ?? null)),
-      );
-    },
-    async listMovementsByBusiness(businessId) {
-      return [...movements.values()].filter((m) => m.businessId === businessId);
-    },
-    async listMovementsPage(businessId, afterId, limit) {
-      const rows = [...movements.values()]
-        .filter((m) => m.businessId === businessId && (afterId === null || m.id > afterId))
-        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-      return rows.slice(0, limit);
-    },
-    async upsertBalance(b) {
-      const key = balanceKey(b.businessId, b.branchId, b.productId);
-      const existing = balances.get(key);
-      const row = existing ? { ...existing, qtyOnHand: b.qtyOnHand, updatedAt: new Date() } : { ...b, id: nid("bal"), updatedAt: new Date() };
-      balances.set(key, row);
-      return row;
-    },
-    async findBalance(productId, businessId, branchId = null) {
-      const row = balances.get(balanceKey(businessId, branchId, productId)) ?? null;
-      if (!row || row.businessId !== businessId) return null;
-      return row;
-    },
-    async listBalances(businessId) {
-      return [...balances.values()].filter((b) => b.businessId === businessId);
-    },
-    async nextInventoryCountNo(businessId) {
-      const year = new Date().getUTCFullYear();
-      const seq = (inventoryCountSeq.get(businessId) ?? 0) + 1;
-      inventoryCountSeq.set(businessId, seq);
-      return `CNT-${year}-${String(seq).padStart(6, "0")}`;
-    },
-    async createInventoryCount(c) {
-      const now = new Date();
-      const row: DbInventoryCount = { ...c, id: nid("cnt"), createdAt: now, updatedAt: now };
-      inventoryCounts.set(row.id, row);
-      return row;
-    },
-    async findInventoryCountById(id, businessId) {
-      const row = inventoryCounts.get(id) ?? null;
-      return row && row.businessId === businessId ? row : null;
-    },
-    async listInventoryCountsByBusiness(businessId) {
-      return [...inventoryCounts.values()].filter((row) => row.businessId === businessId);
-    },
-    async updateInventoryCount(id, businessId, patch, expectedVersion) {
-      const row = inventoryCounts.get(id) ?? null;
-      if (!row || row.businessId !== businessId || row.version !== expectedVersion) return null;
-      const next = { ...row, ...patch, version: expectedVersion + 1, updatedAt: new Date() };
-      inventoryCounts.set(id, next);
-      return next;
-    },
-    async createInventoryCountLine(l) {
-      const now = new Date();
-      const row: DbInventoryCountLine = { ...l, id: nid("cntl"), createdAt: now, updatedAt: now };
-      inventoryCountLines.set(row.id, row);
-      return row;
-    },
-    async listInventoryCountLines(countId, businessId) {
-      return [...inventoryCountLines.values()].filter((row) => row.inventoryCountId === countId && row.businessId === businessId);
-    },
-    async updateInventoryCountLine(id, businessId, patch) {
-      const row = inventoryCountLines.get(id) ?? null;
-      if (!row || row.businessId !== businessId) return null;
-      const next = { ...row, ...patch, updatedAt: new Date() };
-      inventoryCountLines.set(id, next);
-      return next;
-    },
-    async deleteInventoryCountLines(countId, businessId) {
-      for (const [id, row] of inventoryCountLines) if (row.inventoryCountId === countId && row.businessId === businessId) inventoryCountLines.delete(id);
-    },
-    async createSale(s) {
-      const row = { completedAt: null, ...s, id: nid("sale") };
-      sales.set(row.id, row);
-      return row;
-    },
-    async findSaleById(id, businessId) {
-      const s = sales.get(id) ?? null;
-      if (!s || s.businessId !== businessId) return null;
-      return s;
-    },
-    async listSalesByBusiness(businessId) {
-      return [...sales.values()].filter((s) => s.businessId === businessId);
-    },
-    async listSalesPage(businessId, afterId, limit) {
-      const rows = [...sales.values()]
-        .filter((s) => s.businessId === businessId && (afterId === null || s.id > afterId))
-        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-      return rows.slice(0, limit);
-    },
-    async updateSale(id, businessId, patch) {
-      const s = sales.get(id) ?? null;
-      if (!s || s.businessId !== businessId) return null;
-      const next = { ...s, ...patch };
-      sales.set(id, next);
-      return next;
-    },
-    async createSaleItem(i) {
-      const nextPosition =
-        i.position ??
-        [...saleItems.values()].filter(
-          (item) => item.saleId === i.saleId && item.businessId === i.businessId,
-        ).length;
-      const row = { ...i, position: nextPosition, id: nid("sitem") };
-      saleItems.set(row.id, row);
-      return row;
-    },
-    async listSaleItems(saleId, businessId) {
-      return [...saleItems.values()]
-        .filter((i) => i.saleId === saleId && i.businessId === businessId)
-        .sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
-    },
-    async listSaleItemsByBusiness(businessId) {
-      return [...saleItems.values()].filter((i) => i.businessId === businessId);
-    },
-    async createSaleItemBundleComponent(c) { const row = { ...c, id: nid("sbc"), createdAt: new Date() }; saleItemBundleComponents.set(row.id, row); return row; },
-    async listSaleItemBundleComponents(saleItemId, businessId) { return [...saleItemBundleComponents.values()].filter((r) => r.saleItemId === saleItemId && r.businessId === businessId); },
-    async createPayment(p) {
-      const row = { internalInstrumentType: null, internalInstrumentId: null, ...p, id: nid("pay") };
-      payments.set(row.id, row);
-      return row;
-    },
-    async findPaymentById(id, businessId) {
-      const p = payments.get(id) ?? null;
-      if (!p || p.businessId !== businessId) return null;
-      return p;
-    },
-    async listPaymentsBySale(saleId, businessId) {
-      return [...payments.values()].filter(
-        (p) => p.saleId === saleId && p.businessId === businessId,
-      );
-    },
-    async listPaymentsByBusiness(businessId) {
-      return [...payments.values()].filter((p) => p.businessId === businessId);
-    },
-    async updatePayment(id, businessId, patch) {
-      const p = payments.get(id) ?? null;
-      if (!p || p.businessId !== businessId) return null;
-      const next = { ...p, ...patch };
-      payments.set(id, next);
-      return next;
-    },
-    async createHeldSale(h) {
-      const row = { ...h, id: nid("held") };
-      heldSales.set(row.id, row);
-      return row;
-    },
-    async findHeldSaleById(id, businessId) {
-      const h = heldSales.get(id) ?? null;
-      if (!h || h.businessId !== businessId) return null;
-      return h;
-    },
-    async listHeldSales(businessId, actorId) {
-      return [...heldSales.values()].filter(
-        (h) => h.businessId === businessId && h.actorId === actorId,
-      );
-    },
-    async markHeldResumed(id, businessId) {
-      const h = heldSales.get(id);
-      if (h && h.businessId === businessId) heldSales.set(id, { ...h, resumedAt: new Date() });
-    },
-    async claimIdempotency(r) {
-      const key = `${r.businessId}:${r.key}:${r.commandType}`;
-      if (idempotency.has(key)) throw new Error("IDEMPOTENCY_REPLAY");
-      idempotency.set(key, r);
-    },
-    async findIdempotency(businessId, key, commandType) {
-      return idempotency.get(`${businessId}:${key}:${commandType}`) ?? null;
-    },
-    async nextReceiptNo(businessId) {
-      const year = new Date().getUTCFullYear();
-      const seq = (purchaseReceiptSeq.get(businessId) ?? 0) + 1;
-      purchaseReceiptSeq.set(businessId, seq);
-      return `${year}-${String(seq).padStart(6, "0")}`;
-    },
-    async createRegister(r) {
-      const row = { ...r, id: nid("reg") };
-      registers.set(row.id, row);
-      return row;
-    },
-    async listRegisters(businessId) {
-      return [...registers.values()].filter((r) => r.businessId === businessId);
-    },
-    async findRegisterById(id, businessId) {
-      const r = registers.get(id) ?? null;
-      if (!r || r.businessId !== businessId) return null;
-      return r;
-    },
-    async updateRegister(id, businessId, patch) {
-      const r = registers.get(id) ?? null;
-      if (!r || r.businessId !== businessId) return null;
-      const next = { ...r, ...patch };
-      registers.set(id, next);
-      return next;
-    },
-    async createShift(s) {
-      const row = { ...s, id: nid("shift") };
-      shifts.set(row.id, row);
-      return row;
-    },
-    async findShiftById(id, businessId) {
-      const s = shifts.get(id) ?? null;
-      if (!s || s.businessId !== businessId) return null;
-      return s;
-    },
-    async findOpenShiftByRegister(businessId, registerId) {
-      for (const s of shifts.values()) {
-        if (s.businessId === businessId && s.registerId === registerId && s.status === "OPEN") return s;
-      }
-      return null;
-    },
-    async listShiftsByBusiness(businessId) {
-      return [...shifts.values()].filter((s) => s.businessId === businessId);
-    },
-    async updateShift(id, businessId, patch) {
-      const s = shifts.get(id) ?? null;
-      if (!s || s.businessId !== businessId) return null;
-      const next = { ...s, ...patch };
-      shifts.set(id, next);
-      return next;
-    },
-    async createCashMovement(m) {
-      const row = { ...m, id: nid("cmov") };
-      cashMovements.set(row.id, row);
-      return row;
-    },
-    async listCashMovementsByShift(shiftId, businessId) {
-      return [...cashMovements.values()].filter(
-        (m) => m.shiftId === shiftId && m.businessId === businessId,
-      );
-    },
-    async createCustomer(c) {
-      const row = { ...c, id: nid("cust") };
-      customers.set(row.id, row);
-      return row;
-    },
-    async listCustomersByBusiness(businessId) {
-      return [...customers.values()].filter((c) => c.businessId === businessId);
-    },
-    async findCustomerById(id, businessId) {
-      const c = customers.get(id) ?? null;
-      if (!c || c.businessId !== businessId) return null;
-      return c;
-    },
-    async updateCustomer(id, businessId, patch) {
-      const c = customers.get(id) ?? null;
-      if (!c || c.businessId !== businessId) return null;
-      const next = { ...c, ...patch };
-      customers.set(id, next);
-      return next;
-    },
-    async createGiftCard(c) {
-      if ([...giftCards.values()].some((row) => row.businessId === c.businessId && row.codeHash === c.codeHash)) throw new Error("GIFT_CARD_DUPLICATE");
-      const now = new Date();
-      const row: DbGiftCard = { ...c, id: nid("gcard"), createdAt: now, updatedAt: now };
-      giftCards.set(row.id, row);
-      return row;
-    },
-    async findGiftCardByHash(codeHash, businessId) {
-      return [...giftCards.values()].find((row) => row.businessId === businessId && row.codeHash === codeHash) ?? null;
-    },
-    async findGiftCardById(id, businessId) {
-      const row = giftCards.get(id) ?? null;
-      return row && row.businessId === businessId ? row : null;
-    },
-    async listGiftCards(businessId) {
-      return [...giftCards.values()].filter((row) => row.businessId === businessId).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-    },
-    async updateGiftCard(id, businessId, patch) {
-      const row = giftCards.get(id) ?? null;
-      if (!row || row.businessId !== businessId) return null;
-      const next = { ...row, ...patch, updatedAt: new Date() };
-      giftCards.set(id, next);
-      return next;
-    },
-    async createGiftCardTransaction(t) {
-      const existing = [...giftCardTransactions.values()].find((row) => row.businessId === t.businessId && row.idempotencyKey === t.idempotencyKey);
-      if (existing) return existing;
-      const card = giftCards.get(t.giftCardId);
-      if (!card || card.businessId !== t.businessId) throw new Error("NOT_FOUND");
-      const balance = [...giftCardTransactions.values()].filter((row) => row.businessId === t.businessId && row.giftCardId === t.giftCardId).reduce((sum, row) => sum + row.amountDeltaMinor, 0);
-      if (balance + t.amountDeltaMinor < 0) throw new Error("GIFT_CARD_INSUFFICIENT_BALANCE");
-      const row: DbGiftCardTransaction = { ...t, id: nid("gct"), createdAt: new Date() };
-      giftCardTransactions.set(row.id, row);
-      if (balance + t.amountDeltaMinor === 0 && card.status === "ACTIVE") await this.updateGiftCard(card.id, card.businessId, { status: "EXHAUSTED" });
-      if (balance + t.amountDeltaMinor > 0 && card.status === "EXHAUSTED") await this.updateGiftCard(card.id, card.businessId, { status: "ACTIVE" });
-      return row;
-    },
-    async listGiftCardTransactions(giftCardId, businessId) {
-      return [...giftCardTransactions.values()].filter((row) => row.giftCardId === giftCardId && row.businessId === businessId).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-    },
-    async findGiftCardTransactionByIdempotency(businessId, idempotencyKey) {
-      return [...giftCardTransactions.values()].find((row) => row.businessId === businessId && row.idempotencyKey === idempotencyKey) ?? null;
-    },
-    async createStoreCreditAccount(a) {
-      const existing = [...storeCreditAccounts.values()].find((row) => row.businessId === a.businessId && row.customerId === a.customerId);
-      if (existing) return existing;
-      const row: DbStoreCreditAccount = { ...a, id: nid("sca"), createdAt: new Date(), updatedAt: new Date() };
-      storeCreditAccounts.set(row.id, row);
-      return row;
-    },
-    async findStoreCreditAccount(customerId, businessId) {
-      return [...storeCreditAccounts.values()].find((row) => row.businessId === businessId && row.customerId === customerId) ?? null;
-    },
-    async createStoreCreditTransaction(t) {
-      const existing = [...storeCreditTransactions.values()].find((row) => row.businessId === t.businessId && row.idempotencyKey === t.idempotencyKey);
-      if (existing) return existing;
-      const account = storeCreditAccounts.get(t.accountId);
-      if (!account || account.businessId !== t.businessId || account.customerId !== t.customerId) throw new Error("NOT_FOUND");
-      const balance = [...storeCreditTransactions.values()].filter((row) => row.businessId === t.businessId && row.accountId === t.accountId).reduce((sum, row) => sum + row.amountDeltaMinor, 0);
-      if (balance + t.amountDeltaMinor < 0) throw new Error("STORE_CREDIT_INSUFFICIENT_BALANCE");
-      const row: DbStoreCreditTransaction = { ...t, id: nid("sct"), createdAt: new Date() };
-      storeCreditTransactions.set(row.id, row);
-      return row;
-    },
-    async listStoreCreditTransactions(accountId, businessId) {
-      return [...storeCreditTransactions.values()].filter((row) => row.accountId === accountId && row.businessId === businessId).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-    },
-    async findStoreCreditTransactionByIdempotency(businessId, idempotencyKey) {
-      return [...storeCreditTransactions.values()].find((row) => row.businessId === businessId && row.idempotencyKey === idempotencyKey) ?? null;
-    },
-    async upsertLoyaltyProgram(p) {
-      const existing = loyaltyPrograms.get(p.businessId);
-      const row: DbLoyaltyProgram = existing ? { ...existing, ...p, version: existing.version + 1, updatedAt: new Date() } : { ...p, id: nid("lp"), updatedAt: new Date() };
-      loyaltyPrograms.set(p.businessId, row);
-      return row;
-    },
-    async getLoyaltyProgram(businessId) { return loyaltyPrograms.get(businessId) ?? null; },
-    async createLoyaltyAccount(a) {
-      const existing = [...loyaltyAccounts.values()].find((row) => row.businessId === a.businessId && row.customerId === a.customerId);
-      if (existing) return existing;
-      const row: DbLoyaltyAccount = { ...a, id: nid("la"), createdAt: new Date(), updatedAt: new Date() };
-      loyaltyAccounts.set(row.id, row);
-      return row;
-    },
-    async findLoyaltyAccount(customerId, businessId) { return [...loyaltyAccounts.values()].find((row) => row.businessId === businessId && row.customerId === customerId) ?? null; },
-    async createLoyaltyTransaction(t) {
-      const existing = [...loyaltyTransactions.values()].find((row) => row.businessId === t.businessId && row.idempotencyKey === t.idempotencyKey);
-      if (existing) return existing;
-      const account = loyaltyAccounts.get(t.accountId);
-      if (!account || account.businessId !== t.businessId || account.customerId !== t.customerId) throw new Error("NOT_FOUND");
-      const balance = [...loyaltyTransactions.values()].filter((row) => row.businessId === t.businessId && row.accountId === t.accountId).reduce((sum, row) => sum + row.pointsDelta, 0);
-      if (balance + t.pointsDelta < 0 && !t.type.startsWith("REFUND_EARN")) throw new Error("LOYALTY_INSUFFICIENT_POINTS");
-      const row: DbLoyaltyTransaction = { ...t, id: nid("lt"), createdAt: new Date() };
-      loyaltyTransactions.set(row.id, row);
-      return row;
-    },
-    async listLoyaltyTransactions(accountId, businessId) { return [...loyaltyTransactions.values()].filter((row) => row.accountId === accountId && row.businessId === businessId).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()); },
-    async findLoyaltyTransactionByIdempotency(businessId, idempotencyKey) { return [...loyaltyTransactions.values()].find((row) => row.businessId === businessId && row.idempotencyKey === idempotencyKey) ?? null; },
-    async createSaleGiftCardLoad(l) { const row: DbSaleGiftCardLoad = { ...l, id: nid("sgl"), createdAt: new Date() }; saleGiftCardLoads.set(row.id, row); return row; },
-    async updateSaleGiftCardLoad(id, businessId, patch) { const row = saleGiftCardLoads.get(id); if (!row || row.businessId !== businessId) return null; const updated = { ...row, ...patch }; saleGiftCardLoads.set(id, updated); return updated; },
-    async listSaleGiftCardLoads(saleId, businessId) { return [...saleGiftCardLoads.values()].filter((row) => row.saleId === saleId && row.businessId === businessId); },
-    async createSaleLoyalty(s) { const row: DbSaleLoyalty = { ...s, id: nid("sl"), createdAt: new Date() }; saleLoyalty.set(row.saleId, row); return row; },
-    async findSaleLoyalty(saleId, businessId) { const row = saleLoyalty.get(saleId) ?? null; return row && row.businessId === businessId ? row : null; },
-    async updateSaleLoyalty(id, businessId, patch) { const row = saleLoyalty.get(id); if (!row || row.businessId !== businessId) return null; const updated = { ...row, ...patch }; saleLoyalty.set(id, updated); return updated; },
-    async createSaleItemLoyaltyAllocation(a) { const row: DbSaleItemLoyaltyAllocation = { ...a, id: nid("sla"), createdAt: new Date() }; saleItemLoyaltyAllocations.set(row.id, row); return row; },
-    async listSaleItemLoyaltyAllocations(saleLoyaltyId, businessId) { return [...saleItemLoyaltyAllocations.values()].filter((row) => row.saleLoyaltyId === saleLoyaltyId && row.businessId === businessId); },
-    async createRefund(r) {
-      const row = { ...r, id: nid("ref") };
-      refunds.set(row.id, row);
-      return row;
-    },
-    async listRefundsByBusiness(businessId) {
-      return [...refunds.values()].filter((r) => r.businessId === businessId);
-    },
-    async listRefundsBySale(saleId, businessId) {
-      return [...refunds.values()].filter(
-        (r) => r.saleId === saleId && r.businessId === businessId,
-      );
-    },
-    async findRefundById(id, businessId) {
-      const r = refunds.get(id) ?? null;
-      if (!r || r.businessId !== businessId) return null;
-      return r;
-    },
-    async createRefundItem(i) {
-      const row = { ...i, id: nid("ritem") };
-      refundItems.set(row.id, row);
-      return row;
-    },
-    async listRefundItems(refundId, businessId) {
-      return [...refundItems.values()].filter(
-        (i) => i.refundId === refundId && i.businessId === businessId,
-      );
-    },
-    async listRefundItemsBySale(saleId, businessId) {
-      const ids = new Set(
-        [...refunds.values()]
-          .filter((r) => r.saleId === saleId && r.businessId === businessId)
-          .map((r) => r.id),
-      );
-      return [...refundItems.values()].filter(
-        (i) => ids.has(i.refundId) && i.businessId === businessId,
-      );
-    },
-    async listRefundItemsByBusiness(businessId) {
-      return [...refundItems.values()].filter((i) => i.businessId === businessId);
-    },
-    async createExchange(e) {
-      const row = { ...e, id: nid("exch"), createdAt: new Date() };
-      exchanges.set(row.id, row);
-      return row;
-    },
-    async findExchangeById(id, businessId) {
-      const row = exchanges.get(id) ?? null;
-      if (!row || row.businessId !== businessId) return null;
-      return row;
-    },
-    async listExchangesByOriginalSale(originalSaleId, businessId) {
-      return [...exchanges.values()]
-        .filter((row) => row.businessId === businessId && row.originalSaleId === originalSaleId)
-        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-    },
-    async findExchangeByReplacementSale(replacementSaleId, businessId) {
-      return [...exchanges.values()].find(
-        (row) => row.businessId === businessId && row.replacementSaleId === replacementSaleId,
-      ) ?? null;
-    },
-    async createExpense(e) {
-      const row = { ...e, id: nid("exp") };
-      expenses.set(row.id, row);
-      return row;
-    },
-    async listExpensesByBusiness(businessId) {
-      return [...expenses.values()].filter((e) => e.businessId === businessId);
-    },
-    async listExpensesPage(businessId, afterId, limit) {
-      const rows = [...expenses.values()]
-        .filter((e) => e.businessId === businessId && (afterId === null || e.id > afterId))
-        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-      return rows.slice(0, limit);
-    },
-    async findExpenseById(id, businessId) {
-      const e = expenses.get(id) ?? null;
-      if (!e || e.businessId !== businessId) return null;
-      return e;
-    },
-    async updateExpense(id, businessId, patch) {
-      const e = expenses.get(id) ?? null;
-      if (!e || e.businessId !== businessId) return null;
-      const next = { ...e, ...patch };
-      expenses.set(id, next);
-      return next;
-    },
-    async createBranch(b) {
-      const row = { ...b, id: nid("br") };
-      branches.set(row.id, row);
-      return row;
-    },
-    async listBranchesByBusiness(businessId) {
-      return [...branches.values()]
-        .filter((b) => b.businessId === businessId)
-        .sort((a, b) => a.name.localeCompare(b.name));
-    },
-    async findBranchById(id, businessId) {
-      const b = branches.get(id) ?? null;
-      if (!b || b.businessId !== businessId) return null;
-      return b;
-    },
-    async updateBranch(id, businessId, patch) {
-      const b = branches.get(id) ?? null;
-      if (!b || b.businessId !== businessId) return null;
-      const next = { ...b, ...patch };
-      branches.set(id, next);
-      return next;
-    },
-    async createTransfer(t) {
-      const row = { ...t, id: nid("trx") };
-      transfers.set(row.id, row);
-      return row;
-    },
-    async findTransferById(id, businessId) {
-      const t = transfers.get(id) ?? null;
-      if (!t || t.businessId !== businessId) return null;
-      return t;
-    },
-    async listTransfersByBusiness(businessId) {
-      return [...transfers.values()].filter((t) => t.businessId === businessId);
-    },
-    async updateTransfer(id, businessId, patch) {
-      const t = transfers.get(id) ?? null;
-      if (!t || t.businessId !== businessId) return null;
-      const next = { ...t, ...patch };
-      transfers.set(id, next);
-      return next;
-    },
-    async createTransferLine(l) {
-      const row = { ...l, id: nid("tline") };
-      transferLines.set(row.id, row);
-      return row;
-    },
-    async listTransferLines(transferId, businessId) {
-      return [...transferLines.values()].filter(
-        (l) => l.transferId === transferId && l.businessId === businessId,
-      );
-    },
-    async createDevice(d) {
-      const row = { ...d, id: nid("dev") };
-      devices.set(row.id, row);
-      return row;
-    },
-    async listDevicesByBusiness(businessId) {
-      return [...devices.values()].filter((d) => d.businessId === businessId);
-    },
-    async findDeviceById(id, businessId) {
-      const d = devices.get(id) ?? null;
-      if (!d || d.businessId !== businessId) return null;
-      return d;
-    },
-    async revokeDevice(id, businessId, revokedAt) {
-      const d = devices.get(id) ?? null;
-      if (!d || d.businessId !== businessId) return null;
-      const next = { ...d, revokedAt };
-      devices.set(id, next);
-      return next;
-    },
-    async revokeSessionsByDevice(businessId, deviceId) {
-      for (const s of sessions.values()) {
-        if (s.businessId === businessId && s.deviceId === deviceId && s.revokedAt === null) {
-          sessions.set(s.id, { ...s, revokedAt: new Date() });
-        }
-      }
-    },
-    async listPlans() {
-      return [...plans.values()];
-    },
-    async findPlanByKey(key) {
-      for (const p of plans.values()) if (p.key === key) return p;
-      return null;
-    },
-    async getSubscription(businessId) {
-      for (const s of subscriptions.values()) if (s.businessId === businessId) return s;
-      return null;
-    },
-    async upsertSubscription(s) {
-      let existing = null;
-      for (const cur of subscriptions.values()) {
-        if (cur.businessId === s.businessId) { existing = cur; break; }
-      }
-      const row = existing
-        ? { ...existing, ...s, id: existing.id, providerRef: s.providerRef ?? existing.providerRef }
-        : { ...s, id: nid("sub"), providerRef: s.providerRef ?? null };
-      subscriptions.set(row.id, row);
-      return row;
-    },
-    async updateSubscription(id, businessId, patch) {
-      const s = subscriptions.get(id) ?? null;
-      if (!s || s.businessId !== businessId) return null;
-      const next = { ...s, ...patch };
-      subscriptions.set(id, next);
-      return next;
-    },
-    async listInvoices(businessId) {
-      return [...invoices.values()].filter((i) => i.businessId === businessId);
-    },
-    async createInvoice(i) {
-      const row = { ...i, id: nid("inv"), issuedAt: new Date() };
-      invoices.set(row.id, row);
-      return row;
-    },
-    async updateInvoice(id, businessId, patch) {
-      const i = invoices.get(id) ?? null;
-      if (!i || i.businessId !== businessId) return null;
-      const next = { ...i, ...patch };
-      invoices.set(id, next);
-      return next;
-    },
-    async listCounters(businessId) {
-      return [...counters.values()].filter((c) => c.businessId === businessId);
-    },
-    async setCounter(businessId, key, period, count) {
-      const id = `${businessId}:${key}:${period}`;
-      const row = { id, businessId, key, period, count };
-      counters.set(id, row);
-      return row;
-    },
-    async getFlag(businessId, key) {
-      for (const f of flags.values()) {
-        if ((f.businessId ?? null) === (businessId ?? null) && f.key === key) return f;
-      }
-      return null;
-    },
-    async setFlag(f) {
-      const { businessId, key, enabled } = f;
-      let existing = null;
-      for (const cur of flags.values()) {
-        if ((cur.businessId ?? null) === (businessId ?? null) && cur.key === key) { existing = cur; break; }
-      }
-      const row = existing ? { ...existing, enabled } : { id: nid("flag"), businessId, key, enabled };
-      flags.set(row.id, row);
-      return row;
-    },
-    async findWebhookEvent(provider, eventId) {
-      for (const e of webhookEvents.values()) {
-        if (e.provider === provider && e.eventId === eventId) return e;
-      }
-      return null;
-    },
-    async createWebhookEvent(e) {
-      const row = { ...e, id: nid("whev"), receivedAt: new Date() };
-      webhookEvents.set(row.id, row);
-      return row;
-    },
-    async claimWebhookEvent(e) {
-      for (const existing of webhookEvents.values()) {
-        if (existing.provider === e.provider && existing.eventId === e.eventId) return null;
-      }
-      const row = { ...e, id: nid("whev"), receivedAt: new Date() };
-      webhookEvents.set(row.id, row);
-      return row;
-    },
-    async updateWebhookEventStatus(id, status) {
-      const row = webhookEvents.get(id);
-      if (row) webhookEvents.set(id, { ...row, status });
-    },
-    async updateWebhookEventReceivedAt(id, receivedAt) {
-      const row = webhookEvents.get(id);
-      if (row) webhookEvents.set(id, { ...row, receivedAt });
-    },
-    async deleteWebhookEvent(id) {
-      webhookEvents.delete(id);
-    },
-    async createApiToken(t) {
-      const row = { ...t, id: nid("tok") };
-      apiTokens.set(row.id, row);
-      return row;
-    },
-    async listApiTokens(businessId) {
-      return [...apiTokens.values()].filter((t) => t.businessId === businessId);
-    },
-    async findApiTokenByPrefix(prefix) {
-      for (const t of apiTokens.values()) if (t.prefix === prefix) return t;
-      return null;
-    },
-    async listApiTokensByPrefix(prefix) {
-      return [...apiTokens.values()].filter((t) => t.prefix === prefix);
-    },
-    async revokeApiToken(id, businessId, revokedAt) {
-      const t = apiTokens.get(id) ?? null;
-      if (!t || t.businessId !== businessId) return null;
-      const next = { ...t, revokedAt };
-      apiTokens.set(id, next);
-      return next;
-    },
-    async createPrinter(p) {
-      const row = { ...p, id: nid("prt") };
-      printers.set(row.id, row);
-      return row;
-    },
-    async listPrinters(businessId) {
-      return [...printers.values()].filter((p) => p.businessId === businessId);
-    },
-    async findPrinterById(id, businessId) {
-      const p = printers.get(id) ?? null;
-      if (!p || p.businessId !== businessId) return null;
-      return p;
-    },
-    async findPrinterByAgentTokenHash(tokenHash) {
-      for (const p of printers.values()) {
-        if (p.agentTokenHash !== null && p.agentTokenHash === tokenHash) return p;
-      }
-      return null;
-    },
-    async updatePrinter(id, businessId, patch) {
-      const p = printers.get(id) ?? null;
-      if (!p || p.businessId !== businessId) return null;
-      const next = { ...p, ...patch };
-      printers.set(id, next);
-      return next;
-    },
-    async createPrintJob(j) {
-      const row = { ...j, id: nid("pjob") };
-      printJobs.set(row.id, row);
-      return row;
-    },
-    async findPrintJobById(id, businessId) {
-      const job = printJobs.get(id) ?? null;
-      if (!job || job.businessId !== businessId) return null;
-      return job;
-    },
-    async listPrintJobs(businessId, status) {
-      return [...printJobs.values()].filter(
-        (j) => j.businessId === businessId && (status === undefined || j.status === status),
-      );
-    },
-    async updatePrintJob(id, businessId, patch, expectedStatus) {
-      const j = printJobs.get(id) ?? null;
-      if (!j || j.businessId !== businessId) return null;
-      if (expectedStatus !== undefined && j.status !== expectedStatus) return null;
-      const next = { ...j, ...patch };
-      printJobs.set(id, next);
-      return next;
-    },
-    async createDisplayToken(t) {
-      const row = { ...t, id: nid("dtok") };
-      displayTokens.set(row.id, row);
-      return row;
-    },
-    async findDisplayToken(tokenHash) {
-      for (const t of displayTokens.values()) if (t.tokenHash === tokenHash) return t;
-      return null;
-    },
-
-    // Phase 16: procurement. Commercial records only — these stores never
-    // touch movements/balances, mirroring the service-level invariant.
-    async createSupplier(s) {
-      const now = new Date();
-      const row = { ...s, id: nid("spr"), createdAt: now, updatedAt: now };
-      suppliers.set(row.id, row);
-      return row;
-    },
-    async listSuppliersByBusiness(businessId) {
-      return [...suppliers.values()].filter((s) => s.businessId === businessId);
-    },
-    async findSupplierById(id, businessId) {
-      const s = suppliers.get(id) ?? null;
-      if (!s || s.businessId !== businessId) return null;
-      return s;
-    },
-    async updateSupplier(id, businessId, patch) {
-      const s = suppliers.get(id) ?? null;
-      if (!s || s.businessId !== businessId) return null;
-      const next = { ...s, ...patch, updatedAt: new Date() };
-      suppliers.set(id, next);
-      return next;
-    },
-
-    async createProductSupplier(r) {
-      const now = new Date();
-      const row = { ...r, id: nid("psup"), createdAt: now, updatedAt: now };
-      productSuppliers.set(row.id, row);
-      return row;
-    },
-    async listProductSuppliersBySupplier(supplierId, businessId) {
-      return [...productSuppliers.values()].filter(
-        (r) => r.supplierId === supplierId && r.businessId === businessId,
-      );
-    },
-    async listProductSuppliersByBusiness(businessId) {
-      return [...productSuppliers.values()].filter((r) => r.businessId === businessId);
-    },
-    async findProductSupplierById(id, businessId) {
-      const r = productSuppliers.get(id) ?? null;
-      if (!r || r.businessId !== businessId) return null;
-      return r;
-    },
-    async updateProductSupplier(id, businessId, patch) {
-      const r = productSuppliers.get(id) ?? null;
-      if (!r || r.businessId !== businessId) return null;
-      const next = { ...r, ...patch, updatedAt: new Date() };
-      productSuppliers.set(id, next);
-      return next;
-    },
-    async clearPreferredProductSuppliers(businessId, productId, exceptId) {
-      for (const [id, r] of productSuppliers) {
-        if (r.businessId === businessId && r.productId === productId && r.isPreferred && id !== exceptId) {
-          productSuppliers.set(id, { ...r, isPreferred: false, updatedAt: new Date() });
-        }
-      }
-    },
-    async deleteProductSupplier(id, businessId) {
-      const r = productSuppliers.get(id) ?? null;
-      if (!r || r.businessId !== businessId) return false;
-      productSuppliers.delete(id);
-      return true;
-    },
-
-    async createPurchaseOrder(p) {
-      const now = new Date();
-      const row = {
-        ...p,
-        id: nid("po"),
-        version: p.version ?? 1,
-        createdAt: now,
-        updatedAt: now,
-      };
-      purchaseOrders.set(row.id, row);
-      return row;
-    },
-    async findPurchaseOrderById(id, businessId) {
-      const p = purchaseOrders.get(id) ?? null;
-      if (!p || p.businessId !== businessId) return null;
-      return p;
-    },
-    async listPurchaseOrdersByBusiness(businessId) {
-      return [...purchaseOrders.values()].filter((p) => p.businessId === businessId);
-    },
-    async updatePurchaseOrder(id, businessId, patch, expectedVersion) {
-      const p = purchaseOrders.get(id) ?? null;
-      if (!p || p.businessId !== businessId) return null;
-      // Optimistic-concurrency CAS: a stale expectedVersion never writes.
-      if (p.version !== expectedVersion) return null;
-      const next = { ...p, ...patch, version: expectedVersion + 1, updatedAt: new Date() };
-      purchaseOrders.set(id, next);
-      return next;
-    },
-    async nextPoNo(businessId) {
-      const year = new Date().getUTCFullYear();
-      const seq = (poSeq.get(businessId) ?? 0) + 1;
-      poSeq.set(businessId, seq);
-      return `PO-${year}-${String(seq).padStart(6, "0")}`;
-    },
-
-    async createPurchaseOrderLine(l) {
-      const now = new Date();
-      const row = {
-        ...l,
-        id: nid("pol"),
-        createdAt: now,
-        updatedAt: now,
-      };
-      purchaseOrderLines.set(row.id, row);
-      return row;
-    },
-    async listPurchaseOrderLines(purchaseOrderId, businessId) {
-      return [...purchaseOrderLines.values()].filter(
-        (l) => l.purchaseOrderId === purchaseOrderId && l.businessId === businessId,
-      );
-    },
-    async deletePurchaseOrderLines(purchaseOrderId, businessId) {
-      for (const [id, l] of purchaseOrderLines) {
-        if (l.purchaseOrderId === purchaseOrderId && l.businessId === businessId) {
-          purchaseOrderLines.delete(id);
-        }
-      }
-    },
-
+    ...platform,
+    ...catalog,
+    ...inventory,
+    ...salesFamily,
+    ...procurement,
     async listAuditFor(businessId, entityType, entityId) {
       return audit.filter(
         (e) => e.businessId === businessId && e.entityType === entityType && e.entityId === entityId,

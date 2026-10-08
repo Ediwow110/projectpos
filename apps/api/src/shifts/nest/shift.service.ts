@@ -12,6 +12,9 @@ import {
   type CashKind,
   type CashMovementType,
 } from "../cash";
+import { selectShiftList, type ShiftListItem } from "../shift-list";
+
+export type { ShiftCloseCandidate, ShiftListItem } from "../shift-list";
 
 const REGISTER_MANAGERS = new Set(["owner", "manager"]);
 const SHIFT_ROLES = new Set(["owner", "manager", "cashier"]);
@@ -39,17 +42,6 @@ export interface ShiftReport {
   expectedCash: number;
   variance: number;
 }
-
-export interface ShiftCloseCandidate {
-  id: string;
-  registerId: string;
-  branchId: string | null;
-  status: "OPEN";
-  openedBy: string;
-  closeCandidate: true;
-}
-
-export type ShiftListItem = DbShift | ShiftCloseCandidate;
 
 function kindToType(kind: CashKind): CashMovementType {
   return kind;
@@ -448,38 +440,8 @@ export class ShiftService {
     actorId: string,
   ): Promise<{ items: ShiftListItem[]; nextCursor: string | null }> {
     withScope(businessId, {});
-    const limit = Math.min(Math.max(opts.limit ?? 50, 1), 100);
-    let rows = await this.db.listShiftsByBusiness(businessId);
-    if (opts.status) rows = rows.filter((s) => s.status === opts.status);
-    if (opts.registerId) rows = rows.filter((s) => s.registerId === opts.registerId);
-    const candidateIds = new Set<string>();
-    if (role === "cashier") {
-      if (opts.includeCloseCandidates) {
-        for (const row of rows) {
-          if (row.status === "OPEN" && row.openedBy !== actorId) candidateIds.add(row.id);
-        }
-      }
-      rows = rows.filter((row) => row.openedBy === actorId || candidateIds.has(row.id));
-    }
-    rows = [...rows].sort((a, b) => (a.id < b.id ? 1 : -1));
-    let start = 0;
-    if (opts.cursor) {
-      const idx = rows.findIndex((s) => s.id === opts.cursor);
-      start = idx === -1 ? 0 : idx + 1;
-    }
-    const items = rows.slice(start, start + limit).map((row): ShiftListItem => {
-      if (!candidateIds.has(row.id)) return row;
-      return {
-        id: row.id,
-        registerId: row.registerId,
-        branchId: row.branchId ?? null,
-        status: "OPEN",
-        openedBy: row.openedBy,
-        closeCandidate: true,
-      };
-    });
-    const nextCursor = start + limit < rows.length ? items[items.length - 1].id : null;
-    return { items, nextCursor };
+    const rows = await this.db.listShiftsByBusiness(businessId);
+    return selectShiftList(rows, opts, role, actorId);
   }
 
   async postCashSale(

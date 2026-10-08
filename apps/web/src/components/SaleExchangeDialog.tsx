@@ -4,11 +4,12 @@ import React, { useMemo, useState } from "react";
 import type { FormEvent, JSX } from "react";
 
 import { exchangePreview } from "../lib/exchange-view";
+import { formatMoneyMinor } from "../lib/money";
 import { Modal } from "./Modal";
 import { GhostButton, PrimaryButton } from "./ui";
 
 function money(minor: number): string {
-  return (minor / 100).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatMoneyMinor(minor);
 }
 
 export interface SaleExchangeLine {

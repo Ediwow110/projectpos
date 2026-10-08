@@ -14,15 +14,19 @@ import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "..
 import { DangerButton, GhostButton, PrimaryButton, StatusPill } from "../../../components/ui";
 import { ApiError, apiFetch } from "../../../lib/api";
 import { buildProductSearch } from "../../../lib/catalog";
-import { parseMajorCurrencyToMinor } from "../../../lib/pos-sale-model";
+import { formatMoneyMinor } from "../../../lib/money";
+import { selectSaleRefund } from "../../../lib/sale-refund-selection";
+import {
+  completeSaleExchange,
+  continuePayMongoCheckout,
+  reconcileSalePayment,
+  submitSaleRefund,
+  voidSaleRecord,
+} from "../../../lib/sale-detail-api";
 
 interface Me {
   role: string;
   businessName?: string;
-}
-
-interface Csrf {
-  csrfToken: string;
 }
 
 interface SaleLine {
@@ -114,7 +118,7 @@ type ReconcileOutcome = "SUCCEEDED" | "FAILED";
 type RefundMode = "request" | "approve" | "reject";
 
 function money(minor: number): string {
-  return (minor / 100).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatMoneyMinor(minor);
 }
 
 function statusTone(status: string): "ok" | "warn" | "bad" | "info" {
@@ -190,21 +194,19 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
   const paymongoPayment = sale?.payments.find(
     (payment) => ["card", "gcash", "maya", "qrph"].includes(payment.method) && ["PENDING", "SUCCEEDED", "FAILED"].includes(payment.status),
   ) ?? null;
+  const refundSelection = selectSaleRefund(
+    sale,
+    qtyByLine,
+    loadAmountById,
+    businessQuery.data?.settings?.["refundApprovalThresholdMinor"],
+  );
 
   async function continuePayMongo(): Promise<void> {
     if (!sale || !paymongoPayment || !["card", "gcash", "maya", "qrph"].includes(paymongoPayment.method)) return;
     setStatusMessage("");
     setBusy(true);
     try {
-      const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
-      const checkout = await apiFetch<{ checkoutUrl: string }>(`/api/v1/sales/${sale.id}/paymongo/checkout`, {
-        csrfToken: csrf.csrfToken,
-        init: {
-          method: "POST",
-          body: JSON.stringify({ method: paymongoPayment.method }),
-          headers: { "Idempotency-Key": crypto.randomUUID() },
-        },
-      });
+      const checkout = await continuePayMongoCheckout({ saleId: sale.id, method: paymongoPayment.method });
       window.location.assign(checkout.checkoutUrl);
     } catch (err) {
       setStatusMessage(err instanceof ApiError ? `${err.code}: ${err.message}` : "Could not resume PayMongo checkout");
@@ -217,11 +219,7 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
     setStatusMessage("");
     setBusy(true);
     try {
-      const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
-      await apiFetch(`/api/v1/payments/${unknownPayment.id}/reconcile`, {
-        csrfToken: csrf.csrfToken,
-        init: { method: "POST", body: JSON.stringify({ outcome }), headers: { "Idempotency-Key": crypto.randomUUID() } },
-      });
+      await reconcileSalePayment({ paymentId: unknownPayment.id, outcome });
       await detailQuery.refetch();
       setStatusMessage(outcome === "SUCCEEDED" ? "Payment reconciled as succeeded." : "Payment reconciled as failed.");
       setReconcileOutcome(null);
@@ -237,29 +235,13 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
     setStatusMessage("");
     setBusy(true);
     try {
-      const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
-      const path = mode === "request" ? `/api/v1/sales/${sale.id}/refund-request` : mode === "approve" ? `/api/v1/sales/${sale.id}/refund-approve` : `/api/v1/sales/${sale.id}/refund-reject`;
-      const body = mode === "approve"
-        ? {
-            saleId: sale.id,
-            items: sale.items.filter((line) => Number(qtyByLine[line.id] ?? 0) > 0).map((line) => ({ saleItemId: line.id, qty: Number(qtyByLine[line.id]) })),
-            ...(sale.giftCardLoads
-              .filter((load) => (parseMajorCurrencyToMinor(loadAmountById[load.id] ?? "") ?? 0) > 0)
-              .map((load) => ({ loadId: load.id, amountMinor: parseMajorCurrencyToMinor(loadAmountById[load.id] ?? "") ?? 0 }))
-              .length > 0
-              ? { loadRefunds: sale.giftCardLoads.filter((load) => (parseMajorCurrencyToMinor(loadAmountById[load.id] ?? "") ?? 0) > 0).map((load) => ({ loadId: load.id, amountMinor: parseMajorCurrencyToMinor(loadAmountById[load.id] ?? "") ?? 0 })) }
-              : {}),
-            ...(reason.trim() ? { reason: reason.trim() } : {}),
-          }
-        : { reason: reason.trim() };
-      await apiFetch(path, {
-        csrfToken: csrf.csrfToken,
-        init: {
-          method: "POST",
-          body: JSON.stringify(body),
-          ...(approvalToken ? { body: JSON.stringify({ ...body, approvalToken }) } : {}),
-          ...(mode !== "reject" ? { headers: { "Idempotency-Key": crypto.randomUUID() } } : {}),
-        },
+      await submitSaleRefund({
+        saleId: sale.id,
+        mode,
+        items: refundSelection.items,
+        loadRefunds: refundSelection.loadRefunds,
+        reason: reason.trim(),
+        ...(approvalToken ? { approvalToken } : {}),
       });
       await detailQuery.refetch();
       setStatusMessage(mode === "request" ? "Refund request recorded." : mode === "approve" ? "Refund approved and recorded." : "Refund request rejected.");
@@ -286,8 +268,11 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
     setBusy(true);
     setStatusMessage("");
     try {
-      const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
-      await apiFetch(`/api/v1/sales/${sale.id}/void`, { csrfToken: csrf.csrfToken, init: { method: "POST", body: JSON.stringify({ reason: voidReason.trim(), ...(approvalToken ? { approvalToken } : {}) }) } });
+      await voidSaleRecord({
+        saleId: sale.id,
+        reason: voidReason.trim(),
+        ...(approvalToken ? { approvalToken } : {}),
+      });
       await detailQuery.refetch();
       setVoidOpen(false);
       setVoidReason("");
@@ -316,18 +301,7 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
     setStatusMessage("");
     setBusy(true);
     try {
-      const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
-      const result = await apiFetch<{
-        exchange: ExchangeRow;
-        replacementSale: { id: string; receiptNo: string };
-      }>(`/api/v1/sales/${sale.id}/exchange`, {
-        csrfToken: csrf.csrfToken,
-        init: {
-          method: "POST",
-          headers: { "Idempotency-Key": crypto.randomUUID() },
-          body: JSON.stringify(input),
-        },
-      });
+      const result = await completeSaleExchange({ saleId: sale.id, input });
       await detailQuery.refetch();
       setExchangeOpen(false);
       setExchangeSearch("");
@@ -359,20 +333,10 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
   }
   const taxSetting = businessQuery.data?.settings?.["taxRateBps"];
   const businessTaxRateBps = typeof taxSetting === "number" ? taxSetting : null;
-  const selectedRefundItems = sale?.items
-    .filter((line) => Number(qtyByLine[line.id] ?? 0) > 0)
-    .map((line) => ({ saleItemId: line.id, qty: Number(qtyByLine[line.id]) })) ?? [];
-  const selectedLoadRefunds = sale?.giftCardLoads
-    .filter((load) => (parseMajorCurrencyToMinor(loadAmountById[load.id] ?? "") ?? 0) > 0)
-    .map((load) => ({ loadId: load.id, amountMinor: parseMajorCurrencyToMinor(loadAmountById[load.id] ?? "") ?? 0 })) ?? [];
-  const refundTotalMinor = selectedRefundItems.reduce((total, item) => {
-    const line = sale?.items.find((candidate) => candidate.id === item.saleItemId);
-    return total + (line ? Math.round((line.lineTotalMinor / line.qty) * item.qty) : 0);
-  }, 0);
-  const refundLoadTotalMinor = selectedLoadRefunds.reduce((total, load) => total + load.amountMinor, 0);
-  const selectedRefundTotalMinor = refundTotalMinor + refundLoadTotalMinor;
-  const threshold = businessQuery.data?.settings?.["refundApprovalThresholdMinor"];
-  const refundPermission = typeof threshold === "number" && selectedRefundTotalMinor > threshold ? "refund.override" : "sale.refund";
+  const selectedRefundItems = refundSelection.items;
+  const selectedLoadRefunds = refundSelection.loadRefunds;
+  const selectedRefundTotalMinor = refundSelection.selectedRefundTotalMinor;
+  const refundPermission = refundSelection.permission;
 
   return (
     <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role}>
