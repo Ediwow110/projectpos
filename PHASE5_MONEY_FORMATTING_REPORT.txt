@@ -1,0 +1,101 @@
+PHASE 5 — MONEY FORMATTING CONSOLIDATION
+
+STATUS
+======
+PASS — Phase 5 completed with scoped verification.
+
+SCOPE
+=====
+Phase 5 consolidated repeated money-formatting behavior in the web app while deliberately leaving date, count, quantity, percentage, and parser semantics unchanged.
+
+NEW SHARED HELPERS
+==================
+apps/web/src/lib/money.ts
+
+- formatMoneyMinor(minor)
+  en-PH localized major-unit display with exactly two decimal places.
+- formatPesoMinor(minor)
+  Same formatting with the peso symbol.
+- minorToMajorFixed(minor)
+  Fixed two-decimal major-unit string for inputs and compact labels.
+
+REGRESSION COVERAGE
+===================
+apps/web/src/lib/money.test.ts
+
+The new helper seam was verified RED first because money.ts did not exist, then GREEN after implementation.
+
+CONSOLIDATED AREAS
+==================
+- Shared Peso UI component
+- Inventory optional money display
+- Reports and shifts fixed-decimal formatting
+- Supplier money formatting
+- Loyalty money display/form hydration
+- Gift-card load/result dialogs
+- Held-sales dialog
+- Sale exchange dialog
+- POS cart, product catalog, responsive cart, payment workspace, discount input, and manager approval formatting
+- Expenses
+- Gift cards and gift-card history
+- Customer detail and stored-value pages
+- Sales history and sale detail
+- Sales report page
+- Product detail and products list
+- Receipt and shared-receipt displays
+
+INTENTIONALLY NOT CONSOLIDATED
+==============================
+The following remain separate because they have different validation or domain semantics:
+- parseMajorCurrencyToMinor
+- catalog CSV money parser
+- loyalty majorToMinor parser
+- product create/edit toMinor validation
+- expense amount validation
+- shift input parsing
+- supplier/product-family/bundle mutation parsing
+- date/time toLocaleString usage
+- counts, quantities, loyalty points, percentages, and tax-rate formatting
+
+BEHAVIOR PRESERVATION
+=====================
+- Existing en-PH localized money output retained.
+- Existing exactly-two-decimal display retained.
+- Peso symbol placement retained.
+- Fixed-decimal form hydration retained.
+- CSV validation and export semantics retained.
+- Query keys and mutation behavior unaffected.
+- No API contracts changed.
+
+VERIFICATION
+============
+Focused tests run:
+- money.test.ts: 3/3 PASS
+- catalog-io.test.ts: 3/3 PASS
+- loyalty-settings.test.ts: 3/3 PASS
+- inventory-view.test.ts: 3/3 PASS
+- PosCartPanel.test.tsx: 2/2 PASS
+- PosProductCatalog.test.tsx: 1/1 PASS
+- PosResponsiveCart.test.tsx: 1/1 PASS
+- PosPaymentWorkspace.test.tsx: 3/3 PASS
+- PosDiscountDialog.test.tsx: 1/1 PASS
+- PosHeldSalesDialog.test.tsx: 2/2 PASS
+- SaleExchangeDialog.test.tsx: verified in the final acceptance process
+
+Web TypeScript:
+- pnpm --filter @pos/web exec tsc --noEmit -p tsconfig.json
+- PASS
+
+Final hygiene:
+- Direct duplicate money-pattern scan completed.
+- git diff --check for apps/web/src completed successfully.
+
+SAFETY
+======
+No unrelated user changes were reset, deleted, checked out, or overwritten.
+No commit or push was performed.
+
+NEXT PHASE
+==========
+Phase 6 — repository hygiene.
+

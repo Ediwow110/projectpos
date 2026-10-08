@@ -1,0 +1,187 @@
+NEXPOS — RELEASE READINESS QA GATES / BUILD & SAFE BROWSER SMOKE
+Date: 2026-10-08
+Workspace: G:\Vscode\POS
+Branch: codex/phase20-gift-card-load-final-20261005
+
+FINAL DECISION
+==============
+WEB PRODUCTION BUILD: PASS (3 nonblocking warnings)
+SAFE ISOLATED DESKTOP BROWSER SMOKE: PASS (1/1 test)
+API & WEB TYPECHECK AND CROSS-PHASE TESTS: PASS (from earlier cross-phase run)
+RELEASE / COMMIT APPROVAL: HOLD — outstanding critical integration and Git gates.
+
+PURPOSE
+=======
+Continue the prior A–E release-readiness audit without changing live services,
+committing, resetting the dirty workspace, or testing payments on production.
+
+EVIDENCE: PREVIOUS RELEASE AUDIT
+================================
+CROSS_PHASE_RELEASE_READINESS_AUDIT_2026-10-08.txt was already created in the
+workspace in the prior turn. That audit observed:
+- 45/45 scoped cross-phase tests PASS.
+- API TypeScript PASS and web TypeScript PASS.
+- Strict focused lint over 16 extracted implementation/test files PASS.
+- Tracked Git whitespace check PASS.
+These were previous-turn checks; they were NOT rerun in this continuation.
+
+WEB PRODUCTION BUILD — FRESH RESULT
+===================================
+Command, with isolated generated directory:
+  set "NEXT_DIST_DIR=.next-release-audit" &&
+  set "NEXT_TELEMETRY_DISABLED=1" &&
+  set "NEXT_PUBLIC_API_BASE=http://localhost:3100" &&
+  set "API_PROXY_TARGET=http://localhost:3101" &&
+  pnpm --filter @pos/web build &&
+  echo RELEASE_WEB_BUILD_PASS
+
+DevSpace process session 34 completed with code 0 and printed:
+  - Compiled successfully in 27.7s
+  - Generated 47/47 static pages
+  - Completed page optimization and collected build traces
+  - RELEASE_WEB_BUILD_PASS
+
+This validates the CURRENT accumulated working tree's Next.js production
+build. It does not establish a successful production deployment, API runtime,
+database migrations, live payment workflow, or production health status.
+
+BUILD WARNINGS (NONBLOCKING)
+============================
+1. apps/web/src/app/pos/page.tsx:39:5
+   'giftCardLoad' assigned but never used (@typescript-eslint/no-unused-vars).
+2. apps/web/src/app/products/page.tsx:83:6
+   useCallback dependency warning: setCreateError and setCreateOpen.
+3. apps/web/src/app/products/page.tsx:89:6
+   useEffect dependency warning: setCreateOpen.
+Next also noted that its ESLint plugin was not detected. Build did not fail.
+These require separate small reviewed fixes and post-fix verification; do not
+call the build zero-warning clean.
+
+SAFE BROWSER PREFLIGHT
+======================
+- Examined apps/api/src/app.module.ts runtime store selection:
+  development with DATABASE_URL unset uses createMemoryDb(), while a
+  configured DATABASE_URL opts into PgDbPort.
+- Environment inventory found no .env files beyond repository .env.example;
+  this does not prove remote credentials can never be inherited elsewhere.
+- Playwright 1.63.0 installed and selected existing read-only test discovered.
+- Existing playwright.config.ts was NOT used: it starts API and web servers,
+  spreads process.env into server config, and removes apps/web/.next.
+- Existing destructive pg suites were NOT used. Their beforeEach truncates
+  tables and must be limited to independently verified disposable databases.
+
+SAFE BROWSER CONFIGURATION
+==========================
+Added playwright.safe-smoke.config.ts at the workspace root:
+  - Runs ONLY Next.js frontend dev server on 127.0.0.1:3110.
+  - Starts NO NestJS API server or database.
+  - Uses a distinct Next.js output directory .next-release-smoke;
+    preserves existing apps/web/.next and .next-release-audit.
+  - Configures no API_PROXY_TARGET and explicitly empty DATABASE_URL
+    and PGTEST_BASE in the webServer environment.
+  - Runs one desktop Playwright project with a single worker.
+  - Leaves the original playwright.config.ts intact.
+This configuration is for read-only frontend checks, not authenticated
+end-to-end cash/payment/inventory tests. Future use may temporarily update
+Next.js generated TS references; restore just those references after use.
+
+BROWSER SMOKE — FRESH RESULT
+============================
+Command:
+  pnpm exec playwright test e2e/security-headers.spec.ts
+    --config=playwright.safe-smoke.config.ts
+    --project=desktop --workers=1 --reporter=line
+
+DevSpace session 36 completed with exit code 0:
+  1 passed (13.7s)
+  SAFE_DESKTOP_BROWSER_SMOKE_PASS
+
+Verified by the EXISTING test e2e/security-headers.spec.ts:
+  - Login page navigation succeeds at local test origin.
+  - Frontend CSP header contains default-src 'self', object-src 'none',
+    frame-ancestors 'none', and script-src-attr 'none'.
+  - "Welcome back" login heading visible.
+  - No detected browser-console CSP violations during the short observation.
+This is only a 1-test desktop browser smoke: no authenticated user workflow,
+cash checkout, refund, payment reconciliation, shifts, procurement mutations,
+PayMongo, or mobile-specific behavior was exercised.
+
+Nonblocking browser warnings:
+  - NO_COLOR and FORCE_COLOR were both set by runner process options.
+  - Next warned about development cross-origin request from 127.0.0.1 for
+    /_next resources and future allowedDevOrigins config requirements.
+These did NOT fail the test. No dev-origin configuration change was made.
+
+GENERATED NEXT.JS SIDE EFFECTS
+==============================
+The build and dev processes automatically changed:
+  - apps/web/tsconfig.json by adding .next-release-audit/types and later
+    .next-release-smoke/types to the include list.
+  - apps/web/next-env.d.ts by replacing .next/types/routes.d.ts with
+    .next-release-smoke/types/routes.d.ts.
+The two temporary references were surgically reverted after testing.
+The existing tsconfig include ordering and other prior user changes remain.
+Do not assume this project had a clean tsconfig at baseline; it was already
+marked modified before the release audit.
+
+WORKTREE / RELEASE FILE MANIFEST
+================================
+The original base branch remains
+  codex/phase20-gift-card-load-final-20261005.
+Existing tracked working-tree modifications: approximately 46 before these
+checks; the original dirty state includes multi-phase code modifications.
+Dozens of untracked source modules, tests, reports, tool configs and scripts
+also remain; git diff --stat does NOT include untracked code.
+
+Required source groups to inspect before a staging proposal:
+  apps/api/src/common/db/, memory/, procurement/, sales controller splits
+  refund normalization, reporting series, shift list, idempotency tests
+  apps/web/src/app/pos/ checkout hooks, frontend domain helpers
+  new UI state hooks, modal components, and relevant branch/user interfaces.
+Protect and review user-owned/diagnostic files individually:
+  AGENTS.md, skills/, opencode.json, .zcodeignore, probe scripts,
+  temporary QA scripts, previous phase reports, brand assets/versions.
+No broad git add -A was executed, and no staging manifest was applied.
+
+GIT DIFF HYGIENE
+================
+Fresh preflight git diff --check: exit code 0, with nonfatal Git LF/CRLF
+warnings on multiple tracked files. Ignore warnings only in the sense they
+are NOT proof of whitespace errors; do not run a mass normalizer.
+The generated tsconfig/next-env changes were restored after that check;
+no final post-restore tracked whitespace recheck was executed this turn.
+
+UNMET ACCEPTANCE GATES
+======================
+1. CRITICAL — Deliberate Git staging review of ALL required tracked and
+   untracked code; check for forgotten modules, unexpected scripts and
+   secrets before creating a commit.
+2. HIGH — Isolated API startup/health check and full runtime smoke; TypeScript
+   compile passing alone is not enough.
+3. HIGH — Authenticated desktop/tablet/mobile Playwright journeys with
+   disposable business accounts and nonproduction database/payment modes,
+   including POS, refunds, approvals, shifts and procurement. Only run after
+   deterministic fixture isolation has been independently verified.
+4. HIGH — Destructive PG contract/parity suites, ONLY on an independently
+   verified disposable PostgreSQL database.
+5. MEDIUM — Address three build lint/hook warnings and rerun build.
+6. MEDIUM — Investigate previously deferred offline pay() return on failed
+   queue, payment-report branchId scoping, and dashboard alert scopes,
+   based on targeted behavior and product requirements.
+7. MEDIUM — Review the safe smoke config and desired version-control policy.
+
+SAFETY AND NONCHANGES
+=====================
+- No real payment, inventory, Supabase, API or production DB mutation.
+- No NestJS API server was launched during the web-only browser smoke.
+- No destructive PG test was run.
+- No commit, staging, push, merge or deployment.
+- No user files reset or deleted.
+- No full test or Playwright suite run.
+- Generated Next.js build directories are local, ignored and preserved.
+
+SUMMARY
+=======
+PASS: web production build and one safe desktop frontend security smoke test.
+HOLD: release approval. The remaining work is more than a formatting or
+isolated unit-test gate, and must be completed before production promotion.

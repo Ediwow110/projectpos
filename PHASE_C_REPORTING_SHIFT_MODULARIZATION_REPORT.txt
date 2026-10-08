@@ -1,0 +1,164 @@
+NEXPOS PHASE C — REPORTING & SHIFT-SERVICE MODULARIZATION
+Date: 2026-10-08
+Workspace: G:\Vscode\POS
+Branch: codex/phase20-gift-card-load-final-20261005
+
+STATUS
+======
+PASS — scoped Phase C refactoring completed.
+37/37 focused tests passed; API TypeScript, focused ESLint and git diff hygiene
+all passed (acceptance chain completed with exit code 0).
+
+GOAL AND SCOPE
+==============
+Separate cohesive reporting and shift read-model calculations without
+changing billing, tenancy, cash or refund arithmetic, permissions, validation,
+pagination or database transactions. No new dependency or global state.
+
+FILES CHANGED
+=============
+Created:
+  apps/api/src/reports/reporting-series.ts
+  apps/api/src/reports/reporting-series.test.ts
+  apps/api/src/shifts/shift-list.ts
+  apps/api/src/shifts/shift-list.test.ts
+Updated:
+  apps/api/src/reports/nest/reporting.service.ts
+  apps/api/src/shifts/nest/shift.service.ts
+Created report:
+  PHASE_C_REPORTING_SHIFT_MODULARIZATION_REPORT.txt
+
+REPORTING EXTRACTION
+====================
+New pure function revenueSeries(buckets, granularity, sales):
+  - Prefills the caller-provided ordered day/hour UTC buckets with zero
+    netRevenue and zero orders.
+  - Uses existing bucketKey() (UTC calendar day/hour).
+  - Adds sale.totalMinor - refunded per settled sale, one order each.
+  - Ignores sales whose bucket does not exist in the supplied list.
+  - Preserves requested bucket order, counts, refund subtraction, and results.
+Call sites:
+  ReportingService.getOverview() — daily revenue series.
+  ReportingService.getSalesReport() — hourly or daily revenue series.
+Intentionally kept:
+  Billing feature gates; withScope tenancy; register and branch filters;
+  report range/compare resolution; profit visibility; KPI computation; top
+  products; generatedAt formatting; invoice/expense behavior; UI/API contracts.
+Removed duplicated inline aggregation without moving DB reads or changing
+report payload shapes.
+
+SHIFT READ-MODEL EXTRACTION
+===========================
+New pure function selectShiftList(rows, opts, role, actorId):
+  - Applies exact pre-existing status and register filters.
+  - Restricts cashier list to shifts opened by that cashier, optionally
+    including other cashiers' OPEN shifts as restricted close candidates.
+  - Keeps closed shifts belonging to others invisible to cashiers.
+  - Preserves descending shift-ID sort, cursor behavior (including missing
+    cursor), page bounds (1..100; default 50), and nextCursor semantics.
+  - Projects close candidates with only permitted fields, not complete
+    DbShift rows.
+  - Does not mutate input arrays.
+Interfaces ShiftCloseCandidate and ShiftListItem were moved to shift-list.ts;
+shift.service.ts re-exports them as types for existing callers.
+ShiftService.listShifts retains its existing tenancy scope and DB call before
+passing rows into the pure selection/projection layer.
+No change was made to shift open/close/movement locking, cash counting,
+corrections, post-close drift checks, manager approvals, or audit rows.
+
+CHARACTERIZATION TESTS (RED -> GREEN)
+=====================================
+New reporting-series.test.ts — 3 tests:
+  1. Day buckets seeded in caller order, empty buckets zero, outside ignored,
+     refunded revenue subtracted, multiple sales aggregated.
+  2. Hour bucket UTC boundaries and negative net after refund preserved.
+  3. Empty bucket list produces empty series.
+New shift-list.test.ts — 3 tests:
+  1. Cashier sees only own shifts without candidates.
+  2. Foreign OPEN shift appears only as restricted close candidate, foreign
+     CLOSED shift remains hidden.
+  3. Sort, cursor, missing cursor, filters, page limit clamp, and original
+     array ordering all preserved.
+Before implementation both new test files were run and failed for missing
+implementation modules as expected. After implementation both passed.
+
+VERIFICATION MATRIX
+===================
+reporting-series.test.ts                  3/3 PASS
+shift-list.test.ts                        3/3 PASS
+reporting.service.test.ts                 9/9 PASS
+reporting-decomposition.test.ts           1/1 PASS
+shift.service.test.ts                    11/11 PASS
+reports.test.ts                           5/5 PASS
+shifts.test.ts                            5/5 PASS
+TOTAL                                    37/37 PASS
+
+pnpm --filter @pos/api exec tsc --noEmit -p tsconfig.json
+PASS.
+
+pnpm exec eslint [six Phase C source/test files]
+PASS.
+
+git diff --check -- [two updated tracked service files]
+PASS.
+
+Final acceptance marker PHASE_C_SCOPED_ACCEPTANCE_PASSED printed; process
+exited with code 0.
+
+NOTE: Git emitted a nonblocking working-copy warning that LF may be converted
+to CRLF on its next touch of reporting.service.ts. This did not fail any
+check; line-ending handling was not changed during the phase.
+
+ARCHITECTURE ASSESSMENT / EXPLICIT NONCHANGES
+==============================================
+- ReportingCore and ReportingBreakdownService already provide established
+  query/aggregation domain boundaries. No artificial extra report factory or
+  generic repository was introduced.
+- Existing shifts/cash.ts already centralizes expected cash, cash variance and
+  movement categorization. CloseShift remains cohesive transaction/lock
+  orchestration; splitting it without stronger integration tests was not
+  warranted in Phase C.
+- The report-series utility is reused by two separate report entry points.
+- The shift-list utility captures a distinct independently testable cashier
+  visibility and pagination read-model boundary.
+- No production database, Supabase, PayMongo, email, authentication or frontend
+  application code changes made.
+
+DEFERRED OBSERVATIONS (NOT ALTERED)
+===================================
+1. ReportingService.getPaymentsReport() passes query.registerId to
+   ReportingCore.settledSales() but does NOT pass query.branchId, unlike
+   getSalesReport(). When a branch-specific payment report is requested this
+   may include other branches' settled sales. This is a potential functional
+   filter inconsistency; it requires a separately scoped characterization test
+   and bug-fix review, not a behavior-changing change during this refactor.
+2. ReportingService.attentionFor() accepts branchId for inventory balances
+   but counts open shifts, refund requests and unknown payments from the
+   business-wide lists. Review intended dashboard alert scope before adjusting.
+3. ReportingService.getCashReport() repeats the expected-cash arithmetic that
+   also exists in shifts/cash.ts. This should be reconciled in a separate,
+   test-first check if/when further cash-report edits are made.
+These are code-review observations, not claims of reproduced production bugs.
+
+LIMITS
+======
+- Scoped tests only; full repository suite, production build, browser E2E and
+  live transactional verification were NOT run.
+- Database performance and query-plan validation were outside this phase.
+- Verification demonstrates current API compile and exercised test behavior,
+  not blanket production certification.
+
+SAFETY / GIT STATE
+==================
+- No git reset, checkout, clean, blanket formatting or unrelated edit.
+- All existing Phase 1–B modifications and user-owned artifacts preserved.
+- No git commit, push, PR, deployment or live database/payment writes.
+- Repository's dirty working-tree state remains, with these Phase C changes
+  on top of it.
+
+NEXT
+====
+Phase D — frontend structure and readability:
+focus on sale detail and extremely dense purchase-order/supplier pages.
+Before any future behavior change, address branch-filter observations through
+separately scoped regression tests.

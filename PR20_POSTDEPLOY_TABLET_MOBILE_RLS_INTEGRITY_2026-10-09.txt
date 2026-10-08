@@ -1,0 +1,150 @@
+NEXPOS — PHASE 20/22 POST-DEPLOY QA: TABLET/MOBILE, RLS, AND TENANT INTEGRITY
+Date: 2026-10-09 (Asia/Manila)
+Canonical Windows workspace: G:\Vscode\POS
+GitHub repository: https://github.com/Ediwow110/projectpos
+Merged PR: https://github.com/Ediwow110/projectpos/pull/20
+Production release commit: 862bdba6283253b42151e76fc4cffe32fa8eb213
+Isolated development commit: c233dbbfa752cfd7be32f0cf4159d48648684f2a
+Both commits have identical Git tree ID:
+  0e0672bc7aa002edd345267460593ce2ed1c54f1
+
+EXECUTIVE STATUS
+================
+Production web/API: both LIVE on PR #20 merge SHA.
+QA data integrity: PASS for the bounded read-only checks.
+Desktop isolated browser tests from previous phase: 11/11 PASS.
+NEW tablet + mobile isolated Playwright suite: 22/22 PASS, exit 0.
+NEW Supabase direct data access review: no direct anon/authenticated
+SELECT grants and RLS enabled for all 87 public tables.
+Production authenticated QA Owner workflows: STILL NOT PERFORMED.
+No schema, auth, code, CI, deployment or production business mutation.
+
+1. QA BUSINESS READ-ONLY INTEGRITY
+==================================
+Supabase project was inspected with read-only SELECT operations.
+Exact-match QA business: QA SMOKE TEST — 2026-10-02-1800.
+- Business matched: 1.
+- Products: 9.
+- Active membership count: 3.
+- Active branch count: 0.
+- Configured storefront key: 0.
+- Negative inventory balance rows: 0.
+- Orphaned/cross-tenant payments: 0.
+- Orphaned/cross-tenant refunds: 0.
+- Orphaned/cross-tenant inventory balance rows: 0.
+- Duplicate receipt number groups: 0.
+- QA online orders: 0; reservations: 0; fulfillments: 0.
+The above checks cover the named QA tenant, not all production tenants.
+
+A final post-test verification found EXACTLY:
+- Sales: 31.
+- Payments: 19.
+- Refunds: 5.
+- Orders: 0.
+- Reservations: 0.
+- Fulfillments: 0.
+- QA-SMOKE-A-1800: 6 units.
+- QA-SMOKE-B-1800: 7 units.
+These matched the initial in-turn QA baseline. No tenant data
+mutation was performed through Supabase or the live web/API.
+
+2. SUPABASE SECURITY ADVISOR / RLS PERMISSIONS
+===============================================
+Advisor: INFO rls_enabled_no_policy, 87 affected public tables.
+Guidance link:
+https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy
+Independent catalog/privilege verification:
+- Public tables: 87.
+- RLS enabled on all 87.
+- RLS enabled with no policies on all 87.
+- Tables granting anon SELECT: 0.
+- Tables granting authenticated SELECT: 0.
+- Tables readable without RLS by either role: 0.
+- anon and authenticated: cannot bypass RLS.
+- service_role and postgres: can bypass RLS.
+INTERPRETATION: The INFO finding is compatible with the system's
+server-only Postgres access model and does NOT by itself establish
+a data exposure. Direct unauthenticated/authenticated Supabase API
+table read access is not granted to these two roles.
+IMPORTANT: Server-side DB roles can bypass RLS, so application
+authentication, permissions, tenant IDs, and careful API authorization
+remain essential. This review does not prove that application-layer
+business logic is free of every IDOR or cross-tenant vulnerability.
+Do not automatically create permissive RLS policies to silence the
+advisor; that would widen the direct data access surface.
+
+3. NEW ISOLATED TABLET/MOBILE BROWSER ACCEPTANCE
+==================================================
+Temporary local-only config:
+  playwright.safe-multidevice.qa.config.ts
+Inherited the existing safe-auth configuration:
+  local in-memory API and local Next.js site only;
+  no DATABASE_URL, PayMongo, Brevo or other live provider keys.
+Device projects:
+  tablet-chromium, width 1024, height 768, touch enabled.
+  mobile-chromium, width 390, height 844, mobile/touch enabled.
+One Chromium worker; 22 scenarios across 4 spec files:
+  approval-matrix.spec.ts (4 per device):
+    manager grants for inventory, void, refund and shift.
+  order-operations.spec.ts (2 per device):
+    storefront setup and pickup fulfillment.
+  public-ordering.spec.ts (2 per device):
+    guest pickup and prepaid-delivery restriction.
+  roles.spec.ts (3 per device):
+    owner pages, cashier access, logged-out gating.
+RESULTS:
+  tablet-chromium: 11/11 PASS.
+  mobile-chromium: 11/11 PASS.
+  TOTAL: 22/22 PASS, exit 0, approximately 2.0 minutes.
+Earlier isolated desktop suite on same committed source tree: 11/11
+PASS. Across three viewports: 33/33 isolated browser executions PASS.
+Device emulation on desktop Chromium is not equivalent to real device
+hardware or all supported browsers.
+
+Post-tests:
+- Verified the isolated commit and merged main have the same tree SHA.
+- Restored only Next.js-generated tsconfig.json and next-env.d.ts in
+  the isolated worktree, so no tracked source edits remain.
+- Temporary test config is untracked; no push, PR or merge created.
+- Canonical workspace custom logo and .gitignore edits preserved.
+
+4. OBSERVABILITY AND LIVE RELEASE
+==================================
+Read-only Render deployment snapshots:
+  Web deploy dep-db3t1eeq1p3s73eg7ctg: LIVE.
+  API deploy dep-db3t1eeq1p3s73eg7ckg: LIVE.
+  Both mapped to release SHA 862bdba6283253b42151e76fc4cffe32fa8eb213.
+Earlier production access-control smoke on this release:
+  16/16 protected API GETs denied unauthorized access.
+  8/8 protected web pages redirected to login.
+This is a narrow anonymous boundary test, not a full
+authenticated cross-tenant penetration test.
+
+5. REMAINING GATE / NEXT SAFE ACTION
+=====================================
+A usable authorized QA Owner browser session is NOT available through
+current tools. Do not reuse old secrets, session cookies, or create
+a privileged production session by SQL.
+The QA business currently has zero active branches and no storefront
+key, so production online-order/fulfillment work would also require
+explicit scoped QA setup by the real Owner.
+Before state-changing live QA:
+- Sign in normally as the QA Owner.
+- Verify the active business is EXACTLY the QA SMOKE TEST tenant.
+- Confirm provider payments remain TEST-only, not real wallet/card.
+- Scope all changes to the approved disposable QA business.
+- Use a browser execution mode that has access to that authorized
+  session; a login in the user's own browser is not automatically
+  shared with these isolated test processes.
+No authenticated production checkout/refund/inventory mutation was
+attempted in this phase.
+
+VERDICT
+=======
+Read-only QA integrity: PASS.
+Direct Supabase RLS/grants exposure checks: PASS, no confirmed exposure.
+Tablet/mobile synthetic business workflows: PASS 22/22.
+Exact deployed source tree parity: CONFIRMED.
+Authenticated production owner checkout/order/fulfillment: BLOCKED
+by absence of authorized browser session and inactive storefront setup.
+PRODUCTION CODE/CONFIG/DATA: UNCHANGED DURING THIS PHASE.

@@ -1,0 +1,97 @@
+NEXPOS PHASE A — TRANSACTION SAFETY & DEPENDENCY VERIFICATION
+Date: 2026-10-08
+Workspace: G:\Vscode\POS
+Branch: codex/phase20-gift-card-load-final-20261005
+
+STATUS
+======
+PASS — PHASE A ACCEPTANCE COMPLETE.
+The original chained verification process (DevSpace session 7) exited with code 0.
+An independent fresh rerun of the API typecheck, focused lint, and diff hygiene
+also exited with code 0. All planned scoped Phase A gates passed.
+
+PURPOSE
+=======
+Characterize existing refund/sale critical invariants and evaluate the static DB-port import cycle. Prioritize transaction integrity over arbitrary file-size reductions.
+
+FILES MODIFIED / CREATED
+========================
+Added:
+- apps/api/src/refunds/refund-normalization.ts
+- apps/api/src/refunds/refund-normalization.test.ts
+Updated:
+- apps/api/src/refunds/nest/refund.service.ts
+
+WHAT CHANGED
+============
+Extracted exact pre-existing refund request normalization into a pure, isolated helper:
+- combines multiple refund items referring to the same sale item
+- sorts items by saleItemId for fingerprint stability
+- combines multiple gift-card-load refund amounts by loadId
+- rejects invalid gift-card-load amountMinor (must be integer and >0)
+- sorts load requests by loadId
+
+RefundService.approveRefund still calls the helper INSIDE the same refund lock and transaction. Fingerprinting, idempotency lookup, permissions, self-approval checks, stock/inventory locks, refund allocation, payment rows, gift-card/store-credit ledgers, and transaction commit/rollback sequencing are unmodified.
+
+NO production payment-provider, database schema, frontend, authentication, or live production environment changes were made.
+
+NEW CHARACTERIZATION TESTS
+==========================
+apps/api/src/refunds/refund-normalization.test.ts
+- deterministic duplicate sale-line coalescing and sorted identifiers
+- unchanged source input
+- duplicate gift-card-load aggregation and sorting
+- rejects zero, negative, fractional, NaN, and Infinity load amounts
+The test initially failed because refund-normalization.ts did not exist (expected RED), then passed after the helper and service extraction.
+
+EXISTING CHARACTERIZATION COVERAGE RUN
+======================================
+Executed scoped commands and observed:
+- refund-normalization.test.ts: 7/7 PASS
+- refund.service.test.ts: 11/11 PASS
+- sales.service.test.ts: 15/15 PASS
+- sale-stock-service.test.ts: 4/4 PASS
+- sales.split.test.ts: 7/7 PASS
+TOTAL: 44/44 focused tests PASS.
+
+FINAL ACCEPTANCE STEPS — VERIFIED PASS
+======================================
+The completed chain included:
+- pnpm --filter @pos/api exec tsc --noEmit -p tsconfig.json
+- pnpm exec eslint apps/api/src/refunds/refund-normalization.ts apps/api/src/refunds/refund-normalization.test.ts apps/api/src/refunds/nest/refund.service.ts
+- git diff --check -- apps/api/src/refunds/nest/refund.service.ts apps/api/src/refunds/refund-normalization.ts apps/api/src/refunds/refund-normalization.test.ts
+
+DevSpace session 7: finished with exit code 0.
+Fresh independent rerun: all three checks completed with exit code 0, including
+the printed marker "ALL ACCEPTANCE CHECKS PASSED".
+Scoped Vitest total: 44/44 passed (five independently invoked test files).
+Full repository test suite, build, and live E2E/Playwright were NOT run.
+
+DB PORT CYCLE ANALYSIS
+======================
+apps/api/src/common/db/port.ts imports PlatformPort with 'import type'.
+apps/api/src/common/db/ports/platform.port.ts imports DbPort with 'import type' to type withTransaction callback.
+These type-only edges vanish during TypeScript emit, so the static source-level cycle is NOT a runtime circular import. No interface reshuffle or runtime behavior change was made. The narrow type reference preserves full DbPort access inside transactions.
+
+SAFETY BOUNDARIES
+=================
+- Existing dirty workspace content preserved.
+- No reset, checkout, clean, commit, push, or deployment.
+- No Supabase/production database writes.
+- No live PayMongo operations.
+- No transaction boundary or public API contract moved.
+- No monolithic test run.
+
+RESIDUAL RISKS AND NEXT ACTION
+==============================
+1. Full suite, full build, and E2E/Playwright were NOT run. Focused tests do
+   not prove all real-world edge cases.
+2. Sale completion was characterized by existing scoped tests but was not
+   structurally refactored in this phase; preserve its transaction boundaries.
+3. Phase B should begin with fresh focused characterization tests for POS
+   payment/offline lifecycles before altering them.
+
+FINAL PHASE A RESULT
+====================
+PASS — 44/44 focused tests, API TypeScript, scoped ESLint, and diff hygiene.
+No commit, push, deployment, or live database/payment modification.

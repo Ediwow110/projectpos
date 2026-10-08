@@ -1,0 +1,80 @@
+NEXPOS PR #20 — FINAL CI GATE AND CHANGE SCOPE REVIEW
+Report date: 2026-10-09 (Asia/Manila)
+Canonical workspace: G:\Vscode\POS
+Repository: https://github.com/Ediwow110/projectpos
+Draft PR: https://github.com/Ediwow110/projectpos/pull/20
+
+IDENTITY
+--------
+Current published PR head: c233dbbfa752cfd7be32f0cf4159d48648684f2a
+PR base main: 438d36223f39c08978d9a624e00da2aed4e10e32
+GitHub: OPEN, DRAFT; mergeable=true; mergeable_state=unstable.
+PR diff: 78 changed files, 6 commits.
+Reviews submitted: none recorded.
+Unresolved inline review threads: none recorded.
+Original local project workspace retains its unrelated local edits.
+
+GITHUB CI CHECKS ON CURRENT HEAD
+--------------------------------
+PR event run: https://github.com/Ediwow110/projectpos/actions/runs/37812737993
+verify: COMPLETED SUCCESS (after full monorepo tests, exit tests,
+  optimized build, production critical-level audit, phase scripts).
+pg: COMPLETED SUCCESS (PostgreSQL-backed CI parity/suite).
+e2e: IN PROGRESS at latest observation; pnpm e2e active.
+The separate push-event E2E is SKIPPED by workflow design.
+Do not interpret an in-progress check as success.
+E2E live-job log endpoint returned BlobNotFound (404) while job was
+  in progress; this is NOT an assertion of test failure.
+CI merge-readiness remains HOLD pending E2E final conclusion.
+
+REVIEWED PR CHANGE SCOPE
+------------------------
+78 changed paths obtained from the GitHub PR file inventory.
+Checked key API diffs: app.module.ts, sales.controller.ts,
+payments.controller.ts, receipts.controller.ts, refund.service.ts,
+reporting-series.ts, common/memory.db.ts, package manifests.
+SalesController delegates routes to registered PaymentsController
+  and ReceiptsController. Both split controllers retain
+  ApiTokenGuard + SessionGuard at controller level.
+Money-changing routes retain CsrfGuard, role/permission checks,
+  required idempotency key and input validation as appropriate.
+AppModule retains Phase 22 OrderController/PublicOrderController
+  alongside the split sales controllers.
+Refund normalization retains the Phase 22 delivery-refund validation.
+Revenue-series helper consumes Phase 22 netRevenue rather than a
+  gross-minus-refunds approximation.
+In-memory idempotency key uses structured three-field tuple encoding.
+PR manifests update Next.js to 15.5.27 and pnpm overrides
+  sharp 0.35.5 and source-map-js 1.2.2.
+Review was focused; not a guarantee that every line of the 78 files
+  or all production security paths has been audited.
+
+VERIFIED LOCAL GATES ON CURRENT HEAD (PRIOR PHASE)
+--------------------------------------------------
+Full monorepo tests: PASS (1046/1046, some unchanged packages cached).
+API 651/651, web 265/265, validation 114/114.
+Typecheck across 7 packages: PASS.
+Lint: PASS.
+Next.js 15.5.27 production web build: PASS.
+pnpm audit --prod --audit-level moderate: No known vulnerabilities.
+Isolated safe desktop Playwright (in-memory API): 3/3 PASS.
+These do not substitute for required GitHub PostgreSQL-backed E2E.
+
+GIT AND PRODUCTION SAFETY
+-------------------------
+No new commit, force push, main merge, draft-state change or Render
+  deployment was made during THIS CI status/review phase.
+Do not alter the original G:\Vscode\POS user's uncommitted logo
+  edits, .gitignore or local tools.
+No production payment, email, inventory or database writes.
+
+REMAINING STEPS
+---------------
+1. Confirm final GitHub E2E conclusion on c233dbb.
+2. If E2E fails, obtain completed-job logs and isolate the exact
+   failed scenario. Fix and reverify only with evidence.
+3. If E2E succeeds, complete final human PR review and only then
+   decide whether to mark draft ready. Do not auto-merge or deploy.
+4. Sync the original workspace safely at a separately approved stage.
+
+OVERALL: COMMITTED AND PUSHED; DRAFT PR; VERIFY+PG GREEN; E2E PENDING.

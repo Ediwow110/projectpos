@@ -1,0 +1,111 @@
+NEXPOS — POST-DEPLOY AUTH BOUNDARY & ISOLATED BUSINESS WORKFLOW QA
+Date: 2026-10-09 (Asia/Manila)
+Original source workspace: G:\Vscode\POS
+Merge/release commit: 862bdba6283253b42151e76fc4cffe32fa8eb213
+Isolated QA test source commit: c233dbbfa752cfd7be32f0cf4159d48648684f2a
+PR #20: https://github.com/Ediwow110/projectpos/pull/20
+
+OBJECTIVE AND SAFETY
+--------------------
+Continue production QA following PR #20 merge: authorization
+boundaries, POS/roles, order fulfillment, reservations, and refunds.
+Pre-existing QA business: QA SMOKE TEST — 2026-10-02-1800.
+Prior QA policy requires normal owner sign-in to that exact QA tenant,
+business/role verification before any mutation, and an immediate
+stop if approved QA credentials/session are unavailable.
+No accessible signed-in QA Owner session or QA authentication inputs
+were found in the current test environment; no access bypass attempted.
+No new production QA account, reset, membership, role or shift created.
+No live PayMongo, real merchant or payment credential used.
+
+PART A — LIVE PRODUCTION ANONYMOUS SECURITY GATE
+------------------------------------------------
+Fresh cookie-free request context and Chromium browser, GETs only.
+Base API: https://nexpos-api-sf1n.onrender.com
+Base web: https://nexpos-web.onrender.com
+16 protected API GET endpoints: 16/16 returned HTTP 401.
+Covered: /me, products, sales, orders, nonexistent order lookup,
+inventory balances, purchase orders, supplier returns, suppliers,
+sales and payments reports, dashboard, memberships, shifts,
+nonexistent receipt lookup, configured payment methods.
+8 protected web routes: 8/8 redirected to /login.
+Covered: /team, /pos, /inventory, /purchase-orders, /orders,
+/reports/sales, /sales, /admin/online-ordering.
+No workspace sidebar rendered to anonymous browser; 0 page JS errors.
+PASS: 24/24 production unauthenticated access boundary checks.
+This is NOT a test of owner/cashier/manager authorization after login.
+
+PART B — ISOLATED AUTHENTICATED BROWSER BUSINESS FLOWS
+-----------------------------------------------------
+Test runner: Playwright Chromium, desktop project, 1 worker.
+Config: playwright.safe-auth.config.ts.
+Local API and Next web only, synthetic newly registered businesses,
+no DATABASE_URL, PayMongo secret or Brevo key.
+11/11 desktop Playwright tests passed in approximately 1.4 minutes.
+approval-matrix.spec.ts:
+  4/4 PASS — inventory manager grant, void exact once,
+  refund grant one-use, shift foreign close approval.
+order-operations.spec.ts:
+  2/2 PASS — storefront setup/tenant-safe link,
+  pickup acceptance and ready fulfillment.
+public-ordering.spec.ts:
+  2/2 PASS — guest pickup branch-authoritative availability/status,
+  delivery requires prepaid payment.
+roles.spec.ts:
+  3/3 PASS — owner UI, cashier sell/inventory access without
+  owner controls, logged-out gating.
+Runner exit code: 0.
+
+PART C — ISOLATED API RESERVATION/REFUND SECURITY SUITES
+------------------------------------------------------
+Vitest API on same integrated feature code, no production DB.
+10 files passed, 52/52 tests passed, exit code 0.
+Covered:
+  phase22-security.contract (5)
+  phase22-orders.contract (2)
+  refund.service (15)
+  phase22-reservation-concurrency.contract (5)
+  fulfillment-service (6)
+  order-service (5)
+  reservation-service (3)
+  refund-normalization (7)
+  idempotency-adapter-parity (2)
+  order-sale-service (2).
+Verified isolated contracts for reservations, fulfillment,
+refund validation, concurrency and idempotency.
+
+UNVERIFIED PRODUCTION-SPECIFIC BUSINESS FLOWS
+---------------------------------------------
+No authenticated production QA Owner login occurred.
+No authenticated production staff/manager/owner permissions checked.
+No production QA sale, shift, inventory movement, refund,
+fulfillment, reservation or PayMongo test checkout executed.
+No QA fixture state/balances were changed or compared after rollout.
+Do NOT mark these production-specific workflows PASS.
+
+RELEASE AND LOCAL WORKSPACE SAFETY
+----------------------------------
+No Git commit, branch update, PR, migration or Render deployment.
+No production state-changing HTTP methods used.
+Original G:\Vscode\POS branch and user customizations unchanged.
+The small Playwright audit helper lives untracked only in the
+isolated worktree, outside the canonical user checkout.
+
+NEXT AUTHORIZED GATE
+--------------------
+To complete the requested AUTHENTICATED PRODUCTION smoke, obtain a
+normal authorized login session for QA SMOKE TEST — 2026-10-02-1800.
+Verify /me business and owner role before any QA fixture reads/writes.
+Only then perform narrowly scoped disposable QA workflows, never
+unidentified or real business data. Stop if auth cannot be established.
+PayMongo must remain TEST mode, no live wallet/card funding.
+No password or session token should be copied into reports or chats.
+
+CURRENT VERDICT
+---------------
+Production anonymous security boundary: PASS 24/24.
+Isolated authenticated desktop business E2E: PASS 11/11.
+Isolated Phase 22 API security/reservation/refund tests: PASS 52/52.
+Authenticated production QA business operations: BLOCKED —
+no accessible authorized QA Owner session/credentials in tool context.
+END OF REPORT

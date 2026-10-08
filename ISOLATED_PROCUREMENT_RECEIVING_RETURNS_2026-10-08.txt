@@ -1,0 +1,114 @@
+NEXPOS — PROCUREMENT RECEIVING + SUPPLIER RETURN RELEASE GATE
+Date: 2026-10-08
+Workspace: G:\Vscode\POS
+Branch: codex/phase20-gift-card-load-final-20261005
+
+DECISION
+========
+BOUNDED PROCUREMENT STOCK FLOW: PASS — 1/1 desktop Playwright test.
+OVERALL RELEASE READINESS: HOLD — disposable PostgreSQL and Git release
+acceptance gates remain.
+
+TEST ADDED
+==========
+e2e/procurement-receiving-returns.spec.ts
+
+This regression tests real HTTP route behavior through a local,
+synthetic-business session. It verifies receiving, replay protection,
+over-receipt rejection, supplier-return posting, and balance preservation.
+The existing procurement service test already covers the underlying
+domain contracts; this new test exercises the operational API and UI.
+
+EXECUTION AND RESULT
+====================
+Command:
+  pnpm exec playwright test e2e/procurement-receiving-returns.spec.ts
+    --config=playwright.safe-auth.config.ts
+    --project=desktop --workers=1 --reporter=line
+  && echo ISOLATED_PROCUREMENT_STOCK_FLOW_PASS
+
+Observed result:
+  1 passed (18.3s).
+  Test run ended with process exit code 0.
+  ISOLATED_PROCUREMENT_STOCK_FLOW_PASS printed.
+
+EXACT VERIFIED STOCK SEQUENCE
+=============================
+Synthetic SKU opening qty:               8
+PO ordered (no receipt):                  8
+First receipt +4:                        12
+Replay same first receipt key:           12
+Reject outstanding-exceeding +7:         12
+Second receipt +6:                       18
+Create supplier return 3 (not posted):   18
+Post supplier return -3:                 15
+Replay same return-post key:             15
+
+Test also verifies PO states PARTIALLY_RECEIVED and RECEIVED, return
+state POSTED, HTTP statuses for the first receipt (201) and replay (200),
+replayed:true markers, and visible purchase order "Receiving lines" and
+supplier-return reason "Three damaged items" on frontend routes.
+Negative over-receipt is asserted as non-successful HTTP without
+requiring one particular error status code.
+Different requests use independent unique idempotency keys.
+
+ISOLATION / SAFETY
+==================
+- Isolated local NestJS API on localhost:3101.
+- NODE_ENV=development, DATABASE_URL empty, PGTEST_BASE empty: memory DB.
+- Local Next.js frontend on localhost:3100 with separate generated
+  .next-release-auth output directory.
+- PayMongo, Brevo, SMTP secrets disabled in the isolated server child.
+- One desktop Chromium browser worker and one test file; no full suite.
+- No production inventory, real business, payment, Supabase or PostgreSQL
+  writes. No PG migration or destructive TRUNCATE.
+- No Git add/commit/reset/push/merge or Render deployment.
+
+COVERAGE LIMITS
+===============
+This is one synthetic branch/business receiving and supplier-return flow.
+It does not prove multi-branch allocation, concurrency under parallel
+receiving requests, real PostgreSQL transactional behavior, performance,
+mobile/tablet UI, every user permission, or a complete physical return
+workflow with external supplier logistics.
+
+PREVIOUS ACCEPTANCE (HISTORICAL, NOT RERUN HERE)
+===============================================
+- Manager approval matrix: inventory, void, foreign shift-close — 3/3 PASS.
+- Manager-approved refund — 1/1 PASS.
+- Logout with original cookie revoked server-side — 1/1 PASS.
+- Procurement foundation — 1/1 PASS.
+- POS checkout through receipt/reports/stock/shift reconciliation — 1/1 PASS.
+- Separate desktop web-only CSP smoke — 1/1 PASS.
+- Web production build PASS with three nonblocking warnings.
+- Focused cross-phase unit verification 45/45 PASS and TS checks PASS.
+
+NEXT.JS GENERATED TYPE REFERENCES
+=================================
+The Next development server can update apps/web/tsconfig.json and
+apps/web/next-env.d.ts to point to .next-release-auth/types.
+The two temporary references were restored to ordinary .next/types
+after the isolated test. Other working-tree changes were preserved.
+
+REMAINING RELEASE GATES
+=======================
+1. HIGH — PostgreSQL adapter parity with independently verified disposable
+   database; PG integration tests truncate data and MUST NOT run on a
+   shared or production connection.
+2. HIGH — Review complete Git staging manifest, including untracked
+   source files needed by split controllers and extracted modules.
+   Do not stage reports, probe scripts or secrets indiscriminately.
+3. MEDIUM — API/DB runtime consistency, branch-specific stock/allocation
+   and concurrency scenarios.
+4. MEDIUM — Offline checkout queue-failure semantics and reporting branch
+   scoping remain deferred product/backend issues.
+5. MEDIUM — Final production web build and scoped tests after any further
+   application changes; prior build had lint/hook warnings.
+6. MEDIUM — Broader security/role/multi-device/mobile/tablet tests,
+   separate from the bounded accepted flows.
+
+CONCLUSION
+==========
+The procurement receipt and supplier return API/UI integration gate passed.
+Production release acceptance remains HOLD pending the outstanding
+PostgreSQL, staging hygiene, and broader scope decisions.

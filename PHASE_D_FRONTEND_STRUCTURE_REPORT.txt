@@ -1,0 +1,175 @@
+NEXPOS PHASE D — FRONTEND STRUCTURE & READABILITY
+Date: 2026-10-08
+Workspace: G:\Vscode\POS
+Branch: codex/phase20-gift-card-load-final-20261005
+
+FINAL STATUS
+============
+PASS — scoped frontend modularization and checks completed.
+15/15 focused unit tests passed; web TypeScript passed; focused ESLint
+passed with --max-warnings=0; git diff --check passed.
+
+OBJECTIVE
+=========
+Improve the reviewability and responsibility boundaries of the sale-detail,
+purchase-order detail, and supplier detail pages without altering routes,
+validations, mutation payloads, permissions, UI messages, or navigation.
+Preserve previous uncommitted user and earlier-phase code changes.
+
+CHANGED FILES
+=============
+New modules:
+  apps/web/src/lib/sale-refund-selection.ts
+  apps/web/src/lib/procurement-mutation.ts
+New test files:
+  apps/web/src/lib/sale-refund-selection.test.ts
+  apps/web/src/lib/purchase-order-quantities.test.ts
+  apps/web/src/lib/procurement-mutation.test.ts
+Updated production files:
+  apps/web/src/lib/purchase-orders.ts
+  apps/web/src/app/sales/[id]/page.tsx
+  apps/web/src/app/purchase-orders/[id]/page.tsx
+  apps/web/src/app/suppliers/[id]/page.tsx
+
+EXTRACTION 1 — SALE REFUND SELECTION
+====================================
+Introduced selectSaleRefund(sale, qtyByLine, loadAmountById, threshold)
+as a pure projection used by BOTH the sale-detail refund form preview and
+refund API submission. It returns:
+- selected merchandise refund lines
+- selected gift-card-load refund amounts
+- merchandise and load refund totals
+- combined selected refund total
+- "sale.refund" or "refund.override" permission at the strict threshold
+
+The previous calculation was duplicated between refundAction() and the
+render-time preview. Preserved:
+- Number(qtyByLine[id]) positive selection and source line order
+- parseMajorCurrencyToMinor() handling of load strings; parser unchanged
+- Math.round((line.lineTotalMinor / line.qty) * requestedQty)
+- load total sum and strict ">" approval threshold behavior
+- no-sale empty selection
+- server-authoritative validation, approval-token handling and error messages
+- sale detail query ["sale", id], pending-payment polling and explicit refetch
+
+No refund API contract or server-side refund policy changed.
+
+EXTRACTION 2 — PURCHASE ORDER LINE QUANTITIES
+==============================================
+Added to the existing purchase-orders domain module:
+- receivedPurchaseOrderQty(order, lineId)
+- returnedPurchaseOrderQty(order, lineId)
+
+The purchase-order detail page now imports these functions instead of
+embedding two one-line calculations among state handlers.
+
+Semantics maintained:
+- sum every matching receipt line across receipts
+- only supplier returns with status POSTED are counted
+- sums are scoped to exact purchaseOrderLineId
+- missing optional receipt/return arrays count as zero
+- no change to barcode scan quantity, inventory receipts, return posting,
+  version locking, idempotency keys or status messages.
+
+EXTRACTION 3 — SHARED PROCUREMENT REQUEST BOUNDARY
+===================================================
+Added mutateProcurementRequest({online,path,init,offlineMessage,api?}).
+Both purchase-order and supplier detail pages use it.
+
+Preserved operation ordering:
+1. Reject offline mutation with ApiError("NETWORK_ERROR", caller's unchanged
+   offline message, "", 0).
+2. GET /api/v1/auth/csrf.
+3. Send original path and unchanged RequestInit with fetched csrfToken.
+4. Caller performs the same detail-query refetch; purchase orders also
+   perform their original events-query refetch in the original order.
+
+No API payloads, paths, HTTP verbs, request headers, idempotency keys, or
+business rules were rewritten. Certain operations (such as supplier-return
+posting) retain their existing separately implemented flow; no unrequested
+behavior change was made.
+
+READABILITY IMPROVEMENTS
+========================
+Both shared procurement mutation call sites are now multiline, showing
+network guard/request and follow-up refresh sequence clearly. The sale-detail
+component has one named selection model instead of two duplicated calculation
+blocks. Receipt/return projections are kept in their appropriate domain lib.
+
+IMPORTANT: The purchase-order and supplier JSX remains largely compressed
+into long lines. A blanket JSX reformat or extensive component decomposition
+was intentionally deferred because it would produce a large high-risk
+presentation diff without sufficient browser screenshot/regression coverage.
+This is a focused responsibility extraction, NOT a claim that all of the
+procurement pages' readability debt has been eliminated.
+
+TEST DEVELOPMENT — RED TO GREEN
+===============================
+Before production implementation, new tests were run and failed due to
+missing modules/exports (expected RED). After implementation:
+- sale-refund-selection.test.ts: 3/3 PASS.
+  Covers selection order, rounded line refunds, invalid/valid load values,
+  exact threshold and missing-sale behavior.
+- purchase-order-quantities.test.ts: 3/3 PASS.
+  Covers cross-receipt totals, posted-only returns and optional empty arrays.
+- procurement-mutation.test.ts: 2/2 PASS.
+  Covers offline rejection before any fetch and CSRF/body/header ordering.
+
+Existing scoped regression tests:
+- purchase-orders.test.ts: 2/2 PASS.
+- sale-detail-api.test.ts: 5/5 PASS.
+
+TOTAL: 15/15 tests PASS in five targeted Vitest files.
+
+ACCEPTANCE GATES
+================
+1. pnpm --filter @pos/web exec tsc --noEmit -p tsconfig.json
+   PASS; chained run completed with exit code 0.
+
+2. pnpm exec eslint --max-warnings=0 [nine Phase D production/test files]
+   PASS; unused import warning caught on first run was removed, and the
+   subsequent zero-warning lint gate completed successfully.
+
+3. git diff --check -- [four updated tracked Phase D source files]
+   PASS; no whitespace error.
+
+4. Final verification marker PHASE_D_FINAL_CHECKS_PASS was emitted and
+   the command exited with code 0.
+
+Git emitted nonblocking CRLF-normalization notices for four modified tracked
+files; no files were wholesale normalized as part of this phase.
+
+RESIDUAL RISKS AND DEFERRED WORK
+=================================
+- Scoped pure behavior/API-contract tests were run, not live React component
+  browser journeys or screenshot-based visual regression tests.
+- Full repository test suite, full production build and Playwright E2E were
+  not run under the repository's bounded test policy.
+- End-to-end purchase-order receiving, supplier return posting and refunds
+  were not exercised against production.
+- Main purchase-order/supplier JSX remains tightly packed; address formatting
+  and presentation component extraction as a separately bounded visual/UI
+  pass, with screenshot comparisons, if desired.
+- Sale-detail rendering still has substantial inline JSX/dialog handlers.
+  Additional splits should be based on real ownership/maintenance gains,
+  not an arbitrary line count.
+- No assertion is made that these scoped checks prove every live workflow.
+
+SAFETY & REPOSITORY STATE
+=========================
+- Kept all existing dirty-worktree changes intact.
+- No reset, checkout, git clean or destructive directory deletion.
+- No API backend code, Supabase schema or live database data changed.
+- No commits, pushes, PRs or deployments.
+- No payments, real inventory operations or production test traffic.
+
+NEXT PHASE
+==========
+Phase E — memory/PostgreSQL adapter parity and justified duplication cleanup.
+Test equivalent business contracts across adapters before moving persistence
+methods. Do not split cohesive factories purely to reduce line counts.
+
+FINAL PHASE D RESULT
+====================
+PASS — targeted frontend responsibility extraction with 15/15 focused
+regression tests, passing TypeScript, zero-warning lint and diff hygiene.

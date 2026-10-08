@@ -21,3 +21,10 @@ test-results/
 test-results-*/
 playwright-report/
 .playwright-mcp/
+
+# Local AI/tool state and one-off audit probes.
+.freebuff/
+.workbuddy-ai/
+.tmp-*.mjs
+.prod-*-smoke.mjs
+apps/api/tsconfig.deep-audit-check.json

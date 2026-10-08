@@ -1,0 +1,147 @@
+NEXPOS PR #20 — FULL CI REVIEW, IDEMPOTENCY REMEDIATION, AND RECHECK
+Date: 2026-10-09
+Timezone: Asia/Manila
+Canonical user project: G:\Vscode\POS
+Isolated development worktree:
+  C:\Users\Viruss\.devspace\worktrees\POS-413cbb01
+  DevSpace workspace_id: ws_105b7a01b1
+
+EXECUTIVE STATUS
+================
+PR #20: OPEN / DRAFT; GitHub currently reports mergeable TRUE.
+PR URL: https://github.com/Ediwow110/projectpos/pull/20
+Refactor committed and pushed: YES.
+Phase 22 integration committed and pushed: YES.
+CI remediation committed and pushed: YES.
+Latest PR SHA: 22c5951e9e16411291aebab4d2969d6f29ecb2a1
+Latest fix commit subject:
+  fix(api): use collision-free in-memory idempotency keys
+User's original G:\Vscode\POS checkout remains separate; no reset,
+checkout or forced sync in the original working directory.
+PR MERGED TO MAIN: NO.
+RENDER PRODUCTION DEPLOYED: NO.
+
+GITHUB ACTIONS OBSERVATIONS — PRE-FIX COMMIT
+============================================
+Original integrated merge SHA:
+  5d25393f91d14c5eb7650d1466aa55d2a31d6ea2
+GitHub run:
+  https://github.com/Ediwow110/projectpos/actions/runs/37810457122
+Observed status/details:
+  PostgreSQL job: SUCCESS.
+  Verify job: FAILURE at 'pnpm test'.
+  E2E job: still IN PROGRESS at last observed step-level check.
+Within verify job:
+  pnpm install --frozen-lockfile: PASS.
+  pnpm lint: PASS.
+  pnpm typecheck: PASS.
+  verify-scaffold: PASS.
+  verify-phase0: PASS.
+  full pnpm test: FAIL; subsequent build/audit/phase scripts skipped.
+  API suite: 1 test failed; 650 tests passed (651 total).
+  Web suite: 265/265 PASS; validation: 114/114 PASS.
+Failed test:
+  apps/api/src/common/idempotency-adapter-parity.test.ts
+  "memory identifies claims by three distinct fields,
+   not ambiguous delimiter concatenation"
+Exception: IDEMPOTENCY_REPLAY
+Root cause:
+  Mainline Phase 22 memory.db implementation produced an idempotency
+  Map key using a colon-separated concatenation:
+    businessId + ':' + key + ':' + commandType
+  The regression test supplied distinct tuples that collided when
+  fields themselves contained colons.
+  PostgreSQL uses a true three-field composite unique key and did not
+  have this delimiter issue.
+
+LOCAL REPRODUCTION AND CORRECTION
+=================================
+Red reproduction before fix:
+  pnpm --filter @pos/api exec vitest run
+    src/common/idempotency-adapter-parity.test.ts --maxWorkers=1
+  RESULT: 1 failed, 1 passed; failure IDEMPOTENCY_REPLAY.
+Fixed one runtime file in isolated worktree:
+  apps/api/src/common/memory.db.ts
+Changed claimIdempotency(r) key to:
+  JSON.stringify([r.businessId, r.key, r.commandType])
+Changed findIdempotency(businessId,key,commandType) lookup to:
+  JSON.stringify([businessId, key, commandType])
+  Map key contract now avoids delimiter collisions in both directions.
+  No database schema, SQL, credentials or production data changed.
+  Already-present test now passes without weakening its assertions.
+
+GREEN LOCAL VERIFICATION AFTER FIX
+===================================
+Exact regression: 2/2 PASS.
+Related sales/refund/order suites: 29/29 PASS across four files:
+  src/sales/nest/sales.split.test.ts 7/7
+  src/refunds/nest/refund.service.test.ts 15/15
+  src/orders/order-service.test.ts 5/5
+  src/orders/order-sale-service.test.ts 2/2
+API TypeScript tsc --noEmit: PASS.
+Full monorepo pnpm test: EXIT CODE 0.
+  API: 135/135 files, 651/651 tests PASS.
+  Web: 71/71 files, 265/265 tests PASS.
+  Validation: 17/17 files, 114/114 tests PASS.
+  Auth: 7/7 tests PASS.
+  Database: 3/3 tests PASS.
+  Config: 3/3 tests PASS.
+  Types: 3/3 tests PASS.
+  Total across the seven packages: 1046 tests recorded as passing.
+  Note: Turborepo reused cached results for five unchanged packages;
+  API and Web were freshly executed. Load-cohort tests gated on
+  environment flags printed that high-load execution was skipped.
+  The monorepo test result is not a substitute for GitHub E2E or the
+  separate PostgreSQL CI job.
+
+COMMIT AND PUSH VERIFIED
+=========================
+A dedicated local branch was created inside isolated worktree:
+  codex/pr20-idempotency-ci-fix-20261009
+Fix commit:
+  22c5951e9e16411291aebab4d2969d6f29ecb2a1
+Parent:
+  5d25393f91d14c5eb7650d1466aa55d2a31d6ea2
+Exactly one file staged/committed:
+  apps/api/src/common/memory.db.ts
+Commit summary: 1 file, 4 insertions, 2 deletions.
+git diff --cached --check: PASS.
+Non-force push to existing PR branch:
+  5d25393..22c5951
+  origin/codex/phase20-gift-card-load-final-20261005
+Remote SHA verified with git ls-remote at 22c5951.
+No force push, branch reset, merge to main or deployment.
+Generated Next.js config files and temporary local scripts remain
+excluded from the commit; they are local worktree artifacts.
+
+NEW GITHUB CI — CORRECTED COMMIT
+=================================
+At last check, current PR:
+  OPEN, DRAFT, mergeable TRUE; 75 files changed, 5 commits.
+  Head SHA: 22c5951e9e16411291aebab4d2969d6f29ecb2a1
+New GitHub CI run:
+  https://github.com/Ediwow110/projectpos/actions/runs/37811157415
+  verify: IN PROGRESS.
+  pg: IN PROGRESS.
+  e2e: IN PROGRESS.
+Another workflow event for this SHA also showed verify and pg in
+progress, and an e2e job marked SKIPPED; that skipped job is not an
+assertion that E2E passed or failed.
+No claim of green GitHub CI is made at this time.
+PR description has been updated with the verified failure, root cause,
+remediation, local rerun and exact new run URL.
+
+RELEASE DECISION / NEXT GATES
+==============================
+Code is COMMITTED AND PUSHED.
+The previous red CI failure has a verified local regression fix.
+The entire local monorepo test command now passes.
+But new GitHub checks are not complete.
+Keep the PR as DRAFT until all required CI is green and final review
+is performed. If a new CI job fails, inspect exact job logs before
+any change.
+Do not merge into main, approve auto-merge or deploy Render until
+separate explicit authorization and production safety readiness review.
+Original production web, API, Supabase database, PayMongo and Brevo
+have not been altered by this CI remediation.
+Overall status: CI RECHECK IN PROGRESS — RELEASE HOLD.

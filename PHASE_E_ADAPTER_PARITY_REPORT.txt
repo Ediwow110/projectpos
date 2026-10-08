@@ -1,0 +1,131 @@
+NEXPOS PHASE E — MEMORY / POSTGRESQL ADAPTER PARITY
+Date: 2026-10-08
+Workspace: G:\Vscode\POS
+
+FINAL STATUS: SCOPED ACCEPTANCE PASSED; LIVE PG PARITY NOT EXECUTED
+=================================================================
+The reproduced memory-adapter collision is fixed and the new and existing
+focused regressions, API TypeScript and zero-warning ESLint passed.
+PostgreSQL execution tests were deliberately not run because they truncate
+tables. The final no-index whitespace inspection of untracked files returned
+exit code 1 due to file differences without emitting whitespace findings;
+this is NOT a successful zero-exit hygiene assertion.
+
+SCOPE
+=====
+Inspect the memory and PostgreSQL data-adapter boundaries, especially
+idempotency, tenant isolation, ordering, and safe testing procedures.
+Make only justified, small changes preserving public DbPort semantics.
+
+CONFIRMED PARITY DEFECT
+=======================
+apps/api/src/common/memory/sales.family.ts previously encoded a claim
+identifier as:
+    businessId + ":" + key + ":" + commandType
+
+This encoding is ambiguous when individual fields contain ':':
+  Claim 1: ("business-1", "checkout:mobile", "sale.complete")
+  Claim 2: ("business-1", "checkout", "mobile:sale.complete")
+
+Memory generated the same concatenated key for these two DIFFERENT
+tuples, rejecting claim 2 as IDEMPOTENCY_REPLAY. PostgreSQL treats these
+as distinct because its unique constraint is on separate columns
+("businessId", "key", "commandType").
+
+This is a source-level, experimentally reproduced parity defect, not
+evidence of a known production incident. Current production command
+types may not include ':', but DbPort defines arbitrary string keys and
+command types, so the delimiter encoding was not collision-safe.
+
+RED TEST EVIDENCE
+=================
+Added apps/api/src/common/idempotency-adapter-parity.test.ts:
+  - memory full-tuple identity, independently addressable claims, replay
+    protection, cross-tenant isolation, separate command lookup
+  - PG sales-family SQL statement shape with mock query results:
+    distinct column bindings, scoped lookups and ON CONFLICT DO NOTHING
+
+Test first: command
+  pnpm --filter @pos/api exec vitest run
+    src/common/idempotency-adapter-parity.test.ts --watch=false --bail=1
+Failed as expected with IDEMPOTENCY_REPLAY in memory/sales.family.ts.
+The PG SQL assertion uses a fake PgContext and does NOT connect to a
+real PostgreSQL service.
+
+IMPLEMENTATION
+==============
+Changed apps/api/src/common/memory/sales.family.ts:
+  - Memory map key is encoded as JSON.stringify of the THREE-ELEMENT
+    tuple [businessId, key, commandType].
+  - Both claimIdempotency and findIdempotency use the same private
+    tuple-key function.
+  - Existing storage lifetime, duplicate exception string, result
+    payload, tenant/command fields, and async interface remain intact.
+  - PostgreSQL SQL, unique indexes, database schema, locks,
+    transactions, payment processing and production connections untouched.
+  - Removed the two unused local destructured bindings (movements and
+    balances); their underlying context properties and storage are unchanged.
+
+PG SAFETY
+=========
+apps/api/vitest.pg.config.ts points to destructive pg integration tests.
+apps/api/test/pg/pg-sales.test.ts and pg-shifts.test.ts use TRUNCATE on
+their database target. These integration tests MUST NOT run against any
+potentially shared/production DB. Only run with an independently verified
+disposable PG database (for example an isolated local test container).
+No such target was established in this phase.
+
+FURTHER REVIEW
+==============
+Existing parity behaviors reviewed statically:
+  - SaleItem ordering: memory sorts position then id; PG has explicit
+    sorting. No mechanical refactor needed.
+  - Idempotency claim uniqueness: PG ON CONFLICT checks the full triple.
+  - Both adapters tenant-filter reads and support same DbPort interface.
+  - Memory insertion ordering and PG createdAt+id ordering should be
+    tested separately if caller-visible tie ordering becomes material.
+  - No bulk de-duplication or service redesign was justified by evidence.
+
+ACCEPTANCE EVIDENCE
+===================
+Initial new isolated parity test (RED): reproduced IDEMPOTENCY_REPLAY for
+two distinct tuple values in the memory adapter before the patch.
+
+After the fix:
+- idempotency-adapter-parity.test.ts: 2/2 PASS
+- sales.service.test.ts: 15/15 PASS
+- sales.split.test.ts: 7/7 PASS
+- sale-stock-service.test.ts: 4/4 PASS
+- shift.service.test.ts: 11/11 PASS
+- Total five bounded suites: 39/39 PASS.
+
+First strict ESLint attempt: two unused-variable warnings in the existing
+sales.family.ts destructuring; the --max-warnings=0 gate exited 1.
+After removing only the unused destructured names:
+- New parity test was rerun: 2/2 PASS.
+- pnpm --filter @pos/api exec tsc --noEmit -p tsconfig.json: PASS.
+- pnpm exec eslint --max-warnings=0 for both Phase E source/test files: PASS.
+- git diff --check -- apps/api/src/common/memory.db.ts: PASS.
+- git diff --no-index --check -- NUL apps/api/src/common/memory/sales.family.ts:
+  returned code 1 with a Git LF/CRLF warning. With --no-index, the nonzero
+  result does not, by itself, establish a whitespace defect. No whitespace
+  error was printed. The chained verification consequently did not print
+  its final marker. Do not misstate that entire chain as exit code 0.
+
+Additional restrictions:
+- No destructive PostgreSQL integration suites run.
+- No full API or web test suite, production build, or browser E2E run.
+- PostgreSQL query assertions used a fake PgContext and never opened a DB
+  connection. Actual Postgres runtime parity remains unverified.
+
+PHASE E DECISION
+================
+PASS for the characterized memory idempotency fix, scoped tests, typecheck
+and focused zero-warning lint. Remaining separate quality gate: a clean
+standalone whitespace/diff check for the two untracked new source/test files
+or a review after they are properly staged. No commit/push/deploy was made.
+
+SAFETY
+======
+No database writes, live payment calls, git resets, clean, commits,
+pushes, deployment or unrelated modifications were made.

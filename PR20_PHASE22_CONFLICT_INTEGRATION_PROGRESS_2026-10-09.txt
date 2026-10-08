@@ -1,0 +1,99 @@
+NEXPOS — PHASE 22 PR #20 CONFLICT RESOLUTION / INTEGRATION STATUS
+Date: 2026-10-09 Asia/Manila
+Main local workspace: G:\Vscode\POS
+Isolated DevSpace integration:
+  C:\Users\Viruss\.devspace\worktrees\POS-413cbb01
+  workspace_id ws_105b7a01b1
+Base: origin/main 438d36223f39c08978d9a624e00da2aed4e10e32
+PR branch: origin/codex/phase20-gift-card-load-final-20261005
+PR URL: https://github.com/Ediwow110/projectpos/pull/20
+
+COMMIT STATUS
+=============
+YES — earlier NexPOS 99-file core source refactor is COMMITTED AND
+PUSHED TO GITHUB:
+  868ece64585180aa4e5956080626ce7de70b5f9e
+PR #20 is OPEN / DRAFT, not merged and not deployed.
+
+CURRENT ISOLATED INTEGRATION STATUS
+===================================
+In isolated worktree on top of current main, non-commit merge was
+started with the published PR branch. Eight file conflict markers
+were resolved; git diff --name-only --diff-filter=U returned none.
+The merge is still IN PROGRESS and UNCOMMITTED. No PR branch update
+or force push occurred.
+
+Conflict strategy: Phase 22 behavior was prioritized over blindly
+choosing the refactor and risking loss of reservation/fulfillment data.
+- app.module.ts: retained Phase 22 OrderController/PublicOrderController
+  and registered split PaymentsController and ReceiptsController in
+  runtime and test module declarations.
+- db.port.ts: retained main Phase 22 combined types/port contracts.
+- memory.db.ts: retained main Phase 22 reservation/order/fulfillment
+  memory implementation.
+- procurement.service.ts: retained main Phase 22 reservation-aware
+  stock decrease checks.
+- refund.service.ts: retained main Phase 22 delivery-refund fingerprint.
+- reporting.service.ts: retained main Phase 22 series/accounting logic.
+- apps/web/src/app/sales/[id]/page.tsx: retained Phase 22 delivery-charge
+  refund UI behavior.
+- Phase 22 design spec: retained the integrated main version.
+New refactor modules remain present; where Phase 22 monolith code
+was retained, the new modules may be currently unused. This is an
+intentional compatibility trade-off, NOT a full refactor integration.
+A subsequent scoped module migration is necessary before claiming that
+all refactoring objectives are implemented in the combined source.
+
+ISOLATED INTEGRATION COMPILER FIXES
+===================================
+The newly extracted family files were brought into compliance with
+Phase 22's required type contracts:
+- memory/platform.family.ts supplies storefrontKey null default.
+- memory/sales.family.ts supplies deliveryFeeMinor/deliveryTaxMinor
+  defaults in createSale, and deliveryFeeRefundMinor/
+  deliveryTaxRefundMinor defaults in createRefund.
+- reporting-series.test.ts fixture includes Phase 22
+  merchandise/delivery/net revenue fields.
+These are in the ISOLATED integration worktree only.
+
+FRESH VERIFICATION
+==================
+Offline, frozen-lockfile pnpm installation succeeded in isolated tree:
+  392 reused packages; downloaded 0; install scripts disabled.
+API TypeScript via tsc --noEmit -p tsconfig.json: PASS.
+Web TypeScript via tsc --noEmit -p tsconfig.json: PASS.
+Focused unit tests:
+  reporting-series.test.ts                 3/3 PASS
+  orders/reservation-service.test.ts       3/3 PASS
+  orders/order-sale-service.test.ts        2/2 PASS
+  orders/fulfillment-service.test.ts       6/6 PASS
+  refunds/refund-normalization.test.ts     7/7 PASS
+TOTAL: 21/21 PASS across five files.
+No full Next.js build or integrated E2E smoke has been run yet.
+
+REMAINING BEFORE PR PUBLICATION AS MERGE READY
+===============================================
+1. Check sale/payment/receipt routes and controller guard tests.
+2. Run procurement supplier-return inventory/reservation regressions
+   and refund delivery-charge idempotency regression.
+3. Validate Phase 22 sales page against extracted web helpers;
+   decide which abstractions are retained, rewired, or deferred.
+4. Run integrated Next.js production build and the relevant isolated
+   end-to-end tests; verify the true exit statuses.
+5. Review Git diff/auto-merged files for loss of existing behavior,
+   security/tenant scope and unintended broad changes.
+6. Create an integration commit only after review/authorization and
+   update draft PR #20 when verified. Do not merge or deploy before
+   separate explicit approval.
+
+STATUS
+======
+Historical refactor COMMITTED+PUSHED: YES.
+PR #20 conflicts have been resolved in isolated worktree: YES.
+Combined source API/Web TypeScript: PASS.
+Five focused integrated test files: 21/21 PASS.
+Integration merge commit created: NO.
+PR updated with integrated commit: NO.
+Merge into main: NO.
+Render deploy: NO.
+Original G:\Vscode\POS workspace files preserved.

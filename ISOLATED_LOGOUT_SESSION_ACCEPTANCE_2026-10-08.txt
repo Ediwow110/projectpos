@@ -1,0 +1,90 @@
+NEXPOS — ISOLATED LOGOUT AND SESSION REVOCATION ACCEPTANCE
+Date: 2026-10-08
+Workspace: G:\Vscode\POS
+Branch: codex/phase20-gift-card-load-final-20261005
+
+DECISION
+========
+LOGOUT AND SERVER-SIDE SESSION REVOCATION: PASS — 1/1 desktop Playwright test.
+OVERALL PRODUCTION RELEASE APPROVAL: HOLD.
+
+WORK PERFORMED
+==============
+Added e2e/session-logout.spec.ts with an explicit authenticated browser
+journey and replay test of the original session token.
+
+The test:
+1. Registers an isolated synthetic owner and business.
+2. Completes local operational onboarding and skips the first-run tour.
+3. Captures the original pos_session cookie without displaying its value.
+4. Confirms GET /api/v1/me accepts that cookie before logout (HTTP 200).
+5. Navigates to the protected sales page and clicks Sign out.
+6. Confirms the browser returns to /login and shows Welcome back.
+7. Replays the ORIGINAL cookie to the API from a standalone test request.
+8. Confirms the server rejects the revoked session with HTTP 401 or 403.
+9. Navigates to /sales again and confirms access is redirected to /login.
+
+The critical security assertion is the server-side replay rejection:
+a UI redirect alone would not prove session revocation.
+
+TEST COMMAND
+============
+pnpm exec playwright test e2e/session-logout.spec.ts
+  --config=playwright.safe-auth.config.ts
+  --project=desktop --workers=1 --reporter=line
+  && echo ISOLATED_LOGOUT_REVOCATION_PASS
+
+FRESH TEST RESULT
+=================
+PASS — 1 passed (16.2s).
+The runner process exited with code 0.
+ISOLATED_LOGOUT_REVOCATION_PASS was printed.
+
+ENVIRONMENT / DATA ISOLATION
+============================
+Existing playwright.safe-auth.config.ts was reused:
+- Local-only Next.js frontend on localhost:3100.
+- Local NestJS API on localhost:3101.
+- NODE_ENV=development with DATABASE_URL and PGTEST_BASE empty.
+- Memory database, not Supabase or PostgreSQL.
+- PayMongo, Brevo and SMTP secrets disabled in isolated API child process.
+- No live payments, inventory, registrations or external mail.
+- One Chromium desktop worker, one selected test file.
+- No deployment, commit, staging, push, merge or destructive database test.
+
+TEMPORARY NEXT.JS CONFIG
+========================
+Next.js dev may auto-adjust tsconfig.json and next-env.d.ts to reference the
+temporary .next-release-auth build output. After this run the two generated
+references were surgically reset to the regular .next types paths.
+Unrelated user changes were not intentionally modified.
+
+BOUNDARIES / NOT YET COVERED
+============================
+- The logout test checks token rejection and UI login gating, not concurrent
+  multi-device logout or revocation of every active session.
+- No additional manager-approval inventory, void or shift-close test
+  was run in this work package.
+- Refund approval and procurement foundation desktop flows passed 1/1 each
+  in the preceding work package; they were not rerun here.
+- The earlier authenticated POS cash checkout-to-shift-close critical path
+  passed 1/1; this test does not repeat that workflow.
+- PostgreSQL integration/parity tests remain blocked pending proof of a
+  disposable test database; they truncate tables.
+- Intentional Git staging/diff and secret review remain open.
+- The previous production web build passed with three nonblocking warnings.
+
+NEXT SAFE WORK PACKAGE
+======================
+1. Run bounded desktop Playwright approval-matrix tests for inventory,
+   void, and foreign shift close with local memory-backed data.
+2. Review failures individually; add targeted regressions before changing
+   implementation if needed.
+3. Expand procurement to receiving/returns against disposable synthetic data.
+4. Prepare the Git file inclusion manifest and complete remaining release
+   gates. Do not commit or deploy until explicitly authorized.
+
+FINAL SUMMARY
+=============
+PASS for the specific isolated logout/session-revocation test.
+RELEASE HOLD remains until broader authenticated, PG and Git gates pass.

@@ -1,0 +1,77 @@
+NEXPOS — REMOTE PUSH AND DRAFT PULL REQUEST
+Date: 2026-10-09 (Asia/Manila)
+Workspace: G:\Vscode\POS
+
+PUBLISH STATUS
+==============
+Remote repository: https://github.com/Ediwow110/projectpos
+Branch: codex/phase20-gift-card-load-final-20261005
+Remote push: SUCCESS, without force.
+Pushed head SHA: 868ece64585180aa4e5956080626ce7de70b5f9e
+Published 2 local commits, from remote 59039c7 to 868ece6.
+Local branch and remote tracking ref are now synchronized.
+
+DRAFT PR CREATED
+================
+PR: #20
+URL: https://github.com/Ediwow110/projectpos/pull/20
+Base: main
+Head: codex/phase20-gift-card-load-final-20261005
+State: OPEN, DRAFT.
+GitHub reports mergeable: FALSE.
+GitHub reports 3 PR commits, 105 changed files.
+PR remains review-only; not merged or deployed.
+
+REMOTE MAIN — IMPORTANT INTEGRATION DIVERGENCE
+===============================================
+Fresh remote main (GitHub and local fetch):
+  438d36223f39c08978d9a624e00da2aed4e10e32
+Current feature commit:
+  868ece64585180aa4e5956080626ce7de70b5f9e
+Merge-base:
+  27bd3033cae95c29083523d9da2fbc3c3d792392
+Relative to main the feature branch is behind 30 commits and ahead
+3 commits. The 3 PR commits include 59039c7 (receipt change),
+d035197 (phase22 design spec) and 868ece6 (99-file modularization).
+
+READ-ONLY MERGE CONFLICT PREFLIGHT
+==================================
+git merge-tree --write-tree --name-only --no-messages origin/main HEAD
+exit code 1; conflicting paths:
+  apps/api/src/app.module.ts
+  apps/api/src/common/db.port.ts
+  apps/api/src/common/memory.db.ts
+  apps/api/src/procurement/nest/procurement.service.ts
+  apps/api/src/refunds/nest/refund.service.ts
+  apps/api/src/reports/nest/reporting.service.ts
+  apps/web/src/app/sales/[id]/page.tsx
+  docs/superpowers/specs/2026-10-06-phase22-omnichannel-commerce-fulfillment-design.md
+Any merge must first resolve these conflicts and revalidate Phase 22
+omnichannel behavior on the integrated source, not just isolated refactor.
+
+VERIFICATION CONTEXT
+====================
+Core reviewed commit 868ece6 contains exactly 99 source/test files.
+Git tree matches independently typechecked/tested snapshot:
+  32fc5b6b71bf9365f58317cce376c3c1f3f79252
+Previously isolated source regression: 36/36 tests, 9 files PASS.
+Selected disposable PG parity tests previously 45/45 PASS.
+Prior worktree production Next.js build EXIT_CODE=0.
+These checks do NOT certify the conflict-resolved integrated Phase 22
+candidate. Release and production deployment remain blocked.
+
+LOCAL STATE PRESERVED
+=====================
+No force push, checkout, reset, merge, deletion or deployment.
+User-modified local .gitignore, two modified logo SVGs, brand
+alternatives, QA TXT reports and local plugin/tool configs remain intact.
+These were not part of the 99-file core commit.
+
+NEXT PHASE
+==========
+Resolve eight conflicts in a separate integration worktree to avoid
+disturbing G:\Vscode\POS.
+Run API/web TypeScript, relevant domain and E2E tests, and build after
+integration. Review GitHub CI, then update PR #20 when conflict-free.
+Merging into main or deploying requires a separate authorization.
+CURRENT RELEASE STATUS: HOLD — DRAFT PR OPEN, MERGEABLE FALSE.

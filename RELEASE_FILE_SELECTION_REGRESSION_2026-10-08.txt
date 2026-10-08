@@ -1,0 +1,279 @@
+NEXPOS — FINAL WORKTREE FILE SELECTION & TARGETED REGRESSION
+Date: 2026-10-08
+Workspace: G:\Vscode\POS
+Branch: codex/phase20-gift-card-load-final-20261005
+
+DECISION
+PASS: Four freshly run, scoped unit test files — 15/15 tests.
+PASS: Last verified local production web build, captured EXIT_CODE=0.
+HOLD: Git release candidate has not been staged, committed, pushed or deployed.
+
+TESTS RUN IN THE CURRENT WORK PACKAGE
+apps/api/src/sales/nest/sales-controller-guards.test.ts: 4 passed
+apps/api/src/common/idempotency-adapter-parity.test.ts: 2 passed
+apps/web/src/app/pos/pos-checkout-flow.test.ts: 7 passed
+apps/web/src/lib/procurement-mutation.test.ts: 2 passed
+Each test was executed as an independent, single-file Vitest run.
+All four commands returned success; marker FOUR_SCOPED_RELEASE_TEST_FILES_PASS.
+
+HISTORICAL EVIDENCE (NOT RERUN HERE)
+Production build verified with native child-process EXIT_CODE=0;
+all expected build manifests exist and only ESLint Next-plugin notice remains.
+Selected disposable PostgreSQL sales/shifts/procurement/people test files:
+45/45 passed across four selected files.
+Previously isolated E2E workflows covered checkout, approvals, logout, procurement.
+
+FILE INVENTORY
+Modified tracked files: 48
+Untracked files total: 156
+Staged files: 0
+Modified tracked app source: 43
+Modified tracked tests: 2
+Untracked runtime modules: 37
+Untracked unit tests: 13
+Untracked e2e tests: 2
+Untracked safe runner configurations: 2
+Modified brand assets: 2
+Untracked brand version assets: 5
+Untracked local tool/config files: 78
+Untracked TXT report files: 20
+Other untracked files needing review: 0
+Git tracked whitespace check exit: 0
+
+STATIC LOCAL IMPORT ANALYSIS (HEURISTIC; NOT COMPILER VERIFICATION)
+Relative and @/ imports that resolve to new runtime modules: 97
+Distinct new runtime modules referenced from changed/new sources: 37 of 37
+New runtime modules not referenced from the scanned changed/new subset: 0
+Unresolved relative/@/ imports in scanned source: 0
+Unreferenced modules might be referenced from unchanged tracked files;
+orchestrator imports and nonstandard paths need manual inspection.
+The static scan does not expand all dynamic imports or type exports;
+the previously successful API/Web TypeScript checks provide stronger
+evidence for source resolution in the CURRENT WORKTREE, not a staged tree.
+
+GROUP A — REVIEW/INCLUDE: MODIFIED TRACKED RUNTIME SOURCE
+TRACKED_SOURCE: apps/api/src/app.module.ts
+TRACKED_SOURCE: apps/api/src/common/db.port.ts
+TRACKED_SOURCE: apps/api/src/common/memory.db.ts
+TRACKED_SOURCE: apps/api/src/procurement/nest/procurement.service.ts
+TRACKED_SOURCE: apps/api/src/refunds/nest/refund.service.ts
+TRACKED_SOURCE: apps/api/src/reports/nest/reporting.service.ts
+TRACKED_SOURCE: apps/api/src/sales/nest/sales.controller.ts
+TRACKED_SOURCE: apps/api/src/sales/nest/sales.module.ts
+TRACKED_SOURCE: apps/api/src/shifts/nest/shift.service.ts
+TRACKED_SOURCE: apps/web/src/app/customers/[id]/page.tsx
+TRACKED_SOURCE: apps/web/src/app/customers/[id]/stored-value/page.tsx
+TRACKED_SOURCE: apps/web/src/app/expenses/page.tsx
+TRACKED_SOURCE: apps/web/src/app/gift-cards/[id]/page.tsx
+TRACKED_SOURCE: apps/web/src/app/gift-cards/page.tsx
+TRACKED_SOURCE: apps/web/src/app/pos/page.tsx
+TRACKED_SOURCE: apps/web/src/app/products/[id]/page.tsx
+TRACKED_SOURCE: apps/web/src/app/products/page.tsx
+TRACKED_SOURCE: apps/web/src/app/purchase-orders/[id]/page.tsx
+TRACKED_SOURCE: apps/web/src/app/receipts/[saleId]/page.tsx
+TRACKED_SOURCE: apps/web/src/app/receipts/shared/[token]/page.tsx
+TRACKED_SOURCE: apps/web/src/app/reports/sales/page.tsx
+TRACKED_SOURCE: apps/web/src/app/sales/[id]/page.tsx
+TRACKED_SOURCE: apps/web/src/app/sales/page.tsx
+TRACKED_SOURCE: apps/web/src/app/suppliers/[id]/page.tsx
+TRACKED_SOURCE: apps/web/src/app/team/page.tsx
+TRACKED_SOURCE: apps/web/src/components/AppShell.tsx
+TRACKED_SOURCE: apps/web/src/components/GiftCardLoadDialog.tsx
+TRACKED_SOURCE: apps/web/src/components/GiftCardLoadResultDialog.tsx
+TRACKED_SOURCE: apps/web/src/components/PosCartPanel.tsx
+TRACKED_SOURCE: apps/web/src/components/PosDiscountDialog.tsx
+TRACKED_SOURCE: apps/web/src/components/PosHeldSalesDialog.tsx
+TRACKED_SOURCE: apps/web/src/components/PosManagerApprovalDialog.tsx
+TRACKED_SOURCE: apps/web/src/components/PosPaymentWorkspace.tsx
+TRACKED_SOURCE: apps/web/src/components/PosProductCatalog.tsx
+TRACKED_SOURCE: apps/web/src/components/PosResponsiveCart.tsx
+TRACKED_SOURCE: apps/web/src/components/SaleExchangeDialog.tsx
+TRACKED_SOURCE: apps/web/src/components/ui.tsx
+TRACKED_SOURCE: apps/web/src/lib/inventory-view.ts
+TRACKED_SOURCE: apps/web/src/lib/loyalty-settings.ts
+TRACKED_SOURCE: apps/web/src/lib/purchase-orders.ts
+TRACKED_SOURCE: apps/web/src/lib/reports.ts
+TRACKED_SOURCE: apps/web/src/lib/shifts.ts
+TRACKED_SOURCE: apps/web/src/lib/suppliers.ts
+
+GROUP B — REVIEW/INCLUDE: ALL NEW RUNTIME MODULES USED BY REFACTORS
+NEW_RUNTIME: apps/api/src/common/db/port.ts
+NEW_RUNTIME: apps/api/src/common/db/ports/catalog.port.ts
+NEW_RUNTIME: apps/api/src/common/db/ports/inventory.port.ts
+NEW_RUNTIME: apps/api/src/common/db/ports/platform.port.ts
+NEW_RUNTIME: apps/api/src/common/db/ports/procurement.port.ts
+NEW_RUNTIME: apps/api/src/common/db/ports/sales.port.ts
+NEW_RUNTIME: apps/api/src/common/db/types.ts
+NEW_RUNTIME: apps/api/src/common/memory/catalog.family.ts
+NEW_RUNTIME: apps/api/src/common/memory/context.ts
+NEW_RUNTIME: apps/api/src/common/memory/inventory.family.ts
+NEW_RUNTIME: apps/api/src/common/memory/platform.family.ts
+NEW_RUNTIME: apps/api/src/common/memory/procurement.family.ts
+NEW_RUNTIME: apps/api/src/common/memory/sales.family.ts
+NEW_RUNTIME: apps/api/src/procurement/nest/procurement.contracts.ts
+NEW_RUNTIME: apps/api/src/procurement/nest/procurement.order.service.ts
+NEW_RUNTIME: apps/api/src/procurement/nest/procurement.supplier.service.ts
+NEW_RUNTIME: apps/api/src/procurement/nest/procurement.support.ts
+NEW_RUNTIME: apps/api/src/refunds/refund-normalization.ts
+NEW_RUNTIME: apps/api/src/reports/reporting-series.ts
+NEW_RUNTIME: apps/api/src/sales/nest/payments.controller.ts
+NEW_RUNTIME: apps/api/src/sales/nest/receipts.controller.ts
+NEW_RUNTIME: apps/api/src/sales/nest/sales.controller.shared.ts
+NEW_RUNTIME: apps/api/src/shifts/shift-list.ts
+NEW_RUNTIME: apps/web/src/app/pos/pos-checkout-flow.ts
+NEW_RUNTIME: apps/web/src/app/pos/use-pos-page-controller.ts
+NEW_RUNTIME: apps/web/src/app/products/use-products-page-state.ts
+NEW_RUNTIME: apps/web/src/app/team/use-team-page-state.ts
+NEW_RUNTIME: apps/web/src/components/use-branch-switcher.ts
+NEW_RUNTIME: apps/web/src/components/use-navigation-progress.ts
+NEW_RUNTIME: apps/web/src/components/use-workspace-tour.ts
+NEW_RUNTIME: apps/web/src/lib/app-shell-behavior.ts
+NEW_RUNTIME: apps/web/src/lib/money.ts
+NEW_RUNTIME: apps/web/src/lib/procurement-mutation.ts
+NEW_RUNTIME: apps/web/src/lib/products-api.ts
+NEW_RUNTIME: apps/web/src/lib/sale-detail-api.ts
+NEW_RUNTIME: apps/web/src/lib/sale-refund-selection.ts
+NEW_RUNTIME: apps/web/src/lib/team-api.ts
+
+GROUP C — REVIEW/INCLUDE: RELATED TESTS
+TRACKED_TEST: apps/api/src/sales/nest/sales.split.test.ts
+TRACKED_TEST: e2e/critical-path.spec.ts
+NEW_UNIT_TEST: apps/api/src/common/idempotency-adapter-parity.test.ts
+NEW_UNIT_TEST: apps/api/src/refunds/refund-normalization.test.ts
+NEW_UNIT_TEST: apps/api/src/reports/reporting-series.test.ts
+NEW_UNIT_TEST: apps/api/src/sales/nest/sales-controller-guards.test.ts
+NEW_UNIT_TEST: apps/api/src/shifts/shift-list.test.ts
+NEW_UNIT_TEST: apps/web/src/app/pos/pos-checkout-flow.test.ts
+NEW_UNIT_TEST: apps/web/src/lib/admin-page-api.test.ts
+NEW_UNIT_TEST: apps/web/src/lib/app-shell-behavior.test.ts
+NEW_UNIT_TEST: apps/web/src/lib/money.test.ts
+NEW_UNIT_TEST: apps/web/src/lib/procurement-mutation.test.ts
+NEW_UNIT_TEST: apps/web/src/lib/purchase-order-quantities.test.ts
+NEW_UNIT_TEST: apps/web/src/lib/sale-detail-api.test.ts
+NEW_UNIT_TEST: apps/web/src/lib/sale-refund-selection.test.ts
+NEW_E2E_TEST: e2e/procurement-receiving-returns.spec.ts
+NEW_E2E_TEST: e2e/session-logout.spec.ts
+SAFE_TEST_RUNNER: playwright.safe-auth.config.ts
+SAFE_TEST_RUNNER: playwright.safe-smoke.config.ts
+
+GROUP D — CONDITIONAL ASSETS/CONFIG TO REVIEW SEPARATELY
+TRACKED_BRAND_ASSET: apps/web/public/brand/nexpos-logo.svg
+TRACKED_BRAND_ASSET: apps/web/public/brand/nexpos-mark.svg
+NEW_BRAND_VERSION: apps/web/public/brand/versions/v1-receipt-n.svg
+NEW_BRAND_VERSION: apps/web/public/brand/versions/v2-counter-arch.svg
+NEW_BRAND_VERSION: apps/web/public/brand/versions/v3-peso-tick.svg
+NEW_BRAND_VERSION: apps/web/public/brand/versions/v4-folded-ledger.svg
+NEW_BRAND_VERSION: apps/web/public/brand/versions/v5-wordmark-dot.svg
+TRACKED_CONFIG_REVIEW: .gitignore
+
+GROUP E — EXCLUDE BY DEFAULT: LOCAL TOOL/DIAGNOSTIC FILES
+LOCAL_TOOL_EXCLUDE: .zcodeignore
+LOCAL_TOOL_EXCLUDE: AGENTS.md
+LOCAL_TOOL_EXCLUDE: opencode.json
+LOCAL_TOOL_EXCLUDE: scripts/probe-key-hashes.mjs
+LOCAL_TOOL_EXCLUDE: scripts/probe-lock-identity.mjs
+LOCAL_TOOL_EXCLUDE: scripts/qa22-prepaid-pay.mjs
+LOCAL_TOOL_EXCLUDE: skills/brainstorming/.openclaw/source-origin.json
+LOCAL_TOOL_EXCLUDE: skills/brainstorming/SKILL.md
+LOCAL_TOOL_EXCLUDE: skills/brainstorming/scripts/frame-template.html
+LOCAL_TOOL_EXCLUDE: skills/brainstorming/scripts/helper.js
+LOCAL_TOOL_EXCLUDE: skills/brainstorming/scripts/server.cjs
+LOCAL_TOOL_EXCLUDE: skills/brainstorming/scripts/start-server.sh
+LOCAL_TOOL_EXCLUDE: skills/brainstorming/scripts/stop-server.sh
+LOCAL_TOOL_EXCLUDE: skills/brainstorming/spec-document-reviewer-prompt.md
+LOCAL_TOOL_EXCLUDE: skills/brainstorming/visual-companion.md
+LOCAL_TOOL_EXCLUDE: skills/dispatching-parallel-agents/.openclaw/source-origin.json
+LOCAL_TOOL_EXCLUDE: skills/dispatching-parallel-agents/SKILL.md
+LOCAL_TOOL_EXCLUDE: skills/executing-plans/.openclaw/source-origin.json
+LOCAL_TOOL_EXCLUDE: skills/executing-plans/SKILL.md
+LOCAL_TOOL_EXCLUDE: skills/finishing-a-development-branch/.openclaw/source-origin.json
+LOCAL_TOOL_EXCLUDE: skills/finishing-a-development-branch/SKILL.md
+LOCAL_TOOL_EXCLUDE: skills/frontend-design/LICENSE.txt
+LOCAL_TOOL_EXCLUDE: skills/frontend-design/SKILL.md
+LOCAL_TOOL_EXCLUDE: skills/playwright-dev/SKILL.md
+LOCAL_TOOL_EXCLUDE: skills/playwright-devops/SKILL.md
+LOCAL_TOOL_EXCLUDE: skills/playwright-test-results/SKILL.md
+LOCAL_TOOL_EXCLUDE: skills/playwright-triage/SKILL.md
+LOCAL_TOOL_EXCLUDE: skills/prd/SKILL.md
+LOCAL_TOOL_EXCLUDE: skills/ralph/SKILL.md
+LOCAL_TOOL_EXCLUDE: skills/receiving-code-review/.openclaw/source-origin.json
+LOCAL_TOOL_EXCLUDE: skills/receiving-code-review/SKILL.md
+LOCAL_TOOL_EXCLUDE: skills/requesting-code-review/.openclaw/source-origin.json
+LOCAL_TOOL_EXCLUDE: skills/requesting-code-review/SKILL.md
+LOCAL_TOOL_EXCLUDE: skills/requesting-code-review/code-reviewer.md
+LOCAL_TOOL_EXCLUDE: skills/subagent-driven-development/.openclaw/source-origin.json
+LOCAL_TOOL_EXCLUDE: skills/subagent-driven-development/SKILL.md
+LOCAL_TOOL_EXCLUDE: skills/subagent-driven-development/implementer-prompt.md
+LOCAL_TOOL_EXCLUDE: skills/subagent-driven-development/re-review-prompt.md
+LOCAL_TOOL_EXCLUDE: skills/subagent-driven-development/scripts/review-package
+LOCAL_TOOL_EXCLUDE: skills/subagent-driven-development/scripts/sdd-workspace
+LOCAL_TOOL_EXCLUDE: skills/subagent-driven-development/scripts/task-brief
+LOCAL_TOOL_EXCLUDE: skills/subagent-driven-development/task-reviewer-prompt.md
+LOCAL_TOOL_EXCLUDE: skills/systematic-debugging/.openclaw/source-origin.json
+LOCAL_TOOL_EXCLUDE: skills/systematic-debugging/CREATION-LOG.md
+LOCAL_TOOL_EXCLUDE: skills/systematic-debugging/SKILL.md
+LOCAL_TOOL_EXCLUDE: skills/systematic-debugging/condition-based-waiting-example.ts
+LOCAL_TOOL_EXCLUDE: skills/systematic-debugging/condition-based-waiting.md
+LOCAL_TOOL_EXCLUDE: skills/systematic-debugging/defense-in-depth.md
+LOCAL_TOOL_EXCLUDE: skills/systematic-debugging/find-polluter.sh
+LOCAL_TOOL_EXCLUDE: skills/systematic-debugging/root-cause-tracing.md
+LOCAL_TOOL_EXCLUDE: skills/systematic-debugging/test-academic.md
+LOCAL_TOOL_EXCLUDE: skills/systematic-debugging/test-pressure-1.md
+LOCAL_TOOL_EXCLUDE: skills/systematic-debugging/test-pressure-2.md
+LOCAL_TOOL_EXCLUDE: skills/systematic-debugging/test-pressure-3.md
+LOCAL_TOOL_EXCLUDE: skills/test-driven-development/.openclaw/source-origin.json
+LOCAL_TOOL_EXCLUDE: skills/test-driven-development/SKILL.md
+LOCAL_TOOL_EXCLUDE: skills/test-driven-development/writing-good-tests.md
+LOCAL_TOOL_EXCLUDE: skills/using-git-worktrees/.openclaw/source-origin.json
+LOCAL_TOOL_EXCLUDE: skills/using-git-worktrees/SKILL.md
+LOCAL_TOOL_EXCLUDE: skills/using-superpowers/.openclaw/source-origin.json
+LOCAL_TOOL_EXCLUDE: skills/using-superpowers/SKILL.md
+LOCAL_TOOL_EXCLUDE: skills/using-superpowers/references/antigravity-tools.md
+LOCAL_TOOL_EXCLUDE: skills/using-superpowers/references/codex-tools.md
+LOCAL_TOOL_EXCLUDE: skills/using-superpowers/references/gemini-tools.md
+LOCAL_TOOL_EXCLUDE: skills/using-superpowers/references/pi-tools.md
+LOCAL_TOOL_EXCLUDE: skills/verification-before-completion/.openclaw/source-origin.json
+LOCAL_TOOL_EXCLUDE: skills/verification-before-completion/SKILL.md
+LOCAL_TOOL_EXCLUDE: skills/writing-plans/.openclaw/source-origin.json
+LOCAL_TOOL_EXCLUDE: skills/writing-plans/SKILL.md
+LOCAL_TOOL_EXCLUDE: skills/writing-plans/plan-document-reviewer-prompt.md
+LOCAL_TOOL_EXCLUDE: skills/writing-skills/.openclaw/source-origin.json
+LOCAL_TOOL_EXCLUDE: skills/writing-skills/SKILL.md
+LOCAL_TOOL_EXCLUDE: skills/writing-skills/anthropic-best-practices.md
+LOCAL_TOOL_EXCLUDE: skills/writing-skills/examples/CLAUDE_MD_TESTING.md
+LOCAL_TOOL_EXCLUDE: skills/writing-skills/graphviz-conventions.dot
+LOCAL_TOOL_EXCLUDE: skills/writing-skills/persuasion-principles.md
+LOCAL_TOOL_EXCLUDE: skills/writing-skills/render-graphs.js
+LOCAL_TOOL_EXCLUDE: skills/writing-skills/testing-skills-with-subagents.md
+TXT_REPORT_EXCLUDE: CROSS_PHASE_RELEASE_READINESS_AUDIT_2026-10-08.txt
+TXT_REPORT_EXCLUDE: DEEP_MODULARIZATION_AUDIT_2026-10-08.txt
+TXT_REPORT_EXCLUDE: ISOLATED_AUTH_E2E_ADDITIONAL_GATES_2026-10-08.txt
+TXT_REPORT_EXCLUDE: ISOLATED_AUTH_E2E_RELEASE_GATE_2026-10-08.txt
+TXT_REPORT_EXCLUDE: ISOLATED_LOGOUT_SESSION_ACCEPTANCE_2026-10-08.txt
+TXT_REPORT_EXCLUDE: ISOLATED_MANAGER_APPROVAL_MATRIX_2026-10-08.txt
+TXT_REPORT_EXCLUDE: ISOLATED_PROCUREMENT_RECEIVING_RETURNS_2026-10-08.txt
+TXT_REPORT_EXCLUDE: PHASE5_MONEY_FORMATTING_REPORT.txt
+TXT_REPORT_EXCLUDE: PHASE6_REPOSITORY_HYGIENE_REPORT.txt
+TXT_REPORT_EXCLUDE: PHASE_A_TRANSACTION_SAFETY_REPORT.txt
+TXT_REPORT_EXCLUDE: PHASE_B_POS_PAYMENT_MODULARIZATION_REPORT.txt
+TXT_REPORT_EXCLUDE: PHASE_C_REPORTING_SHIFT_MODULARIZATION_REPORT.txt
+TXT_REPORT_EXCLUDE: PHASE_D_FRONTEND_STRUCTURE_REPORT.txt
+TXT_REPORT_EXCLUDE: PHASE_E_ADAPTER_PARITY_REPORT.txt
+TXT_REPORT_EXCLUDE: POSTGRES_PARITY_GIT_RELEASE_MANIFEST_2026-10-08.txt
+TXT_REPORT_EXCLUDE: POSTGRES_PARITY_RELEASE_FILE_REVIEW_2026-10-08.txt
+TXT_REPORT_EXCLUDE: RELEASE_CANDIDATE_SOURCE_BUILD_GATE_2026-10-08.txt
+TXT_REPORT_EXCLUDE: RELEASE_READINESS_QA_GATES_2026-10-08.txt
+TXT_REPORT_EXCLUDE: RELEASE_SOURCE_SECRET_MANIFEST_2026-10-08.txt
+TXT_REPORT_EXCLUDE: skills/frontend-design/LICENSE.txt
+
+RELEASE DECISION AND NEXT GATES
+1. Do not stage all files. Review code/brand/config user intent and imports.
+2. The new modules are UNTRACKED; a commit containing only tracked diffs
+   will break the refactored build. Select the full dependency set.
+3. Prior source scan found three local-only PostgreSQL test URL patterns,
+   but the audit is scoped; manual secret review is still recommended.
+4. Stage only after explicit approval and rerun type/build/test against
+   that EXACT staged candidate before creating a commit.
+5. Push/deploy are separate explicit authorization steps.
+No Git staging/commit/merge/push/reset, production DB or PayMongo writes.
+OVERALL RELEASE STATUS: HOLD.

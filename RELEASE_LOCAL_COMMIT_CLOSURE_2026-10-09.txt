@@ -1,0 +1,80 @@
+NEXPOS — CONTROLLED LOCAL COMMIT CLOSURE
+Date: 2026-10-09 (Asia/Manila)
+Workspace: G:\Vscode\POS
+
+COMMIT STATUS
+=============
+RESULT: LOCAL COMMIT CREATED AND VERIFIED.
+Branch: codex/phase20-gift-card-load-final-20261005
+Commit SHA: 868ece64585180aa4e5956080626ce7de70b5f9e
+Commit subject:
+  refactor: modularize NexPOS workflows and extend regression coverage
+
+EXACT COMMITTED SNAPSHOT
+========================
+Verified HEAD Git tree:
+  32fc5b6b71bf9365f58317cce376c3c1f3f79252
+Previously independently exported and tested candidate tree:
+  32fc5b6b71bf9365f58317cce376c3c1f3f79252
+RESULT: MATCH.
+Changed paths in commit: 99.
+Commit statistics:
+  6,736 insertions(+)
+  4,057 deletions(-)
+Precommit cached whitespace check: exit code 0.
+No paths missing from the reviewed 99-file candidate.
+
+PRE-COMMIT TEST/BUILD EVIDENCE (PREVIOUS WORK TURNS)
+===================================================
+1. Exported isolated 99-file Git tree API and Web TypeScript checks: PASS.
+2. Nine focused test files run in exported snapshot: 36/36 PASS.
+   - Sales controller guards: 4/4
+   - Idempotency adapter parity: 2/2
+   - POS checkout flow: 7/7
+   - Procurement mutations: 2/2
+   - Refund normalization: 7/7
+   - Reporting series: 3/3
+   - Shift list: 3/3
+   - Sale detail API: 5/5
+   - Money formatting: 3/3
+3. Prior current-worktree Next.js production build logged exit code 0.
+   That production build was not rerun against exported tree in this turn.
+4. Prior selected, disposable loopback/tmpfs PostgreSQL suites: 45/45 PASS.
+   Not a claim that every test or all PG suites passed.
+5. Scoped staged-content security-pattern scan: zero matches; it was
+   not a comprehensive secret/vulnerability audit.
+
+POST-COMMIT VERIFICATION (CURRENT WORK TURN)
+============================================
+- HEAD verified at exact commit SHA above.
+- HEAD tree verified to match preapproved Git candidate tree exactly.
+- Commit changed-file count verified: 99.
+- Commit subject verified.
+- Git index now empty, no staged paths.
+- Branch tracking status:
+  codex/phase20-gift-card-load-final-20261005 is ahead of its remote
+  tracking branch by 2 local commits.
+  This does NOT mean anything was pushed in this work turn.
+
+INTENTIONALLY EXCLUDED / STILL LOCAL
+====================================
+Modified tracked files NOT included in the commit:
+  .gitignore
+  apps/web/public/brand/nexpos-logo.svg
+  apps/web/public/brand/nexpos-mark.svg
+Untracked local assets/configurations/docs/reports still exist, including
+the five alternate brand SVGs, AI skills, probe scripts and audit TXT files.
+No git clean/reset/checkout was performed. These files remain intact.
+The temporary Git index used for candidate preparation is no longer needed;
+this commit used only the reviewed main index.
+
+NEXT RELEASE DECISION
+=====================
+The reviewed 99-file source refactor is committed LOCALLY.
+Push, PR, merge to main, and Render deployment are separate explicit
+actions. Review the branch relationship and intended integration target
+before choosing a remote operation. Additional full regression/security
+verification may be warranted before production release.
+
+NO remote push, PR, merge, deployment or production data changes occurred
+as part of this controlled local commit.

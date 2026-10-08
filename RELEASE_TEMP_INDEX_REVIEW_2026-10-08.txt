@@ -1,0 +1,155 @@
+NEXPOS — RELEASE CANDIDATE VIA ISOLATED TEMPORARY GIT INDEX
+Date: 2026-10-08
+Workspace: G:\Vscode\POS
+All selected files are staged in a disposable external index only.
+No source files changed, no real-index staging, no commit, no push, no deploy.
+
+SELECTION POLICY
+Include changed API/web source, related tracked/untracked tests,
+two isolated Playwright runners, and E2E regression specs.
+Exclude local skills/tool state, diagnostic probes, reports, brand design
+alternatives, and .gitignore local-only changes.
+Two modified production SVG logos are shown as a separate optional
+candidate; the user should confirm branding intent before selecting them.
+
+CANDIDATE: CORE
+Changes selected: 99
+Changes recorded in isolated index: 99
+Temporary candidate tree hash: 32fc5b6b71bf9365f58317cce376c3c1f3f79252
+Unexpected files in candidate: 0
+Missing selected files: 0
+Missing new source/test files from tree: 0
+Temporary-index whitespace check exit: 0
+
+CANDIDATE: CORE_WITH_TWO_BRAND_LOGOS
+Changes selected: 101
+Changes recorded in isolated index: 101
+Temporary candidate tree hash: 1f7f6ecf2ee05f14717e7e3aab26329b35094566
+Unexpected files in candidate: 0
+Missing selected files: 0
+Missing new source/test files from tree: 0
+Temporary-index whitespace check exit: 0
+
+SOURCE COUNTS
+Changed tracked source/test files: 45
+New app source and unit-test files: 50
+New E2E files: 2
+Isolated safe runner config files: 2
+Modified tracked logos held optional: 2
+Real Git index entries changed: 0
+
+CORE FILE LIST
+INCLUDE: apps/api/src/app.module.ts
+INCLUDE: apps/api/src/common/db.port.ts
+INCLUDE: apps/api/src/common/db/port.ts
+INCLUDE: apps/api/src/common/db/ports/catalog.port.ts
+INCLUDE: apps/api/src/common/db/ports/inventory.port.ts
+INCLUDE: apps/api/src/common/db/ports/platform.port.ts
+INCLUDE: apps/api/src/common/db/ports/procurement.port.ts
+INCLUDE: apps/api/src/common/db/ports/sales.port.ts
+INCLUDE: apps/api/src/common/db/types.ts
+INCLUDE: apps/api/src/common/idempotency-adapter-parity.test.ts
+INCLUDE: apps/api/src/common/memory.db.ts
+INCLUDE: apps/api/src/common/memory/catalog.family.ts
+INCLUDE: apps/api/src/common/memory/context.ts
+INCLUDE: apps/api/src/common/memory/inventory.family.ts
+INCLUDE: apps/api/src/common/memory/platform.family.ts
+INCLUDE: apps/api/src/common/memory/procurement.family.ts
+INCLUDE: apps/api/src/common/memory/sales.family.ts
+INCLUDE: apps/api/src/procurement/nest/procurement.contracts.ts
+INCLUDE: apps/api/src/procurement/nest/procurement.order.service.ts
+INCLUDE: apps/api/src/procurement/nest/procurement.service.ts
+INCLUDE: apps/api/src/procurement/nest/procurement.supplier.service.ts
+INCLUDE: apps/api/src/procurement/nest/procurement.support.ts
+INCLUDE: apps/api/src/refunds/nest/refund.service.ts
+INCLUDE: apps/api/src/refunds/refund-normalization.test.ts
+INCLUDE: apps/api/src/refunds/refund-normalization.ts
+INCLUDE: apps/api/src/reports/nest/reporting.service.ts
+INCLUDE: apps/api/src/reports/reporting-series.test.ts
+INCLUDE: apps/api/src/reports/reporting-series.ts
+INCLUDE: apps/api/src/sales/nest/payments.controller.ts
+INCLUDE: apps/api/src/sales/nest/receipts.controller.ts
+INCLUDE: apps/api/src/sales/nest/sales-controller-guards.test.ts
+INCLUDE: apps/api/src/sales/nest/sales.controller.shared.ts
+INCLUDE: apps/api/src/sales/nest/sales.controller.ts
+INCLUDE: apps/api/src/sales/nest/sales.module.ts
+INCLUDE: apps/api/src/sales/nest/sales.split.test.ts
+INCLUDE: apps/api/src/shifts/nest/shift.service.ts
+INCLUDE: apps/api/src/shifts/shift-list.test.ts
+INCLUDE: apps/api/src/shifts/shift-list.ts
+INCLUDE: apps/web/src/app/customers/[id]/page.tsx
+INCLUDE: apps/web/src/app/customers/[id]/stored-value/page.tsx
+INCLUDE: apps/web/src/app/expenses/page.tsx
+INCLUDE: apps/web/src/app/gift-cards/[id]/page.tsx
+INCLUDE: apps/web/src/app/gift-cards/page.tsx
+INCLUDE: apps/web/src/app/pos/page.tsx
+INCLUDE: apps/web/src/app/pos/pos-checkout-flow.test.ts
+INCLUDE: apps/web/src/app/pos/pos-checkout-flow.ts
+INCLUDE: apps/web/src/app/pos/use-pos-page-controller.ts
+INCLUDE: apps/web/src/app/products/[id]/page.tsx
+INCLUDE: apps/web/src/app/products/page.tsx
+INCLUDE: apps/web/src/app/products/use-products-page-state.ts
+INCLUDE: apps/web/src/app/purchase-orders/[id]/page.tsx
+INCLUDE: apps/web/src/app/receipts/[saleId]/page.tsx
+INCLUDE: apps/web/src/app/receipts/shared/[token]/page.tsx
+INCLUDE: apps/web/src/app/reports/sales/page.tsx
+INCLUDE: apps/web/src/app/sales/[id]/page.tsx
+INCLUDE: apps/web/src/app/sales/page.tsx
+INCLUDE: apps/web/src/app/suppliers/[id]/page.tsx
+INCLUDE: apps/web/src/app/team/page.tsx
+INCLUDE: apps/web/src/app/team/use-team-page-state.ts
+INCLUDE: apps/web/src/components/AppShell.tsx
+INCLUDE: apps/web/src/components/GiftCardLoadDialog.tsx
+INCLUDE: apps/web/src/components/GiftCardLoadResultDialog.tsx
+INCLUDE: apps/web/src/components/PosCartPanel.tsx
+INCLUDE: apps/web/src/components/PosDiscountDialog.tsx
+INCLUDE: apps/web/src/components/PosHeldSalesDialog.tsx
+INCLUDE: apps/web/src/components/PosManagerApprovalDialog.tsx
+INCLUDE: apps/web/src/components/PosPaymentWorkspace.tsx
+INCLUDE: apps/web/src/components/PosProductCatalog.tsx
+INCLUDE: apps/web/src/components/PosResponsiveCart.tsx
+INCLUDE: apps/web/src/components/SaleExchangeDialog.tsx
+INCLUDE: apps/web/src/components/ui.tsx
+INCLUDE: apps/web/src/components/use-branch-switcher.ts
+INCLUDE: apps/web/src/components/use-navigation-progress.ts
+INCLUDE: apps/web/src/components/use-workspace-tour.ts
+INCLUDE: apps/web/src/lib/admin-page-api.test.ts
+INCLUDE: apps/web/src/lib/app-shell-behavior.test.ts
+INCLUDE: apps/web/src/lib/app-shell-behavior.ts
+INCLUDE: apps/web/src/lib/inventory-view.ts
+INCLUDE: apps/web/src/lib/loyalty-settings.ts
+INCLUDE: apps/web/src/lib/money.test.ts
+INCLUDE: apps/web/src/lib/money.ts
+INCLUDE: apps/web/src/lib/procurement-mutation.test.ts
+INCLUDE: apps/web/src/lib/procurement-mutation.ts
+INCLUDE: apps/web/src/lib/products-api.ts
+INCLUDE: apps/web/src/lib/purchase-order-quantities.test.ts
+INCLUDE: apps/web/src/lib/purchase-orders.ts
+INCLUDE: apps/web/src/lib/reports.ts
+INCLUDE: apps/web/src/lib/sale-detail-api.test.ts
+INCLUDE: apps/web/src/lib/sale-detail-api.ts
+INCLUDE: apps/web/src/lib/sale-refund-selection.test.ts
+INCLUDE: apps/web/src/lib/sale-refund-selection.ts
+INCLUDE: apps/web/src/lib/shifts.ts
+INCLUDE: apps/web/src/lib/suppliers.ts
+INCLUDE: apps/web/src/lib/team-api.ts
+INCLUDE: e2e/critical-path.spec.ts
+INCLUDE: e2e/procurement-receiving-returns.spec.ts
+INCLUDE: e2e/session-logout.spec.ts
+INCLUDE: playwright.safe-auth.config.ts
+INCLUDE: playwright.safe-smoke.config.ts
+
+OPTIONAL BRAND CHANGES
+OPTIONAL_BRANDING: apps/web/public/brand/nexpos-logo.svg
+OPTIONAL_BRANDING: apps/web/public/brand/nexpos-mark.svg
+
+BLOCKERS AND LIMITS
+This validates a candidate TREE from a temporary index,
+not a commit or remote deployment.
+Previous production web build and targeted tests were run against
+the current worktree; they are not proof of building exported tree
+in an independently checked-out clean environment.
+The current worktree does include modified branding but the CORE tree
+retains HEAD branding, therefore render parity is not guaranteed.
+Branding choice remains pending; release stays HOLD.
+Do not stage any files in the real index before user authorizes.

@@ -1,0 +1,140 @@
+PHASE 6 — REPOSITORY HYGIENE REPORT
+
+STATUS
+======
+PASS — Phase 6 repository hygiene completed safely.
+
+SCOPE
+=====
+This phase cleaned clearly disposable local audit/smoke artifacts and strengthened .gitignore rules without deleting or hiding ambiguous user-owned files.
+
+CHANGES MADE
+============
+Updated:
+- .gitignore
+
+Added ignore rules for:
+- .freebuff/
+- .workbuddy-ai/
+- .tmp-*.mjs
+- .prod-*-smoke.mjs
+- apps/api/tsconfig.deep-audit-check.json
+
+Removed clearly disposable local artifacts:
+- .prod-paymongo-smoke.mjs
+- .tmp-fingerprint-proof.mjs
+- .tmp-paymongo-provider-smoke.mjs
+- .tmp-rls-audit.mjs
+- apps/api/tsconfig.deep-audit-check.json
+
+WHY THESE WERE SAFE TO REMOVE
+=============================
+The removed files were untracked, one-off smoke/audit/proof helpers rather than application source. Their names and contents showed local verification intent, including temporary PayMongo/browser probes, fingerprint proof code, RLS audit code, and an audit-only TypeScript config.
+
+PRESERVED INTENTIONALLY
+=======================
+The following were NOT deleted or automatically ignored because ownership or long-term intent is ambiguous:
+
+- AGENTS.md
+  Repository/tool instructions may be intentionally maintained by the user.
+
+- .zcodeignore
+  Tool configuration; may be intentional.
+
+- opencode.json
+  Tool configuration; may be intentional.
+
+- skills/
+  Local skill/workflow content; potentially reusable or user-managed.
+
+- apps/web/public/brand/versions/
+  Design/logo candidate assets; not safe to classify as disposable.
+
+- scripts/probe-key-hashes.mjs
+- scripts/probe-lock-identity.mjs
+- scripts/qa22-prepaid-pay.mjs
+  Named diagnostic/QA scripts under the repository scripts directory. These may be reusable project tooling, so they were preserved.
+
+- PHASE5_MONEY_FORMATTING_REPORT.txt
+  User-requested phase report.
+
+- All Phase 1–5 source/refactor files
+  Preserved as active work.
+
+- Pre-existing logo SVG and tsconfig changes
+  Preserved untouched.
+
+ALREADY-IGNORED ARTIFACTS CONFIRMED
+===================================
+The repository already correctly ignores:
+- node_modules/
+- .next/
+- .next-*/
+- dist/
+- build/
+- .turbo/
+- local .env variants
+- *.log
+- coverage/
+- worktrees
+- .superpowers/
+- *.tsbuildinfo
+- test-results/
+- test-results-*/
+- playwright-report/
+- .playwright-mcp/
+
+This means existing .tmp-*.log files, test-result folders, build output, and Playwright artifacts do not pollute normal git status.
+
+VERIFICATION
+============
+1. git diff --check -- .gitignore
+   PASS
+
+2. git check-ignore verified all new rules:
+   - .freebuff/project-id -> ignored
+   - .workbuddy-ai/memory -> ignored
+   - .tmp-future-proof.mjs -> ignored
+   - .prod-example-smoke.mjs -> ignored
+   - apps/api/tsconfig.deep-audit-check.json -> ignored
+
+3. File existence verification:
+   REMOVED:
+   - .prod-paymongo-smoke.mjs
+   - .tmp-fingerprint-proof.mjs
+   - .tmp-paymongo-provider-smoke.mjs
+   - .tmp-rls-audit.mjs
+   - apps/api/tsconfig.deep-audit-check.json
+
+4. git status was rechecked after cleanup.
+   The newly ignored local tool-state directories no longer appear.
+   Remaining untracked items are preserved intentionally as described above.
+
+TESTING NOTE
+============
+No application source code or runtime behavior was changed in Phase 6, so no new application test suite was required for this hygiene-only phase. Phase 5 had already completed with scoped tests and web TypeScript passing before Phase 6 began.
+
+SAFETY
+======
+- No git reset.
+- No git checkout of user files.
+- No git clean.
+- No broad directory deletion.
+- No ambiguous user-owned file deletion.
+- No commit.
+- No push.
+- No deployment.
+
+FINAL PHASE 6 RESULT
+====================
+PASS — clearly disposable repository artifacts were cleaned, recurring local audit/tool output is now ignored, and ambiguous project/user assets were preserved for explicit future decisions.
+
+SAFE REFACTOR AUDIT PHASE STATUS
+================================
+Phase 1 — PASS
+Phase 2 — PASS
+Phase 3 — PASS
+Phase 4 — PASS
+Phase 5 — PASS
+Phase 6 — PASS
+

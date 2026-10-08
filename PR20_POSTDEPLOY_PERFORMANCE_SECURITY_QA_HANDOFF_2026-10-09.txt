@@ -1,0 +1,173 @@
+NEXPOS — POST-DEPLOY PERFORMANCE & AUTHORIZATION READINESS
+Date: 2026-10-09 (Asia/Manila)
+Canonical workspace: G:\Vscode\POS
+Repository: https://github.com/Ediwow110/projectpos
+Production release merge SHA: 862bdba6283253b42151e76fc4cffe32fa8eb213
+
+SCOPE / SAFETY
+==============
+Continuation of NexPOS PR #20 release QA.
+Read-only connected Supabase database inspection and existing app source review.
+No QA Owner login was available inside this chat's tools.
+No production sale, refund, inventory transaction, session creation, branch
+activation, storefront enablement, SQL schema change, or deployment performed.
+No live PayMongo or other external payment was used.
+
+A. CURRENT PRODUCTION STATE
+===========================
+Render reports both production services LIVE at the expected merge commit:
+  web: https://nexpos-web.onrender.com
+  API: https://nexpos-api-sf1n.onrender.com
+  Web deploy: dep-db3t1eeq1p3s73eg7ctg
+  API deploy: dep-db3t1eeq1p3s73eg7ckg
+Earlier release gates passed GitHub verify/pg/e2e CI and the anonymous
+production access-control tests. This review does not repeat authenticated
+QA transactions or assert they passed.
+
+B. QA TENANT / IMMUTABLE BASELINE CHECK
+=======================================
+Exact QA business: QA SMOKE TEST — 2026-10-02-1800.
+  Business identity matches: 1.
+  Sales: 31.
+  Payments: 19.
+  Refunds: 5.
+  Online orders: 0.
+  Inventory reservations: 0.
+  Fulfillments: 0.
+  Active branches: 0.
+No changes from the immediately preceding read-only baseline.
+Previous fixture check established Product A = 6 units and Product B = 7
+units, but these product quantities were NOT re-queried during THIS phase.
+Existing QA storefront is not configured. Live online ordering requires
+an authorized Owner setup decision, including whether a branch should
+be activated or a new disposable QA-only branch should be used.
+
+C. SUPABASE PERFORMANCE ADVISOR
+================================
+Supabase performance notices (INFO), not proven runtime defects:
+  72 unindexed foreign-key relationships.
+    https://supabase.com/docs/guides/database/database-linter?lint=0001_unindexed_foreign_keys
+  38 unused-index reports.
+    https://supabase.com/docs/guides/database/database-linter?lint=0005_unused_index
+Potentially relevant future workloads:
+  - Payment.saleId
+  - OrderLine.orderId
+  - InventoryReservation.orderId / orderLineId / productId / branchId
+  - Fulfillment.orderId / branchId
+  - FulfillmentLine.fulfillmentId / orderLineId
+  - Order.branchId
+  - InventoryBalance.productId
+  - PurchaseOrderLine.purchaseOrderId
+These are relationship-index review candidates, not instructions to
+add a single-column index for every warning. Tenant-scoped composite
+indexes may already support common query patterns.
+Do not delete any of the 38 reportedly unused indexes without production
+workload and foreign-key/unique-constraint review. An index can be unused
+while a new feature is dormant and become essential later.
+
+D. READ-ONLY DATABASE SIZE / USAGE CONTEXT
+==========================================
+PG approximate live row count / total relation size at inspection:
+  Sale: about 50 / 144 kB.
+  Payment: about 37 / 96 kB.
+  Product: about 23 / 112 kB.
+  BusinessMembership: about 20 / 80 kB.
+  InventoryBalance: about 17 / 48 kB.
+  PurchaseOrder: about 4 / 96 kB.
+  Order: 0 / 56 kB.
+  InventoryReservation: 0 / 40 kB.
+  Fulfillment: 0 / 24 kB.
+These are small current data sets. The query planner can legitimately
+prefer sequential scans on tiny tables, so 'unused index' and
+'unindexed FK' are not enough to prove a performance issue.
+pg_stat values are cumulative and do not independently measure latency.
+Priority: plan indexes by real query paths and EXPLAIN/ANALYZE on an
+approved staging copy. No production CREATE INDEX or DROP INDEX now.
+Supabase's indexing reference:
+  https://supabase.com/docs/guides/database/postgres/indexes
+
+E. SUPABASE DIRECT-ACCESS SECURITY AUDIT
+=========================================
+Reconfirmed from previous phase:
+  Public tables: 87, RLS enabled: 87.
+  anon SELECT grants: 0.
+  authenticated SELECT grants: 0.
+New public-schema routine/view check:
+  Public routines: 1.
+  SECURITY DEFINER routines: 1.
+  SECURITY DEFINER routines executable by anon: 0.
+  SECURITY DEFINER routines executable by authenticated: 0.
+  Public views: 0.
+  Public views readable by anon/authenticated: 0.
+No new direct role-based data exposure established.
+Server-side privileged database roles can bypass RLS. Continue treating
+NestJS authorization/tenant isolation as security critical.
+Do not automatically add permissive RLS policies to silence linter notices.
+
+F. SERVER-SIDE TENANT AUTHENTICATION REVIEW
+============================================
+Read active source at GitHub main release commit from local synced branch:
+  apps/api/src/common/session.guard.ts
+  apps/api/src/apitokens/api-token.guard.ts
+  apps/api/src/orders/nest/order.controller.ts
+  apps/api/test/phase22-security.contract.test.ts
+Observed controls:
+  - SessionGuard verifies cookie token hash, expiry, revocation,
+    email verification when required, current business membership,
+    and active-branch validity before req.auth is populated.
+  - ApiTokenGuard checks hashed tokens, revocation, expiration,
+    required scopes, API entitlement, and rate limiting.
+  - OrderController uses authenticated business ID for order lookups
+    and checks permission plus active-branch scoping.
+  - Phase 22 security contract includes cross-business storefront,
+    staff detail, token scoping, origin enforcement, and role checks.
+This is focused source inspection and previous CI evidence. It is not
+a new authenticated live penetration test. Keep server authorization
+under review as product features expand.
+
+G. AUTHENTICATED QA PRODUCTION HANDOFF (NOT EXECUTED)
+=====================================================
+A controlled browser run remains the final unresolved release QA gate.
+The user should use a browser session in ChatGPT Work or a compatible
+interactive tool, not send a password or session cookie into this chat.
+
+Stage 1, session gate:
+  - Open https://nexpos-web.onrender.com/login.
+  - Sign in NORMALLY with the existing QA Owner account.
+  - Confirm /api/v1/me shows EXACTLY QA SMOKE TEST —
+    2026-10-02-1800 with role owner.
+  - Stop immediately on account/business mismatch.
+Stage 2, read-only authenticated walkthrough:
+  - Visit Team, Catalog, POS, Inventory, Purchase Orders,
+    Orders, Reports, Register/Shifts, Gift Cards and logout.
+  - Confirm permissions and page load/console errors.
+  - Capture findings without copying secrets or real customer data.
+Stage 3, optional scoped QA-only state-changing flow:
+  - Requires confirmation that owner session is valid and provider
+    payments are TEST-only; use clearly labeled disposable fixtures.
+  - Record starting database counts and stock.
+  - Do not reopen old shifts, refund unknown sales, or change
+    historical customer/merchant records.
+  - Branches are currently all inactive and ordering is disabled;
+    do NOT activate a branch or configure the storefront just for
+    testing until the Owner approves exact setup changes.
+  - If later authorized, verify cart/payment, order reservation and
+    fulfillment idempotency with synthetic inventory only.
+  - Do not process a real card, wallet, GCash/Maya or live QR payment.
+Stage 4, reconciliation:
+  - Re-query QA balances, sales, refunds, orders and reservations.
+  - Check no unexplained doubles, cross-tenant rows or money changes.
+  - Preserve QA fixtures or clean them up only with explicit approval.
+  - Logout, end session, record findings and screenshot references.
+
+H. DISPOSITION
+===============
+Required CI and earlier isolated desktop/tablet/mobile workflows: PASS.
+Current Render deploys: LIVE.
+Read-only QA database baseline: unchanged.
+Supabase performance notices: INFORMATIONAL, plan later.
+Direct anon/authenticated public-schema table/view/routine access: no
+new exposure found in the stated scoped checks.
+Authenticated production workflow: NOT RUN because no authorized
+QA Owner session is accessible in this chat.
+No production mutation, Git push, database migration or Render deploy.

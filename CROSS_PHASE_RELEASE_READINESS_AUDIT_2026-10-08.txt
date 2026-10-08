@@ -1,0 +1,258 @@
+NEXPOS — CROSS-PHASE INTEGRATION AND RELEASE-READINESS AUDIT
+Date: 2026-10-08
+Workspace reviewed: G:\Vscode\POS
+Branch: codex/phase20-gift-card-load-final-20261005
+Phases covered: A, B, C, D, E (on top of earlier 1-6 safe refactoring)
+Execution mode: non-destructive, local read-only audit and bounded tests
+Report location: downloadable TXT artifact from this conversation
+
+EXECUTIVE DECISION
+==================
+SCOPED INTEGRATION VERIFICATION: PASS
+RELEASE / COMMIT READINESS: HOLD — NOT YET APPROVED
+
+45 of 45 representative cross-phase tests passed in this turn. Both the
+API and web TypeScript typechecks passed. Strict zero-warning ESLint passed
+over 16 high-relevance newly extracted source/test files. The tracked Git
+diff whitespace check passed.
+
+The repository is NOT ready for a reliable release commit merely because
+these scoped checks pass. Forty-six tracked files are modified, and numerous
+untracked production modules and test files are still present. No production
+build, safe browser E2E workflow, or disposable-PostgreSQL integration run
+was completed this turn.
+
+SCOPE, SAFETY, AND TOOLING
+=========================
+- Read local AGENTS.md and applied its bounded-testing and tool-call rules.
+- Used the existing DevSpace workspace; did not reopen, reset, clean, or
+  checkout user files.
+- Did not commit, push, merge, deploy, or alter live environments.
+- Did not use real PayMongo payment flows or real inventory.
+- Did not run destructive PostgreSQL integration tests.
+- Did not run a full test suite or full Playwright E2E suite.
+- Did not change application source during this cross-phase audit.
+- Phase report delivered as a downloadable TXT artifact; NOT written into
+  the Windows workspace during this turn (the permitted DevSpace call
+  budget was used on inspection and fresh verification).
+
+GIT WORKTREE / CHANGE INVENTORY
+===============================
+Branch: codex/phase20-gift-card-load-final-20261005
+Tracked modified files: 46
+Tracked diff stat: 590 inserted lines, 4,048 deleted lines.
+WARNING: these counts exclude untracked files, so they do not represent
+the true size or complete content of the accumulated refactor.
+
+Examples of essential currently untracked source:
+  apps/api/src/common/db/
+  apps/api/src/common/memory/
+  apps/api/src/refunds/refund-normalization.ts
+  apps/api/src/reports/reporting-series.ts
+  apps/api/src/shifts/shift-list.ts
+  apps/api/src/common/idempotency-adapter-parity.test.ts
+  apps/web/src/app/pos/use-pos-page-controller.ts
+  apps/web/src/app/pos/pos-checkout-flow.ts
+  apps/web/src/lib/sale-refund-selection.ts
+  apps/web/src/lib/procurement-mutation.ts
+  many others
+
+Additional untracked local artifacts need deliberate ownership decisions:
+  AGENTS.md, .zcodeignore, opencode.json, skills/, brand/versions/,
+  scripts/probe-*.mjs, scripts/qa22-prepaid-pay.mjs, previous phase reports.
+Do not blindly stage all without reviewing contents for user-owned
+configuration, sensitive data, test fixtures or out-of-scope artifacts.
+
+Tracked-file diff hygiene:
+  git diff --check -> exited code 0.
+Git printed LF-to-CRLF normalization notices on several working-copy files.
+These are warnings, not whitespace-errors. Avoid mass line-ending rewrites
+solely to silence messages.
+
+CROSS-PHASE TEST MATRIX — FRESH VERIFICATION
+============================================
+API / Phase A:
+  src/refunds/refund-normalization.test.ts                  7/7 PASS
+API / Phase C:
+  src/reports/reporting-series.test.ts                    3/3 PASS
+  src/shifts/shift-list.test.ts                           3/3 PASS
+API / Phase E:
+  src/common/idempotency-adapter-parity.test.ts            2/2 PASS
+API / cross-domain sales:
+  src/sales/nest/sales.service.test.ts                    15/15 PASS
+WEB / Phase B:
+  src/app/pos/pos-checkout-flow.test.ts                    7/7 PASS
+WEB / Phase D:
+  src/lib/sale-refund-selection.test.ts                    3/3 PASS
+  src/lib/procurement-mutation.test.ts                     2/2 PASS
+  src/lib/purchase-order-quantities.test.ts                3/3 PASS
+                                                            ----------
+  TOTAL                                                   45/45 PASS
+
+All nine tests were invoked as bounded, non-watch single-file Vitest runs.
+The cross-phase chain exited code 0 and printed the explicit marker:
+CROSS_PHASE_TARGETED_ACCEPTANCE_PASS.
+
+TYPECHECK
+=========
+pnpm --filter @pos/api exec tsc --noEmit -p tsconfig.json
+PASS: executed as part of chain that reached final success marker.
+
+pnpm --filter @pos/web exec tsc --noEmit -p tsconfig.json
+PASS: executed as part of chain that reached final success marker.
+
+STRICT LINT — FRESH VERIFICATION
+================================
+pnpm exec eslint --max-warnings=0 [16 high-relevance Phase A–E files]
+PASS: exited code 0 with CROSS_PHASE_ZERO_WARNING_LINT_PASS.
+
+The inspected lint files covered:
+  refund normalization implementation and tests
+  revenue series implementation and tests
+  shift list implementation and tests
+  memory sales adapter and idempotency parity test
+  POS checkout flow implementation and tests
+  sale refund selection implementation and tests
+  procurement CSRF transport implementation and tests
+  purchase-orders domain module and quantity tests
+
+NOTE: This is not a full-repository ESLint claim.
+
+DESIGN/SAFETY VERIFICATION BY PHASE
+==================================
+Phase A — transaction safety:
+  Refund normalization is isolated; lock, authorization, approval and
+  transaction sequence remain in the refund service.
+  The DbPort / PlatformPort source import loop uses type-only imports.
+  Test coverage is scoped and does not certify production workflows.
+
+Phase B — checkout:
+  POS checkout online/offline lifecycle moved behind a testable flow contract.
+  Redirect, unknown-payment reconciliation and provisional offline messages
+  have focused coverage.
+  KNOWN behavioral debt: offline pay() returns true even if offline queueing
+  fails. It was preserved deliberately during refactor; fix separately with
+  UI behavior tests, not as a silent change.
+  Manager-approval retry integration requires live/UI characterization.
+
+Phase C — reporting and shifts:
+  Revenue bucket projections and cashier-safe shift list are pure modules.
+  Reports and shift service regressions were verified in earlier phases;
+  this turn reran their core new pure-module suites only.
+  POTENTIAL functional defect to investigate with test-first scope:
+  getPaymentsReport() omits branchId when requesting settled sales, unlike
+  other reporting views. Dashboard attention counts may mix branch-specific
+  inventory with business-wide alerts. Do not fix blindly without product
+  decision on intended scope.
+
+Phase D — frontend:
+  Refund previews and submitted requests share one selection/calculation.
+  Procurement receipt/return totals and CSRF request ordering have targeted
+  tests.
+  Dense JSX in supplier and PO pages remains. There were no screenshot
+  comparisons or browser behavior tests in this release audit.
+
+Phase E — adapter parity:
+  Memory idempotency now encodes [businessId,key,commandType] as a tuple,
+  avoiding delimiter collisions with colon-containing strings.
+  PostgreSQL adapter assertions use a fake PgContext; they do NOT prove
+  runtime PG integration/locking. Existing destructive PG tests must be
+  run only on an independently verified disposable test database.
+
+BUILD AND BROWSER GATES
+=======================
+Production build: NOT RUN this turn.
+  @pos/web defines 'build': next build.
+  @pos/api does not define an app-local build script; API TypeScript
+  verification did pass.
+  Do not describe either app as 'production build passed'.
+
+Browser E2E: NOT RUN this turn.
+  Playwright 1.63.0 is installed and configuration exists.
+  playwright.config.ts points at localhost:3100 (web), localhost:3101 (API),
+  starts both web servers, inherits process.env, and before web startup
+  removes generated apps/web/.next cache.
+  Its e2e/security-headers.spec.ts is nominally read-only, but server
+  startup should not proceed before the inherited database/environment is
+  confirmed isolated. No localhost listeners were found on 3000, 3001, 4000
+  or 5433 in the initial local check; this does not prove other ports unused.
+  Local browser smoke coverage therefore remains an unmet release gate.
+
+PostgreSQL integration: NOT RUN.
+  apps/api/vitest.pg.config.ts selects test/pg files.
+  Selected PG tests connect to a configured PGTEST_BASE or a localhost
+  disposable default, and truncate database tables in beforeEach.
+  Never run against production/shared data.
+  Even this release audit's PG safety check is based on source review,
+  not a runtime proof of disposable database isolation.
+
+Security/secret inventory:
+  No new secret audit was performed; no blanket 'no secrets' claim.
+  Existing untracked scripts and configs require manual review before staging.
+  Prior read-only Supabase advisor findings belong to an earlier phase;
+  they were not freshly rechecked here.
+
+RELEASE-BLOCKING CONDITIONS / PRIORITY
+======================================
+GATE 1 — HIGH: INCOMPLETE GIT SNAPSHOT
+  Review and intentionally include required new/modified source and tests.
+  Prepare a staging plan; ensure no sensitive local configs, reports or
+  ad-hoc probes enter the commit by accident.
+  Expected proof: clean intended staging diff, complete import targets,
+  explicit reviewer approval before commit.
+
+GATE 2 — HIGH: UNVERIFIED PRODUCTION BUILDS
+  Run full web production build in a controlled local environment. Verify
+  API build/start path, compile and package artifacts as applicable.
+  Expected proof: build exit 0 and artifact/start readiness, no live writes.
+
+GATE 3 — HIGH: SAFE E2E ENVIRONMENT NOT CONFIRMED
+  Isolate local API and web with mock/memory DB or a disposable PG test DB,
+  then run bounded browser smoke cases across desktop/mobile:
+    login and page navigation; sales cart; cash checkout and receipt;
+    manager approval; unknown payment reconciliation; refunds;
+    shifts; supplier and purchase order workflow.
+  Only use synthetic fixtures; never use live payment instruments.
+
+GATE 4 — MEDIUM/HIGH: DB PARITY RUNTIME NOT VERIFIED
+  With an explicitly disposable PG database, run bounded PG sales/shift/
+  people parity suites. Validate tenant isolation, idempotency, sale-line
+  ordering and transaction rollback safety.
+
+GATE 5 — MEDIUM: RECONCILE DEFERRED BEHAVIORAL RISKS
+  Characterize the offline queue-failure success return, payment-report
+  branch scoping, and mixed-scope attention counts.
+  Decide whether to fix before release based on business expectations.
+  Changes would need separate tests and a new review.
+
+GATE 6 — MEDIUM: RELEASE DIFF REVIEW
+  Review code ownership, code-format/line-ending policy, imports, generated
+  artifacts, and patch relevance. Prior refactor reports alone are not proof
+  of a safe staged release.
+
+SAFE NEXT WORK PACKAGE
+======================
+1. Establish an isolated QA environment and a complete intended Git staging
+   manifest without committing yet.
+2. Run a controlled web build and API packaging/startup check.
+3. Run targeted, safe Playwright smoke tests on isolated synthetic data.
+4. Run destructive PG parity suites ONLY with an explicitly disposable DB.
+5. Re-run scoped tests, typechecks and lint for any new fixes.
+6. Produce release acceptance evidence, then consider commit/push/deploy
+   only after the user specifically authorizes those actions.
+
+WHAT WAS NOT DONE
+=================
+No source changes, Git staging, commit, push, merge, production deployment,
+Supabase write, external network login, live checkout, live inventory action,
+full test suite, full E2E suite, web production build or destructive PG test.
+
+CONCLUSION
+==========
+The combined Phase A–E extracted code passes the audited local unit/model
+baseline (45/45), both TypeScript checks, focused zero-warning lint, and
+tracked whitespace check. This proves important local contracts are intact.
+
+It DOES NOT certify full system integration or production release readiness.
+Status remains HOLD until the build, safe browser E2E, disposable PG parity
+and complete intentional Git snapshot gates are satisfied.

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="v3 Peso Tick">
+  <rect width="48" height="48" rx="11" fill="#F35D3F"/>
+  <path d="M15 12h11.5c4.4 0 7.5 2.5 7.5 6.5 0 3-1.9 5.2-4.8 6L34 32h-6.2l-4-6.4h-3.1V32H15V12Zm5.7 4.2v5.2h5.2c2 0 3.2-1 3.2-2.6s-1.2-2.6-3.2-2.6h-5.2Z" fill="#fff"/>
+  <path d="M15 26.5h19" stroke="#17130F" stroke-width="2.4" stroke-linecap="round" opacity=".9"/>
+  <circle cx="35" cy="14.5" r="4" fill="#17130F"/><path d="M33 14.5l1.4 1.4 2.6-2.8" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

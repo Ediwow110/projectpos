@@ -1,0 +1,156 @@
+NEXPOS — ISOLATED CORE RELEASE SNAPSHOT VERIFICATION
+Date: 2026-10-08
+Workspace: G:\Vscode\POS
+Branch: codex/phase20-gift-card-load-final-20261005
+
+CURRENT DECISION
+================
+99-FILE CORE TEMPORARY-INDEX CANDIDATE: PREVIOUSLY PASSED file completeness and whitespace validation.
+SNAPSHOT EXPORT: STARTED SUCCESSFULLY from frozen Git tree.
+OFFLINE INSTALL / INDEPENDENT TYPESCRIPT: IN PROGRESS; no completion or exit code yet.
+FINAL RELEASE DECISION: HOLD.
+NO real-index staging, commit, push, merge or deployment.
+
+SNAPSHOT PROVENANCE
+===================
+Core candidate Git tree:
+  32fc5b6b71bf9365f58317cce376c3c1f3f79252
+Verified Git object type: tree.
+Previous temporary-index candidate review:
+  RELEASE_TEMP_INDEX_REVIEW_2026-10-08.txt
+  Core snapshot contains 99/99 selected code and test files.
+  Missing files: 0, unexpected files: 0.
+  Required newly extracted modules missing: 0.
+  Staged-candidate whitespace errors: 0.
+  The optional two updated production logos are NOT selected for this
+  core candidate; brand version alternatives and local AI tools are excluded.
+  Distinct optional core-plus-two-logos tree was previously validated:
+  1f7f6ecf2ee05f14717e7e3aab26329b35094566.
+
+ISOLATED EXPORT / DEPENDENCY CHECK
+==================================
+Started the following command in the existing DevSpace workspace,
+using only the ignored test-results directory for the temporary export:
+
+  if not exist test-results\\core-candidate-tree mkdir test-results\\core-candidate-tree
+  git archive --format=tar
+    --output=test-results\\core-candidate-tree.tar
+    32fc5b6b71bf9365f58317cce376c3c1f3f79252
+  tar -xf test-results\\core-candidate-tree.tar -C test-results\\core-candidate-tree
+  cd test-results\\core-candidate-tree
+  pnpm install --offline --frozen-lockfile --ignore-scripts
+  pnpm --filter @pos/api exec tsc --noEmit -p tsconfig.json
+  pnpm --filter @pos/web exec tsc --noEmit -p tsconfig.json
+  echo ISOLATED_CORE_CANDIDATE_TYPECHECK_PASS
+
+Native command execution began and reached pnpm offline installation:
+- pnpm recognized all 8 workspace projects.
+- Lockfile was accepted as up to date; resolution step was skipped.
+- 392 packages identified.
+- Progress reported increasing package reuse; downloaded remained 0.
+- The process had not finished after the workspace's two permitted polls.
+
+EXECUTION SESSION: 114.
+THIS DOCUMENT DOES NOT CLAIM THAT INSTALLATION OR TYPECHECK HAS PASSED.
+Do not infer success from the absence of stderr, downloaded=0, or from
+the separate prior main-working-tree build.
+The temporary snapshot has no access to live production credentials
+via any installer parameters; however inherited host environment was not
+independently enumerated in this run. Installation was explicitly offline
+and scripts were disabled. No PostgreSQL runtime tests were invoked.
+
+NEXT VERIFICATION BOUNDARY
+==========================
+1. Resolve the result of DevSpace session 114 within tool polling rules.
+   If its final state is unavailable, inspect the exported candidate
+   and perform a reproducible bounded check; do not invent a result.
+2. Confirm both @pos/api and @pos/web TypeScript checks actually ran
+   and exited zero in the EXPORTED candidate, not only the main worktree.
+3. Check no temporary generated configurations leaked into the main
+   worktree; keep all exported artifacts in ignored test-results.
+4. If the isolated verification passes, approve the core source selection
+   as technically eligible for deliberate real staging, subject to
+   separate authorization and final scope/security review.
+5. Keep optional branding deferred unless its inclusion is explicitly
+   intended. No git add -A.
+6. After any explicitly approved staging, verify the precise real staged
+   candidate before commit, push or Render deployment.
+
+HISTORICAL CONTEXT — NOT FRESHLY RERUN HERE
+==========================================
+- Verified production Next.js web build completed with EXIT_CODE=0;
+  local worktree only.
+- Focused unit tests passed 15/15 in four separate files.
+- Selected disposable PostgreSQL parity files passed 45/45.
+- Isolated Playwright flows covered cashier checkout, approval, logout,
+  and procurement receipt/return. These are earlier results.
+- Scoped source/config secret scan found only three local PostgreSQL
+  test-connection patterns; it is NOT a comprehensive secrets audit.
+
+OVERALL RELEASE STATUS: HOLD.
+No real Git staging, commit, merge, push, deployment, or production
+database/payment/inventory mutation was done in this work package.
+
+FOLLOW-UP: INDEPENDENT SNAPSHOT VERIFICATION COMPLETE
+=====================================================
+The previous export command had been left running in session 114; its
+original final exit status was not recoverable from that session.
+Rather than inferring success, fresh checks were run in the exported
+directory itself:
+  G:\Vscode\POS\test-results\core-candidate-tree
+
+The snapshot contains its own pnpm installation metadata, package lockfile
+and both apps' TypeScript dependency links. The isolated source was
+created with git archive from core temporary Git tree:
+  32fc5b6b71bf9365f58317cce376c3c1f3f79252
+That Git object was freshly verified to be a tree.
+
+FRESH ISOLATED TYPECHECKS
+=========================
+From inside test-results/core-candidate-tree:
+  pnpm --filter @pos/api exec tsc --noEmit -p tsconfig.json
+  RESULT: PASS. Marker ISOLATED_API_TYPECHECK_PASS.
+  pnpm --filter @pos/web exec tsc --noEmit -p tsconfig.json
+  RESULT: PASS. Marker ISOLATED_WEB_TYPECHECK_PASS.
+  Combined marker ISOLATED_CORE_CANDIDATE_TYPECHECK_PASS was printed,
+  and the chained command exited 0.
+
+FRESH ISOLATED SCOPED UNIT TESTS
+================================
+Each of the following ran from the exported candidate, using
+single-file non-watch Vitest commands with --maxWorkers=1:
+  apps/api/src/sales/nest/sales-controller-guards.test.ts: 4/4 PASS
+  apps/api/src/common/idempotency-adapter-parity.test.ts: 2/2 PASS
+  apps/web/src/app/pos/pos-checkout-flow.test.ts: 7/7 PASS
+  apps/web/src/lib/procurement-mutation.test.ts: 2/2 PASS
+  TOTAL: 15/15 PASS, four test files, zero failures.
+  Final marker: ISOLATED_CANDIDATE_4_FILES_ALL_PASS; exit 0.
+
+FINAL GUARDRAILS CHECKED
+========================
+- Git real-index staged paths: none.
+- apps/web/tsconfig.json and apps/web/next-env.d.ts: no tracked diff.
+- Core temporary Git tree object: present, type 'tree'.
+- Existing main-worktree production Next.js build log: EXIT_CODE=0
+  (NOT a new production build of this isolated snapshot).
+- The 99-file temporary candidate previously passed checks for zero
+  missing selected paths, zero unexpected paths, zero missing extracted
+  source modules, and zero git diff --cached --check whitespace errors.
+
+RELEASE DECISION
+================
+CORE CANDIDATE: PASS for the independent TypeScript and bounded regression
+checks in this report. Technically eligible for a future controlled staging
+review, but NOT approved for commit or deployment.
+OVERALL RELEASE: HOLD pending explicit staging authorization, final
+intent/security review and validation of the actual staged candidate.
+Optional branding remains deferred: two modified production NexPOS logos
+are excluded from the 99-file core snapshot. Five exploratory brand
+versions are also excluded. The optional 101-file variant is a separate
+candidate and has not been independently typechecked.
+The previous local production build and 45/45 disposable PostgreSQL
+selected test passes remain historical evidence only, not a full release
+certification of the exported snapshot.
+
+Nothing was added to the real Git index, committed, merged, pushed or
+deployed. No live database, real payments or inventory were changed.
