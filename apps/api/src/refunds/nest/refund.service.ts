@@ -9,6 +9,7 @@ import { lineRefundAmount, refundableQty } from "../refund-math";
 import { refundLockKey } from "../refund-lock";
 import type { AppliedManagerApproval } from "../../auth/nest/manager-approval-policy.service";
 import { StoredValueService } from "../../value/stored-value.service";
+import { normalizeRefundRequests } from "../refund-normalization";
 
 export interface RefundItemInput {
   saleItemId: string;
@@ -67,21 +68,7 @@ export class RefundService {
     withScope(businessId, {});
     if (!granted.includes("sale.refund")) throw new Error("FORBIDDEN");
     return this.db.withLock(refundLockKey(businessId, saleId), async () => this.db.withTransaction(async () => {
-      const requestedByLine = new Map<string, number>();
-      for (const item of input.items) {
-        requestedByLine.set(item.saleItemId, (requestedByLine.get(item.saleItemId) ?? 0) + item.qty);
-      }
-      const requestedItems = [...requestedByLine.entries()]
-        .map(([saleItemId, qty]) => ({ saleItemId, qty }))
-        .sort((left, right) => left.saleItemId.localeCompare(right.saleItemId));
-      const requestedLoads = new Map<string, number>();
-      for (const load of input.loadRefunds ?? []) {
-        if (!Number.isInteger(load.amountMinor) || load.amountMinor <= 0) throw new Error("VALIDATION");
-        requestedLoads.set(load.loadId, (requestedLoads.get(load.loadId) ?? 0) + load.amountMinor);
-      }
-      const normalizedLoads = [...requestedLoads.entries()]
-        .map(([loadId, amountMinor]) => ({ loadId, amountMinor }))
-        .sort((left, right) => left.loadId.localeCompare(right.loadId));
+      const { items: requestedItems, loadRefunds: normalizedLoads } = normalizeRefundRequests(input);
       const requestedDeliveryRefundMinor = input.deliveryRefundMinor ?? 0;
       if (!Number.isInteger(requestedDeliveryRefundMinor) || requestedDeliveryRefundMinor < 0) {
         throw new Error("VALIDATION");

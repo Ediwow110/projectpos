@@ -10,13 +10,14 @@ import { Modal } from "../../components/Modal";
 import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "../../components/premium";
 import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { apiFetch, ApiError } from "../../lib/api";
+import { formatMoneyMinor } from "../../lib/money";
 
 interface Me { role: string; businessName?: string }
 interface GiftCard { id: string; maskedCode: string; codeLast4: string; status: string; balanceMinor: number }
 interface IssuedCard { id: string; maskedCode: string; code?: string; status: string }
 
 function money(minor: number): string {
-  return (minor / 100).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatMoneyMinor(minor);
 }
 
 export default function GiftCardsPage(): JSX.Element {

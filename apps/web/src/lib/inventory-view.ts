@@ -1,3 +1,5 @@
+import { formatPesoMinor } from "./money";
+
 export type InventoryHealth = "healthy" | "low" | "out";
 
 export function inventoryStatus(qtyOnHand: number, reorderLevel: number): InventoryHealth {
@@ -8,8 +10,5 @@ export function inventoryStatus(qtyOnHand: number, reorderLevel: number): Invent
 
 export function optionalMoney(minor: number | null | undefined): string | null {
   if (minor === null || minor === undefined) return null;
-  return "₱" + (minor / 100).toLocaleString("en-PH", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return formatPesoMinor(minor);
 }

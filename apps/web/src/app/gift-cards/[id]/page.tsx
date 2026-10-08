@@ -9,12 +9,13 @@ import { AppShell } from "../../../components/AppShell";
 import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "../../../components/premium";
 import { StatusPill } from "../../../components/ui";
 import { ApiError, apiFetch } from "../../../lib/api";
+import { formatMoneyMinor } from "../../../lib/money";
 
 interface Me { role: string; businessName?: string }
 interface Transaction { id: string; type: string; amountDeltaMinor: number; reason: string | null; createdAt: string }
 interface CardHistory { id: string; maskedCode: string; status: string; transactions: Transaction[] }
 
-function money(minor: number): string { return (minor / 100).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function money(minor: number): string { return formatMoneyMinor(minor); }
 
 export default function GiftCardDetailPage({ params }: { params: Promise<{ id: string }> }): JSX.Element {
   const { id } = use(params);

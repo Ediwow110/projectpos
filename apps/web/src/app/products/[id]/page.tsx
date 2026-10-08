@@ -12,6 +12,7 @@ import { MetricCard, PageHeader, Panel, SectionHeader } from "../../../component
 import { GhostButton, PrimaryButton, StatusPill } from "../../../components/ui";
 import { ApiError, apiFetch } from "../../../lib/api";
 import { canEditCatalog, canSeeCost } from "../../../lib/catalog";
+import { formatMoneyMinor, minorToMajorFixed } from "../../../lib/money";
 
 interface ProductDetail {
   id: string;
@@ -45,7 +46,7 @@ interface Csrf {
 }
 
 function money(minor: number): string {
-  return (minor / 100).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatMoneyMinor(minor);
 }
 
 function toMinor(value: string): number | null {
@@ -90,8 +91,8 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     setBarcode(product.barcode ?? "");
     setBrand(product.brand ?? "");
     setUnit(product.unit);
-    setPrice((product.priceMinor / 100).toFixed(2));
-    setCost(((product.costMinor ?? 0) / 100).toFixed(2));
+    setPrice(minorToMajorFixed(product.priceMinor));
+    setCost(minorToMajorFixed(product.costMinor ?? 0));
     setReorderLevel(String(product.reorderLevel));
     setTrackInventory(product.trackInventory);
     setCategoryId(product.categoryId ?? "");

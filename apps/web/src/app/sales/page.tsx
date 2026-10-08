@@ -10,6 +10,7 @@ import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "..
 import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { ApiError, apiFetch } from "../../lib/api";
 import { DonutChart, HorizontalBarChart, VerticalBarChart } from "../../lib/charts";
+import { formatMoneyMinor } from "../../lib/money";
 import { paymentMix, reportSeries } from "../../lib/report-view";
 
 interface Me {
@@ -65,7 +66,7 @@ interface ProductReportRow {
 }
 
 function money(minor: number): string {
-  return (minor / 100).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatMoneyMinor(minor);
 }
 
 function statusTone(status: string): "ok" | "warn" | "bad" | "info" {

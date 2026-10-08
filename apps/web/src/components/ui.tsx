@@ -2,6 +2,7 @@
 
 import React from "react";
 import type { JSX, ReactNode } from "react";
+import { formatMoneyMinor } from "../lib/money";
 
 export function Card({ children, className = "", hover = false }: { children: ReactNode; className?: string; hover?: boolean }): JSX.Element {
   return (
@@ -12,7 +13,7 @@ export function Card({ children, className = "", hover = false }: { children: Re
 }
 
 export function Peso({ minor, className = "", prefix = "₱" }: { minor: number; className?: string; prefix?: string }): JSX.Element {
-  const v = (minor / 100).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const v = formatMoneyMinor(minor);
   return <span className={"money " + className}>{prefix}{v}</span>;
 }
 

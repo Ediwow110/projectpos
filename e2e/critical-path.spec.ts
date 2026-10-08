@@ -62,14 +62,50 @@ test("critical path: register to reconciled close", async ({ page, request }) =>
   await expectOnePosCartItem(page);
   await clickPosPay(page, "25.00");
   await expect(page.getByRole("dialog", { name: "Payment" })).toBeVisible();
+  // Preserve limited, non-sensitive checkout diagnostics if this flow fails.
+  // Never log credentials, request bodies, payment instruments, or cookies.
+  const checkoutResponses: string[] = [];
+  const checkoutResponseReads: Promise<void>[] = [];
+  const pageErrors: string[] = [];
+  page.on("response", (response) => {
+    const path = new URL(response.url()).pathname;
+    if (path === "/api/v1/sales/drafts" || path === "/api/v1/sales/complete") {
+      checkoutResponseReads.push((async () => {
+        let code = "unavailable";
+        try {
+          const body: unknown = await response.json();
+          if (body && typeof body === "object") {
+            const envelope = body as { code?: unknown; error?: { code?: unknown } };
+            const returnedCode = envelope.error?.code ?? envelope.code;
+            if (typeof returnedCode === "string") code = returnedCode;
+          }
+        } catch {
+          // Non-JSON response: the HTTP status remains sufficient evidence.
+        }
+        checkoutResponses.push(`${response.request().method()} ${path} HTTP ${response.status()} code ${code}`);
+      })());
+    }
+  });
+  page.on("pageerror", (error) => pageErrors.push(error.name));
   await page.getByRole("button", { name: "Complete Payment" }).click();
-  if (viewportWidth < 1280) {
-    await expect(page.getByRole("region", { name: "Tablet payment status" }).getByText("Sale completed.")).toBeVisible();
-    await page.getByRole("region", { name: "Tablet payment status" }).getByRole("link", { name: "View receipt" }).click();
-  } else {
-    const cart = page.getByRole("complementary", { name: "Cart" });
-    await expect(cart.getByText("Sale completed.")).toBeVisible();
-    await cart.getByRole("link", { name: "View receipt" }).click();
+  try {
+    if (viewportWidth < 1280) {
+      await expect(page.getByRole("region", { name: "Tablet payment status" }).getByText("Sale completed.")).toBeVisible();
+      await page.getByRole("region", { name: "Tablet payment status" }).getByRole("link", { name: "View receipt" }).click();
+    } else {
+      const cart = page.getByRole("complementary", { name: "Cart" });
+      await expect(cart.getByText("Sale completed.")).toBeVisible();
+      await cart.getByRole("link", { name: "View receipt" }).click();
+    }
+  } catch (error) {
+    await Promise.allSettled(checkoutResponseReads);
+    console.error("Checkout failure diagnostics", {
+      checkoutResponses,
+      pageErrors,
+      statusMessages: await page.getByRole("status").allTextContents(),
+      alerts: await page.getByRole("alert").allTextContents(),
+    });
+    throw error;
   }
   // Next dev compiles the receipts route on first visit; under parallel load
   // that plus the API round-trip can exceed the default 5s.
