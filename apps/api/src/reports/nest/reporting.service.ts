@@ -5,7 +5,8 @@ import { BillingService } from "../../billing/nest/billing.service";
 import type { DbPort } from "../../common/db.port";
 import { deriveStockStatus } from "../../inventory/projection";
 import { sumCashComponents } from "../../shifts/cash";
-import { bucketKey, bucketRange } from "../aggregate";
+import { bucketRange } from "../aggregate";
+import { revenueSeries } from "../reporting-series";
 import { ReportingBreakdownService } from "../reporting-breakdown-service";
 import {
   ReportingCore,
@@ -142,24 +143,7 @@ export class ReportingService {
     }
     const granularity = "day";
     const buckets = bucketRange(range.from, range.to, granularity);
-    const byBucket = new Map<
-      string,
-      { netRevenue: number; orders: number }
-    >();
-    for (const bucket of buckets) {
-      byBucket.set(bucket, { netRevenue: 0, orders: 0 });
-    }
-    for (const sale of withLines) {
-      const key = bucketKey(sale.sale.createdAt, granularity);
-      const slot = byBucket.get(key);
-      if (!slot) continue;
-      slot.netRevenue += sale.netRevenue;
-      slot.orders += 1;
-    }
-    const series: SeriesPoint[] = buckets.map((bucket) => ({
-      bucket,
-      ...byBucket.get(bucket)!,
-    }));
+    const series: SeriesPoint[] = revenueSeries(buckets, granularity, withLines);
     const aggregate = new Map<
       string,
       { name: string; qty: number; revenue: number }
@@ -323,13 +307,6 @@ export class ReportingService {
       range.to,
       granularity,
     );
-    const byBucket = new Map<
-      string,
-      { netRevenue: number; orders: number }
-    >();
-    for (const bucket of buckets) {
-      byBucket.set(bucket, { netRevenue: 0, orders: 0 });
-    }
     const withLines = await this.core.linesFor(
       businessId,
       await this.core.settledSales(
@@ -339,14 +316,7 @@ export class ReportingService {
         query.branchId,
       ),
     );
-    for (const sale of withLines) {
-      const slot = byBucket.get(
-        bucketKey(sale.sale.createdAt, granularity),
-      );
-      if (!slot) continue;
-      slot.netRevenue += sale.netRevenue;
-      slot.orders += 1;
-    }
+    const series = revenueSeries(buckets, granularity, withLines);
     return {
       totals: {
         netRevenue: cur.netRevenue,
@@ -361,10 +331,7 @@ export class ReportingService {
         refundTotal: cur.refundTotal,
         discountTotal: cur.discountTotal,
       },
-      series: buckets.map((bucket) => ({
-        bucket,
-        ...byBucket.get(bucket)!,
-      })),
+      series,
       generatedAt: new Date().toISOString(),
       range: {
         from: range.from.toISOString(),

@@ -11,6 +11,7 @@ import { StatusPill } from "../../../components/ui";
 import { apiFetch } from "../../../lib/api";
 import { RequestError } from "../../../lib/billing-ui";
 import { DonutChart, HorizontalBarChart, VerticalBarChart } from "../../../lib/charts";
+import { formatMoneyMinor } from "../../../lib/money";
 import { branchShares, paymentMix, reportSeries } from "../../../lib/report-view";
 
 interface SalesPayload {
@@ -56,10 +57,7 @@ interface Me {
 }
 
 function money(minor: number): string {
-  return (minor / 100).toLocaleString("en-PH", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return formatMoneyMinor(minor);
 }
 
 const REPORT_LINKS = [

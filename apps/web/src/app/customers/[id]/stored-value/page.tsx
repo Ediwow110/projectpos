@@ -9,12 +9,13 @@ import { AppShell } from "../../../../components/AppShell";
 import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "../../../../components/premium";
 import { PrimaryButton, StatusPill } from "../../../../components/ui";
 import { ApiError, apiFetch } from "../../../../lib/api";
+import { formatMoneyMinor } from "../../../../lib/money";
 
 interface Me { role: string; businessName?: string }
 interface Customer { id: string; name: string }
 interface HistoryRow { id: string; type: string; amountDeltaMinor?: number; pointsDelta?: number; reason: string | null; createdAt: string }
 interface History { customerId: string; storeCredit: HistoryRow[]; loyalty: HistoryRow[] }
-function money(minor: number): string { return (minor / 100).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function money(minor: number): string { return formatMoneyMinor(minor); }
 
 export default function CustomerStoredValuePage({ params }: { params: Promise<{ id: string }> }): JSX.Element {
   const { id } = use(params);

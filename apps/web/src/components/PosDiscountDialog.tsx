@@ -8,11 +8,12 @@ import {
   posDiscountSummary,
   type PosCartEntry,
 } from "../lib/pos-sale-model";
+import { minorToMajorFixed } from "../lib/money";
 import { Modal } from "./Modal";
 import { GhostButton, PrimaryButton } from "./ui";
 
 function phpInput(minor: number): string {
-  return (minor / 100).toFixed(2);
+  return minorToMajorFixed(minor);
 }
 
 function parsePhp(value: string): number | null {

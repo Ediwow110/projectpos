@@ -3,11 +3,12 @@
 import React, { useState } from "react";
 import type { FormEvent, JSX } from "react";
 
+import { minorToMajorFixed } from "../lib/money";
 import { Modal } from "./Modal";
 import { GhostButton, PrimaryButton } from "./ui";
 
 function money(minor: number): string {
-  return (minor / 100).toFixed(2);
+  return minorToMajorFixed(minor);
 }
 
 export function PosManagerApprovalDialog({

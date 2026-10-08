@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 
 import { apiFetch, ApiError } from "../lib/api";
+import { formatMoneyMinor } from "../lib/money";
 import { parseMajorCurrencyToMinor, type PosGiftCardLoad } from "../lib/pos-sale-model";
 import { Modal } from "./Modal";
 import { GhostButton, PrimaryButton } from "./ui";
@@ -15,7 +16,7 @@ interface GiftCardLookup {
 }
 
 function money(minor: number): string {
-  return (minor / 100).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatMoneyMinor(minor);
 }
 
 export function GiftCardLoadDialog({

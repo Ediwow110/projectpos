@@ -3,15 +3,13 @@
 import React from "react";
 import type { JSX } from "react";
 
+import { formatMoneyMinor } from "../lib/money";
 import type { PosHeldSale } from "../lib/pos-sale-model";
 import { Modal } from "./Modal";
 import { GhostButton, PrimaryButton } from "./ui";
 
 function money(minor: number): string {
-  return (minor / 100).toLocaleString("en-PH", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return formatMoneyMinor(minor);
 }
 
 function itemSummary(held: PosHeldSale): string {

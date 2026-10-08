@@ -1,6 +1,7 @@
 import React from "react";
 import Link from "next/link";
 
+import { minorToMajorFixed } from "../lib/money";
 import type { PosCartEntry } from "../lib/pos-sale-model";
 
 type StatusTone = "ok" | "warn" | "info" | "neutral";
@@ -38,7 +39,7 @@ interface PosCartPanelProps {
 }
 
 function money(minor: number): string {
-  return (minor / 100).toFixed(2);
+  return minorToMajorFixed(minor);
 }
 
 export function PosCartPanel({

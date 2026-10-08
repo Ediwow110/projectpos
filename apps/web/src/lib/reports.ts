@@ -1,3 +1,5 @@
+import { minorToMajorFixed } from "./money";
+
 export function buildOverviewQuery(params: {
   dateFrom?: string;
   dateTo?: string;
@@ -15,7 +17,7 @@ export function buildOverviewQuery(params: {
 }
 
 export function money(minor: number): string {
-  return (minor / 100).toFixed(2);
+  return minorToMajorFixed(minor);
 }
 
 export function formatDelta(

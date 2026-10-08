@@ -1,3 +1,5 @@
+import { minorToMajorFixed } from "./money";
+
 export interface LoyaltySettingsForm {
   enabled: boolean;
   earnAmount: string;
@@ -31,7 +33,7 @@ export function majorToMinor(value: string): number | null {
 }
 
 export function formatMajorCurrency(minor: number): string {
-  return `₱${(minor / 100).toFixed(2)}`;
+  return `₱${minorToMajorFixed(minor)}`;
 }
 
 function positiveInteger(value: string): number | null {
@@ -53,10 +55,10 @@ export function validateLoyaltySettings(form: LoyaltySettingsForm): LoyaltySetti
 export function formFromProgram(program: LoyaltyProgramSettings): LoyaltySettingsForm {
   return {
     enabled: program.enabled,
-    earnAmount: (program.earnAmountMinor / 100).toFixed(2),
+    earnAmount: minorToMajorFixed(program.earnAmountMinor),
     earnPoints: String(program.earnPoints),
     redeemPoints: String(program.redeemPoints),
-    redeemValue: (program.redeemValueMinor / 100).toFixed(2),
+    redeemValue: minorToMajorFixed(program.redeemValueMinor),
     minimumRedeemPoints: program.minimumRedeemPoints === null ? "" : String(program.minimumRedeemPoints),
   };
 }

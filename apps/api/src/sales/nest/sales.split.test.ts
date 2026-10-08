@@ -1,8 +1,20 @@
 import { describe, expect, it } from "vitest";
+import { PATH_METADATA } from "@nestjs/common/constants";
 import { createMemoryDb } from "../../common/memory.db";
+import { PaymentsController } from "./payments.controller";
+import { ReceiptsController } from "./receipts.controller";
+import { SalesController } from "./sales.controller";
 import { SalesService } from "./sales.service";
 
 const GRANT = ["discount.override", "sale.void", "sale.refund"];
+
+describe("sales controller split", () => {
+  it("retains the API version prefix on every split controller", () => {
+    expect(Reflect.getMetadata(PATH_METADATA, SalesController)).toBe("api/v1");
+    expect(Reflect.getMetadata(PATH_METADATA, PaymentsController)).toBe("api/v1");
+    expect(Reflect.getMetadata(PATH_METADATA, ReceiptsController)).toBe("api/v1");
+  });
+});
 
 async function setup() {
   const db = createMemoryDb();

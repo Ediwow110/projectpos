@@ -75,6 +75,21 @@ export interface PurchaseOrder {
   supplierReturns?: SupplierReturn[];
 }
 
+export function receivedPurchaseOrderQty(order: PurchaseOrder, lineId: string): number {
+  return (order.receipts ?? [])
+    .flatMap((receipt) => receipt.lines)
+    .filter((line) => line.purchaseOrderLineId === lineId)
+    .reduce((sum, line) => sum + line.quantityReceived, 0);
+}
+
+export function returnedPurchaseOrderQty(order: PurchaseOrder, lineId: string): number {
+  return (order.supplierReturns ?? [])
+    .filter((item) => item.status === "POSTED")
+    .flatMap((item) => item.lines)
+    .filter((line) => line.purchaseOrderLineId === lineId)
+    .reduce((sum, line) => sum + line.quantity, 0);
+}
+
 export function purchaseOrdersPath(opts: { q?: string; status?: string; supplierId?: string; branchId?: string; page?: number; pageSize?: number } = {}): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(opts)) if (value !== undefined && value !== "") params.set(key, String(value));

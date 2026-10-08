@@ -1,7 +1,6 @@
 "use client";
 
 import type { JSX } from "react";
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { AppShell } from "../../components/AppShell";
@@ -11,16 +10,14 @@ import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "..
 import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { apiFetch } from "../../lib/api";
 import { errorText } from "../../lib/billing";
+import { createTeamMemberRequest, deactivateTeamMemberRequest, saveTeamApprovalPinRequest } from "../../lib/team-api";
 import { canDeactivateMember, canManageApprovalPin, teamRoleLabel, type TeamMemberRow } from "../../lib/team-view";
+import { useTeamPageState } from "./use-team-page-state";
 
 interface Me {
   userId: string;
   role: string;
   businessName?: string;
-}
-
-interface Csrf {
-  csrfToken: string;
 }
 
 const ROLES = [
@@ -29,26 +26,14 @@ const ROLES = [
   { value: "inventory", label: "Inventory" },
 ] as const;
 
-interface TemporaryCredential {
-  name: string;
-  email: string;
-  password: string;
-}
-
 export default function TeamPage(): JSX.Element {
-  const [createOpen, setCreateOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [role, setRole] = useState("cashier");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [temporaryCredential, setTemporaryCredential] = useState<TemporaryCredential | null>(null);
-  const [copyStatus, setCopyStatus] = useState("");
-  const [deactivateTarget, setDeactivateTarget] = useState<TeamMemberRow | null>(null);
-  const [pinTarget, setPinTarget] = useState<TeamMemberRow | null>(null);
-  const [approvalPin, setApprovalPin] = useState("");
-  const [approvalPinConfirm, setApprovalPinConfirm] = useState("");
+  const {
+    createOpen, setCreateOpen, name, setName, email, setEmail, role, setRole,
+    busy, setBusy, error, setError, success, setSuccess,
+    temporaryCredential, setTemporaryCredential, copyStatus, setCopyStatus,
+    deactivateTarget, setDeactivateTarget, pinTarget, setPinTarget,
+    approvalPin, setApprovalPin, approvalPinConfirm, setApprovalPinConfirm,
+  } = useTeamPageState();
 
   const meQuery = useQuery({
     queryKey: ["me"],
@@ -92,17 +77,7 @@ export default function TeamPage(): JSX.Element {
     setTemporaryCredential(null);
     setCopyStatus("");
     try {
-      const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
-      const created = await apiFetch<{ membershipId: string; userId: string; tempPassword?: string }>(
-        "/api/v1/memberships",
-        {
-          csrfToken: csrf.csrfToken,
-          init: {
-            method: "POST",
-            body: JSON.stringify({ name: cleanName, email: cleanEmail, role }),
-          },
-        },
-      );
+      const created = await createTeamMemberRequest({ name: cleanName, email: cleanEmail, role });
       await membersQuery.refetch();
       setTemporaryCredential(
         created.tempPassword
@@ -144,11 +119,7 @@ export default function TeamPage(): JSX.Element {
     setError("");
     setSuccess("");
     try {
-      const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
-      await apiFetch("/api/v1/memberships/" + deactivateTarget.id + "/deactivate", {
-        csrfToken: csrf.csrfToken,
-        init: { method: "POST" },
-      });
+      await deactivateTeamMemberRequest(deactivateTarget.id);
       setSuccess(deactivateTarget.name + " was deactivated.");
       setDeactivateTarget(null);
       await membersQuery.refetch();
@@ -174,11 +145,7 @@ export default function TeamPage(): JSX.Element {
     setError("");
     setSuccess("");
     try {
-      const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
-      await apiFetch(`/api/v1/memberships/${pinTarget.id}/approval-pin`, {
-        csrfToken: csrf.csrfToken,
-        init: { method: "POST", body: JSON.stringify({ pin: approvalPin }) },
-      });
+      await saveTeamApprovalPinRequest(pinTarget.id, approvalPin);
       setSuccess(`${pinTarget.name}'s approval PIN was ${pinTarget.approvalPinSet ? "rotated" : "enrolled"}.`);
       setPinTarget(null);
       setApprovalPin("");
