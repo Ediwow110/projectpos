@@ -27,6 +27,24 @@ describe("phase11 settings gate and audit context", () => {
     expect(row.at).toBeInstanceOf(Date);
   });
 
+  it("recovers safely when persisted onboarding settings have a malformed shape", async () => {
+    const db = createMemoryDb();
+    const biz = await db.createBusiness({ name: "S", currency: "PHP" });
+    await db.saveSettings(biz.id, { onboarding: { currentStep: "complete" } });
+
+    const svc = new BusinessService(db);
+    await expect(svc.getOnboarding(biz.id)).resolves.toEqual({
+      currentStep: "taxCurrency",
+      steps: {
+        businessDetails: "done",
+        taxCurrency: "pending",
+        receiptSetup: "pending",
+        products: "pending",
+        employees: "pending",
+      },
+    });
+  });
+
   it("protects onboarding mutations with the same settings.write permission as business setup", async () => {
     const db = createMemoryDb();
     const biz = await db.createBusiness({ name: "S", currency: "PHP" });
@@ -52,6 +70,26 @@ describe("phase11 settings gate and audit context", () => {
       ),
     ).resolves.toMatchObject({ currentStep: "receiptSetup" });
   });
+
+  it.each(["businessDetails", "taxCurrency", "receiptSetup"] as const)(
+    "rejects direct attempts to skip required onboarding step %s",
+    async (step) => {
+      const db = createMemoryDb();
+      const biz = await db.createBusiness({ name: "S", currency: "PHP" });
+      const svc = new BusinessService(db);
+      const before = await svc.getOnboarding(biz.id);
+
+      await expect(svc.patchOnboarding(
+        biz.id,
+        "u-owner",
+        { step, state: "skipped" },
+        `skip-${step}`,
+        ["settings.write"],
+      )).rejects.toThrow("ONBOARDING_REQUIRED_STEP");
+
+      await expect(svc.getOnboarding(biz.id)).resolves.toEqual(before);
+    },
+  );
 
   it("validates online-order branches in-tenant and active", async () => {
     const db = createMemoryDb();

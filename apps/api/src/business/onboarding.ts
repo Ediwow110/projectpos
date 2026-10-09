@@ -62,6 +62,7 @@ export function normalizeOnboardingState(value: unknown): OnboardingState {
     steps,
   };
 }
+
 export function applyOnboardingPatch(
   state: OnboardingState,
   patch: { step: OnboardingStep; state: "done" | "skipped" },

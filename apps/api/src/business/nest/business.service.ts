@@ -4,6 +4,7 @@ import {
   applyOnboardingPatch,
   defaultOnboardingState,
   mergeSettings,
+  normalizeOnboardingState,
   type OnboardingState,
 } from "../onboarding";
 import type { DbPort } from "../../common/db.port";
@@ -91,8 +92,8 @@ export class BusinessService {
 
   async getOnboarding(businessId: string): Promise<OnboardingState> {
     const settings = await this.db.getSettings(businessId);
-    const stored = settings["onboarding"] as OnboardingState | undefined;
-    return stored ?? defaultOnboardingState();
+    const stored = settings["onboarding"];
+    return stored === undefined ? defaultOnboardingState() : normalizeOnboardingState(stored);
   }
 
   async patchOnboarding(

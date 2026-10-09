@@ -29,6 +29,7 @@ interface Me {
   businessId: string;
   businessName: string;
   role: string;
+  onboardingRequired: boolean;
   activeBranchId: string | null;
   activeBranchName: string | null;
 }
@@ -130,7 +131,7 @@ export default function DashboardPage(): JSX.Element {
     queryKey: ["overview", preset, compare, branchId],
     queryFn: () => apiFetch<Overview>(buildOverviewQuery({ ...range, compare, branchId: branchId || undefined })),
     retry: false,
-    enabled: !meQuery.isError,
+    enabled: meQuery.data?.onboardingRequired === false && !meQuery.isError,
   });
 
   if (meQuery.isLoading || unauthorized) {

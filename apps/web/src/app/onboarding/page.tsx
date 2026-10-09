@@ -4,7 +4,7 @@ import type { JSX } from "react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Panel } from "../../components/premium";
 import { NexposLogo } from "../../components/brand/NexposLogo";
@@ -65,6 +65,7 @@ async function loadOnboarding(): Promise<OnboardingState> {
 
 export default function OnboardingPage(): JSX.Element {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [error, setError] = useState("");
   const [savingStep, setSavingStep] = useState<Step | null>(null);
   const query = useQuery({ queryKey: ["onboarding"], queryFn: loadOnboarding, retry: false });
@@ -91,6 +92,7 @@ export default function OnboardingPage(): JSX.Element {
         init: { method: "PATCH", body: JSON.stringify({ step, state }) },
       });
       await query.refetch();
+      await queryClient.invalidateQueries({ queryKey: ["me"] });
     } catch (err) {
       setError(err instanceof ApiError ? err.code + ": " + err.message : "Update failed");
     } finally {
@@ -243,11 +245,9 @@ export default function OnboardingPage(): JSX.Element {
           {error ? <p role="alert" className="mt-5 rounded-xl bg-[#fff0f0] px-3 py-2 text-sm font-medium text-[#c43e3e]">{error}</p> : null}
 
           <div className="mt-8 flex items-center justify-between gap-3 border-t border-[#eee6de] pt-5">
-            {requiredDone ? (
-              <Link href="/" className="text-[11px] font-semibold text-[#73685f] hover:text-[#d94a30]">← Back to dashboard</Link>
-            ) : (
-              <p role="note" className="text-[11px] text-[#73685f]">Complete required setup to open the dashboard.</p>
-            )}
+            {requiredDone
+              ? <Link href="/" className="text-[11px] font-semibold text-[#73685f] hover:text-[#d94a30]">← Back to dashboard</Link>
+              : <p className="text-[11px] font-medium text-[#73685f]">Complete required setup to open the dashboard.</p>}
             <p className="font-data text-[9px] text-[#9a8d83]">Progress is saved by the onboarding endpoint</p>
           </div>
         </Panel>

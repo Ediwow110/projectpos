@@ -1,0 +1,89 @@
+NexPOS onboarding API audit follow-up
+Date: 2026-10-09
+
+Scope
+-----
+- Exercised the onboarding HTTP routes through the Nest test application.
+- Checked required-step bypass attempts, authentication, CSRF, optional-step skipping,
+  saved progress, and dashboard response behavior while required setup remains incomplete.
+- Inspected recovery behavior for malformed persisted onboarding settings.
+- Ran a real Playwright browser flow against the local Next.js app and local Nest API
+  on isolated ports, using the API's in-memory store.
+
+Findings and changes
+--------------------
+1. Required steps cannot be skipped through the API. Direct skip attempts for
+   businessDetails, taxCurrency, and receiptSetup return ONBOARDING_REQUIRED_STEP
+   and do not change saved progress.
+2. Onboarding writes require an authenticated session and a valid CSRF token.
+   Optional product setup can still be skipped.
+3. The dashboard overview endpoint returns a valid response for the authenticated
+   owner's incomplete setup state; the browser route tests separately verify the
+   UI remains in onboarding until required setup is complete.
+4. Found a malformed-state handling bug: BusinessService.getOnboarding trusted
+   stored JSON with a TypeScript cast. A stored object without its steps map was
+   returned as-is and could break the wizard. Added normalization that restores
+   missing or invalid step values to safe defaults and recalculates currentStep.
+5. Found the dashboard-return loop in the live browser flow. Completing required
+   setup updated the onboarding query, but AppShell retained a stale /me
+   onboardingRequired=true value and redirected the owner back to setup. The
+   onboarding page now invalidates the shared ["me"] query after a successful update.
+6. Found that newly created tracked products were absent from Inventory until an
+   opening-stock movement already existed. That left the Products-to-Inventory
+   setup path without a product link for recording the first stock entry. The
+   balances response now includes active tracked products at zero on hand within
+   the requested branch scope, so users can open the movement ledger and record
+   opening stock.
+7. The Inventory quick-entry form exposed manual sale and transfer movement types,
+   which can bypass the order and transfer workflows that own those records. It
+   now offers only manual movement types. Opening stock, receipts, and returns are
+   normalized positive; damage is normalized negative; adjustment and stock-count
+   quantities retain their explicit sign. Manager approval fingerprints use the
+   same normalized quantity.
+8. Added branch-scope coverage for products with no movement history. A product
+   with stock in branch one now appears at zero in branch two, while branch one's
+   actual balance remains isolated.
+
+Verification
+------------
+- Playwright workspace-access suite: 15/15 passed across desktop, tablet, mobile.
+  Browser tests use intercepted API responses.
+- API service and HTTP contract tests: 15/15 passed after the fix.
+- API TypeScript typecheck: passed.
+- Real browser + local API onboarding flow: passed. It registered a disposable
+  in-memory owner, tested a direct required-step skip, completed required steps,
+  returned to the dashboard, skipped optional steps, and verified saved progress.
+- Web onboarding UI tests: 2/2 passed; web TypeScript typecheck: passed.
+- Inventory service tests: 9/9 passed; Inventory HTTP contract tests: 10/10 passed;
+  API TypeScript typecheck passed.
+- PostgreSQL inventory persistence suite: 10/10 passed against the dedicated
+  disposable `pos_test_pg` database. This covered branch-scoped storage, movements,
+  and tenant isolation. The local database container was stopped after the run.
+- PostgreSQL-backed live Playwright suite: 2/2 passed against `pos_test_pg`. It
+  covered onboarding gates/progress and product creation, zero-stock visibility,
+  opening-stock entry, and damage adjustment through the UI. The web/API processes
+  and database container were stopped after the run.
+- Real browser + local API product/inventory flow: passed. It created a disposable
+  owner, completed required setup, created a tracked product, verified it appeared
+  at zero stock, recorded 17 units of opening stock, then recorded 2 damaged units
+  through the quick-entry form and verified the resulting 15-unit balance. It also
+  verified manual sale and transfer options are absent.
+- Web lint passed for the modified inventory page and live Playwright spec.
+- Regression test was observed failing before the normalization change, then passing.
+- DATABASE_URL was unset; createTestApp used its isolated in-memory database. No
+  production or external database was accessed.
+
+Limits
+-----
+- The earlier Nest contract tests used their isolated in-memory database. The final
+  live browser flows and inventory persistence checks also passed against the
+  dedicated local PostgreSQL test database. No production database was accessed.
+- Product and employee setup remain optional in the current onboarding policy.
+  There is no separate inventory step in ONBOARDING_ORDER; confirm whether inventory
+  is intended to be a mandatory onboarding step before changing that policy. The
+  audited product and opening-stock path works after the required steps are done;
+  the wizard still leaves inventory as a post-step workspace action.
+
+Working tree
+------------
+- Changes remain local and uncommitted. Nothing was pushed.
