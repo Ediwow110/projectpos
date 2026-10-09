@@ -30,6 +30,15 @@ beforeAll(async () => {
 afterAll(async () => { await app.close(); });
 
 describe("phase3 inventory HTTP contract", () => {
+  it("shows a tracked product with zero on hand before its first stock movement", async () => {
+    const bal = await request(app.getHttpServer()).get("/api/v1/inventory/balances")
+      .set("Cookie", cookie);
+    expect(bal.status).toBe(200);
+    expect(bal.body.items.some((b: { productId: string; qtyOnHand: number; status: string }) =>
+      b.productId === productId && b.qtyOnHand === 0 && b.status === "out",
+    )).toBe(true);
+  });
+
   it("records opening stock and reads it back in balances", async () => {
     const mov = await request(app.getHttpServer()).post("/api/v1/inventory/movements")
       .set("Cookie", cookie).set("X-CSRF-Token", csrf)

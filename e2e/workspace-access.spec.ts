@@ -1,5 +1,104 @@
 import { expect, test } from "@playwright/test";
 
+test("incomplete owners stay in setup across dashboard deep links and browser history", async ({ page }) => {
+  let dashboardOverviewRequests = 0;
+  await page.route("**/api/v1/me", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      userId: "qa-owner", businessId: "qa-business", businessName: "QA Workspace",
+      role: "owner", onboardingRequired: true, workspaceTourSeen: false,
+      activeBranchId: null, activeBranchName: null,
+    }),
+  }));
+  await page.route("**/api/v1/onboarding", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      currentStep: "taxCurrency",
+      steps: {
+        businessDetails: "done", taxCurrency: "pending", receiptSetup: "pending",
+        products: "pending", employees: "pending",
+      },
+    }),
+  }));
+  await page.route("**/api/v1/dashboard/overview**", (route) => {
+    dashboardOverviewRequests += 1;
+    const emptyKpi = { value: 0, previous: 0, deltaMinor: 0, deltaPct: 0 };
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        kpis: {
+          netRevenue: emptyKpi, orders: emptyKpi, avgOrder: emptyKpi,
+          refundTotal: emptyKpi, discountTotal: emptyKpi, expenseTotal: emptyKpi,
+        },
+        series: [], topProducts: [], attention: [], compareLabel: "previous period",
+      }),
+    });
+  });
+
+  await page.goto("/login");
+  await page.goto("/");
+  await expect(page).toHaveURL(/\/onboarding$/);
+  await expect(page.getByRole("heading", { name: "Set up your business" })).toBeVisible();
+  await expect(page.getByText("Complete required setup to open the dashboard.")).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "Workspace navigation" })).toHaveCount(0);
+  expect(dashboardOverviewRequests).toBe(0);
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/login$/);
+  await page.goForward();
+  await expect(page).toHaveURL(/\/onboarding$/);
+  await expect(page.getByRole("heading", { name: "Set up your business" })).toBeVisible();
+});
+
+test("owners can open the dashboard after required setup while optional steps remain", async ({ page }) => {
+  await page.route("**/api/v1/me", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      userId: "qa-owner", businessId: "qa-business", businessName: "QA Workspace",
+      role: "owner", onboardingRequired: false, workspaceTourSeen: true,
+      activeBranchId: null, activeBranchName: null,
+    }),
+  }));
+  await page.route("**/api/v1/onboarding", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      currentStep: "products",
+      steps: {
+        businessDetails: "done", taxCurrency: "done", receiptSetup: "done",
+        products: "pending", employees: "pending",
+      },
+    }),
+  }));
+  await page.route("**/api/v1/branches", (route) => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({ items: [] }),
+  }));
+  await page.route("**/api/v1/dashboard/overview**", (route) => {
+    const emptyKpi = { value: 0, previous: 0, deltaMinor: 0, deltaPct: 0 };
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        kpis: {
+          netRevenue: emptyKpi, orders: emptyKpi, avgOrder: emptyKpi,
+          refundTotal: emptyKpi, discountTotal: emptyKpi, expenseTotal: emptyKpi,
+        },
+        series: [], topProducts: [], attention: [], compareLabel: "previous period",
+      }),
+    });
+  });
+
+  await page.goto("/onboarding");
+  await expect(page.getByRole("heading", { name: "First products" })).toBeVisible();
+  await page.getByRole("link", { name: "← Back to dashboard" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
+});
+
 test("signed-out workspace routes redirect to login without rendering a fallback owner", async ({ page }) => {
   await page.route("**/api/v1/me", (route) => route.fulfill({
     status: 401,

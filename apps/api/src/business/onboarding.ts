@@ -35,6 +35,32 @@ export function defaultOnboardingState(): OnboardingState {
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isStepState(value: unknown): value is StepState {
+  return value === "done" || value === "skipped" || value === "pending";
+}
+
+export function normalizeOnboardingState(value: unknown): OnboardingState {
+  const fallback = defaultOnboardingState();
+  if (!isRecord(value)) return fallback;
+
+  const storedSteps = isRecord(value["steps"]) ? value["steps"] : {};
+  const steps = Object.fromEntries(
+    ONBOARDING_ORDER.map((step) => [
+      step,
+      isStepState(storedSteps[step]) ? storedSteps[step] : fallback.steps[step],
+    ]),
+  ) as Record<OnboardingStep, StepState>;
+
+  return {
+    currentStep: ONBOARDING_ORDER.find((step) => steps[step] === "pending") ?? "complete",
+    steps,
+  };
+}
+
 export function applyOnboardingPatch(
   state: OnboardingState,
   patch: { step: OnboardingStep; state: "done" | "skipped" },

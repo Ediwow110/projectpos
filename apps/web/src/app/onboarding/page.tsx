@@ -4,7 +4,7 @@ import type { JSX } from "react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Panel } from "../../components/premium";
 import { NexposLogo } from "../../components/brand/NexposLogo";
@@ -13,6 +13,8 @@ import { ApiError, apiFetch } from "../../lib/api";
 
 const ORDER = ["businessDetails", "taxCurrency", "receiptSetup", "products", "employees"] as const;
 type Step = (typeof ORDER)[number];
+const REQUIRED: readonly Step[] = ["businessDetails", "taxCurrency", "receiptSetup"];
+const OPTIONAL: readonly Step[] = ["products", "employees"];
 const SKIPPABLE: Step[] = ["products", "employees"];
 
 const STEP_META: Record<Step, { title: string; description: string; note: string }> = {
@@ -54,21 +56,16 @@ async function loadOnboarding(): Promise<OnboardingState> {
 
 export default function OnboardingPage(): JSX.Element {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [error, setError] = useState("");
   const [savingStep, setSavingStep] = useState<Step | null>(null);
   const query = useQuery({ queryKey: ["onboarding"], queryFn: loadOnboarding });
+  const requiredDone = query.data !== undefined && REQUIRED.every((step) => query.data.steps[step] === "done");
+  const optionalResolved = query.data !== undefined && OPTIONAL.every((step) => query.data.steps[step] !== "pending");
 
   useEffect(() => {
-    if (!query.data) return;
-    const { steps } = query.data;
-    const requiredDone = ["businessDetails", "taxCurrency", "receiptSetup"].every(
-      (step) => steps[step as Step] === "done",
-    );
-    const optionalResolved = ["products", "employees"].every(
-      (step) => steps[step as Step] !== "pending",
-    );
     if (requiredDone && optionalResolved) router.push("/");
-  }, [query.data, router]);
+  }, [optionalResolved, requiredDone, router]);
 
   async function patchStep(step: Step, state: "done" | "skipped"): Promise<void> {
     if (savingStep !== null) return;
@@ -81,6 +78,7 @@ export default function OnboardingPage(): JSX.Element {
         init: { method: "PATCH", body: JSON.stringify({ step, state }) },
       });
       await query.refetch();
+      await queryClient.invalidateQueries({ queryKey: ["me"] });
     } catch (err) {
       setError(err instanceof ApiError ? err.code + ": " + err.message : "Update failed");
     } finally {
@@ -223,7 +221,9 @@ export default function OnboardingPage(): JSX.Element {
           {error ? <p role="alert" className="mt-5 rounded-xl bg-[#fff0f0] px-3 py-2 text-sm font-medium text-[#c43e3e]">{error}</p> : null}
 
           <div className="mt-8 flex items-center justify-between gap-3 border-t border-[#eee6de] pt-5">
-            <Link href="/" className="text-[11px] font-semibold text-[#73685f] hover:text-[#d94a30]">← Back to dashboard</Link>
+            {requiredDone
+              ? <Link href="/" className="text-[11px] font-semibold text-[#73685f] hover:text-[#d94a30]">← Back to dashboard</Link>
+              : <p className="text-[11px] font-medium text-[#73685f]">Complete required setup to open the dashboard.</p>}
             <p className="font-data text-[9px] text-[#9a8d83]">Progress is saved by the onboarding endpoint</p>
           </div>
         </Panel>
