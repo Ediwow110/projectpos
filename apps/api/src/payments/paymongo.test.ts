@@ -236,6 +236,59 @@ describe("PayMongo adapter", () => {
     expect(managed.verifyWebhook(raw, `t=${timestamp},te=${signature},li=`)).toBe(true);
   });
 
+  it("re-enables an existing disabled managed webhook without creating a duplicate", async () => {
+    const fetchMock = vi.fn(async (
+      input: Parameters<typeof fetch>[0],
+      init?: Parameters<typeof fetch>[1],
+    ) => {
+      const url = String(input);
+      if (url.endsWith("/v1/webhooks") && (init?.method ?? "GET") === "GET") {
+        return new Response(JSON.stringify({
+          data: [{
+            id: "hook_disabled",
+            type: "webhook",
+            attributes: {
+              events: ["checkout_session.payment.paid"],
+              livemode: false,
+              secret_key: "whsk_existing",
+              status: "disabled",
+              url: "https://api.example.test/api/v1/payments/paymongo/webhook",
+            },
+          }],
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (url.endsWith("/v1/webhooks/hook_disabled/enable") && init?.method === "POST") {
+        return new Response(JSON.stringify({
+          data: { id: "hook_disabled", type: "webhook", attributes: { status: "enabled" } },
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      throw new Error(`unexpected fetch ${url} ${init?.method ?? "GET"}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const managed = new PayMongoHttpClient({
+      secretKey: "sk_test_secret",
+      webhookSecret: "",
+      apiBase: "https://api.paymongo.test",
+      webhookToleranceSeconds: 300,
+    });
+
+    await expect(managed.ensureWebhook(
+      "https://api.example.test/api/v1/payments/paymongo/webhook",
+    )).resolves.toEqual({
+      id: "hook_disabled",
+      url: "https://api.example.test/api/v1/payments/paymongo/webhook",
+      status: "enabled",
+      livemode: false,
+      events: ["checkout_session.payment.paid"],
+      created: false,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1]![0])).toBe(
+      "https://api.paymongo.test/v1/webhooks/hook_disabled/enable",
+    );
+    expect(fetchMock.mock.calls[1]![1]).toMatchObject({ method: "POST" });
+  });
+
   it("refuses to trust a stale configured secret when managed webhook metadata omits the provider secret", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
       data: [{
