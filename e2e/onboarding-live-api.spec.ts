@@ -1,23 +1,39 @@
 import { expect, test } from "@playwright/test";
+import { DashboardPage } from "./pages/DashboardPage";
+import { OnboardingPage } from "./pages/OnboardingPage";
 
-const liveWeb = "http://localhost:3102";
+test("signed-out direct onboarding returns to sign in", async ({ page }) => {
+  await page.goto("/onboarding");
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+});
 
-test("real browser, web app, and API preserve onboarding gates and progress", async ({ page }) => {
+test("real browser, web app, and API preserve onboarding gates and progress", async ({ page, context }) => {
   const email = `onboarding-live-${Date.now()}@example.test`;
-  await page.goto(`${liveWeb}/register`);
+  const onboarding = new OnboardingPage(page);
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await page.goto("/register");
   await page.getByLabel("Your name").fill("Live QA Owner");
   await page.getByLabel("Business name").fill("Live QA Store");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password (12+ characters)").fill("correct-horse-12");
   await page.getByRole("button", { name: "Create business" }).click();
 
-  await expect(page).toHaveURL(/\/onboarding$/);
-  await expect(page.getByRole("heading", { name: "Set up your business" })).toBeVisible();
-  await expect(page.getByText("Complete required setup to open the dashboard.")).toBeVisible();
+  await onboarding.expectRequiredSetup();
+  const profile = await page.evaluate(() => fetch("/api/v1/me").then((response) => response.json()));
+  expect(profile.email).toBe(email);
 
-  await page.goto(`${liveWeb}/`);
-  await expect(page).toHaveURL(/\/onboarding$/);
-  await expect(page.getByRole("heading", { name: "Set up your business" })).toBeVisible();
+  for (const path of ["/", "/inventory", "/products"]) {
+    await page.goto(path);
+    await onboarding.expectRequiredSetup();
+    await page.reload();
+    await onboarding.expectRequiredSetup();
+  }
+  const secondTab = await context.newPage();
+  await secondTab.goto("/inventory");
+  await new OnboardingPage(secondTab).expectRequiredSetup();
+  await secondTab.close();
 
   const bypass = await page.evaluate(async () => {
     const csrfResponse = await fetch("/api/v1/auth/csrf");
@@ -33,23 +49,21 @@ test("real browser, web app, and API preserve onboarding gates and progress", as
   expect(bypass.body.code).toBe("ONBOARDING_REQUIRED_STEP");
 
   await expect(page.getByRole("button", { name: "Mark step complete" })).toBeVisible();
-  await page.getByRole("button", { name: "Mark step complete" }).click();
+  await onboarding.completeCurrentStep();
   await expect(page.getByText("Receipt setup", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Mark step complete" }).click();
+  await onboarding.completeCurrentStep();
 
   await expect(page.getByText("First products", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "← Back to dashboard" })).toBeVisible();
   await page.getByRole("link", { name: "← Back to dashboard" }).click();
-  await expect(page).toHaveURL(`${liveWeb}/`);
-  await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
+  await new DashboardPage(page).expectEmptyState();
 
-  await page.goto(`${liveWeb}/onboarding`);
+  await onboarding.goto();
   await expect(page.getByRole("heading", { name: "First products" })).toBeVisible();
-  await page.getByRole("button", { name: "Skip for now" }).click();
+  await onboarding.skipOptionalStep();
   await expect(page.getByText("Employees", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Skip for now" }).click();
-  await expect(page).toHaveURL(`${liveWeb}/`);
-  await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
+  await onboarding.skipOptionalStep();
+  await new DashboardPage(page).expectEmptyState();
 
   const persisted = await page.evaluate(() => fetch("/api/v1/onboarding").then((response) => response.json()));
   expect(persisted.steps).toMatchObject({
@@ -59,12 +73,13 @@ test("real browser, web app, and API preserve onboarding gates and progress", as
     products: "skipped",
     employees: "skipped",
   });
+  expect(pageErrors).toEqual([]);
 });
 
 test("new owner can add a product and record opening stock through the real inventory flow", async ({ page }) => {
   const email = `inventory-onboarding-${Date.now()}@example.test`;
   const productName = `Opening Stock QA ${Date.now()}`;
-  await page.goto(`${liveWeb}/register`);
+  await page.goto("/register");
   await page.getByLabel("Your name").fill("Inventory QA Owner");
   await page.getByLabel("Business name").fill("Inventory QA Store");
   await page.getByLabel("Email").fill(email);
@@ -87,7 +102,7 @@ test("new owner can add a product and record opening stock through the real inve
   await page.getByRole("button", { name: "Add product", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: `${productName} was added` })).toBeVisible();
 
-  await page.goto(`${liveWeb}/inventory`);
+  await page.goto("/inventory");
   await expect(page.getByRole("heading", { name: "Inventory", exact: true })).toBeVisible();
   await page.getByRole("link", { name: productName, exact: true }).click();
   await expect(page.getByRole("heading", { name: productName })).toBeVisible();
@@ -101,7 +116,7 @@ test("new owner can add a product and record opening stock through the real inve
   const openingMovement = page.getByRole("row").filter({ hasText: "Opening stock" });
   await expect(openingMovement).toContainText("+17");
 
-  await page.goto(`${liveWeb}/inventory`);
+  await page.goto("/inventory");
   const productRow = page.getByRole("row").filter({ has: page.getByRole("link", { name: productName, exact: true }) });
   await expect(productRow).toContainText("17");
   await expect(productRow).toContainText("OK");

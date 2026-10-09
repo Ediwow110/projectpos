@@ -204,7 +204,6 @@ export default function DashboardPage(): JSX.Element {
             <SectionHeader title="Getting started" description="Set up your first sale in minutes, then the Dashboard will fill with live operating data." />
             <div className="mt-5 grid grid-cols-2 gap-2 md:grid-cols-4">
               {[
-                ["Continue setup", "/onboarding"],
                 ["Products", "/products"],
                 ["Inventory", "/inventory"],
                 ["Point of sale", "/pos"],

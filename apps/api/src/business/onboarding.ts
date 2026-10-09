@@ -51,7 +51,9 @@ export function normalizeOnboardingState(value: unknown): OnboardingState {
   const steps = Object.fromEntries(
     ONBOARDING_ORDER.map((step) => [
       step,
-      isStepState(storedSteps[step]) ? storedSteps[step] : fallback.steps[step],
+      isStepState(storedSteps[step]) && !(REQUIRED_STEPS.includes(step) && storedSteps[step] === "skipped")
+        ? storedSteps[step]
+        : fallback.steps[step],
     ]),
   ) as Record<OnboardingStep, StepState>;
 
@@ -74,7 +76,8 @@ export function applyOnboardingPatch(
 }
 
 export function isOnboardingComplete(state: OnboardingState): boolean {
-  return REQUIRED_STEPS.every((s) => state.steps[s] === "done");
+  const steps = normalizeOnboardingState(state).steps;
+  return REQUIRED_STEPS.every((s) => steps[s] === "done");
 }
 
 export function mergeSettings(
