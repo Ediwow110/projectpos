@@ -28,7 +28,7 @@ describe("receipt delivery HTTP contract", () => {
   const email = new CaptureReceiptEmail();
 
   beforeAll(async () => {
-    app = await createTestApp({ email });
+    app = await createTestApp({ email, completedOnboardingFixture: true });
     const registration = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
       ownerName: "Receipt Owner",
       email: "receipt-delivery-owner@example.com",

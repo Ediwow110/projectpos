@@ -20,7 +20,7 @@ function jar(headers: unknown): string {
 }
 
 beforeAll(async () => {
-  app = await createTestApp();
+  app = await createTestApp({ completedOnboardingFixture: true });
   const owner = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
     ownerName: "Approval Owner", email: "approval-owner-contract@example.com", password: "correct-horse-12", businessName: "Approval Store",
   });

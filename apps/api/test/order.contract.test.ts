@@ -34,7 +34,7 @@ async function createOrder(branchId: string, requestId: string) {
 }
 
 beforeAll(async () => {
-  app = await createTestApp();
+  app = await createTestApp({ completedOnboardingFixture: true });
   db = app.get("DbPort");
   const reg = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
     ownerName: "Ana", email: "ana-orders@example.com", password: "correct-horse-12", businessName: "Order Store",

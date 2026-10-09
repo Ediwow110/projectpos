@@ -44,7 +44,7 @@ async function orderFor(businessId: string, branchId: string, requestId: string)
 
 beforeAll(async () => {
   process.env["WEB_URL"] = ORIGIN;
-  app = await createTestApp();
+  app = await createTestApp({ completedOnboardingFixture: true });
   db = app.get("DbPort");
   const reg = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
     ownerName: "Owner A",
@@ -58,6 +58,7 @@ beforeAll(async () => {
   await db.setBusinessStorefrontKey(businessA.id, STOREFRONT_A);
   branchA = await db.createBranch({ businessId: businessA.id, name: "A Main", type: "store", isActive: true });
   await db.saveSettings(businessA.id, {
+    ...await db.getSettings(businessA.id),
     onlineOrderingEnabled: true,
     onlinePickupBranchIds: [branchA.id],
     onlineFulfillmentBranchId: branchA.id,

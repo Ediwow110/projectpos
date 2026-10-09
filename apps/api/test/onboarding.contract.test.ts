@@ -69,7 +69,7 @@ describe("onboarding HTTP contract", () => {
     expect(["CSRF_MISMATCH", "CSRF_REQUIRED"]).toContain(missingCsrf.body.code);
   });
 
-  it("persists valid required-step progress and returns a usable dashboard response while setup remains incomplete", async () => {
+  it("persists valid required-step progress and blocks workspace API access while setup remains incomplete", async () => {
     const saved = await request(app.getHttpServer())
       .patch("/api/v1/onboarding")
       .set("Cookie", cookie)
@@ -87,8 +87,51 @@ describe("onboarding HTTP contract", () => {
     const dashboard = await request(app.getHttpServer())
       .get("/api/v1/dashboard/overview?dateFrom=2020-01-01T00:00:00.000Z&dateTo=2020-02-01T00:00:00.000Z&compare=none")
       .set("Cookie", cookie);
-    expect(dashboard.status).toBe(200);
-    expect(dashboard.body.kpis).toBeDefined();
+    expect(dashboard.status).toBe(403);
+    expect(dashboard.body.code).toBe("ONBOARDING_REQUIRED");
+
+    for (const path of ["/api/v1/products", "/api/v1/inventory/balances"]) {
+      const blocked = await request(app.getHttpServer()).get(path).set("Cookie", cookie);
+      expect(blocked.status).toBe(403);
+      expect(blocked.body.code).toBe("ONBOARDING_REQUIRED");
+    }
+
+    const write = await request(app.getHttpServer()).post("/api/v1/products")
+      .set("Cookie", cookie)
+      .set("X-CSRF-Token", csrf)
+      .send({ name: "Blocked before setup", priceMinor: 100 });
+    expect(write.status).toBe(403);
+    expect(write.body.code).toBe("ONBOARDING_REQUIRED");
+
+    const unrelatedSetting = await request(app.getHttpServer()).patch("/api/v1/business/settings")
+      .set("Cookie", cookie)
+      .set("X-CSRF-Token", csrf)
+      .send({ onlineOrderingEnabled: true });
+    expect(unrelatedSetting.status).toBe(403);
+    expect(unrelatedSetting.body.code).toBe("ONBOARDING_REQUIRED");
+
+    const setupSetting = await request(app.getHttpServer()).patch("/api/v1/business/settings")
+      .set("Cookie", cookie)
+      .set("X-CSRF-Token", csrf)
+      .send({ taxName: "VAT" });
+    expect(setupSetting.status).toBe(200);
+  });
+
+  it("opens workspace APIs when required steps are complete, even with optional steps pending", async () => {
+    const saved = await request(app.getHttpServer())
+      .patch("/api/v1/onboarding")
+      .set("Cookie", cookie)
+      .set("X-CSRF-Token", csrf)
+      .send({ step: "receiptSetup", state: "done" });
+    expect(saved.status).toBe(200);
+    expect(saved.body.steps.products).toBe("pending");
+    expect(saved.body.steps.employees).toBe("pending");
+
+    for (const path of ["/api/v1/dashboard/overview?compare=none", "/api/v1/products", "/api/v1/inventory/balances"]) {
+      const allowed = await request(app.getHttpServer()).get(path).set("Cookie", cookie);
+      expect(allowed.status).toBe(200);
+      if (path === "/api/v1/products") expect(allowed.body.items).toEqual([]);
+    }
   });
 
   it("allows optional steps to be skipped through the API", async () => {

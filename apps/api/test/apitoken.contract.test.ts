@@ -2,6 +2,8 @@ import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import type { INestApplication } from "@nestjs/common";
 import { createTestApp } from "../src/app.module";
+import type { DbPort } from "../src/common/db.port";
+import { defaultOnboardingState } from "../src/business/onboarding";
 
 let app: INestApplication;
 let cookie: string;
@@ -17,7 +19,7 @@ function jar(h: unknown): string {
 beforeAll(async () => {
   priorPlatformKey = process.env["PLATFORM_API_KEY"];
   process.env["PLATFORM_API_KEY"] = "test-platform-key";
-  app = await createTestApp();
+  app = await createTestApp({ completedOnboardingFixture: true });
   const reg = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
     ownerName: "Ana", email: "ana-token@example.com",
     password: "correct-horse-12", businessName: "Token Store",
@@ -57,6 +59,30 @@ describe("phase10 public api tokens HTTP contract", () => {
     const read = await request(app.getHttpServer()).get("/api/v1/sales?limit=5")
       .set("Authorization", `Bearer ${secret}`);
     expect(read.status).toBe(200);
+  });
+  it("blocks an existing bearer token and session when required setup becomes pending", async () => {
+    const db = app.get<DbPort>("DbPort");
+    const me = await request(app.getHttpServer()).get("/api/v1/me").set("Cookie", cookie);
+    const businessId = me.body.businessId as string;
+    const settings = await db.getSettings(businessId);
+    await db.saveSettings(businessId, { ...settings, onboarding: defaultOnboardingState() });
+    try {
+      const bearer = await request(app.getHttpServer()).get("/api/v1/sales?limit=5")
+        .set("Authorization", `Bearer ${secret}`);
+      expect(bearer.status).toBe(403);
+      expect(bearer.body.code).toBe("ONBOARDING_REQUIRED");
+
+      const session = await request(app.getHttpServer()).get("/api/v1/sales?limit=5")
+        .set("Cookie", cookie);
+      expect(session.status).toBe(403);
+      expect(session.body.code).toBe("ONBOARDING_REQUIRED");
+
+      const profile = await request(app.getHttpServer()).get("/api/v1/me").set("Cookie", cookie);
+      expect(profile.status).toBe(200);
+      expect(profile.body.onboardingRequired).toBe(true);
+    } finally {
+      await db.saveSettings(businessId, settings);
+    }
   });
   it("denies out-of-scope routes with FORBIDDEN", async () => {
     const res = await request(app.getHttpServer()).get("/api/v1/reports/sales?compare=none")

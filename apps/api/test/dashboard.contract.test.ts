@@ -28,7 +28,7 @@ async function makeSale(key: string, qty: number): Promise<void> {
 }
 
 beforeAll(async () => {
-  app = await createTestApp();
+  app = await createTestApp({ completedOnboardingFixture: true });
   const reg = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
     ownerName: "Ana", email: "ana-dash@example.com",
     password: "correct-horse-12", businessName: "Sari Store",

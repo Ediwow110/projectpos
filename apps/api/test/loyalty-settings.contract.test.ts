@@ -15,7 +15,7 @@ function jar(headers: unknown): string {
 
 beforeAll(async () => {
   const { createTestApp } = await import("../src/app.module");
-  app = await createTestApp();
+  app = await createTestApp({ completedOnboardingFixture: true });
   const owner = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
     ownerName: "Loyalty Settings Owner",
     email: "loyalty-settings-owner@example.com",
