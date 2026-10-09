@@ -13,6 +13,8 @@ import { ApiError, apiFetch } from "../../lib/api";
 
 const ORDER = ["businessDetails", "taxCurrency", "receiptSetup", "products", "employees"] as const;
 type Step = (typeof ORDER)[number];
+const REQUIRED: readonly Step[] = ["businessDetails", "taxCurrency", "receiptSetup"];
+const OPTIONAL: readonly Step[] = ["products", "employees"];
 const SKIPPABLE: Step[] = ["products", "employees"];
 
 const STEP_META: Record<Step, { title: string; description: string; note: string }> = {
@@ -49,26 +51,34 @@ interface OnboardingState {
 }
 
 async function loadOnboarding(): Promise<OnboardingState> {
-  return apiFetch<OnboardingState>("/api/v1/onboarding");
+  const state = await apiFetch<unknown>("/api/v1/onboarding");
+  if (typeof state !== "object" || state === null || !("steps" in state) ||
+      typeof state.steps !== "object" || state.steps === null ||
+      !ORDER.every((step) => {
+        const value = (state.steps as Record<string, unknown>)[step];
+        return value === "done" || value === "pending" || (SKIPPABLE.includes(step) && value === "skipped");
+      })) {
+    throw new ApiError("INVALID_RESPONSE", "Setup progress was invalid.", "", 200);
+  }
+  return state as unknown as OnboardingState;
 }
 
 export default function OnboardingPage(): JSX.Element {
   const router = useRouter();
   const [error, setError] = useState("");
   const [savingStep, setSavingStep] = useState<Step | null>(null);
-  const query = useQuery({ queryKey: ["onboarding"], queryFn: loadOnboarding });
+  const query = useQuery({ queryKey: ["onboarding"], queryFn: loadOnboarding, retry: false });
+  const unauthorized = query.error instanceof ApiError && (query.error.status === 401 || query.error.status === 403);
+  const requiredDone = query.data !== undefined && REQUIRED.every((step) => query.data.steps[step] === "done");
+  const optionalResolved = query.data !== undefined && OPTIONAL.every((step) => query.data.steps[step] !== "pending");
 
   useEffect(() => {
-    if (!query.data) return;
-    const { steps } = query.data;
-    const requiredDone = ["businessDetails", "taxCurrency", "receiptSetup"].every(
-      (step) => steps[step as Step] === "done",
-    );
-    const optionalResolved = ["products", "employees"].every(
-      (step) => steps[step as Step] !== "pending",
-    );
     if (requiredDone && optionalResolved) router.push("/");
-  }, [query.data, router]);
+  }, [optionalResolved, requiredDone, router]);
+
+  useEffect(() => {
+    if (unauthorized) router.replace("/login");
+  }, [router, unauthorized]);
 
   async function patchStep(step: Step, state: "done" | "skipped"): Promise<void> {
     if (savingStep !== null) return;
@@ -91,8 +101,18 @@ export default function OnboardingPage(): JSX.Element {
   if (query.isLoading) {
     return <main className="grid min-h-screen place-items-center bg-[#fcf8f3] text-sm text-[#73685f]">Loading setup…</main>;
   }
-  if (query.isError) {
-    return <main role="alert" className="grid min-h-screen place-items-center bg-[#fcf8f3] text-sm text-[#c43e3e]">Could not load setup progress.</main>;
+  if (unauthorized) {
+    return <main role="status" className="grid min-h-screen place-items-center bg-[#fcf8f3] text-sm text-[#73685f]">Returning to sign in…</main>;
+  }
+  if (query.isError || !query.data) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-[#fcf8f3] p-6 text-center">
+        <div>
+          <p role="alert" className="text-sm text-[#c43e3e]">Could not load setup progress.</p>
+          <button type="button" onClick={() => void query.refetch()} className="mt-4 text-sm font-semibold text-[#d94a30]">Try again</button>
+        </div>
+      </main>
+    );
   }
 
   const steps = query.data!.steps;
