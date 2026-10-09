@@ -2,7 +2,29 @@ import { CanActivate, ExecutionContext, Inject, Injectable } from "@nestjs/commo
 import { isSessionExpired, isSessionRevoked } from "@pos/auth";
 import { hashToken } from "../auth/sessions";
 import { rolePermissionsForRoles } from "../tenant/seed";
+import { defaultOnboardingState, isOnboardingComplete, type OnboardingState } from "../business/onboarding";
 import type { DbPort } from "./db.port";
+
+const SETUP_SETTINGS = new Set(["currency", "taxName", "taxRateBps", "receiptHeader", "receiptFooter"]);
+
+function isSetupSettingsPatch(body: unknown): boolean {
+  return typeof body === "object" && body !== null && !Array.isArray(body) &&
+    Object.keys(body).every((key) => SETUP_SETTINGS.has(key));
+}
+
+function isSetupRoute(method: string, path: string, body: unknown): boolean {
+  if (method === "GET") {
+    return ["/api/v1/me", "/api/v1/health", "/api/v1/business", "/api/v1/onboarding", "/api/v1/auth/sessions"].includes(path);
+  }
+  if (method === "PATCH") {
+    return path === "/api/v1/onboarding" ||
+      (path === "/api/v1/business/settings" && isSetupSettingsPatch(body));
+  }
+  if (method === "DELETE") return /^\/api\/v1\/auth\/sessions\/[^/]+$/.test(path);
+  return method === "POST" && [
+    "/api/v1/me/active-branch", "/api/v1/auth/logout", "/api/v1/auth/active-business", "/api/v1/auth/confirm-password",
+  ].includes(path);
+}
 
 @Injectable()
 export class SessionGuard implements CanActivate {
@@ -10,9 +32,11 @@ export class SessionGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest();
-    // Phase 10: ApiTokenGuard may have already authenticated a Bearer token
-    // and set req.auth. Honor it instead of demanding a session cookie.
-    if ((req.auth as { via?: string } | undefined)?.via === "api-token") return true;
+    // Phase 10: ApiTokenGuard may have already authenticated a Bearer token.
+    // It still needs the business setup check below.
+    if ((req.auth as { via?: string } | undefined)?.via === "api-token") {
+      return this.checkOnboarding(req);
+    }
     const token: string | undefined = req.cookies?.pos_session;
     if (!token) {
       req.authError = "TENANT_REQUIRED";
@@ -72,6 +96,15 @@ export class SessionGuard implements CanActivate {
       authenticatedAt: session.authenticatedAt,
     };
     req.rolePermissions = rolePermissionsForRoles(roles);
-    return true;
+    return this.checkOnboarding(req);
+  }
+
+  private async checkOnboarding(req: { auth: { businessId: string }; authError?: string; method: string; path: string; body?: unknown }): Promise<boolean> {
+    if (isSetupRoute(req.method, req.path, req.body)) return true;
+    const settings = await this.db.getSettings(req.auth.businessId);
+    const onboarding = (settings["onboarding"] as OnboardingState | undefined) ?? defaultOnboardingState();
+    if (isOnboardingComplete(onboarding)) return true;
+    req.authError = "ONBOARDING_REQUIRED";
+    return false;
   }
 }

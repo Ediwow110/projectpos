@@ -30,7 +30,7 @@ function api(method: "get" | "post" | "patch", path: string, cookie: string, csr
 }
 
 beforeAll(async () => {
-  app = await createTestApp();
+  app = await createTestApp({ completedOnboardingFixture: true });
   const suffix = Date.now();
   const owner = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
     ownerName: "Procurement Owner",

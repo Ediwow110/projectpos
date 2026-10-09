@@ -18,7 +18,7 @@ function jar(h: unknown): string {
 const SINCE = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
 
 beforeAll(async () => {
-  app = await createTestApp();
+  app = await createTestApp({ completedOnboardingFixture: true });
   const reg = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
     ownerName: "Ana", email: "ana-export@example.com",
     password: "correct-horse-12", businessName: "Export Store",

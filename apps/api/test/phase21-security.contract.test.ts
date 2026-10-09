@@ -6,7 +6,7 @@ import { createTestApp } from "../src/app.module";
 let app: INestApplication;
 const jar = (header: unknown): string => (Array.isArray(header) ? header : [String(header ?? "")]).map((value) => String(value).split(";")[0]).join("; ");
 
-beforeAll(async () => { app = await createTestApp(); });
+beforeAll(async () => { app = await createTestApp({ completedOnboardingFixture: true }); });
 afterAll(async () => { await app.close(); });
 
 describe("phase21 security boundaries", () => {

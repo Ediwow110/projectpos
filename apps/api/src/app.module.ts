@@ -12,6 +12,7 @@ import { ManagerApprovalPolicyService } from "./auth/nest/manager-approval-polic
 import { TenantController } from "./tenant/nest/tenant.controller";
 import { TenantService } from "./tenant/nest/tenant.service";
 import { BusinessController } from "./business/nest/business.controller";
+import { normalizeOnboardingState, REQUIRED_STEPS } from "./business/onboarding";
 import { BusinessService } from "./business/nest/business.service";
 import { CatalogController } from "./catalog/nest/catalog.controller";
 import { ProductModelController } from "./catalog/nest/product-model.controller";
@@ -228,7 +229,7 @@ export class AppModule implements NestModule {
   }
 }
 
-export async function createTestApp(options: { paymongo?: PayMongoPort; humanVerification?: HumanVerificationPort; email?: TransactionalEmailPort } = {}): Promise<INestApplication> {
+export async function createTestApp(options: { paymongo?: PayMongoPort; humanVerification?: HumanVerificationPort; email?: TransactionalEmailPort; completedOnboardingFixture?: boolean } = {}): Promise<INestApplication> {
   // Same store contract as boot: memory unless DATABASE_URL opts into
   // PostgreSQL (used by the load cohorts and any pg-backed contract run).
   const databaseUrl = runtimeDatabaseUrl();
@@ -244,7 +245,22 @@ export async function createTestApp(options: { paymongo?: PayMongoPort; humanVer
       { provide: TRANSACTIONAL_EMAIL_PORT, useValue: options.email ?? NOOP_TRANSACTIONAL_EMAIL },
       {
         provide: AuthService,
-        useFactory: (d: DbPort, email: TransactionalEmailPort) => new AuthService(d, email),
+        useFactory: (d: DbPort, email: TransactionalEmailPort) => {
+          const service = new AuthService(d, email);
+          if (options.completedOnboardingFixture) {
+            const register = service.register.bind(service);
+            service.register = async (input, meta) => {
+              const result = await register(input, meta);
+              const settings = await d.getSettings(result.business.id);
+              const onboarding = normalizeOnboardingState(settings["onboarding"]);
+              for (const step of REQUIRED_STEPS) onboarding.steps[step] = "done";
+              onboarding.currentStep = "products";
+              await d.saveSettings(result.business.id, { ...settings, onboarding });
+              return result;
+            };
+          }
+          return service;
+        },
         inject: ["DbPort", TRANSACTIONAL_EMAIL_PORT],
       },
       ManagerApprovalPolicyService,

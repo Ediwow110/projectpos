@@ -31,7 +31,7 @@ const email: TransactionalEmailPort = {
 
 beforeAll(async () => {
   process.env["WEB_URL"] = "https://pos.example.com";
-  app = await createTestApp({ paymongo: new FakePayMongo(), email });
+  app = await createTestApp({ paymongo: new FakePayMongo(), email, completedOnboardingFixture: true });
   db = app.get("DbPort");
   const business = await db.createBusiness({ name: "Public Shop", currency: "PHP" });
   businessId = business.id;

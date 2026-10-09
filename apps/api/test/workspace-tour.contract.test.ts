@@ -11,7 +11,7 @@ function jar(h: unknown): string {
 }
 
 beforeAll(async () => {
-  app = await createTestApp();
+  app = await createTestApp({ completedOnboardingFixture: true });
 });
 
 afterAll(async () => {

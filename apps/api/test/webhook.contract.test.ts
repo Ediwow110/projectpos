@@ -25,7 +25,7 @@ function signRaw(raw: string): string {
 }
 
 beforeAll(async () => {
-  app = await createTestApp();
+  app = await createTestApp({ completedOnboardingFixture: true });
   process.env["PLATFORM_API_KEY"] = "test-platform-key";
   process.env["BILLING_TEST_DOUBLE_SECRET"] = "test-webhook-secret";
   const reg = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
