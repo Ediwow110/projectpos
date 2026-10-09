@@ -73,7 +73,9 @@ try {
   const phase11 = dirs.find((d) => d.startsWith("0012_"));
   if (!phase11) throw new Error("0012 migration directory missing");
 
-  for (const dir of dirs) {
+  // This historical gate asserts the Phase 11 schema. Later migrations add
+  // tables, so stop at 0012 just as the Phase 10 verifier stops at 0011.
+  for (const dir of dirs.slice(0, dirs.indexOf(phase11) + 1)) {
     psqlStrict(readFileSync(join(MIGRATIONS_DIR, dir, "migration.sql"), "utf8"));
   }
 
@@ -110,7 +112,7 @@ try {
   ).trim();
 
   const problems = [];
-  if (tables !== 46) problems.push(`expected 46 tables, found ${tables}`);
+  if (tables !== 44) problems.push(`expected 44 tables, found ${tables}`);
   if (activeBusiness !== business) problems.push(`session active business is "${activeBusiness}", expected "${business}"`);
   if (!["t", "true"].includes(emailVerified)) problems.push(`emailVerified default is "${emailVerified}", expected "true"`);
   if (corrections !== 1) problems.push(`expected 1 correction, found ${corrections}`);
