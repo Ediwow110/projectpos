@@ -243,7 +243,11 @@ export default function OnboardingPage(): JSX.Element {
           {error ? <p role="alert" className="mt-5 rounded-xl bg-[#fff0f0] px-3 py-2 text-sm font-medium text-[#c43e3e]">{error}</p> : null}
 
           <div className="mt-8 flex items-center justify-between gap-3 border-t border-[#eee6de] pt-5">
-            <Link href="/" className="text-[11px] font-semibold text-[#73685f] hover:text-[#d94a30]">← Back to dashboard</Link>
+            {requiredDone ? (
+              <Link href="/" className="text-[11px] font-semibold text-[#73685f] hover:text-[#d94a30]">← Back to dashboard</Link>
+            ) : (
+              <p role="note" className="text-[11px] text-[#73685f]">Complete required setup to open the dashboard.</p>
+            )}
             <p className="font-data text-[9px] text-[#9a8d83]">Progress is saved by the onboarding endpoint</p>
           </div>
         </Panel>

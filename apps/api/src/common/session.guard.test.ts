@@ -2,11 +2,20 @@ import { describe, expect, it } from "vitest";
 import { createMemoryDb } from "./memory.db";
 import { SessionGuard } from "./session.guard";
 import { hashToken } from "../auth/sessions";
+import { defaultOnboardingState, applyOnboardingPatch } from "../business/onboarding";
+
+async function completeRequiredSetup(db: ReturnType<typeof createMemoryDb>, businessId: string): Promise<void> {
+  let onboarding = defaultOnboardingState();
+  onboarding = applyOnboardingPatch(onboarding, { step: "taxCurrency", state: "done" });
+  onboarding = applyOnboardingPatch(onboarding, { step: "receiptSetup", state: "done" });
+  await db.saveSettings(businessId, { ...(await db.getSettings(businessId)), onboarding });
+}
 
 describe("SessionGuard effective role assignments", () => {
   it("uses the active role union while preserving a primary legacy role", async () => {
     const db = createMemoryDb();
     const business = await db.createBusiness({ name: "Role Union", currency: "PHP" });
+    await completeRequiredSetup(db, business.id);
     const user = await db.createUser({ name: "Maria", email: "maria-role-union@example.com", passwordHash: "unused" });
     const membership = await db.createMembership({ businessId: business.id, userId: user.id, role: "cashier" });
     const now = new Date("2026-01-01T00:00:00.000Z");
@@ -68,6 +77,7 @@ describe("SessionGuard effective role assignments", () => {
   it("does not resurrect a normalized role after its assignment expires", async () => {
     const db = createMemoryDb();
     const business = await db.createBusiness({ name: "Expired Role", currency: "PHP" });
+    await completeRequiredSetup(db, business.id);
     const user = await db.createUser({ name: "Maria", email: "maria-expired@example.com", passwordHash: "unused" });
     const membership = await db.createMembership({ businessId: business.id, userId: user.id, role: "manager" });
     await db.createRoleAssignment({ businessId: business.id, membershipId: membership.id, role: "manager", assignmentType: "TEMPORARY", branchId: null, startsAt: new Date("2025-01-01T00:00:00.000Z"), expiresAt: new Date("2025-02-01T00:00:00.000Z"), assignedBy: user.id, assignedAt: new Date("2025-01-01T00:00:00.000Z"), assignmentReason: "expired", revokedAt: null, revokedBy: null, revocationReason: null, idempotencyKey: null, createdAt: new Date(), updatedAt: new Date() });

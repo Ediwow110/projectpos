@@ -261,12 +261,9 @@ export default function InventoryPage(): JSX.Element {
                 <select value={type} onChange={(event) => setType(event.target.value)} className="field mt-1.5">
                   <option value="opening_stock">Opening stock</option>
                   <option value="receive">Receive</option>
-                  <option value="sale">Sale</option>
                   <option value="return">Return</option>
                   <option value="damage">Damage</option>
                   <option value="adjustment">Adjustment</option>
-                  <option value="transfer_in">Transfer in</option>
-                  <option value="transfer_out">Transfer out</option>
                   <option value="stock_count">Stock count</option>
                 </select>
               </label>

@@ -21,6 +21,10 @@ interface Me {
   businessName?: string;
 }
 
+interface Csrf {
+  csrfToken: string;
+}
+
 const ROLES = [
   { value: "manager", label: "Manager" },
   { value: "cashier", label: "Cashier" },

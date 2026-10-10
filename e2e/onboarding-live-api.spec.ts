@@ -23,6 +23,12 @@ test("real browser, web app, and API preserve onboarding gates and progress", as
   await onboarding.expectRequiredSetup();
   const profile = await page.evaluate(() => fetch("/api/v1/me").then((response) => response.json()));
   expect(profile.email).toBe(email);
+  const protectedApi = await page.evaluate(async () => {
+    const response = await fetch("/api/v1/inventory/balances");
+    return { status: response.status, body: await response.json() as { code?: string } };
+  });
+  expect(protectedApi.status).toBe(403);
+  expect(protectedApi.body.code).toBe("ONBOARDING_REQUIRED");
 
   for (const path of ["/", "/inventory", "/products"]) {
     await page.goto(path);
@@ -99,27 +105,33 @@ test("new owner can add a product and record opening stock through the real inve
   await page.getByRole("button", { name: "+ Add product" }).click();
   await page.getByLabel("Product name").fill(productName);
   await page.getByLabel("Selling price (PHP)").fill("25.00");
+  const productResponsePromise = page.waitForResponse((response) =>
+    response.url().endsWith("/api/v1/products") && response.request().method() === "POST",
+  );
   await page.getByRole("button", { name: "Add product", exact: true }).click();
+  const productResponse = await productResponsePromise;
+  expect(productResponse.status()).toBe(201);
+  const createdProduct = await productResponse.json() as { id: string; name: string };
+  expect(createdProduct.name).toBe(productName);
   await expect(page.getByRole("status").filter({ hasText: `${productName} was added` })).toBeVisible();
 
   await page.goto("/inventory");
   await expect(page.getByRole("heading", { name: "Inventory", exact: true })).toBeVisible();
+  await page.getByLabel("Product ID or barcode").fill(createdProduct.id);
+  await page.getByLabel("Movement type").selectOption("opening_stock");
+  await page.getByLabel("Quantity").fill("17");
+  await page.getByRole("button", { name: "Record", exact: true }).click();
+  const productRow = page.getByRole("row").filter({ has: page.getByRole("link", { name: productName, exact: true }) });
+  await expect(productRow).toContainText("17");
+  await expect(productRow).toContainText("OK");
   await page.getByRole("link", { name: productName, exact: true }).click();
   await expect(page.getByRole("heading", { name: productName })).toBeVisible();
-  const productId = page.url().split("/").at(-1)!;
-  await page.getByRole("button", { name: "+ Record movement" }).click();
-  const movementType = page.getByLabel("Movement type");
-  await movementType.selectOption("opening_stock");
-  await page.getByLabel("Quantity").fill("17");
-  await page.getByRole("button", { name: "Record movement", exact: true }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Opening stock movement recorded." })).toBeVisible();
+  const productId = createdProduct.id;
   const openingMovement = page.getByRole("row").filter({ hasText: "Opening stock" });
   await expect(openingMovement).toContainText("+17");
 
   await page.goto("/inventory");
-  const productRow = page.getByRole("row").filter({ has: page.getByRole("link", { name: productName, exact: true }) });
   await expect(productRow).toContainText("17");
-  await expect(productRow).toContainText("OK");
 
   const quickMovementType = page.getByLabel("Movement type");
   const quickOptions = await quickMovementType.locator("option").allTextContents();
@@ -128,7 +140,7 @@ test("new owner can add a product and record opening stock through the real inve
   expect(quickOptions).not.toContain("Transfer out");
   await page.getByLabel("Product ID or barcode").fill(productId);
   await quickMovementType.selectOption("damage");
-  await page.getByLabel("Quantity").fill("2");
+  await page.getByLabel("Quantity").fill("-2");
   await page.getByLabel("Reason").fill("Damaged during QA");
   await page.getByRole("button", { name: "Record", exact: true }).click();
   await expect(productRow).toContainText("15");

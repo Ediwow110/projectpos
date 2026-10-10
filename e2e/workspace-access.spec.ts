@@ -5,6 +5,7 @@ import { OnboardingPage } from "./pages/OnboardingPage";
 test("incomplete owners stay in setup across dashboard deep links and browser history", async ({ page, context }) => {
   const onboarding = new OnboardingPage(page);
   let dashboardOverviewRequests = 0;
+  let dashboardOverviewStatus = 0;
   await context.route("**/api/v1/me", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
@@ -27,17 +28,11 @@ test("incomplete owners stay in setup across dashboard deep links and browser hi
   }));
   await context.route("**/api/v1/dashboard/overview**", (route) => {
     dashboardOverviewRequests += 1;
-    const emptyKpi = { value: 0, previous: 0, deltaMinor: 0, deltaPct: 0 };
+    dashboardOverviewStatus = 403;
     return route.fulfill({
-      status: 200,
+      status: dashboardOverviewStatus,
       contentType: "application/json",
-      body: JSON.stringify({
-        kpis: {
-          netRevenue: emptyKpi, orders: emptyKpi, avgOrder: emptyKpi,
-          refundTotal: emptyKpi, discountTotal: emptyKpi, expenseTotal: emptyKpi,
-        },
-        series: [], topProducts: [], attention: [], compareLabel: "previous period",
-      }),
+      body: JSON.stringify({ code: "ONBOARDING_REQUIRED", message: "Complete required setup first" }),
     });
   });
 
@@ -45,7 +40,9 @@ test("incomplete owners stay in setup across dashboard deep links and browser hi
   await page.goto("/");
   await onboarding.expectRequiredSetup();
   await expect(page.getByRole("complementary", { name: "Workspace navigation" })).toHaveCount(0);
-  expect(dashboardOverviewRequests).toBe(0);
+  expect(dashboardOverviewRequests).toBe(1);
+  expect(dashboardOverviewStatus).toBe(403);
+  await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toHaveCount(0);
 
   await page.goBack();
   await expect(page).toHaveURL(/\/login$/);
@@ -64,7 +61,8 @@ test("incomplete owners stay in setup across dashboard deep links and browser hi
   await secondTab.goto("/inventory");
   await new OnboardingPage(secondTab).expectRequiredSetup();
   await secondTab.close();
-  expect(dashboardOverviewRequests).toBe(0);
+  expect(dashboardOverviewRequests).toBe(1);
+  expect(dashboardOverviewStatus).toBe(403);
 });
 
 test("completed owner with no sales has no setup loop", async ({ page }) => {
