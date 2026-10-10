@@ -20,3 +20,9 @@ export const accountingOpeningBalanceSchema = z.object({
     creditMinor: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   }).strict()).min(1).max(100),
 }).strict();
+
+export const accountingBackfillIssueResolutionSchema = z.object({
+  evidence: z.string().trim().min(10, "VALIDATION").max(1000, "VALIDATION"),
+  unitCostMinor: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+  lineCosts: z.array(z.object({ lineId: z.string().min(1).max(128), unitCostMinor: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).strict()).max(500).optional(),
+}).strict().refine((input) => input.unitCostMinor !== undefined || (input.lineCosts?.length ?? 0) > 0, { message: "VALIDATION" });

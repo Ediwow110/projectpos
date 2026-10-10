@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Inject, Param, Patch, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
 import type { Request, Response } from "express";
-import { accountingAccountCreateSchema, accountingAccountUpdateSchema, accountingOpeningBalanceSchema } from "@pos/validation";
+import { accountingAccountCreateSchema, accountingAccountUpdateSchema, accountingBackfillIssueResolutionSchema, accountingOpeningBalanceSchema } from "@pos/validation";
 import { AuthService } from "../auth/nest/auth.service";
 import type { DbPort } from "../common/db.port";
 import { CsrfGuard } from "../common/csrf.guard";
@@ -178,7 +178,19 @@ export class AccountingController {
     try {
       const businessId = req.auth!.businessId;
       const [activation, latestBackfillRun] = await Promise.all([this.db.findAccountingActivation(businessId), this.db.findLatestAccountingBackfillRun(businessId)]);
-      const backfillIssues = latestBackfillRun ? await this.db.listAccountingBackfillIssues(latestBackfillRun.id, businessId, 20) : [];
+      const issues = latestBackfillRun ? await this.db.listAccountingBackfillIssues(latestBackfillRun.id, businessId, 20) : [];
+      const backfillIssues = await Promise.all(issues.map(async (issue) => {
+        if (issue.sourceType === "InventoryMovement") {
+          const movement = (await this.db.listMovementsByBusiness(businessId)).find((row) => row.id === issue.sourceId);
+          return { ...issue, sourceDetails: movement ? { qtyDelta: movement.qtyDelta, productId: movement.productId } : null };
+        }
+        if (issue.sourceType === "InventoryCount") {
+          const count = await this.db.findInventoryCountById(issue.sourceId, businessId);
+          const lines = count ? await this.db.listInventoryCountLines(count.id, businessId) : [];
+          return { ...issue, sourceDetails: { lines: lines.filter((line) => line.varianceQty !== null && line.varianceQty !== 0).map((line) => ({ lineId: line.id, productName: line.productNameSnapshot, varianceQty: line.varianceQty })) } };
+        }
+        return { ...issue, sourceDetails: null };
+      }));
       res.status(200).json({ ...(activation ?? { businessId, status: "NOT_STARTED", accountingStartAt: null, openingEntryId: null, csvCutoverAt: null }), latestBackfillRun, backfillIssues });
     } catch (error) { failFromError(res, error, "Accounting activation status could not be loaded", req); }
   }
@@ -285,6 +297,21 @@ export class AccountingController {
       const issues = await this.db.listAccountingBackfillIssues(runId, req.auth!.businessId, 100);
       res.status(200).json({ run, issues });
     } catch (error) { failFromError(res, error, "Historical activation status could not be loaded", req); }
+  }
+
+  @Post("activation/backfill/:runId/issues/:issueId/resolve")
+  @UseGuards(CsrfGuard)
+  async resolveBackfillIssue(@Req() req: Request, @Res() res: Response, @Param("runId") runId: string, @Param("issueId") issueId: string, @Body() body: unknown): Promise<void> {
+    if (req.auth!.role !== "owner" || !this.allowed(req, "accounting.manage")) return fail(res, 403, "FORBIDDEN", "Only the business owner can resolve historical accounting issues", req);
+    const parsed = accountingBackfillIssueResolutionSchema.safeParse(body);
+    if (!parsed.success) return fail(res, 400, "VALIDATION", "Invalid historical cost evidence", req);
+    const keyHeader = req.headers["idempotency-key"];
+    const idempotencyKey = Array.isArray(keyHeader) ? keyHeader[0] : keyHeader;
+    if (!idempotencyKey || idempotencyKey.length < 8 || idempotencyKey.length > 128) return fail(res, 400, "VALIDATION", "A valid Idempotency-Key header is required", req);
+    try {
+      const result = await new AccountingBackfillService(this.db).resolveInventoryIssue({ businessId: req.auth!.businessId, runId, issueId, actorId: req.auth!.userId, requestId: idempotencyKey, ...parsed.data });
+      res.status(201).json(result);
+    } catch (error) { failFromError(res, error, "Historical cost issue could not be resolved", req); }
   }
 
   @Post("activation/backfill/:runId/run")

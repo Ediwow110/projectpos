@@ -218,7 +218,7 @@ export function accountingFamily(ctx: PgContext) {
         return result.rows[0] as DbAccountingBackfillRun | undefined ?? null;
       } finally { if (ctx.owns()) client.release(); }
     },
-    async createAccountingBackfillIssue(input: Omit<DbAccountingBackfillIssue, "id" | "createdAt">): Promise<DbAccountingBackfillIssue> {
+    async createAccountingBackfillIssue(input: Omit<DbAccountingBackfillIssue, "id" | "createdAt" | "resolvedAt" | "resolvedBy" | "resolutionEntryId" | "resolutionEvidence">): Promise<DbAccountingBackfillIssue> {
       const client = await ctx.client();
       try {
         const result = await client.query(
@@ -235,10 +235,26 @@ export function accountingFamily(ctx: PgContext) {
         return result.rows as DbAccountingBackfillIssue[];
       } finally { if (ctx.owns()) client.release(); }
     },
+    async findAccountingBackfillIssue(issueId: string, runId: string, businessId: string): Promise<DbAccountingBackfillIssue | null> {
+      const client = await ctx.client();
+      try {
+        const result = await client.query('SELECT * FROM "AccountingBackfillIssue" WHERE "id"=$1 AND "runId"=$2 AND "businessId"=$3', [issueId,runId,businessId]);
+        return result.rows[0] as DbAccountingBackfillIssue | undefined ?? null;
+      } finally { if (ctx.owns()) client.release(); }
+    },
     async countAccountingBackfillIssues(runId: string, businessId: string): Promise<number> {
       const client = await ctx.client();
-      try { const result = await client.query('SELECT COUNT(*)::int AS count FROM "AccountingBackfillIssue" WHERE "businessId"=$1 AND "runId"=$2', [businessId, runId]); return Number(result.rows[0]?.["count"] ?? 0); }
+      try { const result = await client.query('SELECT COUNT(*)::int AS count FROM "AccountingBackfillIssue" WHERE "businessId"=$1 AND "runId"=$2 AND "resolvedAt" IS NULL', [businessId, runId]); return Number(result.rows[0]?.["count"] ?? 0); }
       finally { if (ctx.owns()) client.release(); }
+    },
+    async resolveAccountingBackfillIssue(input: { issueId: string; runId: string; businessId: string; actorId: string; entryId: string; evidence: string }): Promise<DbAccountingBackfillIssue | null> {
+      const client = await ctx.client();
+      try {
+        const result = await client.query('UPDATE "AccountingBackfillIssue" SET "resolvedAt"=CURRENT_TIMESTAMP,"resolvedBy"=$4,"resolutionEntryId"=$5,"resolutionEvidence"=$6 WHERE "id"=$1 AND "businessId"=$2 AND "runId"=$3 AND "resolvedAt" IS NULL RETURNING *', [input.issueId,input.businessId,input.runId,input.actorId,input.entryId,input.evidence]);
+        if (result.rows[0]) return result.rows[0] as DbAccountingBackfillIssue;
+        const existing = await client.query('SELECT * FROM "AccountingBackfillIssue" WHERE "id"=$1 AND "businessId"=$2 AND "runId"=$3 AND "resolutionEntryId"=$4', [input.issueId,input.businessId,input.runId,input.entryId]);
+        return existing.rows[0] as DbAccountingBackfillIssue | undefined ?? null;
+      } finally { if (ctx.owns()) client.release(); }
     },
   };
 }

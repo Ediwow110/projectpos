@@ -290,15 +290,27 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
         if (existing.runId !== input.runId) { const next = { ...existing, runId: input.runId }; accountingBackfillIssues.set(existing.id, next); return next; }
         return existing;
       }
-      const row: DbAccountingBackfillIssue = { ...input, id: nid("backfill-issue"), createdAt: new Date() };
+      const row: DbAccountingBackfillIssue = { ...input, resolvedAt: null, resolvedBy: null, resolutionEntryId: null, resolutionEvidence: null, id: nid("backfill-issue"), createdAt: new Date() };
       accountingBackfillIssues.set(row.id, row);
       return row;
     },
     async listAccountingBackfillIssues(runId, businessId, limit) {
       return [...accountingBackfillIssues.values()].filter((row) => row.businessId === businessId && row.runId === runId).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()).slice(0, Math.max(1, Math.min(200, limit)));
     },
+    async findAccountingBackfillIssue(issueId, runId, businessId) {
+      const row = accountingBackfillIssues.get(issueId);
+      return row?.runId === runId && row.businessId === businessId ? row : null;
+    },
     async countAccountingBackfillIssues(runId, businessId) {
-      return [...accountingBackfillIssues.values()].filter((row) => row.businessId === businessId && row.runId === runId).length;
+      return [...accountingBackfillIssues.values()].filter((row) => row.businessId === businessId && row.runId === runId && !row.resolvedAt).length;
+    },
+    async resolveAccountingBackfillIssue(input) {
+      const issue = accountingBackfillIssues.get(input.issueId);
+      if (!issue || issue.businessId !== input.businessId || issue.runId !== input.runId) return null;
+      if (issue.resolvedAt) return issue.resolutionEntryId === input.entryId ? issue : null;
+      const next = { ...issue, resolvedAt: new Date(), resolvedBy: input.actorId, resolutionEntryId: input.entryId, resolutionEvidence: input.evidence };
+      accountingBackfillIssues.set(issue.id, next);
+      return next;
     },
     async hasUnaccountedValueAdjustments(businessId, fromDate) {
       const hasEntry = (sourceType: string, sourceId: string) => [...journalEntries.values()].some((entry) => entry.businessId === businessId && entry.sourceType === sourceType && entry.sourceId === sourceId && entry.sourceEvent === "adjusted");

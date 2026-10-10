@@ -20,6 +20,7 @@ const required = [
   'CREATE TABLE "SupplierReturnReceiptAllocation"',
   'CREATE TABLE "AccountingBackfillRun"',
   'CREATE TABLE "AccountingBackfillIssue"',
+  'ADD COLUMN "resolutionEvidence" TEXT',
   'CREATE TABLE "AccountingActivation"',
   'CREATE TRIGGER "JournalEntry_tenant_scope"',
   'CREATE TRIGGER "JournalLine_tenant_scope"',

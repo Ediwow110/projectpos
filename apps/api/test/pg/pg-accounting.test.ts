@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { StoredValueService } from "../../src/value/stored-value.service";
+import { JournalPostingService } from "../../src/accounting/journal-posting.service";
+import { buildBalancedDraft } from "../../src/accounting/journal-rules";
 import { withPg } from "./helpers";
 
 describe("phase23 pg accounting persistence", () => {
@@ -85,6 +87,11 @@ describe("phase23 pg accounting persistence", () => {
       const duplicate = await db.createAccountingBackfillIssue(issueInput);
       expect(duplicate.id).toBe(first.id);
       expect(await db.listAccountingBackfillIssues(run.id, business.id, 10)).toHaveLength(1);
+      const actor = await db.createUser({ name: "Accounting owner", email: `backfill-${Date.now()}@pg.test`, passwordHash: "hash" });
+      const posted = await new JournalPostingService(db).postSourceEvent({ businessId: business.id, branchId: null, sourceType: "AccountingBackfillResolution", sourceId: first.id, sourceEvent: first.reason, actorId: actor.id, requestId: "resolve-backfill", draft: buildBalancedDraft({ currency: "PHP", effectiveAt: new Date(), lines: [{ accountCode: "1400", debitMinor: 100, creditMinor: 0 }, { accountCode: "6000", debitMinor: 0, creditMinor: 100 }] }) });
+      const resolved = await db.resolveAccountingBackfillIssue({ issueId: first.id, runId: run.id, businessId: business.id, actorId: actor.id, entryId: posted.entry.id, evidence: "Supplier invoice INV-1" });
+      expect(resolved).toMatchObject({ resolvedBy: actor.id, resolutionEntryId: posted.entry.id, resolutionEvidence: "Supplier invoice INV-1" });
+      expect(await db.countAccountingBackfillIssues(run.id, business.id)).toBe(0);
     });
   });
 

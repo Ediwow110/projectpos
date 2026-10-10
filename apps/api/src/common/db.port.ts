@@ -407,6 +407,10 @@ export interface DbAccountingBackfillIssue {
   sourceType: string;
   sourceId: string;
   reason: string;
+  resolvedAt: Date | null;
+  resolvedBy: string | null;
+  resolutionEntryId: string | null;
+  resolutionEvidence: string | null;
   createdAt: Date;
 }
 
@@ -1198,9 +1202,11 @@ export interface DbPort {
   findLatestAccountingBackfillRun(businessId: string): Promise<DbAccountingBackfillRun | null>;
   findAccountingBackfillRun(id: string, businessId: string): Promise<DbAccountingBackfillRun | null>;
   updateAccountingBackfillRun(id: string, businessId: string, patch: Partial<Pick<DbAccountingBackfillRun, "status" | "cursor" | "processedCount" | "skippedCount" | "debitMinor" | "creditMinor" | "startedAt" | "completedAt">>): Promise<DbAccountingBackfillRun | null>;
-  createAccountingBackfillIssue(issue: Omit<DbAccountingBackfillIssue, "id" | "createdAt">): Promise<DbAccountingBackfillIssue>;
+  createAccountingBackfillIssue(issue: Omit<DbAccountingBackfillIssue, "id" | "createdAt" | "resolvedAt" | "resolvedBy" | "resolutionEntryId" | "resolutionEvidence">): Promise<DbAccountingBackfillIssue>;
+  findAccountingBackfillIssue(issueId: string, runId: string, businessId: string): Promise<DbAccountingBackfillIssue | null>;
   listAccountingBackfillIssues(runId: string, businessId: string, limit: number): Promise<DbAccountingBackfillIssue[]>;
   countAccountingBackfillIssues(runId: string, businessId: string): Promise<number>;
+  resolveAccountingBackfillIssue(input: { issueId: string; runId: string; businessId: string; actorId: string; entryId: string; evidence: string }): Promise<DbAccountingBackfillIssue | null>;
   hasUnaccountedValueAdjustments(businessId: string, fromDate?: Date): Promise<boolean>;
   createSupplierBill(input: Omit<DbSupplierBill, "id" | "createdAt" | "updatedAt">): Promise<DbSupplierBill>;
   findSupplierBill(id: string, businessId: string): Promise<DbSupplierBill | null>;

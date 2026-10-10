@@ -37,9 +37,21 @@ export class AccountingPage {
   }
 
   async expectBackfillPausedForUnresolvedCosts(): Promise<void> {
-    await expect(this.page.getByText("Backfill paused. Review unresolved values or confirm opening balances before restarting. Profit and loss remains unavailable.", { exact: true })).toBeVisible();
-    await expect(this.page.getByRole("button", { name: "Restart historical backfill" })).toBeVisible();
-    await expect(this.page.getByRole("list", { name: "Historical activation issues" }).getByText("historical_movement_cost_unavailable", { exact: true })).toBeVisible();
+    await expect(this.page.getByText("Backfill paused. Resolve issues using source records, then recheck activation. Profit and loss remains unavailable.", { exact: true })).toBeVisible();
+    await expect(this.page.getByRole("button", { name: "Recheck historical issues" })).toBeVisible();
+    await expect(this.page.getByRole("list", { name: "Historical activation issues" }).getByText(/historical_movement_cost_unavailable/)).toBeVisible();
     await expect(this.page.getByText(/Latest run: PAUSED/)).toBeVisible();
+  }
+
+  async resolveMovementCost(unitCostMinor: string, evidence: string): Promise<void> {
+    await this.page.getByLabel("Unit cost for movement movement-e2e").fill(unitCostMinor);
+    await this.page.getByLabel("Source evidence for movement-e2e").fill(evidence);
+    await this.page.getByRole("button", { name: "Post evidenced adjustment" }).click();
+    await expect(this.page.getByText(`Resolved from: ${evidence}`, { exact: true })).toBeVisible();
+  }
+
+  async recheckBackfill(): Promise<void> {
+    await this.page.getByRole("button", { name: "Recheck historical issues" }).click();
+    await expect(this.page.getByText("Historical activation pending", { exact: true })).toBeHidden();
   }
 }

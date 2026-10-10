@@ -66,13 +66,13 @@ test("owner previews and confirms balanced opening worksheet", async ({ page }) 
 
 test("owner sees unresolved legacy inventory costs and a fail-closed backfill pause", async ({ page }) => {
   let run: { id: string; status: string; cursor: { family: string; afterId: string | null }; processedCount: number; skippedCount: number } | null = null;
-  let issues: Array<{ reason: string }> = [];
+  let issues = [{ id: "issue-movement", sourceType: "InventoryMovement", sourceId: "movement-e2e", reason: "historical_movement_cost_unavailable", resolvedAt: null as string | null, resolutionEntryId: null as string | null, resolutionEvidence: null as string | null, sourceDetails: { qtyDelta: -2, productId: "legacy-product" } }];
   await page.route("**/api/v1/me", async (route) => route.fulfill({ json: { userId: "backfill-owner", businessId: "backfill-business", businessName: "Backfill E2E", role: "owner", onboardingRequired: false, workspaceTourSeen: true, activeBranchId: null, activeBranchName: null } }));
   await page.route("**/api/v1/branches", async (route) => route.fulfill({ json: { items: [] } }));
   await page.route("**/api/v1/auth/csrf", async (route) => route.fulfill({ json: { csrfToken: "backfill-csrf" } }));
   await page.route("**/api/v1/accounting/accounts", async (route) => route.fulfill({ json: [] }));
   await page.route("**/api/v1/accounting/activation", async (route) => route.fulfill({ json: {
-    status: run ? "BACKFILLING" : "REVIEW", accountingStartAt: "2026-10-01T00:00:00.000Z", openingEntryId: "backfill-opening-e2e",
+    status: run?.status === "COMPLETE" ? "ACTIVE" : run ? "BACKFILLING" : "REVIEW", accountingStartAt: "2026-10-01T00:00:00.000Z", openingEntryId: "backfill-opening-e2e",
     latestBackfillRun: run, backfillIssues: issues,
   } }));
   await page.route("**/api/v1/accounting/activation/backfill", async (route) => {
@@ -80,14 +80,26 @@ test("owner sees unresolved legacy inventory costs and a fail-closed backfill pa
     await route.fulfill({ status: 202, json: run });
   });
   await page.route("**/api/v1/accounting/activation/backfill/backfill-e2e/run", async (route) => {
-    expect(route.request().postDataJSON()).toEqual({ expectedCursor: { family: "sales", afterId: null } });
-    run = { id: "backfill-e2e", status: "PAUSED", cursor: { family: "remaining", afterId: null }, processedCount: 4, skippedCount: 2 };
-    issues = [{ reason: "historical_movement_cost_unavailable" }, { reason: "standalone_value_adjustment_counter_account_missing" }];
+    const requestBody = route.request().postDataJSON() as { expectedCursor: { family: string; afterId: string | null } };
+    if (run?.status === "PAUSED") {
+      expect(requestBody).toEqual({ expectedCursor: { family: "remaining", afterId: null } });
+      run = { id: "backfill-e2e", status: "COMPLETE", cursor: { family: "remaining", afterId: null }, processedCount: 4, skippedCount: 2 };
+    } else {
+      expect(requestBody).toEqual({ expectedCursor: { family: "sales", afterId: null } });
+      run = { id: "backfill-e2e", status: "PAUSED", cursor: { family: "remaining", afterId: null }, processedCount: 4, skippedCount: 2 };
+    }
     await route.fulfill({ json: run });
+  });
+  await page.route(/\/api\/v1\/accounting\/activation\/backfill\/backfill-e2e\/issues\/issue-movement\/resolve$/, async (route) => {
+    expect(route.request().postDataJSON()).toEqual({ evidence: "Supplier invoice INV-42", unitCostMinor: 250 });
+    issues = issues.map((issue) => ({ ...issue, resolvedAt: "2026-10-11T00:00:00.000Z", resolutionEntryId: "resolution-e2e", resolutionEvidence: "Supplier invoice INV-42" }));
+    await route.fulfill({ status: 201, json: { entry: { id: "resolution-e2e" } } });
   });
 
   const accounting = new AccountingPage(page);
   await accounting.goto();
   await accounting.startBackfill();
   await accounting.expectBackfillPausedForUnresolvedCosts();
+  await accounting.resolveMovementCost("250", "Supplier invoice INV-42");
+  await accounting.recheckBackfill();
 });

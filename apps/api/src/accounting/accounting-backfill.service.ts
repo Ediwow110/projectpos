@@ -1,5 +1,5 @@
-import type { DbAccountingBackfillRun, DbInventoryCount, DbMovement, DbPort, DbPurchaseReceipt, DbRefund, DbSupplierBill, DbSupplierReturn } from "../common/db.port";
-import { accountForMethod, buildExpenseDraft, buildPurchaseReceiptDraft, buildRefundDraft, buildSaleDraft, buildSupplierBillDraft, buildSupplierPaymentDraft, buildSupplierReturnDraft, validateJournalDraft } from "./journal-rules";
+import type { DbAccountingBackfillRun, DbInventoryCount, DbInventoryCountLine, DbMovement, DbPort, DbPurchaseReceipt, DbRefund, DbSupplierBill, DbSupplierReturn } from "../common/db.port";
+import { accountForMethod, buildExpenseDraft, buildInventoryMovementDraft, buildPurchaseReceiptDraft, buildRefundDraft, buildSaleDraft, buildStockCountDraft, buildSupplierBillDraft, buildSupplierPaymentDraft, buildSupplierReturnDraft, validateJournalDraft } from "./journal-rules";
 import { JournalPostingService } from "./journal-posting.service";
 
 const PAGE_SIZE = 100;
@@ -20,6 +20,56 @@ function sourceEffectiveAt(family: BackfillFamily, source: unknown): Date | null
 
 export class AccountingBackfillService {
   constructor(private readonly db: DbPort) {}
+
+  async resolveInventoryIssue(input: {
+    businessId: string; runId: string; issueId: string; actorId: string; requestId: string; evidence: string;
+    unitCostMinor?: number; lineCosts?: Array<{ lineId: string; unitCostMinor: number }>;
+  }): Promise<{ entry: unknown }> {
+    return this.db.withLock(`accounting-backfill:${input.businessId}`, async () => this.db.withTransaction(async (tx) => {
+      const run = await tx.findAccountingBackfillRun(input.runId, input.businessId);
+      if (!run) throw new Error("NOT_FOUND");
+      if (run.status !== "PAUSED") throw new Error("ACCOUNTING_ISSUE_NOT_RESOLVABLE");
+      const issue = await tx.findAccountingBackfillIssue(input.issueId, input.runId, input.businessId);
+      if (!issue) throw new Error("NOT_FOUND");
+      if (!(issue.sourceType === "InventoryMovement" && issue.reason === "historical_movement_cost_unavailable")
+        && !(issue.sourceType === "InventoryCount" && issue.reason === "historical_count_cost_unavailable")) throw new Error("ACCOUNTING_ISSUE_NOT_RESOLVABLE");
+      const business = await tx.findBusinessById(input.businessId);
+      if (!business) throw new Error("NOT_FOUND");
+      let branchId: string | null = null;
+      let draft;
+      let valuation: unknown;
+      if (issue.sourceType === "InventoryMovement") {
+        if (!Number.isSafeInteger(input.unitCostMinor) || (input.unitCostMinor ?? 0) <= 0 || input.lineCosts?.length) throw new Error("VALIDATION");
+        const movement = (await tx.listMovementsByBusiness(input.businessId)).find((row) => row.id === issue.sourceId);
+        if (!movement || movement.referenceType) throw new Error("NOT_FOUND");
+        branchId = movement.branchId ?? null;
+        draft = buildInventoryMovementDraft({ currency: business.currency, qtyDelta: movement.qtyDelta, unitCostMinor: input.unitCostMinor!, movementType: movement.type === "opening_stock" ? "opening_stock" : movement.type === "damage" ? "damage" : "adjustment", effectiveAt: movement.createdAt ?? new Date() });
+        valuation = { movementId: movement.id, productId: movement.productId, qtyDelta: movement.qtyDelta, unitCostMinor: input.unitCostMinor };
+      } else {
+        if (input.unitCostMinor !== undefined || !input.lineCosts?.length) throw new Error("VALIDATION");
+        const count = await tx.findInventoryCountById(issue.sourceId, input.businessId);
+        if (!count || count.status !== "POSTED") throw new Error("NOT_FOUND");
+        const sourceLines = await tx.listInventoryCountLines(count.id, input.businessId);
+        const variances = sourceLines.filter((line) => line.varianceQty !== null && line.varianceQty !== 0);
+        const submitted = new Map(input.lineCosts.map((line) => [line.lineId, line.unitCostMinor]));
+        if (submitted.size !== input.lineCosts.length || submitted.size !== variances.length || variances.some((line) => !submitted.has(line.id))) throw new Error("VALIDATION");
+        branchId = count.branchId;
+        const rows = variances.map((line) => ({ productName: line.productNameSnapshot, qtyDelta: line.varianceQty!, unitCostMinor: submitted.get(line.id)! }));
+        draft = buildStockCountDraft({ currency: business.currency, effectiveAt: count.postedAt ?? count.createdAt, variances: rows });
+        valuation = { countId: count.id, lines: variances.map((line: DbInventoryCountLine) => ({ lineId: line.id, productName: line.productNameSnapshot, varianceQty: line.varianceQty, unitCostMinor: submitted.get(line.id)! })) };
+      }
+      const journals = new JournalPostingService(tx);
+      const posted = await journals.postSourceEvent({ businessId: input.businessId, branchId, sourceType: "AccountingBackfillResolution", sourceId: issue.id, sourceEvent: issue.reason, draft, actorId: input.actorId, requestId: input.requestId });
+      if (issue.resolvedAt) {
+        if (issue.resolutionEntryId !== posted.entry.id) throw new Error("IDEMPOTENCY_MISMATCH");
+        return { entry: posted.entry };
+      }
+      const resolved = await tx.resolveAccountingBackfillIssue({ issueId: issue.id, runId: input.runId, businessId: input.businessId, actorId: input.actorId, entryId: posted.entry.id, evidence: input.evidence });
+      if (!resolved) throw new Error("CONFLICT");
+      await tx.appendAudit({ businessId: input.businessId, actorId: input.actorId, action: "accounting.backfill_issue.resolved", entityType: issue.sourceType, entityId: issue.sourceId, requestId: input.requestId, after: { issueId: issue.id, resolutionEntryId: posted.entry.id, evidence: input.evidence, valuation } });
+      return { entry: posted.entry };
+    }));
+  }
 
   async start(input: { businessId: string; actorId: string; requestId: string }): Promise<DbAccountingBackfillRun> {
     const business = await this.db.findBusinessById(input.businessId);
@@ -142,6 +192,8 @@ export class AccountingBackfillService {
         if (family === "inventory-counts") {
           const count = source as DbInventoryCount;
           if (count.status !== "POSTED") continue;
+          const lines = await tx.listInventoryCountLines(count.id, input.businessId);
+          if (!lines.some((line) => line.varianceQty !== null && line.varianceQty !== 0)) continue;
           await tx.createAccountingBackfillIssue({ businessId: input.businessId, runId: run.id, sourceType, sourceId: count.id, reason: "historical_count_cost_unavailable" });
           skippedCount += 1;
           continue;

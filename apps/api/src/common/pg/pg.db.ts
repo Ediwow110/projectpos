@@ -96,7 +96,9 @@ export class PgDbPort implements DbPort {
   updateAccountingBackfillRun(id: string, businessId: string, patch: Partial<Pick<DbAccountingBackfillRun, "status" | "cursor" | "processedCount" | "skippedCount" | "debitMinor" | "creditMinor" | "startedAt" | "completedAt">>): Promise<DbAccountingBackfillRun | null> { return this.accounting.updateAccountingBackfillRun(id, businessId, patch); }
   createAccountingBackfillIssue(issue: Omit<DbAccountingBackfillIssue, "id" | "createdAt">): Promise<DbAccountingBackfillIssue> { return this.accounting.createAccountingBackfillIssue(issue); }
   listAccountingBackfillIssues(runId: string, businessId: string, limit: number): Promise<DbAccountingBackfillIssue[]> { return this.accounting.listAccountingBackfillIssues(runId, businessId, limit); }
+  findAccountingBackfillIssue(issueId: string, runId: string, businessId: string): Promise<DbAccountingBackfillIssue | null> { return this.accounting.findAccountingBackfillIssue(issueId, runId, businessId); }
   countAccountingBackfillIssues(runId: string, businessId: string): Promise<number> { return this.accounting.countAccountingBackfillIssues(runId, businessId); }
+  resolveAccountingBackfillIssue(input: { issueId: string; runId: string; businessId: string; actorId: string; entryId: string; evidence: string }): Promise<DbAccountingBackfillIssue | null> { return this.accounting.resolveAccountingBackfillIssue(input); }
   createSupplierBill(input: Omit<DbSupplierBill, "id" | "createdAt" | "updatedAt">): Promise<DbSupplierBill> { return this.payables.createSupplierBill(input); }
   findSupplierBill(id: string, businessId: string): Promise<DbSupplierBill | null> { return this.payables.findSupplierBill(id, businessId); }
   listSupplierBills(businessId: string): Promise<DbSupplierBill[]> { return this.payables.listSupplierBills(businessId); }

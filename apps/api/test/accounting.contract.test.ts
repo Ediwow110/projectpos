@@ -203,7 +203,14 @@ describe("Phase 23 accounting activation", () => {
     expect(await db.findJournalEntryBySource(businessId, "SupplierBill", bill.id, "posted")).not.toBeNull();
     expect(await db.findJournalEntryBySource(businessId, "SupplierPayment", supplierPayment.id, "paid")).not.toBeNull();
     expect((await db.listSupplierCredits(businessId, supplier.id)).find((credit) => credit.supplierReturnId === supplierReturn.id)?.amountMinor).toBe(300);
-    expect((await request(app.getHttpServer()).get(`/api/v1/accounting/activation/backfill/${start.body.id}`).set("Cookie", cookieHeader)).body.issues).toEqual(expect.arrayContaining([expect.objectContaining({ sourceType: "InventoryCount", sourceId: expect.any(String), reason: "historical_count_cost_unavailable" }), expect.objectContaining({ sourceId: expect.any(String), reason: "historical_movement_cost_unavailable" }), expect.objectContaining({ reason: "standalone_value_adjustment_counter_account_missing" })]));
+    const issueList = await request(app.getHttpServer()).get(`/api/v1/accounting/activation/backfill/${start.body.id}`).set("Cookie", cookieHeader);
+    expect(issueList.body.issues).toEqual(expect.arrayContaining([expect.objectContaining({ sourceId: expect.any(String), reason: "historical_movement_cost_unavailable" }), expect.objectContaining({ reason: "standalone_value_adjustment_counter_account_missing" })]));
+    const movementIssue = issueList.body.issues.find((issue: { sourceType: string }) => issue.sourceType === "InventoryMovement");
+    const resolution = await request(app.getHttpServer()).post(`/api/v1/accounting/activation/backfill/${start.body.id}/issues/${movementIssue.id}/resolve`)
+      .set("Cookie", cookieHeader).set("X-CSRF-Token", csrfToken).set("Idempotency-Key", "movement-resolution")
+      .send({ evidence: "Supplier invoice INV-42", unitCostMinor: 250 });
+    expect(resolution.status).toBe(201);
+    expect((await db.findAccountingBackfillIssue(movementIssue.id, start.body.id, businessId))?.resolutionEvidence).toBe("Supplier invoice INV-42");
     const changedCutover = await request(app.getHttpServer()).post("/api/v1/accounting/activation/opening-balance")
       .set("Cookie", cookieHeader).set("X-CSRF-Token", csrfToken).set("Idempotency-Key", "backfill-cutover-change")
       .send({ accountingStartAt: "2026-10-02", lines: [{ accountCode: "1000", debitMinor: 100, creditMinor: 0 }] });
