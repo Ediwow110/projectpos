@@ -5,7 +5,8 @@
 - QA checkout: `G:\Vscode\POS-onboarding-staging-20261010`, branch `codex/onboarding-staging-20261010`.
 - Primary user checkout remains `G:\Vscode\POS`, branch `codex/local-main-pr20-20261009`; it was not edited.
 - The integration branch includes GitHub main `2c3ace096bfa5636e166163d8c6c4110b3b77888`, the existing multirole staging feature, and local onboarding, inventory, and migration-verifier fixes.
-- Current integration commit before this audit: `99b7c750d4de8cab873a66de46522702b4f218e0`.
+- Code integration commit: `99b7c750d4de8cab873a66de46522702b4f218e0`.
+- Staging deploy commit: `d859387c8bdf91d72b7f40584c7d693fed81edc2`.
 - No production services, accounts, payments, or business data were used or changed.
 
 ## Product behavior and fixes
@@ -30,10 +31,10 @@
 | Critical production dependency audit | Pass | No known critical vulnerabilities. |
 | Focused onboarding/workspace Playwright | Pass | 36 tests across desktop, tablet, and mobile; isolated local API and unique test owners. |
 | PostgreSQL suite | Pass | 17 files, 158 tests; disposable local PostgreSQL 16 container `nexpos-onboarding-pg-20261010`. Container stopped after the run. |
-| Render staging | Pending | User authorized My Workspace staging. API and web services are on `codex/team-multirole-delegation`, auto-deploy disabled. |
+| Render staging | Pass | My Workspace API deploy `dep-db538vad0e5s73e1vh40` and web deploy `dep-db538vg473hc739nfc10` both live at `d859387c8bdf91d72b7f40584c7d693fed81edc2`. API `/readyz` returned HTTP 200 `{"ok":true}`; API logs show 37/37 migrations up to date and Nest started. Fresh browser reached `/login` from signed-out `/onboarding`; login form rendered and no setup spinner remained. The only observed API 401 was expected for signed-out `/api/v1/onboarding`. |
 
 ## Remaining release evidence
 
-Publish only to `origin/codex/team-multirole-delegation`. Trigger and verify the My Workspace staging API and web deploys at the resulting exact commit. Check API readiness and signed-out `/onboarding` behavior. Production remains out of scope.
+Staging smoke covered readiness and signed-out routing. Authenticated staging scenarios were not run because no isolated staging owner fixture was available; the full authenticated flow and browser history matrix passed on local disposable API state. Production remains out of scope.
 
 Phase 23 scope is not defined in the repository roadmap. Do not infer product features; request product priorities before drafting that phase.
