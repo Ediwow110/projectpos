@@ -1,3 +1,5 @@
+import { formatPesoMinor } from "./money";
+
 export interface Supplier {
   id: string;
   name: string;
@@ -37,7 +39,7 @@ export function supplierStatusLabel(active: boolean): string {
 }
 
 export function formatMinor(minor: number | null | undefined): string {
-  return `₱${((minor ?? 0) / 100).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return formatPesoMinor(minor ?? 0);
 }
 
 export function requestKey(prefix: string): string {

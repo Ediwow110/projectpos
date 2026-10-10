@@ -215,10 +215,28 @@ export class PayMongoHttpClient implements PayMongoPort {
       } else {
         throw new Error("PAYMONGO_WEBHOOK_SECRET_UNAVAILABLE");
       }
+      let status = attrs.status;
+      if (status !== "enabled") {
+        let enableResponse: Response;
+        try {
+          enableResponse = await fetch(
+            `${this.config.apiBase}/v1/webhooks/${encodeURIComponent(existing.id)}/enable`,
+            { method: "POST", headers: this.authHeaders() },
+          );
+        } catch {
+          throw new Error("PAYMENT_PROVIDER_UNAVAILABLE");
+        }
+        if (!enableResponse.ok) {
+          throw new Error(enableResponse.status >= 500
+            ? "PAYMENT_PROVIDER_UNAVAILABLE"
+            : "PAYMENT_PROVIDER_REJECTED");
+        }
+        status = "enabled";
+      }
       return {
         id: existing.id,
         url: attrs.url,
-        status: attrs.status,
+        status,
         livemode: attrs.livemode,
         events: attrs.events.filter((event): event is string => typeof event === "string"),
         created: false,

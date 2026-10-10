@@ -11,6 +11,7 @@ import { DangerButton, GhostButton, PrimaryButton, StatusPill } from "../../comp
 import { apiBase, apiFetch } from "../../lib/api";
 import { RequestError } from "../../lib/billing-ui";
 import { canVoidExpense } from "../../lib/expenses";
+import { formatMoneyMinor } from "../../lib/money";
 
 interface Me {
   role: string;
@@ -33,7 +34,7 @@ interface ExpenseRow {
 const METHODS = ["cash", "card", "gcash", "maya", "bank_transfer", "other"];
 
 function money(minor: number): string {
-  return (minor / 100).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatMoneyMinor(minor);
 }
 
 function methodLabel(method: string): string {

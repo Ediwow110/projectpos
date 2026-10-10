@@ -1,5 +1,6 @@
 import React from "react";
 
+import { minorToMajorFixed } from "../lib/money";
 import type { PosCartEntry } from "../lib/pos-sale-model";
 
 export interface PosPaymentTile {
@@ -32,7 +33,7 @@ interface PosPaymentWorkspaceProps {
 }
 
 function money(minor: number): string {
-  return (minor / 100).toFixed(2);
+  return minorToMajorFixed(minor);
 }
 
 export function PosPaymentWorkspace({

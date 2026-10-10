@@ -830,12 +830,14 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       if (h && h.businessId === businessId) heldSales.set(id, { ...h, resumedAt: new Date() });
     },
     async claimIdempotency(r) {
-      const key = `${r.businessId}:${r.key}:${r.commandType}`;
+      // Encode the three distinct unique-key fields without delimiter collisions.
+      // This mirrors the (businessId, key, commandType) SQL uniqueness contract.
+      const key = JSON.stringify([r.businessId, r.key, r.commandType]);
       if (idempotency.has(key)) throw new Error("IDEMPOTENCY_REPLAY");
       idempotency.set(key, r);
     },
     async findIdempotency(businessId, key, commandType) {
-      return idempotency.get(`${businessId}:${key}:${commandType}`) ?? null;
+      return idempotency.get(JSON.stringify([businessId, key, commandType])) ?? null;
     },
     async nextReceiptNo(businessId) {
       const year = new Date().getUTCFullYear();

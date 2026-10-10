@@ -1,5 +1,7 @@
+import { minorToMajorFixed } from "./money";
+
 export function money(minor: number): string {
-  return (minor / 100).toFixed(2);
+  return minorToMajorFixed(minor);
 }
 
 const MANAGE_ROLES = new Set(["owner", "manager"]);

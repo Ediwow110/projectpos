@@ -1,6 +1,7 @@
 import React from "react";
 import Link from "next/link";
 
+import { minorToMajorFixed } from "../lib/money";
 import type { PosCartEntry } from "../lib/pos-sale-model";
 import { productInitials, productTileClass } from "../lib/pos-view";
 
@@ -32,7 +33,7 @@ interface PosResponsiveCartProps {
 }
 
 function money(minor: number): string {
-  return (minor / 100).toFixed(2);
+  return minorToMajorFixed(minor);
 }
 
 export function PosResponsiveCart({

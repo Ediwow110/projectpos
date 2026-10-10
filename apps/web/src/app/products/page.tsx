@@ -2,7 +2,7 @@
 
 import type { JSX } from "react";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AppShell } from "../../components/AppShell";
@@ -12,6 +12,9 @@ import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { ApiError, apiFetch } from "../../lib/api";
 import { buildProductSearch, canEditCatalog, canSeeCost } from "../../lib/catalog";
 import { parseProductCsv, productRowsToCsv } from "../../lib/catalog-io";
+import { formatMoneyMinor } from "../../lib/money";
+import { createCatalogProductRequest, importCatalogProductsRequest } from "../../lib/products-api";
+import { useProductsPageState } from "./use-products-page-state";
 
 interface ProductRow {
   id: string;
@@ -39,15 +42,6 @@ interface Category {
   isActive: boolean;
 }
 
-interface Csrf {
-  csrfToken: string;
-}
-
-interface CreatedProduct {
-  id: string;
-  name: string;
-}
-
 function toMinor(value: string): number | null {
   const amount = Number(value);
   if (!Number.isFinite(amount) || amount < 0) return null;
@@ -57,26 +51,16 @@ function toMinor(value: string): number | null {
 
 export default function ProductsPage(): JSX.Element {
   const queryClient = useQueryClient();
-  const [q, setQ] = useState("");
-  const [active, setActive] = useState("true");
-  const [page, setPage] = useState(1);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [createError, setCreateError] = useState("");
-  const [createSuccess, setCreateSuccess] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [name, setName] = useState("");
-  const [sku, setSku] = useState("");
-  const [barcode, setBarcode] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const [price, setPrice] = useState("");
-  const [cost, setCost] = useState("");
-  const [unit, setUnit] = useState("pc");
-  const [reorderLevel, setReorderLevel] = useState("0");
-  const [trackInventory, setTrackInventory] = useState(true);
-  const [importOpen, setImportOpen] = useState(false);
-  const [importText, setImportText] = useState("");
-  const [importError, setImportError] = useState("");
-  const [importing, setImporting] = useState(false);
+  const {
+    q, setQ, active, setActive, page, setPage,
+    createOpen, setCreateOpen, createError, setCreateError,
+    createSuccess, setCreateSuccess, saving, setSaving,
+    name, setName, sku, setSku, barcode, setBarcode, categoryId, setCategoryId,
+    price, setPrice, cost, setCost, unit, setUnit,
+    reorderLevel, setReorderLevel, trackInventory, setTrackInventory,
+    importOpen, setImportOpen, importText, setImportText,
+    importError, setImportError, importing, setImporting,
+  } = useProductsPageState();
   const meQuery = useQuery({
     queryKey: ["me"],
     queryFn: () => apiFetch<Me>("/api/v1/me"),
@@ -96,13 +80,13 @@ export default function ProductsPage(): JSX.Element {
     if (typeof window !== "undefined" && window.location.search.includes("create=1")) {
       window.history.replaceState(null, "", "/products");
     }
-  }, [saving]);
+  }, [saving, setCreateError, setCreateOpen]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const shouldCreate = new URLSearchParams(window.location.search).get("create") === "1";
     if (shouldCreate) setCreateOpen(true);
-  }, []);
+  }, [setCreateOpen]);
 
   async function createProduct(event: React.FormEvent): Promise<void> {
     event.preventDefault();
@@ -133,23 +117,16 @@ export default function ProductsPage(): JSX.Element {
 
     setSaving(true);
     try {
-      const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
-      const created = await apiFetch<CreatedProduct>("/api/v1/products", {
-        csrfToken: csrf.csrfToken,
-        init: {
-          method: "POST",
-          body: JSON.stringify({
-            name: name.trim(),
-            ...(sku.trim() ? { sku: sku.trim() } : {}),
-            ...(barcode.trim() ? { barcode: barcode.trim() } : {}),
-            ...(categoryId ? { categoryId } : {}),
-            unit: unit.trim() || "pc",
-            priceMinor,
-            costMinor,
-            reorderLevel: reorder,
-            trackInventory,
-          }),
-        },
+      const created = await createCatalogProductRequest({
+        name: name.trim(),
+        ...(sku.trim() ? { sku: sku.trim() } : {}),
+        ...(barcode.trim() ? { barcode: barcode.trim() } : {}),
+        ...(categoryId ? { categoryId } : {}),
+        unit: unit.trim() || "pc",
+        priceMinor,
+        costMinor,
+        reorderLevel: reorder,
+        trackInventory,
       });
       setName("");
       setSku("");
@@ -186,11 +163,7 @@ export default function ProductsPage(): JSX.Element {
     }
     setImporting(true);
     try {
-      const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
-      await apiFetch("/api/v1/products/import", {
-        csrfToken: csrf.csrfToken,
-        init: { method: "POST", body: JSON.stringify({ items }) },
-      });
+      await importCatalogProductsRequest(items);
       setImportOpen(false);
       setImportText("");
       setCreateSuccess(`${items.length} product${items.length === 1 ? "" : "s"} imported.`);
@@ -356,7 +329,7 @@ export default function ProductsPage(): JSX.Element {
                     <Link href={"/products/" + product.id} className="font-semibold text-[#2a241f] hover:text-[#d94a30]">{product.name}</Link>
                   </td>
                   <td className="font-data px-5 py-3 text-[#73685f]">{product.sku ?? "—"}</td>
-                  <td className="font-data px-5 py-3 text-right font-medium">₱{(product.priceMinor / 100).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td className="font-data px-5 py-3 text-right font-medium">₱{formatMoneyMinor(product.priceMinor)}</td>
                   <td className="px-5 py-3 text-right">
                     <StatusPill tone={product.isActive ? "ok" : "warn"}>{product.isActive ? "Active" : "Archived"}</StatusPill>
                   </td>

@@ -83,6 +83,7 @@ describe("phase22 PayMongo settlement with Order reservations", () => {
 
     expect(await sales.handlePayMongoWebhook(raw, "valid", payload, "webhook-2"))
       .toEqual({ handled: true, deduplicated: true });
+    expect(await db.listFulfillmentsByOrder(order.id, business.id)).toHaveLength(1);
     expect((await db.listMovements(product.id, business.id, branch.id)).filter((row) => row.type === "sale")).toHaveLength(1);
   });
 });

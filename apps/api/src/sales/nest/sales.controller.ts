@@ -4,19 +4,14 @@ import {
   completeSchema,
   discountApprovalSchema,
   draftCreateSchema,
-  paymongoCheckoutSchema,
-  receiptEmailSchema,
-  reconcileSchema,
   refundRequestSchema,
   salesQuerySchema,
   voidSaleSchema,
 } from "@pos/validation";
 import { SessionGuard } from "../../common/session.guard";
 import { CsrfGuard } from "../../common/csrf.guard";
-import { getCorrelationId } from "../../correlation";
 import { fail, statusFor } from "../../common/http-helpers";
 import { toCsv } from "../../common/csv";
-import { createRateLimiter } from "../../common/rate-limit";
 import { AuthService } from "../../auth/nest/auth.service";
 import { ManagerApprovalPolicyService, type AppliedManagerApproval } from "../../auth/nest/manager-approval-policy.service";
 import { SalesService } from "./sales.service";
@@ -26,30 +21,7 @@ import { ApiTokenGuard } from "../../apitokens/api-token.guard";
 import { Scopes } from "../../apitokens/scopes.decorator";
 import { isPayMongoMethod } from "../../payments/paymongo";
 import { discountApprovalFingerprint } from "../discount-approval";
-
-function rid(req: Request): string {
-  const headers: Record<string, string | undefined> = {};
-  for (const [k, v] of Object.entries(req.headers)) {
-    headers[k.toLowerCase()] = Array.isArray(v) ? v.join(",") : String(v ?? "");
-  }
-  return getCorrelationId(headers);
-}
-
-function idemKey(req: Request): string | null {
-  const raw = req.headers["idempotency-key"];
-  const key = Array.isArray(raw) ? raw[0] : raw;
-  if (!key || key.trim() === "") return null;
-  return key;
-}
-
-const SELL_ROLES = new Set(["owner", "manager", "cashier"]);
-
-// Flood brake on money-moving commands: 1000/min/business stays far above
-// legitimate cashier throughput and load cohorts while capping runaway loops.
-// (An earlier 60/min value tripped the Phase 8 load harness — see the
-// performance audit — so the ceiling was raised with headroom.)
-const moneyLimiter = createRateLimiter(1000, 60_000);
-const approvalLimiter = createRateLimiter(5, 60_000);
+import { idemKey, moneyLimiter, approvalLimiter, rid, SELL_ROLES } from "./sales.controller.shared";
 
 @Controller("api/v1")
 @UseGuards(ApiTokenGuard, SessionGuard)
@@ -64,8 +36,7 @@ export class SalesController {
   private perms(req: Request): string[] {
     return req.rolePermissions ?? this.auth.rolePermissions(req.auth!.role);
   }
-
-  @Post("sales/discount-approval")
+@Post("sales/discount-approval")
   @UseGuards(CsrfGuard)
   async discountApproval(
     @Req() req: Request,
@@ -112,7 +83,7 @@ export class SalesController {
     }
   }
 
-  @Post("sales/drafts")
+@Post("sales/drafts")
   @UseGuards(CsrfGuard)
   async createDraft(
     @Req() req: Request,
@@ -165,52 +136,7 @@ export class SalesController {
     }
   }
 
-  @Post("sales/:id/paymongo/checkout")
-  @UseGuards(CsrfGuard)
-  async paymongoCheckout(
-    @Req() req: Request,
-    @Res() res: Response,
-    @Param("id") id: string,
-    @Body() body: unknown,
-  ): Promise<void> {
-    if (!SELL_ROLES.has(req.auth!.role)) {
-      fail(res, 403, "FORBIDDEN", "Payment initiation not permitted for this role", req);
-      return;
-    }
-    const key = idemKey(req);
-    if (!key) {
-      fail(res, 400, "VALIDATION", "Idempotency-Key header required", req);
-      return;
-    }
-    const parsed = paymongoCheckoutSchema.safeParse(body);
-    if (!parsed.success) {
-      fail(res, 400, "VALIDATION", "Invalid PayMongo checkout payload", req);
-      return;
-    }
-    try {
-      const auth = req.auth!;
-      if (await moneyLimiter.hit(`${auth.businessId}:paymongo-checkout`)) {
-        fail(res, 429, "RATE_LIMITED", "Too many attempts", req);
-        return;
-      }
-      const webUrl = process.env["WEB_URL"] ?? "http://localhost:3000";
-      const out = await this.sales.startPayMongoCheckout(
-        auth.businessId,
-        auth.userId,
-        rid(req),
-        id,
-        parsed.data.method,
-        key,
-        webUrl,
-      );
-      res.status(out.replayed ? 200 : 201).json(out);
-    } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "PayMongo checkout failed", req);
-    }
-  }
-
-  @Post("sales/complete")
+@Post("sales/complete")
   @UseGuards(CsrfGuard)
   async complete(
     @Req() req: Request,
@@ -282,7 +208,7 @@ export class SalesController {
     }
   }
 
-  @Get("sales")
+@Get("sales")
   @Scopes("sales:read")
   async listSales(
     @Req() req: Request,
@@ -310,7 +236,7 @@ export class SalesController {
     }
   }
 
-  @Get("sales/export")
+@Get("sales/export")
   async exportSales(
     @Req() req: Request,
     @Res() res: Response,
@@ -343,7 +269,7 @@ export class SalesController {
     }
   }
 
-  @Get("sales/held")
+@Get("sales/held")
   async heldSales(
     @Req() req: Request,
     @Res() res: Response,
@@ -360,7 +286,7 @@ export class SalesController {
     }
   }
 
-  @Get("sales/:id")
+@Get("sales/:id")
   async getSale(
     @Req() req: Request,
     @Res() res: Response,
@@ -374,7 +300,7 @@ export class SalesController {
     }
   }
 
-  @Post("sales/:id/hold")
+@Post("sales/:id/hold")
   @UseGuards(CsrfGuard)
   async hold(
     @Req() req: Request,
@@ -390,7 +316,7 @@ export class SalesController {
     }
   }
 
-  @Post("sales/:id/resume")
+@Post("sales/:id/resume")
   @UseGuards(CsrfGuard)
   async resume(
     @Req() req: Request,
@@ -406,7 +332,7 @@ export class SalesController {
     }
   }
 
-  @Post("sales/:id/void")
+@Post("sales/:id/void")
   @UseGuards(CsrfGuard)
   async void(
     @Req() req: Request,
@@ -445,7 +371,7 @@ export class SalesController {
     }
   }
 
-  @Post("sales/:id/refund-request")
+@Post("sales/:id/refund-request")
   @UseGuards(CsrfGuard)
   async refundRequest(
     @Req() req: Request,
@@ -483,182 +409,6 @@ export class SalesController {
     } catch (e) {
       const code = e instanceof Error ? e.message : "VALIDATION";
       fail(res, statusFor(code), code, "Refund request failed", req);
-    }
-  }
-
-  @Post("payments/:id/reconcile")
-  @UseGuards(CsrfGuard)
-  async reconcile(
-    @Req() req: Request,
-    @Res() res: Response,
-    @Param("id") id: string,
-    @Body() body: unknown,
-  ): Promise<void> {
-    if (!this.perms(req).includes("sale.refund")) {
-      fail(res, 403, "FORBIDDEN", "Reconcile requires sale.refund", req);
-      return;
-    }
-    const key = idemKey(req);
-    if (!key) {
-      fail(res, 400, "VALIDATION", "Idempotency-Key header required", req);
-      return;
-    }
-    const parsed = reconcileSchema.safeParse(body);
-    if (!parsed.success) {
-      fail(res, 400, "VALIDATION", "Invalid reconcile payload", req);
-      return;
-    }
-    try {
-      const auth = req.auth!;
-      if (await moneyLimiter.hit(`${auth.businessId}:reconcile`)) {
-        fail(res, 429, "RATE_LIMITED", "Too many attempts", req);
-        return;
-      }
-      res.status(200).json(
-        await this.sales.reconcilePayment(
-          auth.businessId,
-          auth.userId,
-          rid(req),
-          id,
-          parsed.data.outcome,
-          key,
-        ),
-      );
-    } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Reconcile failed", req);
-    }
-  }
-
-  @Get("payments/:id/provider-status")
-  async providerStatus(
-    @Req() req: Request,
-    @Res() res: Response,
-    @Param("id") id: string,
-    @Query() query: Record<string, string>,
-  ): Promise<void> {
-    try {
-      const auth = req.auth!;
-      res.status(200).json(
-        await this.sales.queryProvider(auth.businessId, id, query["provider"]),
-      );
-    } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Provider query failed", req);
-    }
-  }
-
-  @Get("payments/methods")
-  async paymentMethods(@Req() req: Request, @Res() res: Response): Promise<void> {
-    // FR-PAY-01: methods are configuration — the business's list, not a
-    // hard-coded enum.
-    const methods = await resolvePaymentMethods(this.db, req.auth!.businessId);
-    res.json({
-      methods: methods.map((method) => ({
-        ...method,
-        available: isPayMongoMethod(method.key) ? this.sales.isPayMongoConfigured() : true,
-        provider: isPayMongoMethod(method.key) ? "paymongo" : "manual",
-      })),
-    });
-  }
-
-  @Get("receipts/:saleId")
-  async receipt(
-    @Req() req: Request,
-    @Res() res: Response,
-    @Param("saleId") saleId: string,
-  ): Promise<void> {
-    try {
-      res.json(await this.sales.receiptData(req.auth!.businessId, saleId));
-    } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Receipt fetch failed", req);
-    }
-  }
-
-  // FR-RECEIPT-01: downloadable receipt (plain text).
-  @Get("receipts/:saleId/download")
-  async receiptDownload(
-    @Req() req: Request,
-    @Res() res: Response,
-    @Param("saleId") saleId: string,
-  ): Promise<void> {
-    try {
-      const { filename, text } = await this.sales.downloadReceipt(req.auth!.businessId, saleId);
-      res.status(200)
-        .set("Content-Type", "text/plain; charset=utf-8")
-        .set("Content-Disposition", `attachment; filename="${filename}"`)
-        .send(text);
-    } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Receipt download failed", req);
-    }
-  }
-
-  // FR-RECEIPT-01: mint a short-lived public share link for the receipt.
-  @Post("receipts/:saleId/share")
-  @UseGuards(CsrfGuard)
-  async receiptShare(
-    @Req() req: Request,
-    @Res() res: Response,
-    @Param("saleId") saleId: string,
-  ): Promise<void> {
-    try {
-      const auth = req.auth!;
-      const out = await this.sales.createShareToken(auth.businessId, auth.userId, rid(req), saleId);
-      res.status(201).json(out);
-    } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Receipt share failed", req);
-    }
-  }
-
-  @Post("receipts/:saleId/email")
-  @UseGuards(CsrfGuard)
-  async receiptEmail(
-    @Req() req: Request,
-    @Res() res: Response,
-    @Param("saleId") saleId: string,
-    @Body() body: unknown,
-  ): Promise<void> {
-    const key = idemKey(req);
-    if (!key) {
-      fail(res, 400, "VALIDATION", "Idempotency-Key header required", req);
-      return;
-    }
-    const parsed = receiptEmailSchema.safeParse(body);
-    if (!parsed.success) {
-      fail(res, 400, "VALIDATION", "Invalid receipt email recipient", req);
-      return;
-    }
-    try {
-      const auth = req.auth!;
-      const out = await this.sales.sendReceiptEmail(
-        auth.businessId,
-        auth.userId,
-        rid(req),
-        saleId,
-        parsed.data.to,
-        key,
-      );
-      res.status(out.replayed ? 200 : 201).json(out);
-    } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Receipt email delivery failed", req);
-    }
-  }
-
-  @Get("receipts/:saleId/deliveries")
-  async receiptDeliveries(
-    @Req() req: Request,
-    @Res() res: Response,
-    @Param("saleId") saleId: string,
-  ): Promise<void> {
-    try {
-      res.status(200).json(await this.sales.listReceiptDeliveries(req.auth!.businessId, saleId));
-    } catch (e) {
-      const code = e instanceof Error ? e.message : "VALIDATION";
-      fail(res, statusFor(code), code, "Receipt delivery history failed", req);
     }
   }
 }

@@ -1,5 +1,6 @@
 import React, { type ReactNode } from "react";
 
+import { minorToMajorFixed } from "../lib/money";
 import type { PosProduct } from "../lib/pos-sale-model";
 import { productInitials, productTileClass } from "../lib/pos-view";
 
@@ -37,7 +38,7 @@ interface PosProductCatalogProps {
 }
 
 function money(minor: number): string {
-  return (minor / 100).toFixed(2);
+  return minorToMajorFixed(minor);
 }
 
 export function PosProductCatalog({

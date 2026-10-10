@@ -2,11 +2,12 @@
 
 import React from "react";
 
+import { formatMoneyMinor } from "../lib/money";
 import { Modal } from "./Modal";
 import { GhostButton, PrimaryButton } from "./ui";
 
 function money(minor: number): string {
-  return (minor / 100).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatMoneyMinor(minor);
 }
 
 function Code128Preview({ code }: { code: string }): React.JSX.Element {

@@ -22,6 +22,60 @@ export class FulfillmentService {
     private readonly notifications?: OrderNotificationService,
   ) {}
 
+  /**
+   * Ensures the operational fulfillment projected from a confirmed WEB order
+   * exists. Callers must already hold the order's settlement lock/transaction.
+   * This intentionally does not touch money, reservations, or inventory.
+   */
+  async ensureFulfillmentLocked(
+    businessId: string,
+    orderId: string,
+  ): Promise<DbFulfillment> {
+    const order = await this.db.findOrderById(orderId, businessId);
+    if (!order || !order.branchId || order.fulfillmentMode === "NONE") {
+      throw new Error("VALIDATION");
+    }
+
+    const existing = (await this.db.listFulfillmentsByOrder(order.id, businessId))[0];
+    if (existing) return existing;
+
+    const lines = await this.db.listOrderLines(order.id, businessId);
+    if (lines.length === 0) throw new Error("VALIDATION");
+    const now = new Date();
+    const fulfillment = await this.db.createFulfillment({
+      businessId,
+      orderId: order.id,
+      type: order.fulfillmentMode,
+      status: "PENDING",
+      branchId: order.branchId,
+      assignedUserId: null,
+      contactName: order.contactName,
+      email: order.email,
+      phone: order.phone,
+      deliveryAddress: order.deliveryAddress,
+      instructions: order.fulfillmentInstructions,
+      version: 1,
+      readyAt: null,
+      dispatchedAt: null,
+      deliveredAt: null,
+      collectedAt: null,
+      failedAt: null,
+      cancelledAt: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    for (const line of lines) {
+      await this.db.createFulfillmentLine({
+        businessId,
+        fulfillmentId: fulfillment.id,
+        orderLineId: line.id,
+        qty: line.qty,
+        createdAt: now,
+      });
+    }
+    return fulfillment;
+  }
+
   async createFulfillment(
     businessId: string,
     orderId: string,
