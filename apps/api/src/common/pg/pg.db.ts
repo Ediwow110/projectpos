@@ -497,7 +497,7 @@ export class PgDbPort implements DbPort {
   updateSaleLoyalty(id: string, businessId: string, patch: Partial<Pick<DbSaleLoyalty, "redeemedPoints" | "redeemedValueMinor" | "earnedPoints">>): Promise<DbSaleLoyalty | null> { return this.values.updateSaleLoyalty(id, businessId, patch); }
   createSaleItemLoyaltyAllocation(a: Omit<DbSaleItemLoyaltyAllocation, "id" | "createdAt">): Promise<DbSaleItemLoyaltyAllocation> { return this.values.createSaleItemLoyaltyAllocation(a); }
   listSaleItemLoyaltyAllocations(saleLoyaltyId: string, businessId: string): Promise<DbSaleItemLoyaltyAllocation[]> { return this.values.listSaleItemLoyaltyAllocations(saleLoyaltyId, businessId); }
-  hasUnaccountedValueAdjustments(businessId: string): Promise<boolean> { return this.values.hasUnaccountedValueAdjustments(businessId); }
+  hasUnaccountedValueAdjustments(businessId: string, fromDate?: Date): Promise<boolean> { return this.values.hasUnaccountedValueAdjustments(businessId, fromDate); }
   createRefund(r: DbRefundCreate): Promise<DbRefund> {
     return this.people.createRefund(r);
   }

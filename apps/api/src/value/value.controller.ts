@@ -29,12 +29,12 @@ export class ValueController {
 
   private granted(req: Request): string[] { return this.auth.rolePermissions(req.auth!.role); }
 
-  private async authorizeAdjustment(req: Request, valueType: "gift_card" | "store_credit" | "loyalty", targetId: string, amountDelta: number, reason: string, approvalToken?: string): Promise<{ approverId?: string }> {
+  private async authorizeAdjustment(req: Request, valueType: "gift_card" | "store_credit" | "loyalty", targetId: string, amountDelta: number, counterAccountCode: string, reason: string, approvalToken?: string): Promise<{ approverId?: string }> {
     const auth = req.auth!;
     const granted = this.granted(req);
     const permission = valueType === "loyalty" ? "loyalty.adjust" : "stored_value.adjust";
     if (granted.includes(permission)) return {};
-    const requirement = await this.approvalPolicy.resolveRequirement(auth.businessId, auth.userId, { kind: "value_adjustment", valueType, targetId, amountDelta, reason });
+    const requirement = await this.approvalPolicy.resolveRequirement(auth.businessId, auth.userId, { kind: "value_adjustment", valueType, targetId, amountDelta, counterAccountCode, reason });
     if (!requirement || requirement.permission !== permission || !approvalToken) throw new Error("FORBIDDEN");
     const consumed = await this.auth.consumeManagerApproval(auth.businessId, auth.userId, requirement.permission, requirement.fingerprint, approvalToken, requirement.requireDistinctApprover);
     return { approverId: consumed.approverId };
@@ -95,7 +95,7 @@ export class ValueController {
   async adjustGiftCard(@Req() req: Request, @Res() res: Response, @Param("id") id: string, @Body() body: unknown): Promise<void> {
     const parsed = storedValueAdjustSchema.safeParse(body);
     if (!parsed.success) { fail(res, 400, "VALIDATION", "Invalid gift-card adjustment", req); return; }
-    try { const approval = await this.authorizeAdjustment(req, "gift_card", id, parsed.data.amountMinor, parsed.data.reason, parsed.data.approvalToken); const key = String(req.headers["idempotency-key"] ?? ""); if (key.length < 8) throw new Error("VALIDATION"); const result = await this.service.adjustGiftCardWithMetadata(req.auth!.businessId, req.auth!.userId, requestId(req), id, parsed.data.amountMinor, parsed.data.reason, key); await this.auditApproval(req, id, approval.approverId, parsed.data.amountMinor, parsed.data.reason, result.created); res.json(result.result); }
+    try { const approval = await this.authorizeAdjustment(req, "gift_card", id, parsed.data.amountMinor, parsed.data.counterAccountCode, parsed.data.reason, parsed.data.approvalToken); const key = String(req.headers["idempotency-key"] ?? ""); if (key.length < 8) throw new Error("VALIDATION"); const result = await this.service.adjustGiftCardWithMetadata(req.auth!.businessId, req.auth!.userId, requestId(req), id, parsed.data.amountMinor, parsed.data.reason, parsed.data.counterAccountCode, key); await this.auditApproval(req, id, approval.approverId, parsed.data.amountMinor, parsed.data.reason, result.created); res.json(result.result); }
     catch (error) { const code = error instanceof Error ? error.message : "VALIDATION"; fail(res, statusFor(code), code, "Gift card adjustment failed", req); }
   }
 
@@ -129,7 +129,7 @@ export class ValueController {
   async adjustStoreCredit(@Req() req: Request, @Res() res: Response, @Param("id") customerId: string, @Body() body: unknown): Promise<void> {
     const parsed = storedValueAdjustSchema.safeParse(body);
     if (!parsed.success) { fail(res, 400, "VALIDATION", "Invalid store-credit adjustment", req); return; }
-    try { const account = await this.service.ensureStoreCreditAccount(req.auth!.businessId, customerId); const approval = await this.authorizeAdjustment(req, "store_credit", customerId, parsed.data.amountMinor, parsed.data.reason, parsed.data.approvalToken); const key = String(req.headers["idempotency-key"] ?? ""); if (key.length < 8) throw new Error("VALIDATION"); const adjustment = await this.service.adjustStoreCreditWithMetadata(req.auth!.businessId, req.auth!.userId, requestId(req), customerId, parsed.data.amountMinor, parsed.data.reason, key); await this.auditApproval(req, account.id, approval.approverId, parsed.data.amountMinor, parsed.data.reason, adjustment.created); res.json({ customerId, balanceMinor: adjustment.result }); }
+    try { const account = await this.service.ensureStoreCreditAccount(req.auth!.businessId, customerId); const approval = await this.authorizeAdjustment(req, "store_credit", customerId, parsed.data.amountMinor, parsed.data.counterAccountCode, parsed.data.reason, parsed.data.approvalToken); const key = String(req.headers["idempotency-key"] ?? ""); if (key.length < 8) throw new Error("VALIDATION"); const adjustment = await this.service.adjustStoreCreditWithMetadata(req.auth!.businessId, req.auth!.userId, requestId(req), customerId, parsed.data.amountMinor, parsed.data.reason, parsed.data.counterAccountCode, key); await this.auditApproval(req, account.id, approval.approverId, parsed.data.amountMinor, parsed.data.reason, adjustment.created); res.json({ customerId, balanceMinor: adjustment.result }); }
     catch (error) { const code = error instanceof Error ? error.message : "VALIDATION"; fail(res, statusFor(code), code, "Store-credit adjustment failed", req); }
   }
 
@@ -138,7 +138,7 @@ export class ValueController {
   async adjustLoyalty(@Req() req: Request, @Res() res: Response, @Param("id") customerId: string, @Body() body: unknown): Promise<void> {
     const parsed = storedValueAdjustSchema.safeParse(body);
     if (!parsed.success) { fail(res, 400, "VALIDATION", "Invalid loyalty adjustment", req); return; }
-    try { const account = await this.service.ensureLoyaltyAccount(req.auth!.businessId, customerId); const approval = await this.authorizeAdjustment(req, "loyalty", account.id, parsed.data.amountMinor, parsed.data.reason, parsed.data.approvalToken); const key = String(req.headers["idempotency-key"] ?? ""); if (key.length < 8) throw new Error("VALIDATION"); const adjustment = await this.service.adjustLoyaltyWithMetadata(req.auth!.businessId, req.auth!.userId, requestId(req), customerId, parsed.data.amountMinor, parsed.data.reason, key); await this.auditApproval(req, account.id, approval.approverId, parsed.data.amountMinor, parsed.data.reason, adjustment.created); res.json({ customerId, points: adjustment.result }); }
+    try { const account = await this.service.ensureLoyaltyAccount(req.auth!.businessId, customerId); const approval = await this.authorizeAdjustment(req, "loyalty", account.id, parsed.data.amountMinor, parsed.data.counterAccountCode, parsed.data.reason, parsed.data.approvalToken); const key = String(req.headers["idempotency-key"] ?? ""); if (key.length < 8) throw new Error("VALIDATION"); const adjustment = await this.service.adjustLoyaltyWithMetadata(req.auth!.businessId, req.auth!.userId, requestId(req), customerId, parsed.data.amountMinor, parsed.data.reason, parsed.data.counterAccountCode, key); await this.auditApproval(req, account.id, approval.approverId, parsed.data.amountMinor, parsed.data.reason, adjustment.created); res.json({ customerId, points: adjustment.result }); }
     catch (error) { const code = error instanceof Error ? error.message : "VALIDATION"; fail(res, statusFor(code), code, "Loyalty adjustment failed", req); }
   }
 

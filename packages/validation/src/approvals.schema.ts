@@ -88,6 +88,7 @@ export const managerApprovalActionSchema = z.discriminatedUnion("kind", [
     valueType: z.enum(["gift_card", "store_credit", "loyalty"]),
     targetId: z.string().min(1, "VALIDATION"),
     amountDelta: z.number().int().refine((value) => value !== 0, "VALIDATION"),
+    counterAccountCode: z.string().regex(/^[0-9A-Z_-]{2,16}$/),
     reason: z.string().trim().min(3, "VALIDATION").max(500, "VALIDATION"),
   }).strict(),
 ]);

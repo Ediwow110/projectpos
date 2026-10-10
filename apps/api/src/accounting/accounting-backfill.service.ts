@@ -5,6 +5,19 @@ import { JournalPostingService } from "./journal-posting.service";
 const PAGE_SIZE = 100;
 type BackfillFamily = "sales" | "expenses" | "refunds" | "purchase-receipts" | "supplier-returns" | "supplier-bills" | "inventory-counts" | "inventory-movements" | "remaining";
 
+function sourceEffectiveAt(family: BackfillFamily, source: unknown): Date | null {
+  if (!source || typeof source !== "object") return null;
+  const row = source as Record<string, unknown>;
+  const value = family === "sales" ? row["completedAt"] ?? row["createdAt"]
+    : family === "expenses" ? row["expenseDate"]
+      : family === "refunds" ? row["createdAt"]
+        : family === "purchase-receipts" ? row["receivedAt"]
+          : family === "supplier-returns" || family === "supplier-bills" ? row["postedAt"] ?? row["createdAt"]
+            : family === "inventory-counts" ? row["postedAt"]
+              : family === "inventory-movements" ? row["createdAt"] : null;
+  return value instanceof Date && Number.isFinite(value.getTime()) ? value : null;
+}
+
 export class AccountingBackfillService {
   constructor(private readonly db: DbPort) {}
 
@@ -16,6 +29,7 @@ export class AccountingBackfillService {
       if (replay) return replay;
       const activation = await tx.findAccountingActivation(input.businessId);
       if (activation && !["NOT_STARTED", "REVIEW", "BACKFILLING"].includes(activation.status)) throw new Error("ACCOUNTING_ACTIVATION_IN_PROGRESS");
+      if (!activation?.openingEntryId || !activation.accountingStartAt) throw new Error("ACCOUNTING_OPENING_REQUIRED");
       const run = await tx.createAccountingBackfillRun({
         businessId: input.businessId, status: "RUNNING", cursor: { family: "sales", afterId: null },
         processedCount: 0, skippedCount: 0, debitMinor: 0, creditMinor: 0, startedAt: new Date(), completedAt: null,
@@ -38,10 +52,8 @@ export class AccountingBackfillService {
       if (input.expectedCursor && (run.cursor?.family !== input.expectedCursor.family || (run.cursor?.afterId ?? null) !== input.expectedCursor.afterId)) return run;
       const family = (run.cursor?.family ?? "sales") as BackfillFamily;
       if (family === "remaining") {
-        const [hasValueAdjustments, activation] = await Promise.all([
-          tx.hasUnaccountedValueAdjustments(input.businessId),
-          tx.findAccountingActivation(input.businessId),
-        ]);
+        const activation = await tx.findAccountingActivation(input.businessId);
+        const hasValueAdjustments = await tx.hasUnaccountedValueAdjustments(input.businessId, activation?.accountingStartAt ?? undefined);
         if (hasValueAdjustments) await tx.createAccountingBackfillIssue({ businessId: input.businessId, runId: run.id, sourceType: "StoredValue", sourceId: input.businessId, reason: "standalone_value_adjustment_counter_account_missing" });
         const issueCount = await tx.countAccountingBackfillIssues(run.id, input.businessId);
         const ready = issueCount === 0 && Boolean(activation?.openingEntryId && activation.accountingStartAt);
@@ -72,16 +84,21 @@ export class AccountingBackfillService {
       let creditMinor = run.creditMinor;
       const business = await tx.findBusinessById(input.businessId);
       if (!business) throw new Error("NOT_FOUND");
+      const activation = await tx.findAccountingActivation(input.businessId);
+      const accountingStartAt = activation?.accountingStartAt ?? null;
       const journals = new JournalPostingService(tx);
 
       for (const source of page) {
+        const effectiveAt = sourceEffectiveAt(family, source);
+        if (family !== "supplier-bills" && accountingStartAt && effectiveAt && effectiveAt < accountingStartAt) continue;
         const sourceType = family === "sales" ? "Sale" : family === "expenses" ? "Expense" : family === "refunds" ? "Refund" : family === "purchase-receipts" ? "PurchaseReceipt" : family === "supplier-returns" ? "SupplierReturn" : family === "supplier-bills" ? "SupplierBill" : family === "inventory-counts" ? "InventoryCount" : "InventoryMovement";
         const sourceEvent = family === "sales" ? "completed" : family === "expenses" ? "posted" : family === "refunds" ? "approved" : family === "purchase-receipts" ? "posted" : family === "supplier-returns" ? "posted" : family === "supplier-bills" ? "posted" : family === "inventory-counts" ? "posted" : "created";
         const existing = await tx.findJournalEntryBySource(input.businessId, sourceType, source.id, sourceEvent);
         if (existing && family !== "supplier-bills") continue;
         if (family === "supplier-bills") {
           const bill = source as DbSupplierBill;
-          if (bill.status !== "DRAFT" && !bill.voidedAt && !existing) {
+          const billInPeriod = !accountingStartAt || (effectiveAt !== null && effectiveAt >= accountingStartAt);
+          if (billInPeriod && bill.status !== "DRAFT" && !bill.voidedAt && !existing) {
             const allocations = await tx.listSupplierBillAllocations(bill.id, input.businessId);
             if (!allocations.length) {
               await tx.createAccountingBackfillIssue({ businessId: input.businessId, runId: run.id, sourceType, sourceId: bill.id, reason: "supplier_bill_allocations_missing" });
@@ -99,6 +116,7 @@ export class AccountingBackfillService {
           const accountCodeById = new Map(accounts.map((account) => [account.id, account.code]));
           const payments = await tx.listSupplierPayments(bill.id, input.businessId);
           for (const payment of payments) {
+            if (accountingStartAt && payment.paidAt < accountingStartAt) continue;
             if (await tx.findJournalEntryBySource(input.businessId, "SupplierPayment", payment.id, "paid")) continue;
             const paidFromAccountCode = accountCodeById.get(payment.paidFromAccountId);
             if (!paidFromAccountCode) {

@@ -228,14 +228,35 @@ export class AccountingController {
       const result = await this.db.withLock(`accounting-activation:${businessId}`, async () => this.db.withTransaction(async (tx) => {
         const current = await tx.findAccountingActivation(businessId);
         if (current && !["NOT_STARTED", "REVIEW", "BACKFILLING"].includes(current.status)) throw new Error("ACCOUNTING_ACTIVATION_IN_PROGRESS");
-        const posted = await new JournalPostingService(tx).postSourceEvent({
-          businessId, branchId: null, sourceType: "AccountingOpening", sourceId: businessId, sourceEvent: "opening-balance",
-          draft, actorId: req.auth!.userId, requestId: idempotencyKey,
+        const latestBackfill = await tx.findLatestAccountingBackfillRun(businessId);
+        if (latestBackfill?.status === "RUNNING") throw new Error("ACCOUNTING_ACTIVATION_IN_PROGRESS");
+        const journals = new JournalPostingService(tx);
+        const originalOpening = await tx.findJournalEntryBySource(businessId, "AccountingOpening", businessId, "opening-balance");
+        if (originalOpening?.entry.requestId === idempotencyKey) {
+          const replay = await journals.postSourceEvent({ businessId, branchId: null, sourceType: "AccountingOpening", sourceId: businessId, sourceEvent: "opening-balance", draft, actorId: req.auth!.userId, requestId: idempotencyKey });
+          return { activation: current, entry: replay.entry };
+        }
+        const priorRevision = await tx.findJournalEntryBySource(businessId, "AccountingOpeningRevision", idempotencyKey, "opening-balance");
+        if (priorRevision) {
+          const replay = await journals.postSourceEvent({ businessId, branchId: null, sourceType: "AccountingOpeningRevision", sourceId: idempotencyKey, sourceEvent: "opening-balance", draft, actorId: req.auth!.userId, requestId: idempotencyKey });
+          return { activation: current, entry: replay.entry };
+        }
+        if (latestBackfill && current?.accountingStartAt?.getTime() !== startAt.getTime()) throw new Error("ACCOUNTING_ACTIVATION_IN_PROGRESS");
+        if (current?.openingEntryId) {
+          const previous = await tx.findJournalEntryById(current.openingEntryId, businessId);
+          if (!previous) throw new Error("ACCOUNTING_ENTRY_NOT_FOUND");
+          await journals.reverse(previous.id, businessId, req.auth!.userId, idempotencyKey, new Date());
+        }
+        const posted = await journals.postSourceEvent({
+          businessId, branchId: null,
+          sourceType: current?.openingEntryId ? "AccountingOpeningRevision" : "AccountingOpening",
+          sourceId: current?.openingEntryId ? idempotencyKey : businessId,
+          sourceEvent: "opening-balance", draft, actorId: req.auth!.userId, requestId: idempotencyKey,
         });
         const activation = await tx.saveAccountingActivation({
           businessId, status: current?.status === "BACKFILLING" ? "BACKFILLING" : "REVIEW", accountingStartAt: startAt, openingEntryId: posted.entry.id, csvCutoverAt: null,
         });
-        await tx.appendAudit({ businessId, actorId: req.auth!.userId, action: "accounting.opening_balance.confirm", entityType: "JournalEntry", entityId: posted.entry.id, requestId: idempotencyKey, after: { accountingStartAt: startAt.toISOString(), lineCount: draft.lines.length } });
+        await tx.appendAudit({ businessId, actorId: req.auth!.userId, action: current?.openingEntryId ? "accounting.opening_balance.revise" : "accounting.opening_balance.confirm", entityType: "JournalEntry", entityId: posted.entry.id, requestId: idempotencyKey, ...(current?.openingEntryId ? { before: { openingEntryId: current.openingEntryId, accountingStartAt: current.accountingStartAt?.toISOString() ?? null } } : {}), after: { openingEntryId: posted.entry.id, accountingStartAt: startAt.toISOString(), lineCount: draft.lines.length } });
         return { activation, entry: posted.entry };
       }));
       res.status(201).json(result);

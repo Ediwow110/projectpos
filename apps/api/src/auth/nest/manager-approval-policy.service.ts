@@ -270,7 +270,7 @@ export class ManagerApprovalPolicyService {
         }
         return {
           permission,
-          fingerprint: fingerprintPayload({ kind: action.kind, businessId, requesterId, valueType: action.valueType, targetId: action.targetId, amountDelta: action.amountDelta, reason: action.reason.trim(), currentBalance: state.balance, currentVersion: state.version }),
+          fingerprint: fingerprintPayload({ kind: action.kind, businessId, requesterId, valueType: action.valueType, targetId: action.targetId, amountDelta: action.amountDelta, counterAccountCode: action.counterAccountCode, reason: action.reason.trim(), currentBalance: state.balance, currentVersion: state.version }),
           requireDistinctApprover: false,
           stateFingerprint: fingerprintPayload(state),
         };

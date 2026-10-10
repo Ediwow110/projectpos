@@ -24,7 +24,7 @@ export type ManagerApprovalAction =
   | { kind: "inventory_movement"; productId: string; movementType: string; qtyDelta: number; reason?: string; branchId?: string }
   | { kind: "inventory_count"; countId: string }
   | { kind: "shift_close"; shiftId: string; countedCashMinor: number; closeNotes?: string }
-  | { kind: "value_adjustment"; valueType: "gift_card" | "store_credit" | "loyalty"; targetId: string; amountDelta: number; reason: string };
+  | { kind: "value_adjustment"; valueType: "gift_card" | "store_credit" | "loyalty"; targetId: string; amountDelta: number; counterAccountCode: string; reason: string };
 
 export interface ManagerApprovalGrant {
   token: string;

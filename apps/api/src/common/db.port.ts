@@ -1201,7 +1201,7 @@ export interface DbPort {
   createAccountingBackfillIssue(issue: Omit<DbAccountingBackfillIssue, "id" | "createdAt">): Promise<DbAccountingBackfillIssue>;
   listAccountingBackfillIssues(runId: string, businessId: string, limit: number): Promise<DbAccountingBackfillIssue[]>;
   countAccountingBackfillIssues(runId: string, businessId: string): Promise<number>;
-  hasUnaccountedValueAdjustments(businessId: string): Promise<boolean>;
+  hasUnaccountedValueAdjustments(businessId: string, fromDate?: Date): Promise<boolean>;
   createSupplierBill(input: Omit<DbSupplierBill, "id" | "createdAt" | "updatedAt">): Promise<DbSupplierBill>;
   findSupplierBill(id: string, businessId: string): Promise<DbSupplierBill | null>;
   listSupplierBills(businessId: string): Promise<DbSupplierBill[]>;

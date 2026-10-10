@@ -300,10 +300,12 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     async countAccountingBackfillIssues(runId, businessId) {
       return [...accountingBackfillIssues.values()].filter((row) => row.businessId === businessId && row.runId === runId).length;
     },
-    async hasUnaccountedValueAdjustments(businessId) {
-      return [...giftCardTransactions.values()].some((row) => row.businessId === businessId && row.type !== "ISSUE" && row.amountDeltaMinor !== 0 && !row.saleId && !row.refundId)
-        || [...storeCreditTransactions.values()].some((row) => row.businessId === businessId && row.amountDeltaMinor !== 0 && !row.saleId && !row.refundId)
-        || [...loyaltyTransactions.values()].some((row) => row.businessId === businessId && row.pointsDelta !== 0 && !row.saleId && !row.refundId);
+    async hasUnaccountedValueAdjustments(businessId, fromDate) {
+      const hasEntry = (sourceType: string, sourceId: string) => [...journalEntries.values()].some((entry) => entry.businessId === businessId && entry.sourceType === sourceType && entry.sourceId === sourceId && entry.sourceEvent === "adjusted");
+      const inPeriod = (createdAt: Date) => !fromDate || createdAt >= fromDate;
+      return [...giftCardTransactions.values()].some((row) => row.businessId === businessId && row.type !== "ISSUE" && row.amountDeltaMinor !== 0 && !row.saleId && !row.refundId && inPeriod(row.createdAt) && !hasEntry("GiftCardTransaction", row.id))
+        || [...storeCreditTransactions.values()].some((row) => row.businessId === businessId && row.amountDeltaMinor !== 0 && !row.saleId && !row.refundId && inPeriod(row.createdAt) && !hasEntry("StoreCreditTransaction", row.id))
+        || [...loyaltyTransactions.values()].some((row) => row.businessId === businessId && row.pointsDelta !== 0 && !row.saleId && !row.refundId && inPeriod(row.createdAt) && !hasEntry("LoyaltyTransaction", row.id));
     },
     async createSupplierBill(input) {
       if ([...supplierBills.values()].some((row) => row.businessId === input.businessId && row.supplierId === input.supplierId && row.invoiceNumber === input.invoiceNumber)) throw new Error("CONFLICT");

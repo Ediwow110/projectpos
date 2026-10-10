@@ -27,7 +27,19 @@ beforeAll(async () => {
 afterAll(async () => { await app.close(); });
 
 describe("Phase 23 accounting activation", () => {
+  it("requires a confirmed opening entry and cutoff before starting backfill", async () => {
+    const registration = await request(app.getHttpServer()).post("/api/v1/auth/register").send({ ownerName: "No Opening Owner", email: `no-opening-${Date.now()}@example.com`, password: "correct-horse-12", businessName: "No Opening Backfill Test" });
+    const cookieHeader = cookie(registration.headers["set-cookie"]);
+    const response = await request(app.getHttpServer()).post("/api/v1/accounting/activation/backfill")
+      .set("Cookie", cookieHeader).set("X-CSRF-Token", registration.body.csrfToken as string).set("Idempotency-Key", "backfill-without-open")
+      .send();
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe("ACCOUNTING_OPENING_REQUIRED");
+  });
+
   it("requires owner CSRF and idempotency, confirms balanced owner-entered opening balances once", async () => {
+    const profile = await request(app.getHttpServer()).get("/api/v1/me").set("Cookie", ownerCookie);
+    const db = app.get<DbPort>("DbPort");
     const status = await request(app.getHttpServer()).get("/api/v1/accounting/activation").set("Cookie", ownerCookie);
     expect(status.status).toBe(200);
     expect(status.body.status).toBe("NOT_STARTED");
@@ -59,8 +71,20 @@ describe("Phase 23 accounting activation", () => {
       .set("Cookie", ownerCookie).set("X-CSRF-Token", csrf).set("Idempotency-Key", "opening-key-001").send(body);
     expect(replay.status).toBe(201);
     expect(replay.body.entry.id).toBe(confirmed.body.entry.id);
+    const revisedBody = { accountingStartAt: "2026-02-01", lines: [{ accountCode: "1000", debitMinor: 30_000, creditMinor: 0 }, { accountCode: "2000", debitMinor: 0, creditMinor: 5_000 }] };
+    const revised = await request(app.getHttpServer()).post("/api/v1/accounting/activation/opening-balance")
+      .set("Cookie", ownerCookie).set("X-CSRF-Token", csrf).set("Idempotency-Key", "opening-key-002").send(revisedBody);
+    expect(revised.status).toBe(201);
+    expect(revised.body.activation).toMatchObject({ status: "REVIEW", accountingStartAt: "2026-02-01T00:00:00.000Z", openingEntryId: revised.body.entry.id });
+    expect(revised.body.entry.sourceType).toBe("AccountingOpeningRevision");
+    expect(revised.body.entry.id).not.toBe(confirmed.body.entry.id);
+    expect((await db.findJournalEntryBySource(profile.body.businessId, "JournalReversal", confirmed.body.entry.id, "reversal"))?.entry.reversesEntryId).toBe(confirmed.body.entry.id);
+    const revisionReplay = await request(app.getHttpServer()).post("/api/v1/accounting/activation/opening-balance")
+      .set("Cookie", ownerCookie).set("X-CSRF-Token", csrf).set("Idempotency-Key", "opening-key-002").send(revisedBody);
+    expect(revisionReplay.status).toBe(201);
+    expect(revisionReplay.body.entry.id).toBe(revised.body.entry.id);
     const mismatch = await request(app.getHttpServer()).post("/api/v1/accounting/activation/opening-balance")
-      .set("Cookie", ownerCookie).set("X-CSRF-Token", csrf).set("Idempotency-Key", "opening-key-002").send({ ...body, lines: [{ accountCode: "1000", debitMinor: 30_000, creditMinor: 0 }, { accountCode: "2000", debitMinor: 0, creditMinor: 5_000 }] });
+      .set("Cookie", ownerCookie).set("X-CSRF-Token", csrf).set("Idempotency-Key", "opening-key-002").send(body);
     expect(mismatch.status).toBe(409);
     expect(mismatch.body.code).toBe("IDEMPOTENCY_MISMATCH");
     expect((await request(app.getHttpServer()).get("/api/v1/accounting/profit-and-loss").set("Cookie", ownerCookie)).body.code).toBe("ACCOUNTING_ACTIVATION_REQUIRED");
@@ -81,7 +105,7 @@ describe("Phase 23 accounting activation", () => {
     expect(cashAccount).not.toBeNull();
     const cashActivity = await request(app.getHttpServer()).get(`/api/v1/accounting/journal?limit=20&dateFrom=2026-10-10&accountId=${cashAccount!.id}`).set("Cookie", ownerCookie);
     expect(cashActivity.status).toBe(200);
-    expect(cashActivity.body.items).toHaveLength(2);
+    expect(cashActivity.body.items).toHaveLength(3); // Includes the auditable reversal from the opening balance revision above.
     expect(cashActivity.body.items.every((item: { lines: Array<{ accountId: string }> }) => item.lines.some((line) => line.accountId === cashAccount!.id))).toBe(true);
     const unknownAccount = await request(app.getHttpServer()).get("/api/v1/accounting/journal?accountId=foreign-account").set("Cookie", ownerCookie);
     expect(unknownAccount.status).toBe(404);
@@ -89,7 +113,7 @@ describe("Phase 23 accounting activation", () => {
     const response = await request(app.getHttpServer()).get("/api/v1/accounting/profit-and-loss?dateFrom=2026-10-10&dateTo=2026-10-10").set("Cookie", ownerCookie);
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({ revenueMinor: 10_000, expensesMinor: 3_000, netIncomeMinor: 7_000, currency: business.currency, historicalActivationRequired: false });
-    expect(response.body.latestEntryAt).toBe("2026-10-10T13:00:00.000Z");
+    expect(response.body.latestEntryAt).toMatch(/^2026-10-10T/); // The opening revision reversal is also posted on this date.
     const beforeStart = await request(app.getHttpServer()).get("/api/v1/accounting/profit-and-loss?dateFrom=2025-12-31").set("Cookie", ownerCookie);
     expect(beforeStart.status).toBe(400);
     expect(beforeStart.body.code).toBe("ACCOUNTING_RANGE_BEFORE_START");
@@ -131,9 +155,18 @@ describe("Phase 23 accounting activation", () => {
     await db.createSupplierReturnReceiptAllocation({ businessId, supplierReturnLineId: returnLine.id, receiptLineId: receiptLine.id, quantity: 1, unitCostMinorSnapshot: 250, billedQuantity: 1, billedInvoiceCostMinorSnapshot: 300 });
     await db.createInventoryCount({ businessId, branchId: null, countNumber: "BF-CNT-1", status: "POSTED", scopeType: "FULL", name: "Legacy stock count", notes: null, createdBy: ownerId, startedAt: createdAt, submittedBy: ownerId, submittedAt: createdAt, approvedBy: ownerId, approvedAt: createdAt, approvalFingerprint: "legacy-count", postedBy: ownerId, postedAt: createdAt, cancelledBy: null, cancelledAt: null, version: 1 });
     await db.createMovement({ businessId, productId: "legacy-stock", type: "opening_stock", qtyDelta: 5, reason: "Legacy opening quantity", referenceType: null, referenceId: null, actorId: ownerId, requestId: "backfill-opening-stock", branchId: null, createdAt });
+    const opening = await request(app.getHttpServer()).post("/api/v1/accounting/activation/opening-balance")
+      .set("Cookie", cookieHeader).set("X-CSRF-Token", csrfToken).set("Idempotency-Key", "backfill-opening-key")
+      .send({ accountingStartAt: "2026-10-01", lines: [{ accountCode: "1000", debitMinor: 100, creditMinor: 0 }] });
+    expect(opening.status).toBe(201);
     const start = await request(app.getHttpServer()).post("/api/v1/accounting/activation/backfill").set("Cookie", cookieHeader).set("X-CSRF-Token", csrfToken).set("Idempotency-Key", "backfill-key-001");
     expect(start.status).toBe(202);
     expect(start.body.status).toBe("RUNNING");
+    const openingWhileRunning = await request(app.getHttpServer()).post("/api/v1/accounting/activation/opening-balance")
+      .set("Cookie", cookieHeader).set("X-CSRF-Token", csrfToken).set("Idempotency-Key", "opening-during-backfill")
+      .send({ accountingStartAt: "2026-10-01", lines: [{ accountCode: "1000", debitMinor: 100, creditMinor: 0 }] });
+    expect(openingWhileRunning.status).toBe(409);
+    expect(openingWhileRunning.body.code).toBe("ACCOUNTING_ACTIVATION_IN_PROGRESS");
     const replay = await request(app.getHttpServer()).post("/api/v1/accounting/activation/backfill").set("Cookie", cookieHeader).set("X-CSRF-Token", csrfToken).set("Idempotency-Key", "backfill-key-001");
     expect(replay.body.id).toBe(start.body.id);
 
@@ -171,6 +204,11 @@ describe("Phase 23 accounting activation", () => {
     expect(await db.findJournalEntryBySource(businessId, "SupplierPayment", supplierPayment.id, "paid")).not.toBeNull();
     expect((await db.listSupplierCredits(businessId, supplier.id)).find((credit) => credit.supplierReturnId === supplierReturn.id)?.amountMinor).toBe(300);
     expect((await request(app.getHttpServer()).get(`/api/v1/accounting/activation/backfill/${start.body.id}`).set("Cookie", cookieHeader)).body.issues).toEqual(expect.arrayContaining([expect.objectContaining({ sourceType: "InventoryCount", sourceId: expect.any(String), reason: "historical_count_cost_unavailable" }), expect.objectContaining({ sourceId: expect.any(String), reason: "historical_movement_cost_unavailable" }), expect.objectContaining({ reason: "standalone_value_adjustment_counter_account_missing" })]));
+    const changedCutover = await request(app.getHttpServer()).post("/api/v1/accounting/activation/opening-balance")
+      .set("Cookie", cookieHeader).set("X-CSRF-Token", csrfToken).set("Idempotency-Key", "backfill-cutover-change")
+      .send({ accountingStartAt: "2026-10-02", lines: [{ accountCode: "1000", debitMinor: 100, creditMinor: 0 }] });
+    expect(changedCutover.status).toBe(409);
+    expect(changedCutover.body.code).toBe("ACCOUNTING_ACTIVATION_IN_PROGRESS");
     expect((await request(app.getHttpServer()).get("/api/v1/accounting/activation").set("Cookie", cookieHeader)).body.status).toBe("BACKFILLING");
   });
 

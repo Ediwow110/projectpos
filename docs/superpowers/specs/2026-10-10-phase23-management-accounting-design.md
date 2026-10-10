@@ -69,7 +69,7 @@ Backfill existing source history with a resumable, tenant-scoped job using bound
 
 Inventory events without a reliable historical cost must be listed as unreconciled and excluded from value-based P&L until an authorized owner supplies an opening adjustment. The job must not invent a value or change quantities. Existing CSV output remains available until its journal-backed replacement passes reconciliation. Activation reports per-tenant counts, debit/credit totals, skipped records, and unresolved values before the accounting report is enabled.
 
-Provide an audited opening-balance worksheet for an owner to enter a dated, balanced trial balance supplied by their existing records or accountant. The worksheet previews all lines and the retained-earnings offset; owner confirmation posts one immutable opening entry. It does not guess balances or use current product costs. Activation shows the resulting trial balance, unresolved legacy inventory values, and the accounting start date. An unbalanced worksheet cannot be posted.
+Provide an audited opening-balance worksheet for an owner to enter a dated, balanced trial balance supplied by their existing records or accountant. The worksheet previews all lines and the retained-earnings offset; owner confirmation posts one immutable opening entry. It does not guess balances or use current product costs. Historical backfill requires this confirmed entry and uses its accounting start date as the cutover. The date can be revised before backfill starts; after a run exists, only balances at the same date can be revised. A revision reverses and retains the prior opening entry. Activation shows the resulting trial balance, unresolved legacy inventory values, and the accounting start date. An unbalanced worksheet cannot be posted.
 
 ## 5. Security, audit, and data integrity
 
@@ -98,10 +98,11 @@ Provide an audited opening-balance worksheet for an owner to enter a dated, bala
 5. Supplier bills enforce tenant, supplier, branch, receipt, received-quantity, returned-quantity, billed-quantity, amount, and open-balance constraints.
 6. P&L, trial balance, account activity, and CSV totals reconcile; all report filters are server-side and bounded.
 7. Backfill can resume, rerun, and report unresolved inventory values without fabricating amounts or changing inventory quantities; opening balance activation requires a balanced owner-confirmed worksheet.
-8. Cross-tenant and unauthorized role tests fail closed for journals, accounts, bills, payments, and reports.
-9. Memory and PostgreSQL contract tests cover posting, rollback, uniqueness, branch scope, backfill, and source parity.
-10. Accessible Playwright coverage verifies owner/manager flows, AP draft/post/pay/reverse, report empty/loading/error states, and desktop/tablet/mobile layouts.
-11. Repository lint, typecheck, unit/API, PostgreSQL, build, E2E, migration, security, and Phase 23 exit checks pass.
+8. Backfill cannot start without a confirmed opening entry and cutoff date; the date cannot change after any backfill run has started.
+9. Cross-tenant and unauthorized role tests fail closed for journals, accounts, bills, payments, and reports.
+10. Memory and PostgreSQL contract tests cover posting, rollback, uniqueness, branch scope, backfill, and source parity.
+11. Accessible Playwright coverage verifies owner/manager flows, AP draft/post/pay/reverse, report empty/loading/error states, and desktop/tablet/mobile layouts.
+12. Repository lint, typecheck, unit/API, PostgreSQL, build, E2E, migration, security, and Phase 23 exit checks pass.
 
 ## 8. Review questions resolved by this draft
 

@@ -1,7 +1,20 @@
 import { describe, expect, it } from "vitest";
+import { StoredValueService } from "../../src/value/stored-value.service";
 import { withPg } from "./helpers";
 
 describe("phase23 pg accounting persistence", () => {
+  it("posts direct stored-value adjustment with an explicit counter account in the same PostgreSQL transaction", async () => {
+    await withPg(async (raw) => {
+      const db = raw as any;
+      const business = await db.createBusiness({ name: "Stored value PG", currency: "PHP" });
+      const issued = await new StoredValueService(db).issueGiftCard(business.id, "owner", "pg-issue", "pg-issue-001");
+      await new StoredValueService(db).adjustGiftCard(business.id, "owner", "pg-adjust", issued.card.id, 500, "Opening customer balance correction", "6000", "pg-adjust-001");
+      const entries = await db.listJournalEntries(business.id, { limit: 10 });
+      expect(entries).toHaveLength(1);
+      expect((await db.listJournalLines(entries[0]!.id, business.id)).map((line: { debitMinor: number; creditMinor: number }) => [line.debitMinor, line.creditMinor])).toEqual([[500, 0], [0, 500]]);
+      expect(await db.hasUnaccountedValueAdjustments(business.id)).toBe(false);
+    });
+  });
   it("stores tenant-scoped accounts and balanced source entries with exact minor units", async () => {
     await withPg(async (raw) => {
       const db = raw as any;
@@ -108,6 +121,7 @@ describe("phase23 pg accounting persistence", () => {
       const card = await db.createGiftCard({ businessId: business.id, codeHash: "pg-adjustment-hash", codePrefix: "PG", codeLast4: "0001", status: "ACTIVE", createdBy: "owner", activatedAt: new Date(), suspendedAt: null, version: 1 });
       await db.createGiftCardTransaction({ businessId: business.id, giftCardId: card.id, type: "ADJUST_CREDIT", amountDeltaMinor: 100, saleId: null, refundId: null, actorId: "owner", requestId: "pg-value-adjust", idempotencyKey: "pg-value-adjust", reason: "Manual adjustment", branchId: null });
       expect(await db.hasUnaccountedValueAdjustments(business.id)).toBe(true);
+      expect(await db.hasUnaccountedValueAdjustments(business.id, new Date(Date.now() + 5_000))).toBe(false);
       expect(await db.hasUnaccountedValueAdjustments(foreign.id)).toBe(false);
       const supplier = await db.createSupplier({ businessId: business.id, name: "Page supplier", code: "PAGE", contactName: null, email: null, phone: null, addressLine1: null, addressLine2: null, city: null, province: null, postalCode: null, country: "PH", paymentTerms: null, notes: null, isActive: true });
       const order = await db.createPurchaseOrder({ businessId: business.id, supplierId: supplier.id, branchId: null, poNumber: "PG-PAGE-1", status: "DRAFT", expectedDate: null, notes: null, subtotalMinor: 0, taxMinor: 0, totalMinor: 0, createdBy: "owner", orderedBy: null, orderedAt: null, cancelledBy: null, cancelledAt: null, cancelReason: null });

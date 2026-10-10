@@ -4,42 +4,43 @@
 
 - Worktree: `G:\Vscode\POS-phase23-accounting-20261010`
 - Branch: `codex/phase23-accounting`
-- Base HEAD: `e574c9b97f21c2b5f2986a8603c9db44fb6349fa`
-- The original `G:\Vscode\POS` checkout remains untouched. Work is local to the isolated worktree.
-- A descriptive local commit contains the reviewed implementation. No push, merge, deployment, production write, or payment occurred.
-- Earlier My Workspace staging approval covered onboarding work. It does not authorize this Phase 23 release.
+- Implementation base: `3f823826b648ae6bbffdab10bf0dc842ac0f6154`
+- The original `G:\Vscode\POS` checkout remains untouched. Changes are isolated in the worktree.
+- This update is committed locally on this branch. No push, merge, deployment, production write, or payment occurred.
+- Earlier staging approval covered onboarding only. Phase 23 staging still needs separate approval.
 
 ## Implemented
 
 - Tenant-scoped immutable double-entry journals and source posting for sales, refunds, expenses, inventory adjustments, receipts, supplier returns, bills, and payments.
-- Supplier bill draft/post/payment and return-credit application workflows, multi-line receipt allocation, invoice/receipt price variance, and bill detail reconciling receipts, payments, credits, and open balance.
-- Trial balance, P&L with activation gating, paginated journal, per-account activity filter, audited journal CSV, owner opening-balance worksheet, and resumable bounded backfill.
-- Backfill uses immutable source snapshots. Missing historical cost/value evidence creates visible issues and keeps P&L blocked; it never uses current product costs to invent history.
-- Accessible Playwright coverage includes accounting and payables flows, opening-line removal, account activity, bill detail, variance and credit handling, across desktop/tablet/mobile.
-- User-approved management-accounting design/spec is in `docs/superpowers/specs/2026-10-10-phase23-management-accounting-design.md`.
-- Repository roadmap ends at Phase 10 and does not establish a Phase 24 scope. No later phase was invented.
+- Supplier bill draft/post/payment and return-credit application workflows, receipt allocation, invoice/receipt price variance, bill detail, and open-balance reporting.
+- Trial balance, P&L activation gating, paginated journal, account activity, audited journal CSV, owner opening-balance worksheet, and bounded resumable backfill.
+- Backfill now uses the confirmed accounting start date, skips pre-cutover source records already covered by opening balances, and blocks value inference when source evidence is unavailable.
+- Backfill requires an owner-confirmed opening entry and cutoff date. Owners can revise opening balances before backfill; afterward the cutoff date is locked, revisions reverse and retain the prior immutable entry, and revisions are blocked during a running batch.
+- Manual gift-card, store-credit, and loyalty adjustments require an explicit counter-account selection and post their balanced journal in the same transaction. Audit and manager-approval fingerprints include the account choice.
+- Accessible Playwright coverage includes accounting/payables and explicit stored-value counter-account flows across desktop, tablet, and mobile.
+- Management accounting only was approved. The spec excludes statutory filings and tax advice. The repository roadmap ends at Phase 10; no Phase 24 scope was invented.
 
 ## Verification evidence
 
-- Uncached workspace suite: `pnpm exec turbo run test --force --concurrency=1` passed all 7 packages.
-- API suite: 143 files, 704 tests passed. Loyalty test setup now has a 30-second startup budget and safe teardown.
-- PostgreSQL suite against disposable local test database: 19 files, 165 tests passed, including bill/return/payment/credit concurrency and onboarding API guard coverage.
-- Exit suite: 16 files, 68 tests passed.
-- Typecheck passed across all 7 workspace packages.
-- `pnpm lint` passed.
-- `pnpm e2e -- e2e/accounting.spec.ts e2e/payables.spec.ts` passed 18/18 desktop/tablet/mobile cases across the accounting and payables matrices.
-- `pnpm verify` returned `SCAFFOLD_OK`; Phase 23 source and migration verifiers returned `PHASE23_SOURCE_WIRING_OK` and `PHASE23_MIGRATION_OK`.
-- `pnpm audit --prod` found no known vulnerabilities.
-- `git diff --check` passed; Git emitted only LF-to-CRLF conversion warnings.
+- `pnpm exec turbo run test --force --concurrency=1`: all 7 packages passed; API 144 files/709 tests; web 72 files/267 tests; validation 17 files/114 tests.
+- `pnpm --filter @pos/api exec vitest run --config vitest.pg.config.ts`: 19 files/166 tests passed against the local disposable PostgreSQL test setup.
+- `pnpm test:exit`: 16 files/68 tests passed.
+- `pnpm typecheck`: all 7 workspace packages passed.
+- `pnpm lint`: completed without reported errors.
+- Combined stored-value/accounting/payables browser run passed 21/21 desktop/tablet/mobile tests. After the final backfill guard, `pnpm e2e -- e2e/accounting.spec.ts` passed 9/9; production build succeeded again.
+- `pnpm verify`, all `verify-phase*.test.mjs` scripts, `verify-phase23-migration.mjs`: passed (`SCAFFOLD_OK`, phase verifiers OK).
+- `pnpm audit --prod --audit-level critical`: no known vulnerabilities.
+- `git diff --check`: passed. Git reports only LF-to-CRLF conversion warnings on edited TypeScript files.
 
-## Remaining release blockers
+## Remaining release blockers and limits
 
-1. There is no audited owner workflow for resolving unsupported historical inventory cost or standalone stored-value counter-account issues. Activation stays fail-closed for these records. Do not bypass the gate or invent values; a safe correction workflow requires accounting review.
-2. Phase 23 staging validation has not occurred. Separate Phase 23 staging authorization is required; onboarding approval does not apply.
-3. No Phase 24 scope exists in the repository roadmap.
+1. Historical inventory count/movement cost gaps and legacy standalone stored-value adjustments still fail closed when they fall on or after the chosen cutoff. The owner must have reliable source records and choose an appropriate cutoff/opening worksheet before backfill; the code does not invent values. No separate adjustment workflow was added for unsupported historical source events.
+2. Phase 23 staging validation has not occurred. The earlier “My Workspace staging” approval is scoped to onboarding. Request separate Phase 23 staging approval after reviewing this local commit.
+3. CI has not run for this commit because the branch has not been pushed. Local checks mirror the relevant repository gates.
+4. No production release is authorized by this work.
 
 ## Closeout
 
-- The Phase 23 implementation is locally tested but is not release-complete until historical issue resolution is designed and staging validation is authorized and passed.
-- No production release is authorized by this work.
-- The reviewed implementation is committed locally. Do not push, deploy, or merge without separate authorization.
+- The local implementation and required code-level checks are complete.
+- Phase 23 is not release-complete until source-data issues are resolved for the intended tenant and authorized staging validation passes.
+- Keep this implementation on `codex/phase23-accounting`; do not push, deploy, merge, or change production without explicit authorization.

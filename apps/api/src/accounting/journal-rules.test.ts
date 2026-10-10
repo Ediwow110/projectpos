@@ -7,6 +7,7 @@ import {
   buildExpenseDraft,
   buildPurchaseReceiptDraft,
   buildSaleDraft,
+  buildStoredValueAdjustmentDraft,
   buildSupplierBillDraft,
   buildSupplierPaymentDraft,
   buildSupplierReturnDraft,
@@ -15,6 +16,13 @@ import {
 } from "./journal-rules";
 
 describe("management accounting journal rules", () => {
+  it("balances signed stored-value adjustments against an explicit counter account", () => {
+    const increase = buildStoredValueAdjustmentDraft({ currency: "PHP", effectiveAt: new Date("2026-10-11T00:00:00Z"), liabilityAccountCode: "2310", counterAccountCode: "6000", amountMinor: 500, liabilityDeltaPositive: true, description: "Manual store credit" });
+    expect(increase.lines.map((line) => [line.accountCode, line.debitMinor, line.creditMinor])).toEqual([["6000", 500, 0], ["2310", 0, 500]]);
+    const decrease = buildStoredValueAdjustmentDraft({ currency: "PHP", effectiveAt: new Date("2026-10-11T00:00:00Z"), liabilityAccountCode: "2310", counterAccountCode: "6000", amountMinor: 200, liabilityDeltaPositive: false, description: "Manual store credit reversal" });
+    expect(validateJournalDraft(decrease)).toMatchObject({ debitMinor: 200, creditMinor: 200 });
+    expect(() => buildStoredValueAdjustmentDraft({ currency: "PHP", effectiveAt: new Date(), liabilityAccountCode: "2310", counterAccountCode: "2310", amountMinor: 1, liabilityDeltaPositive: true, description: "Invalid" })).toThrow("ACCOUNTING_INVALID_ACCOUNT");
+  });
   it("defines the existing export account codes and explicit AP, GRNI and variance accounts", () => {
     expect(Object.keys(ACCOUNT_BY_CODE)).toEqual(expect.arrayContaining([
       "1000", "1400", "2100", "2110", "2120", "2000", "2200", "2210", "2220", "2300", "2310", "2320",

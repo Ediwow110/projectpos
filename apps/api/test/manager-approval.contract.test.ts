@@ -174,20 +174,20 @@ describe("generic manager approval contract", () => {
     const reason = "Manager value correction";
     const denied = await request(app.getHttpServer()).post(`/api/v1/customers/${customerId}/store-credit/adjust`)
       .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf).set("Idempotency-Key", "value-adjust-denied")
-      .send({ amountMinor, reason });
+      .send({ amountMinor, reason, counterAccountCode: "6000" });
     expect(denied.status).toBe(403);
 
     const approval = await request(app.getHttpServer()).post("/api/v1/approvals/manager")
       .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf)
       .send({
         email: "approval-owner-contract@example.com", pin: "482615", permission: "stored_value.adjust",
-        action: { kind: "value_adjustment", valueType: "store_credit", targetId: customerId, amountDelta: amountMinor, reason },
+        action: { kind: "value_adjustment", valueType: "store_credit", targetId: customerId, amountDelta: amountMinor, counterAccountCode: "6000", reason },
       });
     expect(approval.status).toBe(201);
 
     const applied = await request(app.getHttpServer()).post(`/api/v1/customers/${customerId}/store-credit/adjust`)
       .set("Cookie", cashierCookie).set("X-CSRF-Token", cashierCsrf).set("Idempotency-Key", "value-adjust-1")
-      .send({ amountMinor, reason, approvalToken: approval.body.token });
+      .send({ amountMinor, reason, counterAccountCode: "6000", approvalToken: approval.body.token });
     expect([200, 201]).toContain(applied.status);
 
     const db = app.get<DbPort>("DbPort");

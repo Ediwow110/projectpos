@@ -12,7 +12,7 @@ describe("Phase 20 stored-value sale integration", () => {
     await db.upsertBalance({ businessId: business.id, productId: product.id, qtyOnHand: 10 });
     const value = new StoredValueService(db);
     const card = await value.issueGiftCard(business.id, "u1", "r1", "issue-card-1");
-    await value.adjustGiftCard(business.id, "u1", "r2", card.card.id, 500, "initial load", "load-card-1");
+    await value.adjustGiftCard(business.id, "u1", "r2", card.card.id, 500, "initial load", "6000", "load-card-1");
     return { db, business, customer, product, value, card, sales: new SalesService(db) };
   }
 
@@ -27,7 +27,7 @@ describe("Phase 20 stored-value sale integration", () => {
 
   it("rolls back inventory and stored value when a debit cannot fund the sale", async () => {
     const { db, business, customer, product, card, value, sales } = await fixture();
-    await value.adjustGiftCard(business.id, "u1", "r5b", card.card.id, -400, "reserve existing value", "reserve-card-2");
+    await value.adjustGiftCard(business.id, "u1", "r5b", card.card.id, -400, "reserve existing value", "6000", "reserve-card-2");
     const draft = await sales.createDraft(business.id, "u1", "r5", { lines: [{ productId: product.id, qty: 1, lineDiscountMinor: 0 }], orderDiscountMinor: 0, customerId: customer.id }, []);
     await expect(sales.completeSale(business.id, "u1", "r6", draft.id, { payments: [{ method: "gift_card", amountMinor: draft.totalMinor, internalInstrumentId: card.card.id }], key: "complete-card-2", granted: [] })).rejects.toThrow("GIFT_CARD_INSUFFICIENT_BALANCE");
     expect(await value.giftCardBalance(business.id, card.card.id)).toBe(100);

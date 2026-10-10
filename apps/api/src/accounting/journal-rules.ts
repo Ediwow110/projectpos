@@ -145,6 +145,27 @@ export function buildExpenseDraft(input: { currency: string; amountMinor: number
   return buildBalancedDraft({ currency: input.currency, effectiveAt: input.effectiveAt ?? new Date(), description: "Expense", lines: [debit(input.expenseAccountCode, input.amountMinor), credit(input.paidFromAccountCode, input.amountMinor)] });
 }
 
+export function buildStoredValueAdjustmentDraft(input: {
+  currency: string;
+  effectiveAt: Date;
+  liabilityAccountCode: "2300" | "2310" | "2320";
+  counterAccountCode: string;
+  amountMinor: number;
+  liabilityDeltaPositive: boolean;
+  description: string;
+}): JournalDraft {
+  requireAmount(input.amountMinor);
+  if (!input.counterAccountCode || input.counterAccountCode === input.liabilityAccountCode) invalid("ACCOUNTING_INVALID_ACCOUNT");
+  return buildBalancedDraft({
+    currency: input.currency,
+    effectiveAt: input.effectiveAt,
+    description: input.description,
+    lines: input.liabilityDeltaPositive
+      ? [debit(input.counterAccountCode, input.amountMinor), credit(input.liabilityAccountCode, input.amountMinor)]
+      : [debit(input.liabilityAccountCode, input.amountMinor), credit(input.counterAccountCode, input.amountMinor)],
+  });
+}
+
 export function buildInventoryMovementDraft(input: { currency: string; qtyDelta: number; unitCostMinor: number; movementType: "opening_stock" | "damage" | "adjustment"; effectiveAt: Date }): JournalDraft {
   if (!Number.isSafeInteger(input.qtyDelta) || input.qtyDelta === 0 || !safeMinor(input.unitCostMinor)) invalid("ACCOUNTING_INVALID_AMOUNT");
   const amount = Math.abs(input.qtyDelta) * input.unitCostMinor;

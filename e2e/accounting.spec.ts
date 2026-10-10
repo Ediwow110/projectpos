@@ -72,7 +72,7 @@ test("owner sees unresolved legacy inventory costs and a fail-closed backfill pa
   await page.route("**/api/v1/auth/csrf", async (route) => route.fulfill({ json: { csrfToken: "backfill-csrf" } }));
   await page.route("**/api/v1/accounting/accounts", async (route) => route.fulfill({ json: [] }));
   await page.route("**/api/v1/accounting/activation", async (route) => route.fulfill({ json: {
-    status: run ? "BACKFILLING" : "NOT_STARTED", accountingStartAt: null, openingEntryId: null,
+    status: run ? "BACKFILLING" : "REVIEW", accountingStartAt: "2026-10-01T00:00:00.000Z", openingEntryId: "backfill-opening-e2e",
     latestBackfillRun: run, backfillIssues: issues,
   } }));
   await page.route("**/api/v1/accounting/activation/backfill", async (route) => {
