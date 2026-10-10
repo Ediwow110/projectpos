@@ -1576,3 +1576,181 @@ model SupplierReturnLine {
   @@index([businessId, supplierReturnId])
   @@index([businessId, purchaseOrderLineId])
 }
+
+// Phase 23 models mirror the additive hand-written migration 0036. Foreign
+// keys and immutable-posted-row triggers are declared in SQL for constraints
+// Prisma's schema language cannot express.
+model AccountingAccount {
+  id         String   @id
+  businessId String
+  code       String
+  name       String
+  type       String
+  normalSide String
+  isSystem   Boolean  @default(false)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime
+  @@unique([businessId, code])
+  @@index([businessId, isActive, type])
+}
+
+model JournalEntry {
+  id             String   @id
+  businessId     String
+  branchId       String?
+  sourceType     String
+  sourceId       String
+  sourceEvent    String
+  effectiveAt    DateTime
+  currency       String
+  description    String   @default("")
+  actorId        String
+  requestId      String
+  reversesEntryId String?
+  createdAt      DateTime @default(now())
+  @@unique([businessId, sourceType, sourceId, sourceEvent])
+  @@unique([reversesEntryId])
+  @@index([businessId, effectiveAt, id])
+  @@index([businessId, branchId, effectiveAt])
+}
+
+model JournalLine {
+  id         String @id
+  businessId String
+  entryId    String
+  accountId  String
+  debitMinor BigInt @default(0)
+  creditMinor BigInt @default(0)
+  memo       String?
+  position   Int
+  @@unique([businessId, entryId, position])
+  @@index([businessId, accountId, entryId])
+}
+
+model SupplierBill {
+  id                  String   @id
+  businessId          String
+  supplierId          String
+  branchId            String?
+  invoiceNumber       String
+  invoiceDate         DateTime
+  dueDate             DateTime?
+  currency            String
+  status              String   @default("DRAFT")
+  invoiceAmountMinor  BigInt   @default(0)
+  nonStockChargeMinor BigInt   @default(0)
+  paidMinor           BigInt   @default(0)
+  version             Int      @default(1)
+  notes               String?
+  createdBy           String
+  postedBy            String?
+  postedAt            DateTime?
+  voidedBy            String?
+  voidedAt            DateTime?
+  requestId           String
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime
+  @@unique([businessId, supplierId, invoiceNumber])
+  @@index([businessId, status, dueDate, createdAt])
+  @@index([businessId, supplierId, createdAt])
+}
+
+model SupplierBillAllocation {
+  id                     String @id
+  businessId             String
+  billId                 String
+  receiptLineId          String
+  quantity               Int
+  unitInvoiceCostMinor   BigInt
+  invoiceAmountMinor     BigInt
+  receiptCostMinorSnapshot BigInt
+  @@unique([businessId, billId, receiptLineId])
+  @@index([businessId, receiptLineId])
+}
+
+model SupplierCredit {
+  id              String   @id
+  businessId      String
+  supplierId      String
+  billId          String?
+  supplierReturnId String
+  creditNumber    String
+  amountMinor     BigInt
+  status          String   @default("POSTED")
+  createdBy       String
+  requestId       String
+  createdAt       DateTime @default(now())
+  @@unique([businessId, supplierReturnId])
+  @@index([businessId, supplierId, createdAt])
+}
+
+model SupplierPayment {
+  id                 String   @id
+  businessId         String
+  supplierId         String
+  billId             String
+  branchId           String?
+  amountMinor        BigInt
+  method             String
+  paidFromAccountId  String
+  reference          String?
+  paidAt             DateTime
+  shiftId            String?
+  cashMovementId     String?
+  idempotencyKey     String
+  createdBy          String
+  requestId          String
+  createdAt          DateTime @default(now())
+  @@unique([businessId, idempotencyKey])
+  @@index([businessId, billId, paidAt])
+}
+
+model SupplierReturnReceiptAllocation {
+  id                    String @id
+  businessId            String
+  supplierReturnLineId  String
+  receiptLineId         String
+  quantity              Int
+  unitCostMinorSnapshot BigInt
+  @@unique([businessId, supplierReturnLineId, receiptLineId])
+  @@index([businessId, receiptLineId])
+}
+
+model AccountingBackfillRun {
+  id             String   @id
+  businessId     String
+  status         String   @default("PENDING")
+  cursor         Json?
+  processedCount Int      @default(0)
+  skippedCount   Int      @default(0)
+  debitMinor     BigInt   @default(0)
+  creditMinor    BigInt   @default(0)
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdBy      String
+  requestId      String
+  createdAt      DateTime @default(now())
+  @@index([businessId, createdAt])
+}
+
+model AccountingBackfillIssue {
+  id         String   @id
+  businessId String
+  runId      String
+  sourceType String
+  sourceId   String
+  reason     String
+  createdAt  DateTime @default(now())
+  @@unique([businessId, sourceType, sourceId, reason])
+  @@index([businessId, runId])
+}
+
+model AccountingActivation {
+  businessId       String   @id
+  status           String   @default("NOT_STARTED")
+  accountingStartAt DateTime?
+  openingEntryId   String?
+  csvCutoverAt     DateTime?
+  updatedAt        DateTime
+}
