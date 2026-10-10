@@ -22,7 +22,7 @@ export function validateJournalDraft(draft: JournalDraft): JournalTotals {
   let debitMinor = 0;
   let creditMinor = 0;
   for (const line of draft.lines) {
-    if (!ACCOUNT_BY_CODE[line.accountCode]) invalid("ACCOUNTING_INVALID_ACCOUNT");
+    if (!/^[0-9A-Z_-]{2,16}$/.test(line.accountCode)) invalid("ACCOUNTING_INVALID_ACCOUNT");
     if (!safeMinor(line.debitMinor) || !safeMinor(line.creditMinor) || (line.debitMinor === 0) === (line.creditMinor === 0)) {
       invalid("ACCOUNTING_INVALID_AMOUNT");
     }

@@ -1,4 +1,6 @@
 import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbDisplayToken, DbExchange, DbFeatureFlag, DbFulfillment, DbFulfillmentLine, DbInvoice, DbMembership, DbMovement, DbOrder, DbOrderAccessToken, DbOrderLine, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbProductFamily, DbProductOption, DbProductOptionValue, DbProductVariantOptionValue, DbProductBundle, DbBundleComponent, DbSaleItemBundleComponent, DbReceiptDelivery, DbResetToken, DbSession, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine, DbInventoryCount, DbInventoryCountLine, DbInventoryReservation, DbGiftCard, DbGiftCardTransaction, DbStoreCreditAccount, DbStoreCreditTransaction, DbLoyaltyProgram, DbLoyaltyAccount, DbLoyaltyTransaction, DbSaleGiftCardLoad, DbSaleLoyalty, DbSaleItemLoyaltyAllocation } from "./db.port";
+import type { DbAccountingAccount, DbJournalEntry, DbJournalEntryCreate, DbJournalLine } from "./db.port";
+import type { DbSupplierBill, DbSupplierBillAllocation, DbSupplierCredit, DbSupplierPayment, DbSupplierReturnReceiptAllocation } from "./db.port";
 
 let n = 0;
 const nid = (p: string): string => `${p}_${Date.now().toString(36)}_${(n += 1)}`;
@@ -20,6 +22,14 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const bundleComponents = new Map<string, DbBundleComponent>();
   const saleItemBundleComponents = new Map<string, DbSaleItemBundleComponent>();
   const movements = new Map<string, DbMovement>();
+  const accountingAccounts = new Map<string, DbAccountingAccount>();
+  const journalEntries = new Map<string, DbJournalEntry>();
+  const journalLines = new Map<string, DbJournalLine>();
+  const supplierBills = new Map<string, DbSupplierBill>();
+  const supplierBillAllocations = new Map<string, DbSupplierBillAllocation>();
+  const supplierCredits = new Map<string, DbSupplierCredit>();
+  const supplierPayments = new Map<string, DbSupplierPayment>();
+  const supplierReturnReceiptAllocations = new Map<string, DbSupplierReturnReceiptAllocation>();
   const balances = new Map<string, DbBalance>();
   const inventoryCounts = new Map<string, DbInventoryCount>();
   const inventoryCountLines = new Map<string, DbInventoryCountLine>();
@@ -128,7 +138,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
         purchaseOrders: new Map(purchaseOrders), purchaseOrderLines: new Map(purchaseOrderLines),
         purchaseReceipts: new Map(purchaseReceipts), purchaseReceiptLines: new Map(purchaseReceiptLines),
         supplierReturns: new Map(supplierReturns), supplierReturnLines: new Map(supplierReturnLines),
-        movements: new Map(movements), balances: new Map(balances), idempotency: new Map(idempotency),
+        movements: new Map(movements), accountingAccounts: new Map(accountingAccounts), journalEntries: new Map(journalEntries), journalLines: new Map(journalLines), supplierBills: new Map(supplierBills), supplierBillAllocations: new Map(supplierBillAllocations), supplierCredits: new Map(supplierCredits), supplierPayments: new Map(supplierPayments), supplierReturnReceiptAllocations: new Map(supplierReturnReceiptAllocations), balances: new Map(balances), idempotency: new Map(idempotency),
         sales: new Map(sales), saleItems: new Map(saleItems), payments: new Map(payments), refunds: new Map(refunds), refundItems: new Map(refundItems),
         orders: new Map(orders), orderLines: new Map(orderLines), inventoryReservations: new Map(inventoryReservations),
         fulfillments: new Map(fulfillments), fulfillmentLines: new Map(fulfillmentLines), orderAccessTokens: new Map(orderAccessTokens),
@@ -146,7 +156,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
         restore(purchaseOrders, snapshot.purchaseOrders); restore(purchaseOrderLines, snapshot.purchaseOrderLines);
         restore(purchaseReceipts, snapshot.purchaseReceipts); restore(purchaseReceiptLines, snapshot.purchaseReceiptLines);
         restore(supplierReturns, snapshot.supplierReturns); restore(supplierReturnLines, snapshot.supplierReturnLines);
-        restore(movements, snapshot.movements); restore(balances, snapshot.balances); restore(idempotency, snapshot.idempotency);
+        restore(movements, snapshot.movements); restore(accountingAccounts, snapshot.accountingAccounts); restore(journalEntries, snapshot.journalEntries); restore(journalLines, snapshot.journalLines); restore(supplierBills, snapshot.supplierBills); restore(supplierBillAllocations, snapshot.supplierBillAllocations); restore(supplierCredits, snapshot.supplierCredits); restore(supplierPayments, snapshot.supplierPayments); restore(supplierReturnReceiptAllocations, snapshot.supplierReturnReceiptAllocations); restore(balances, snapshot.balances); restore(idempotency, snapshot.idempotency);
         restore(sales, snapshot.sales); restore(saleItems, snapshot.saleItems); restore(payments, snapshot.payments); restore(refunds, snapshot.refunds); restore(refundItems, snapshot.refundItems);
         restore(orders, snapshot.orders); restore(orderLines, snapshot.orderLines); restore(inventoryReservations, snapshot.inventoryReservations);
         restore(fulfillments, snapshot.fulfillments); restore(fulfillmentLines, snapshot.fulfillmentLines); restore(orderAccessTokens, snapshot.orderAccessTokens);
@@ -159,6 +169,129 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
         audit.splice(0, audit.length, ...snapshot.audit);
         throw error;
       } finally { transactionDepth -= 1; }
+    },
+    async createAccountingAccount(input) {
+      if ([...accountingAccounts.values()].some((row) => row.businessId === input.businessId && row.code === input.code)) throw new Error("CONFLICT");
+      const now = new Date();
+      const row: DbAccountingAccount = { ...input, id: nid("acct"), createdAt: now, updatedAt: now };
+      accountingAccounts.set(row.id, row);
+      return row;
+    },
+    async findAccountingAccountByCode(businessId, code) {
+      return [...accountingAccounts.values()].find((row) => row.businessId === businessId && row.code === code) ?? null;
+    },
+    async listAccountingAccounts(businessId) {
+      return [...accountingAccounts.values()].filter((row) => row.businessId === businessId).sort((a, b) => a.code.localeCompare(b.code));
+    },
+    async isAccountingAccountUsed(businessId, accountId) {
+      return [...journalLines.values()].some((line) => line.businessId === businessId && line.accountId === accountId);
+    },
+    async updateAccountingAccount(id, businessId, patch) {
+      const row = accountingAccounts.get(id);
+      if (!row || row.businessId !== businessId) return null;
+      if (row.isSystem && patch.isActive === false) throw new Error("ACCOUNTING_SYSTEM_ACCOUNT_PROTECTED");
+      const next = { ...row, ...patch, updatedAt: new Date() };
+      accountingAccounts.set(id, next);
+      return next;
+    },
+    async createJournalEntry(input: DbJournalEntryCreate) {
+      if ([...journalEntries.values()].some((row) => row.businessId === input.businessId && row.sourceType === input.sourceType && row.sourceId === input.sourceId && row.sourceEvent === input.sourceEvent)) throw new Error("CONFLICT");
+      if (input.reversesEntryId && [...journalEntries.values()].some((row) => row.reversesEntryId === input.reversesEntryId)) throw new Error("CONFLICT");
+      for (const line of input.lines) {
+        const account = accountingAccounts.get(line.accountId);
+        if (!account || account.businessId !== input.businessId) throw new Error("ACCOUNTING_INVALID_ACCOUNT");
+      }
+      const entry: DbJournalEntry = { ...input, id: nid("jrn"), createdAt: new Date() };
+      const lines: DbJournalLine[] = input.lines.map((line, position) => ({ ...line, id: nid("jln"), businessId: input.businessId, entryId: entry.id, position, memo: line.memo ?? null }));
+      journalEntries.set(entry.id, entry);
+      for (const line of lines) journalLines.set(line.id, line);
+      return { entry, lines };
+    },
+    async findJournalEntryBySource(businessId, sourceType, sourceId, sourceEvent) {
+      const entry = [...journalEntries.values()].find((row) => row.businessId === businessId && row.sourceType === sourceType && row.sourceId === sourceId && row.sourceEvent === sourceEvent);
+      if (!entry) return null;
+      return { entry, lines: [...journalLines.values()].filter((line) => line.businessId === businessId && line.entryId === entry.id).sort((a, b) => a.position - b.position) };
+    },
+    async findJournalEntryById(id, businessId) {
+      const row = journalEntries.get(id);
+      return row?.businessId === businessId ? row : null;
+    },
+    async listJournalEntries(businessId, query) {
+      return [...journalEntries.values()]
+        .filter((row) => row.businessId === businessId)
+        .filter((row) => query.branchId === undefined || row.branchId === query.branchId)
+        .filter((row) => !query.dateFrom || row.effectiveAt >= query.dateFrom)
+        .filter((row) => !query.dateTo || row.effectiveAt <= query.dateTo)
+        .filter((row) => !query.accountId || [...journalLines.values()].some((line) => line.businessId === businessId && line.entryId === row.id && line.accountId === query.accountId))
+        .filter((row) => !query.after || row.effectiveAt < query.after.effectiveAt || (row.effectiveAt.getTime() === query.after.effectiveAt.getTime() && row.id < query.after.id))
+        .sort((a, b) => b.effectiveAt.getTime() - a.effectiveAt.getTime() || b.id.localeCompare(a.id))
+        .slice(0, Math.max(1, Math.min(500, query.limit)));
+    },
+    async listJournalLines(entryId, businessId) {
+      return [...journalLines.values()].filter((line) => line.entryId === entryId && line.businessId === businessId).sort((a, b) => a.position - b.position);
+    },
+    async createSupplierBill(input) {
+      if ([...supplierBills.values()].some((row) => row.businessId === input.businessId && row.supplierId === input.supplierId && row.invoiceNumber === input.invoiceNumber)) throw new Error("CONFLICT");
+      const now = new Date();
+      const row: DbSupplierBill = { ...input, id: nid("bill"), createdAt: now, updatedAt: now };
+      supplierBills.set(row.id, row);
+      return row;
+    },
+    async findSupplierBill(id, businessId) {
+      const row = supplierBills.get(id);
+      return row?.businessId === businessId ? row : null;
+    },
+    async listSupplierBills(businessId) {
+      return [...supplierBills.values()].filter((row) => row.businessId === businessId).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    },
+    async updateSupplierBill(id, businessId, patch, expectedVersion) {
+      const row = supplierBills.get(id);
+      if (!row || row.businessId !== businessId || row.version !== expectedVersion) return null;
+      const next: DbSupplierBill = { ...row, ...patch, version: expectedVersion + 1, updatedAt: new Date() };
+      supplierBills.set(id, next);
+      return next;
+    },
+    async createSupplierBillAllocation(input) {
+      if ([...supplierBillAllocations.values()].some((row) => row.businessId === input.businessId && row.billId === input.billId && row.receiptLineId === input.receiptLineId)) throw new Error("CONFLICT");
+      const row: DbSupplierBillAllocation = { ...input, id: nid("billalloc") };
+      supplierBillAllocations.set(row.id, row);
+      return row;
+    },
+    async listSupplierBillAllocations(billId, businessId) {
+      return [...supplierBillAllocations.values()].filter((row) => row.billId === billId && row.businessId === businessId);
+    },
+    async billedQuantityByReceiptLine(businessId, receiptLineId) {
+      return [...supplierBillAllocations.values()].filter((row) => row.businessId === businessId && row.receiptLineId === receiptLineId && supplierBills.get(row.billId)?.status !== "VOIDED" && supplierBills.get(row.billId)?.status !== "DRAFT").reduce((sum, row) => sum + row.quantity, 0);
+    },
+    async createSupplierCredit(input) {
+      if ([...supplierCredits.values()].some((row) => row.businessId === input.businessId && row.supplierReturnId === input.supplierReturnId)) throw new Error("CONFLICT");
+      const row: DbSupplierCredit = { ...input, id: nid("credit"), createdAt: new Date() };
+      supplierCredits.set(row.id, row);
+      return row;
+    },
+    async listSupplierCredits(businessId, supplierId) {
+      return [...supplierCredits.values()].filter((row) => row.businessId === businessId && row.supplierId === supplierId);
+    },
+    async createSupplierPayment(input) {
+      if ([...supplierPayments.values()].some((row) => row.businessId === input.businessId && row.idempotencyKey === input.idempotencyKey)) throw new Error("CONFLICT");
+      const row: DbSupplierPayment = { ...input, id: nid("payment"), createdAt: new Date() };
+      supplierPayments.set(row.id, row);
+      return row;
+    },
+    async listSupplierPayments(billId, businessId) {
+      return [...supplierPayments.values()].filter((row) => row.billId === billId && row.businessId === businessId).sort((a, b) => a.paidAt.getTime() - b.paidAt.getTime());
+    },
+    async createSupplierReturnReceiptAllocation(input) {
+      if ([...supplierReturnReceiptAllocations.values()].some((row) => row.businessId === input.businessId && row.supplierReturnLineId === input.supplierReturnLineId && row.receiptLineId === input.receiptLineId)) throw new Error("CONFLICT");
+      const row: DbSupplierReturnReceiptAllocation = { ...input, id: nid("retalloc") };
+      supplierReturnReceiptAllocations.set(row.id, row);
+      return row;
+    },
+    async listSupplierReturnReceiptAllocations(returnLineId, businessId) {
+      return [...supplierReturnReceiptAllocations.values()].filter((row) => row.supplierReturnLineId === returnLineId && row.businessId === businessId);
+    },
+    async returnedQuantityByReceiptLine(businessId, receiptLineId) {
+      return [...supplierReturnReceiptAllocations.values()].filter((row) => row.businessId === businessId && row.receiptLineId === receiptLineId).reduce((sum, row) => sum + row.quantity, 0);
     },
     async findUserByEmail(email) {
       for (const u of users.values()) if (u.email === email) return u;
@@ -451,7 +584,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     async listBundleComponents(bundleId, businessId) { return [...bundleComponents.values()].filter((r) => r.bundleId === bundleId && r.businessId === businessId).sort((a, b) => a.position - b.position); },
     async deleteBundleComponents(bundleId, businessId) { for (const [id, row] of bundleComponents) if (row.bundleId === bundleId && row.businessId === businessId) bundleComponents.delete(id); },
     async createMovement(m) {
-      const row = { ...m, id: nid("mov") };
+      const row = { ...m, createdAt: m.createdAt ?? new Date(), id: nid("mov") };
       movements.set(row.id, row);
       return row;
     },

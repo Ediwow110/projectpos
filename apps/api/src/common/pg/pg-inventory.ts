@@ -19,7 +19,7 @@ import type { PgContext } from "./context";
 //   row — reporting and the inventory service depend on that.
 const MOVEMENT_SELECT =
   'SELECT "id", "businessId", "productId", "branchId", "qtyDelta", "type", "referenceType", "referenceId",' +
-  ' "actorId", "reason", "requestId" FROM "InventoryMovement"';
+  ' "actorId", "reason", "requestId", "createdAt" FROM "InventoryMovement"';
 const BALANCE_SELECT =
   'SELECT "id", "businessId", "productId", "branchId", "qtyOnHand", "updatedAt" FROM "InventoryBalance"';
 
@@ -28,14 +28,14 @@ export function inventoryFamily(ctx: PgContext) {
     async createMovement(m: Omit<DbMovement, "id">): Promise<DbMovement> {
       const c = await ctx.client();
       try {
-        const row = { ...m, id: nid("mov") };
+        const row = { ...m, createdAt: m.createdAt ?? new Date(), id: nid("mov") };
         await c.query(
           'INSERT INTO "InventoryMovement" ("id", "businessId", "productId", "branchId", "qtyDelta", "type",' +
             ' "referenceType", "referenceId", "actorId", "reason", "requestId", "createdAt")' +
-            ' VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP)',
+            ' VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)',
           [
             row.id, m.businessId, m.productId, m.branchId ?? null, m.qtyDelta, m.type,
-            m.referenceType ?? null, m.referenceId ?? null, m.actorId, m.reason ?? null, m.requestId,
+            m.referenceType ?? null, m.referenceId ?? null, m.actorId, m.reason ?? null, m.requestId, row.createdAt,
           ],
         );
         return row;

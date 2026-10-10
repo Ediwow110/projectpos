@@ -330,8 +330,86 @@ export interface DbMovement {
   referenceId: string | null;
   actorId: string;
   requestId: string;
+  createdAt?: Date;
   // Phase 9a: nullable branch scope; undefined = legacy rows.
   branchId?: string | null;
+}
+
+export interface DbAccountingAccount {
+  id: string;
+  businessId: string;
+  code: string;
+  name: string;
+  type: string;
+  normalSide: string;
+  isSystem: boolean;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DbJournalEntry {
+  id: string;
+  businessId: string;
+  branchId: string | null;
+  sourceType: string;
+  sourceId: string;
+  sourceEvent: string;
+  effectiveAt: Date;
+  currency: string;
+  description: string;
+  actorId: string;
+  requestId: string;
+  reversesEntryId: string | null;
+  createdAt: Date;
+}
+
+export interface DbJournalLine {
+  id: string;
+  businessId: string;
+  entryId: string;
+  accountId: string;
+  debitMinor: number;
+  creditMinor: number;
+  memo: string | null;
+  position: number;
+}
+
+export interface DbJournalEntryCreate extends Omit<DbJournalEntry, "id" | "createdAt"> {
+  lines: Array<Omit<DbJournalLine, "id" | "businessId" | "entryId" | "position" | "memo"> & { memo?: string | null }>;
+}
+
+export interface DbJournalPageQuery {
+  dateFrom?: Date;
+  dateTo?: Date;
+  branchId?: string | null;
+  accountId?: string;
+  after?: { effectiveAt: Date; id: string };
+  limit: number;
+}
+
+export interface DbSupplierBill {
+  id: string; businessId: string; supplierId: string; branchId: string | null; invoiceNumber: string;
+  invoiceDate: Date; dueDate: Date | null; currency: string; status: string; invoiceAmountMinor: number;
+  nonStockChargeMinor: number; paidMinor: number; version: number; notes: string | null; createdBy: string;
+  postedBy: string | null; postedAt: Date | null; voidedBy: string | null; voidedAt: Date | null;
+  requestId: string; createdAt: Date; updatedAt: Date;
+}
+export interface DbSupplierBillAllocation {
+  id: string; businessId: string; billId: string; receiptLineId: string; quantity: number;
+  unitInvoiceCostMinor: number; invoiceAmountMinor: number; receiptCostMinorSnapshot: number;
+}
+export interface DbSupplierCredit {
+  id: string; businessId: string; supplierId: string; billId: string | null; supplierReturnId: string;
+  creditNumber: string; amountMinor: number; status: string; createdBy: string; requestId: string; createdAt: Date;
+}
+export interface DbSupplierPayment {
+  id: string; businessId: string; supplierId: string; billId: string; branchId: string | null; amountMinor: number;
+  method: string; paidFromAccountId: string; reference: string | null; paidAt: Date; shiftId: string | null;
+  cashMovementId: string | null; idempotencyKey: string; createdBy: string; requestId: string; createdAt: Date;
+}
+export interface DbSupplierReturnReceiptAllocation {
+  id: string; businessId: string; supplierReturnLineId: string; receiptLineId: string; quantity: number; unitCostMinorSnapshot: number;
 }
 
 export interface DbBalance {
@@ -1059,6 +1137,30 @@ export interface DbPort {
   // and is mutually exclusive across processes.
   withLock<T>(key: string, fn: () => Promise<T>): Promise<T>;
   withTransaction<T>(fn: (db: DbPort) => Promise<T>): Promise<T>;
+  createAccountingAccount(account: Omit<DbAccountingAccount, "id" | "createdAt" | "updatedAt">): Promise<DbAccountingAccount>;
+  findAccountingAccountByCode(businessId: string, code: string): Promise<DbAccountingAccount | null>;
+  listAccountingAccounts(businessId: string): Promise<DbAccountingAccount[]>;
+  isAccountingAccountUsed(businessId: string, accountId: string): Promise<boolean>;
+  updateAccountingAccount(id: string, businessId: string, patch: Partial<Pick<DbAccountingAccount, "name" | "isActive">>): Promise<DbAccountingAccount | null>;
+  createJournalEntry(entry: DbJournalEntryCreate): Promise<{ entry: DbJournalEntry; lines: DbJournalLine[] }>;
+  findJournalEntryBySource(businessId: string, sourceType: string, sourceId: string, sourceEvent: string): Promise<{ entry: DbJournalEntry; lines: DbJournalLine[] } | null>;
+  findJournalEntryById(id: string, businessId: string): Promise<DbJournalEntry | null>;
+  listJournalEntries(businessId: string, query: DbJournalPageQuery): Promise<DbJournalEntry[]>;
+  listJournalLines(entryId: string, businessId: string): Promise<DbJournalLine[]>;
+  createSupplierBill(input: Omit<DbSupplierBill, "id" | "createdAt" | "updatedAt">): Promise<DbSupplierBill>;
+  findSupplierBill(id: string, businessId: string): Promise<DbSupplierBill | null>;
+  listSupplierBills(businessId: string): Promise<DbSupplierBill[]>;
+  updateSupplierBill(id: string, businessId: string, patch: Partial<Omit<DbSupplierBill, "id" | "businessId" | "createdAt" | "version">>, expectedVersion: number): Promise<DbSupplierBill | null>;
+  createSupplierBillAllocation(input: Omit<DbSupplierBillAllocation, "id">): Promise<DbSupplierBillAllocation>;
+  listSupplierBillAllocations(billId: string, businessId: string): Promise<DbSupplierBillAllocation[]>;
+  billedQuantityByReceiptLine(businessId: string, receiptLineId: string): Promise<number>;
+  createSupplierCredit(input: Omit<DbSupplierCredit, "id" | "createdAt">): Promise<DbSupplierCredit>;
+  listSupplierCredits(businessId: string, supplierId: string): Promise<DbSupplierCredit[]>;
+  createSupplierPayment(input: Omit<DbSupplierPayment, "id" | "createdAt">): Promise<DbSupplierPayment>;
+  listSupplierPayments(billId: string, businessId: string): Promise<DbSupplierPayment[]>;
+  createSupplierReturnReceiptAllocation(input: Omit<DbSupplierReturnReceiptAllocation, "id">): Promise<DbSupplierReturnReceiptAllocation>;
+  listSupplierReturnReceiptAllocations(returnLineId: string, businessId: string): Promise<DbSupplierReturnReceiptAllocation[]>;
+  returnedQuantityByReceiptLine(businessId: string, receiptLineId: string): Promise<number>;
   findUserByEmail(email: string): Promise<DbUser | null>;
   findUserById(id: string): Promise<DbUser | null>;
   createUser(u: Omit<DbUser, "id">): Promise<DbUser>;

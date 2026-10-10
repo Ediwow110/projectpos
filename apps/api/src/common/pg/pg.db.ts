@@ -18,6 +18,9 @@ import { productModelFamily, type ProductModelFamily } from "./pg-product-model"
 import { valueFamily, type ValueFamily } from "./pg-value";
 import { ordersFamily } from "./pg-orders";
 import type { DbGiftCard, DbGiftCardTransaction, DbStoreCreditAccount, DbStoreCreditTransaction, DbLoyaltyProgram, DbLoyaltyAccount, DbLoyaltyTransaction, DbSaleGiftCardLoad, DbSaleLoyalty, DbSaleItemLoyaltyAllocation } from "../db.port";
+import type { DbAccountingAccount, DbJournalEntry, DbJournalEntryCreate, DbJournalLine, DbJournalPageQuery, DbSupplierBill, DbSupplierBillAllocation, DbSupplierCredit, DbSupplierPayment, DbSupplierReturnReceiptAllocation } from "../db.port";
+import { accountingFamily } from "./pg-accounting";
+import { payablesFamily } from "./pg-payables";
 
 // Phase 12: the PostgreSQL-backed DbPort. Composed from per-family modules
 // over one PgContext; `implements DbPort` makes the compiler enforce that the
@@ -40,6 +43,8 @@ export class PgDbPort implements DbPort {
   private readonly productModels: ProductModelFamily;
   private readonly values: ValueFamily;
   private readonly orders: ReturnType<typeof ordersFamily>;
+  private readonly accounting: ReturnType<typeof accountingFamily>;
+  private readonly payables: ReturnType<typeof payablesFamily>;
 
   constructor(private readonly ctx: PgContext) {
     this.settings = settingsFamily(ctx);
@@ -59,6 +64,8 @@ export class PgDbPort implements DbPort {
     this.productModels = productModelFamily(ctx);
     this.values = valueFamily(ctx);
     this.orders = ordersFamily(ctx);
+    this.accounting = accountingFamily(ctx);
+    this.payables = payablesFamily(ctx);
   }
 
   // withLock/withTransaction come straight from the context so every family
@@ -69,6 +76,30 @@ export class PgDbPort implements DbPort {
   withTransaction<T>(fn: (db: DbPort) => Promise<T>): Promise<T> {
     return this.ctx.withTransaction(() => fn(this));
   }
+  createAccountingAccount(input: Omit<DbAccountingAccount, "id" | "createdAt" | "updatedAt">): Promise<DbAccountingAccount> { return this.accounting.createAccountingAccount(input); }
+  findAccountingAccountByCode(businessId: string, code: string): Promise<DbAccountingAccount | null> { return this.accounting.findAccountingAccountByCode(businessId, code); }
+  listAccountingAccounts(businessId: string): Promise<DbAccountingAccount[]> { return this.accounting.listAccountingAccounts(businessId); }
+  isAccountingAccountUsed(businessId: string, accountId: string): Promise<boolean> { return this.accounting.isAccountingAccountUsed(businessId, accountId); }
+  updateAccountingAccount(id: string, businessId: string, patch: Partial<Pick<DbAccountingAccount, "name" | "isActive">>): Promise<DbAccountingAccount | null> { return this.accounting.updateAccountingAccount(id, businessId, patch); }
+  createJournalEntry(input: DbJournalEntryCreate): Promise<{ entry: DbJournalEntry; lines: DbJournalLine[] }> { return this.accounting.createJournalEntry(input); }
+  findJournalEntryBySource(businessId: string, sourceType: string, sourceId: string, sourceEvent: string): Promise<{ entry: DbJournalEntry; lines: DbJournalLine[] } | null> { return this.accounting.findJournalEntryBySource(businessId, sourceType, sourceId, sourceEvent); }
+  findJournalEntryById(id: string, businessId: string): Promise<DbJournalEntry | null> { return this.accounting.findJournalEntryById(id, businessId); }
+  listJournalEntries(businessId: string, query: DbJournalPageQuery): Promise<DbJournalEntry[]> { return this.accounting.listJournalEntries(businessId, query); }
+  listJournalLines(entryId: string, businessId: string): Promise<DbJournalLine[]> { return this.accounting.listJournalLines(entryId, businessId); }
+  createSupplierBill(input: Omit<DbSupplierBill, "id" | "createdAt" | "updatedAt">): Promise<DbSupplierBill> { return this.payables.createSupplierBill(input); }
+  findSupplierBill(id: string, businessId: string): Promise<DbSupplierBill | null> { return this.payables.findSupplierBill(id, businessId); }
+  listSupplierBills(businessId: string): Promise<DbSupplierBill[]> { return this.payables.listSupplierBills(businessId); }
+  updateSupplierBill(id: string, businessId: string, patch: Partial<Omit<DbSupplierBill, "id" | "businessId" | "createdAt" | "version">>, expectedVersion: number): Promise<DbSupplierBill | null> { return this.payables.updateSupplierBill(id, businessId, patch, expectedVersion); }
+  createSupplierBillAllocation(input: Omit<DbSupplierBillAllocation, "id">): Promise<DbSupplierBillAllocation> { return this.payables.createSupplierBillAllocation(input); }
+  listSupplierBillAllocations(billId: string, businessId: string): Promise<DbSupplierBillAllocation[]> { return this.payables.listSupplierBillAllocations(billId, businessId); }
+  billedQuantityByReceiptLine(businessId: string, receiptLineId: string): Promise<number> { return this.payables.billedQuantityByReceiptLine(businessId, receiptLineId); }
+  createSupplierCredit(input: Omit<DbSupplierCredit, "id" | "createdAt">): Promise<DbSupplierCredit> { return this.payables.createSupplierCredit(input); }
+  listSupplierCredits(businessId: string, supplierId: string): Promise<DbSupplierCredit[]> { return this.payables.listSupplierCredits(businessId, supplierId); }
+  createSupplierPayment(input: Omit<DbSupplierPayment, "id" | "createdAt">): Promise<DbSupplierPayment> { return this.payables.createSupplierPayment(input); }
+  listSupplierPayments(billId: string, businessId: string): Promise<DbSupplierPayment[]> { return this.payables.listSupplierPayments(billId, businessId); }
+  createSupplierReturnReceiptAllocation(input: Omit<DbSupplierReturnReceiptAllocation, "id">): Promise<DbSupplierReturnReceiptAllocation> { return this.payables.createSupplierReturnReceiptAllocation(input); }
+  listSupplierReturnReceiptAllocations(returnLineId: string, businessId: string): Promise<DbSupplierReturnReceiptAllocation[]> { return this.payables.listSupplierReturnReceiptAllocations(returnLineId, businessId); }
+  returnedQuantityByReceiptLine(businessId: string, receiptLineId: string): Promise<number> { return this.payables.returnedQuantityByReceiptLine(businessId, receiptLineId); }
   async close(): Promise<void> {
     await this.ctx.close();
   }
