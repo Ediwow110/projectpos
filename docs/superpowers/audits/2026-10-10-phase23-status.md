@@ -3,11 +3,11 @@
 ## Workspace and release state
 
 - Worktree: `G:\Vscode\POS-phase23-accounting-20261010`
-- Branch: `codex/phase23-accounting`
-- Implementation base: `3f823826b648ae6bbffdab10bf0dc842ac0f6154`
+- Implementation branch: `codex/phase23-accounting`, commit `f69f27260d9155aa4a7ca1e6efe3e01adfeeea3b`.
+- Staging integration commit: `0ab61b1d7a56573d64a4e2371ab5af6ec5182ca8` on `codex/team-multirole-delegation`.
 - The original `G:\Vscode\POS` checkout remains untouched. Changes are isolated in the worktree.
-- This update is committed locally on this branch. No push, merge, deployment, production write, or payment occurred.
-- Earlier staging approval covered onboarding only. Phase 23 staging still needs separate approval.
+- Phase 23 implementation and staging integration branches were pushed after explicit staging approval. No PR was opened. Production/main were not changed.
+- Render “My Workspace” staging services `nexpos-phase21-staging-api` and `nexpos-phase21-staging-web` both deployed commit `0ab61b1` and reached `live`. Deploy IDs: `dep-db58vjh42hec73849kq0` (API) and `dep-db590bbbc2fs73eo50eg` (web).
 
 ## Implemented
 
@@ -24,25 +24,26 @@
 
 ## Verification evidence
 
-- `pnpm exec turbo run test --force --concurrency=1`: all 7 packages passed; API 144 files/712 tests; web 72 files/267 tests; validation 18 files/116 tests.
-- `pnpm --filter @pos/api exec vitest run --config vitest.pg.config.ts`: 19 files/167 tests passed against the local disposable PostgreSQL test setup, including migration 0039 and stored-value backfill resolution.
-- `pnpm test:exit`: 16 files/68 tests passed.
-- `pnpm typecheck`: all 7 workspace packages passed.
-- `pnpm lint`: completed without reported errors.
-- Combined stored-value/accounting/payables browser run passed 21/21 desktop/tablet/mobile tests. After the final backfill guard, `pnpm e2e -- e2e/accounting.spec.ts` passed 9/9; production build succeeded again.
-- `pnpm verify`, all `verify-phase*.test.mjs` scripts, `verify-phase23-migration.mjs`: passed (`SCAFFOLD_OK`, phase verifiers OK).
-- `pnpm audit --prod --audit-level critical`: no known vulnerabilities.
-- Final review: `git diff --check` passed. Git reports only LF-to-CRLF conversion warnings on edited TypeScript files.
+- `pnpm test`: all 7 packages passed on the combined staging tree; API 146 files/719 tests; web 72 files/267 tests; validation 18 files/116 tests.
+- `pnpm --filter @pos/api test:pg`: 19 files/167 tests passed against the dedicated local PostgreSQL test container on port 5434. It applied the combined multirole and Phase 23 migrations through 0039.
+- `pnpm typecheck` and `pnpm lint`: passed on the combined staging tree.
+- On the Phase 23 implementation branch, the combined stored-value/accounting/payables browser run passed 21/21 desktop/tablet/mobile tests; the final focused accounting run passed 9/9. Production build succeeded.
+- On the combined staging tree, `pnpm verify`, `node scripts/verify-phase23-migration.mjs`, and `node scripts/verify-phase23.test.mjs` passed (`SCAFFOLD_OK`, `PHASE23_MIGRATION_OK`, `PHASE23_SOURCE_WIRING_OK`).
+- `pnpm e2e -- e2e/onboarding-live-api.spec.ts`: 9/9 passed across desktop, tablet, and mobile after changing step checks to assert the active heading instead of matching sidebar text.
+- GitHub Actions CI passed on staging integration commit `0ab61b1`: [run 38079349935](https://github.com/Ediwow110/projectpos/actions/runs/38079349935), including lint, typecheck, all package tests, PostgreSQL, build, audit, and phase verification.
+- Staging API `/readyz` returned HTTP 200 `{"ok":true}` after deployment. A clean-context signed-out Playwright check reached `/login` from `/onboarding` (1/1).
+- The existing staging QA owner showed the dashboard getting-started state without a “Continue setup” loop. `/accounting` showed `NOT_STARTED`, required opening-balance guidance, the expected P&L activation gate, and zero journal totals.
+- A new isolated staging QA tenant completed required onboarding, skipped optional product/employee steps, posted a balanced PHP 1.00 opening entry dated 2026-10-01, and completed the bounded backfill. The API reported `ACTIVE`; the accounting page no longer showed `ACCOUNTING_ACTIVATION_REQUIRED`.
+- Review checks `git diff --check` and `git diff --cached --check` passed before the staging integration commit.
 
 ## Remaining release blockers and limits
 
-1. Phase 23 staging validation has not occurred. The earlier “My Workspace staging” approval is scoped to onboarding. Request separate Phase 23 staging approval after reviewing this local implementation.
-2. CI has not run for this commit because the branch has not been pushed. Local checks mirror the relevant repository gates.
-3. Each tenant still requires owner verification of historical source evidence and account mapping before activation. No source values are inferred.
-4. No production release is authorized by this work.
+1. The staging smoke used isolated QA tenants only. It did not post journals or change setup, inventory, or payment data for the existing staging owner.
+2. Each real business still requires owner verification of historical source evidence and account mapping before activation. No source values are inferred.
+3. Production release, merge to `main`, and production data changes remain unauthorized.
 
 ## Closeout
 
-- The local implementation, including evidence-based resolution paths for historical inventory and standalone stored-value gaps, is complete and verified.
-- Phase 23 is not release-complete until owner evidence review for the intended tenant and authorized staging validation pass.
-- Keep this implementation on `codex/phase23-accounting`; do not push, deploy, merge, or change production without explicit authorization.
+- Phase 23 management accounting is implemented, CI-verified, and validated in My Workspace staging at `0ab61b1`.
+- The approved scope excludes statutory filings and tax advice. No Phase 24 features were inferred from the roadmap.
+- Production remains unchanged and requires separate authorization.

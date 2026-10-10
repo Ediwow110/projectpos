@@ -55,11 +55,12 @@ test("real browser, web app, and API preserve onboarding gates and progress", as
   expect(bypass.body.code).toBe("ONBOARDING_REQUIRED_STEP");
 
   await expect(page.getByRole("button", { name: "Mark step complete" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Currency & tax", exact: true })).toBeVisible();
   await onboarding.completeCurrentStep();
-  await expect(page.getByText("Receipt setup", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Receipt setup", exact: true })).toBeVisible();
   await onboarding.completeCurrentStep();
 
-  await expect(page.getByText("First products", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "First products", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "← Back to dashboard" })).toBeVisible();
   await page.getByRole("link", { name: "← Back to dashboard" }).click();
   await new DashboardPage(page).expectEmptyState();
