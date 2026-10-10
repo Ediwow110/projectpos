@@ -1,4 +1,4 @@
-import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbDisplayToken, DbExchange, DbFeatureFlag, DbFulfillment, DbFulfillmentLine, DbInvoice, DbMembership, DbMovement, DbOrder, DbOrderAccessToken, DbOrderLine, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbProductFamily, DbProductOption, DbProductOptionValue, DbProductVariantOptionValue, DbProductBundle, DbBundleComponent, DbSaleItemBundleComponent, DbReceiptDelivery, DbResetToken, DbSession, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine, DbInventoryCount, DbInventoryCountLine, DbInventoryReservation, DbGiftCard, DbGiftCardTransaction, DbStoreCreditAccount, DbStoreCreditTransaction, DbLoyaltyProgram, DbLoyaltyAccount, DbLoyaltyTransaction, DbSaleGiftCardLoad, DbSaleLoyalty, DbSaleItemLoyaltyAllocation } from "./db.port";
+import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbDisplayToken, DbExchange, DbFeatureFlag, DbFulfillment, DbFulfillmentLine, DbInvoice, DbMembership, DbRoleAssignment, DbMovement, DbOrder, DbOrderAccessToken, DbOrderLine, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbProductFamily, DbProductOption, DbProductOptionValue, DbProductVariantOptionValue, DbProductBundle, DbBundleComponent, DbSaleItemBundleComponent, DbReceiptDelivery, DbResetToken, DbSession, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine, DbInventoryCount, DbInventoryCountLine, DbInventoryReservation, DbGiftCard, DbGiftCardTransaction, DbStoreCreditAccount, DbStoreCreditTransaction, DbLoyaltyProgram, DbLoyaltyAccount, DbLoyaltyTransaction, DbSaleGiftCardLoad, DbSaleLoyalty, DbSaleItemLoyaltyAllocation } from "./db.port";
 import type { DbAccountingAccount, DbAccountingActivation, DbAccountingBackfillIssue, DbAccountingBackfillRun, DbJournalEntry, DbJournalEntryCreate, DbJournalLine } from "./db.port";
 import type { DbSupplierBill, DbSupplierBillAllocation, DbSupplierCredit, DbSupplierPayment, DbSupplierReturnReceiptAllocation } from "./db.port";
 
@@ -9,6 +9,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const users = new Map<string, DbUser>();
   const businesses = new Map<string, DbBusiness>();
   const memberships = new Map<string, DbMembership>();
+  const roleAssignments = new Map<string, DbRoleAssignment>();
   const sessions = new Map<string, DbSession>();
   const resets = new Map<string, DbResetToken>();
   const settings = new Map<string, Record<string, unknown>>();
@@ -458,6 +459,33 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     },
     async listMembershipsByBusiness(businessId) {
       return [...memberships.values()].filter((m) => m.businessId === businessId);
+    },
+    async listRoleAssignments(membershipId, businessId) {
+      return [...roleAssignments.values()].filter((a) => a.membershipId === membershipId && a.businessId === businessId);
+    },
+    async listActiveRoleAssignments(userId, businessId, branchId, at) {
+      const memberIds = new Set([...memberships.values()]
+        .filter((m) => m.userId === userId && m.businessId === businessId && !m.deactivatedAt)
+        .map((m) => m.id));
+      return [...roleAssignments.values()].filter((a) => memberIds.has(a.membershipId)
+        && a.businessId === businessId
+        && a.startsAt <= at
+        && (!a.expiresAt || a.expiresAt > at)
+        && !a.revokedAt
+        && (a.branchId === null || (branchId !== null && a.branchId === branchId)));
+    },
+    async createRoleAssignment(a) {
+      const now = new Date();
+      const row: DbRoleAssignment = { ...a, id: nid("role_assignment"), createdAt: now, updatedAt: now };
+      roleAssignments.set(row.id, row);
+      return row;
+    },
+    async updateRoleAssignment(id, businessId, patch) {
+      const row = roleAssignments.get(id);
+      if (!row || row.businessId !== businessId) return null;
+      const next = { ...row, ...patch, updatedAt: new Date() };
+      roleAssignments.set(id, next);
+      return next;
     },
     async findLatestSaleForRegister(businessId, registerId) {
       let latest = null;

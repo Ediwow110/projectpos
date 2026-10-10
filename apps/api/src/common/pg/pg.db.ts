@@ -1,4 +1,4 @@
-import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbBusinessCreate, DbCashMovement, DbCategory, DbCustomer, DbDevice, DbExchange, DbExpense, DbFeatureFlag, DbFulfillment, DbFulfillmentLine, DbHeldSale, DbIdempotency, DbInventoryReservation, DbInvoice, DbMovement, DbOrder, DbOrderAccessToken, DbOrderAccessTokenKind, DbOrderLine, DbOrderPageQuery, DbPayment, DbPlan, DbMembership, DbPort, DbPrinter, DbPrintJob, DbProduct, DbProductFamily, DbProductOption, DbProductOptionValue, DbProductVariantOptionValue, DbProductBundle, DbBundleComponent, DbSaleItemBundleComponent, DbReceiptDelivery, DbRefund, DbRefundCreate, DbRefundItem, DbRegister, DbResetToken, DbSale, DbSaleCreate, DbSaleItem, DbSession, DbShift, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbDisplayToken, DbUsageCounter, DbUser, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine, DbInventoryCount, DbInventoryCountLine } from "../db.port";
+import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbBusinessCreate, DbCashMovement, DbCategory, DbCustomer, DbDevice, DbExchange, DbExpense, DbFeatureFlag, DbFulfillment, DbFulfillmentLine, DbHeldSale, DbIdempotency, DbInventoryReservation, DbInvoice, DbMovement, DbOrder, DbOrderAccessToken, DbOrderAccessTokenKind, DbOrderLine, DbOrderPageQuery, DbPayment, DbPlan, DbMembership, DbRoleAssignment, DbPort, DbPrinter, DbPrintJob, DbProduct, DbProductFamily, DbProductOption, DbProductOptionValue, DbProductVariantOptionValue, DbProductBundle, DbBundleComponent, DbSaleItemBundleComponent, DbReceiptDelivery, DbRefund, DbRefundCreate, DbRefundItem, DbRegister, DbResetToken, DbSale, DbSaleCreate, DbSaleItem, DbSession, DbShift, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbDisplayToken, DbUsageCounter, DbUser, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine, DbInventoryCount, DbInventoryCountLine } from "../db.port";
 import { PgContext } from "./context";
 import { settingsFamily } from "./pg-settings";
 import { auditFamily } from "./pg-audit";
@@ -179,6 +179,22 @@ export class PgDbPort implements DbPort {
   }
   createMembership(m: Omit<DbMembership, "id">): Promise<DbMembership> {
     return this.tenants.createMembership(m);
+  }
+  listRoleAssignments(membershipId: string, businessId: string): Promise<DbRoleAssignment[]> {
+    return this.tenants.listRoleAssignments(membershipId, businessId);
+  }
+  listActiveRoleAssignments(userId: string, businessId: string, branchId: string | null, at: Date): Promise<DbRoleAssignment[]> {
+    return this.tenants.listActiveRoleAssignments(userId, businessId, branchId, at);
+  }
+  createRoleAssignment(a: Omit<DbRoleAssignment, "id">): Promise<DbRoleAssignment> {
+    return this.tenants.createRoleAssignment(a);
+  }
+  updateRoleAssignment(
+    id: string,
+    businessId: string,
+    patch: Partial<Pick<DbRoleAssignment, "expiresAt" | "revokedAt" | "revokedBy" | "revocationReason" | "assignmentReason">>,
+  ): Promise<DbRoleAssignment | null> {
+    return this.tenants.updateRoleAssignment(id, businessId, patch);
   }
   updateMembership(id: string, businessId: string, patch: { deactivatedAt: Date | null }): Promise<void> {
     return this.tenants.updateMembership(id, businessId, patch);

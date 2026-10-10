@@ -7,7 +7,7 @@ import { consumeResetToken, createResetToken } from "../reset-tokens";
 import { issueCsrfToken } from "../csrf";
 import { incrementMetric } from "../../common/metrics";
 import { billingEnabled } from "../../billing/entitlements";
-import { buildRegistrationSeed, resolveActiveBusiness, ROLE_SEED } from "../../tenant/seed";
+import { buildRegistrationSeed, resolveActiveBusiness, rolePermissionsForRoles, ROLE_SEED } from "../../tenant/seed";
 import { defaultOnboardingState, isOnboardingComplete, type OnboardingState } from "../../business/onboarding";
 import type { DbPort } from "../../common/db.port";
 import {
@@ -56,7 +56,26 @@ export class AuthService {
         void roleName;
         void permissions;
       }
-      await db.createMembership({ businessId: business.id, userId: user.id, role: seed.ownerRoleName });
+      const membership = await db.createMembership({ businessId: business.id, userId: user.id, role: seed.ownerRoleName });
+      const assignedAt = new Date();
+      await db.createRoleAssignment({
+        businessId: business.id,
+        membershipId: membership.id,
+        role: seed.ownerRoleName,
+        assignmentType: "PERMANENT",
+        branchId: null,
+        startsAt: assignedAt,
+        expiresAt: null,
+        assignedBy: user.id,
+        assignedAt,
+        assignmentReason: "Initial business owner role",
+        revokedAt: null,
+        revokedBy: null,
+        revocationReason: null,
+        idempotencyKey: `membership:${membership.id}:initial`,
+        createdAt: assignedAt,
+        updatedAt: assignedAt,
+      });
       const settings: Record<string, unknown> = { currency: seed.business.currency, onboarding: seed.onboarding };
       for (const entry of seed.defaultSettings) settings[entry.key] = entry.value;
       await db.saveSettings(business.id, settings);
@@ -314,16 +333,27 @@ export class AuthService {
     return true;
   }
 
+  private async effectiveRoles(userId: string, businessId: string, branchId: string | null = null): Promise<string[]> {
+    const membership = await this.db.findMembership(userId, businessId);
+    if (!membership || membership.deactivatedAt) return [];
+    const assignments = await this.db.listActiveRoleAssignments(userId, businessId, branchId, new Date());
+    if (assignments.length > 0) return [...new Set(assignments.map((assignment) => assignment.role))];
+    const allAssignments = await this.db.listRoleAssignments(membership.id, businessId);
+    return allAssignments.length === 0 ? [membership.role] : [];
+  }
+
   async mintManagerApproval(
     businessId: string,
     requesterId: string,
     requestId: string,
     input: { email: string; password?: string; pin?: string; permission: string; fingerprint: string; requireDistinctApprover?: boolean },
+    branchId: string | null = null,
   ): Promise<{ token: string; expiresAt: Date; approver: { id: string; name: string; role: string } }> {
     const approver = await this.db.findUserByEmail(input.email.trim().toLowerCase());
     const membership = approver ? await this.db.findMembership(approver.id, businessId) : null;
-    const eligibleRole = membership?.role === "owner" || membership?.role === "manager";
-    const eligiblePermission = membership ? this.rolePermissions(membership.role).includes(input.permission) : false;
+    const roles = approver ? await this.effectiveRoles(approver.id, businessId, branchId) : [];
+    const eligibleRole = roles.includes("owner") || roles.includes("manager");
+    const eligiblePermission = this.rolePermissionsForRoles(roles).includes(input.permission);
     const credentialValid = input.pin !== undefined
       ? membership?.approvalPinHash != null && await verifyApprovalPin(membership.approvalPinHash, input.pin)
       : input.password !== undefined && approver !== null && await verifyPassword(approver.passwordHash, input.password);
@@ -364,7 +394,7 @@ export class AuthService {
     return {
       token,
       expiresAt,
-      approver: { id: approver.id, name: approver.name, role: membership.role },
+      approver: { id: approver.id, name: approver.name, role: roles.includes("owner") ? "owner" : "manager" },
     };
   }
 
@@ -375,6 +405,7 @@ export class AuthService {
     fingerprint: string,
     token: string,
     requireDistinctApprover = false,
+    branchId: string | null = null,
   ): Promise<{ approverId: string; approverName: string; approverRole: string }> {
     const tokenHash = hashToken(token);
     return this.db.withLock(`manager-approval:${tokenHash}`, async () => {
@@ -382,21 +413,26 @@ export class AuthService {
       if (!grant || grant.fingerprint !== fingerprint) throw new Error("FORBIDDEN");
       const approver = await this.db.findUserById(grant.approverId);
       const membership = approver ? await this.db.findMembership(approver.id, businessId) : null;
+      const roles = approver ? await this.effectiveRoles(approver.id, businessId, branchId) : [];
       if (
         !approver ||
         !membership ||
         membership.deactivatedAt != null ||
-        (membership.role !== "owner" && membership.role !== "manager") ||
-        !this.rolePermissions(membership.role).includes(permission) ||
+        !roles.some((role) => role === "owner" || role === "manager") ||
+        !this.rolePermissionsForRoles(roles).includes(permission) ||
         (requireDistinctApprover && approver.id === requesterId)
       ) throw new Error("FORBIDDEN");
       await this.db.markManagerApprovalGrantUsed(grant.id);
-      return { approverId: approver.id, approverName: approver.name, approverRole: membership.role };
+      return { approverId: approver.id, approverName: approver.name, approverRole: roles.includes("owner") ? "owner" : "manager" };
     });
   }
 
   rolePermissions(role: string): string[] {
     return ROLE_SEED[role as keyof typeof ROLE_SEED] ?? [];
+  }
+
+  rolePermissionsForRoles(roles: string[]): string[] {
+    return rolePermissionsForRoles(roles);
   }
 
   checkReAuth(authenticatedAt: Date): void {

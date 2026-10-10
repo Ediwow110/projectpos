@@ -38,7 +38,7 @@ export class ShiftController {
   ) {}
 
   private perms(req: Request): string[] {
-    return this.auth.rolePermissions(req.auth!.role);
+    return req.rolePermissions ?? this.auth.rolePermissions(req.auth!.role);
   }
 
   private manageGuard(req: Request, res: Response): boolean {
@@ -239,7 +239,7 @@ export class ShiftController {
         if (!parsed.data.approvalToken) throw new Error("FORBIDDEN");
         const consumed = await this.auth.consumeManagerApproval(
           auth.businessId, auth.userId, requirement.permission, requirement.fingerprint, parsed.data.approvalToken,
-          requirement.requireDistinctApprover,
+          requirement.requireDistinctApprover, auth.activeBranchId ?? null,
         );
         granted = [...new Set([...granted, requirement.permission])];
         approval = {

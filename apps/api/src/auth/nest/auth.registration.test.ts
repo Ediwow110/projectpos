@@ -29,6 +29,7 @@ describe("registration transaction boundary", () => {
       createUser: requireTransaction("createUser", base.createUser.bind(base)),
       createBusiness: requireTransaction("createBusiness", base.createBusiness.bind(base)),
       createMembership: requireTransaction("createMembership", base.createMembership.bind(base)),
+      createRoleAssignment: requireTransaction("createRoleAssignment", base.createRoleAssignment.bind(base)),
       saveSettings: requireTransaction("saveSettings", base.saveSettings.bind(base)),
       createSession: requireTransaction("createSession", base.createSession.bind(base)),
       createEmailVerificationToken: requireTransaction(

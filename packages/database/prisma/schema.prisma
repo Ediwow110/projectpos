@@ -126,6 +126,7 @@ model Business {
   fulfillments Fulfillment[]
   fulfillmentLines FulfillmentLine[]
   orderAccessTokens OrderAccessToken[]
+  roleAssignments RoleAssignment[]
   activeSessions Session[] @relation("SessionActiveBusiness")
 }
 
@@ -141,6 +142,7 @@ model BusinessMembership {
   business   Business @relation(fields: [businessId], references: [id])
   user       User     @relation(fields: [userId], references: [id])
   role       Role     @relation(fields: [roleId], references: [id])
+  roleAssignments RoleAssignment[]
   @@unique([businessId, userId])
   @@index([businessId])
   @@index([userId])
@@ -152,8 +154,37 @@ model Role {
   name        String
   permissions RolePermission[]
   memberships BusinessMembership[]
+  roleAssignments RoleAssignment[]
   @@unique([businessId, name])
   @@index([businessId])
+}
+
+model RoleAssignment {
+  id               String   @id @default(cuid())
+  businessId       String
+  membershipId     String
+  roleId           String
+  assignmentType   String
+  branchId         String?
+  startsAt         DateTime
+  expiresAt        DateTime?
+  assignedBy       String
+  assignedAt       DateTime
+  assignmentReason String?
+  revokedAt        DateTime?
+  revokedBy        String?
+  revocationReason String?
+  idempotencyKey   String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  business         Business @relation(fields: [businessId], references: [id])
+  membership       BusinessMembership @relation(fields: [membershipId], references: [id])
+  role             Role     @relation(fields: [roleId], references: [id])
+  branch           Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  @@index([businessId, membershipId])
+  @@index([businessId, branchId])
+  @@index([membershipId, revokedAt, startsAt, expiresAt])
+  @@index([businessId, idempotencyKey])
 }
 
 model Permission {
@@ -925,6 +956,7 @@ model Branch {
   purchaseOrders PurchaseOrder[]
   inventoryCounts InventoryCount[]
   activeSessions Session[] @relation("SessionActiveBranch")
+  roleAssignments RoleAssignment[]
   @@unique([businessId, name])
   @@index([businessId])
 }

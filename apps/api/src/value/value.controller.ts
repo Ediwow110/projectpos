@@ -27,7 +27,7 @@ export class ValueController {
     this.service = new StoredValueService(db);
   }
 
-  private granted(req: Request): string[] { return this.auth.rolePermissions(req.auth!.role); }
+  private granted(req: Request): string[] { return req.rolePermissions ?? this.auth.rolePermissions(req.auth!.role); }
 
   private async authorizeAdjustment(req: Request, valueType: "gift_card" | "store_credit" | "loyalty", targetId: string, amountDelta: number, counterAccountCode: string, reason: string, approvalToken?: string): Promise<{ approverId?: string }> {
     const auth = req.auth!;
@@ -36,7 +36,7 @@ export class ValueController {
     if (granted.includes(permission)) return {};
     const requirement = await this.approvalPolicy.resolveRequirement(auth.businessId, auth.userId, { kind: "value_adjustment", valueType, targetId, amountDelta, counterAccountCode, reason });
     if (!requirement || requirement.permission !== permission || !approvalToken) throw new Error("FORBIDDEN");
-    const consumed = await this.auth.consumeManagerApproval(auth.businessId, auth.userId, requirement.permission, requirement.fingerprint, approvalToken, requirement.requireDistinctApprover);
+    const consumed = await this.auth.consumeManagerApproval(auth.businessId, auth.userId, requirement.permission, requirement.fingerprint, approvalToken, requirement.requireDistinctApprover, auth.activeBranchId ?? null);
     return { approverId: consumed.approverId };
   }
 

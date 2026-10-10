@@ -37,5 +37,6 @@ describe("team view helpers", () => {
     expect(canManageApprovalPin(member({ role: "cashier" }))).toBe(false);
     expect(canManageApprovalPin(member({ role: "inventory" }))).toBe(false);
     expect(canManageApprovalPin(member({ role: "manager", deactivatedAt: "2026-09-30T00:00:00.000Z" }))).toBe(false);
+    expect(canManageApprovalPin(member({ assignments: [{ id: "a1", role: "manager", assignmentType: "TEMPORARY", branchId: null, startsAt: "2026-01-01T00:00:00.000Z", expiresAt: "2099-01-01T00:00:00.000Z", assignedBy: "owner", assignedAt: "2026-01-01T00:00:00.000Z", assignmentReason: "coverage", revokedAt: null, revokedBy: null, revocationReason: null }] }))).toBe(true);
   });
 });

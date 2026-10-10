@@ -23,6 +23,12 @@ test("real browser, web app, and API preserve onboarding gates and progress", as
   await onboarding.expectRequiredSetup();
   const profile = await page.evaluate(() => fetch("/api/v1/me").then((response) => response.json()));
   expect(profile.email).toBe(email);
+  const protectedApi = await page.evaluate(async () => {
+    const response = await fetch("/api/v1/inventory/balances");
+    return { status: response.status, body: await response.json() as { code?: string } };
+  });
+  expect(protectedApi.status).toBe(403);
+  expect(protectedApi.body.code).toBe("ONBOARDING_REQUIRED");
 
   for (const path of ["/", "/inventory", "/products"]) {
     await page.goto(path);

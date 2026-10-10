@@ -20,7 +20,7 @@ export class InventoryCountController {
     @Inject(AuthService) private readonly auth: AuthService,
     @Inject(ManagerApprovalPolicyService) private readonly approvalPolicy: ManagerApprovalPolicyService,
   ) {}
-  private perms(req: Request): string[] { return this.auth.rolePermissions(req.auth!.role); }
+  private perms(req: Request): string[] { return req.rolePermissions ?? this.auth.rolePermissions(req.auth!.role); }
   private key(req: Request, res: Response): string | null { const key = idemKey(req); if (!key) { fail(res, 400, "VALIDATION", "Idempotency-Key header required", req); return null; } return key; }
 
   @Get("counts")
@@ -71,7 +71,7 @@ export class InventoryCountController {
         if (!parsed.data.approvalToken) throw new Error("FORBIDDEN");
         const requirement = await this.approvalPolicy.resolveRequirement(auth.businessId, auth.userId, { kind: "inventory_count", countId: id });
         if (!requirement || requirement.fingerprint !== fingerprint) throw new Error("APPROVAL_STALE");
-        const consumed = await this.auth.consumeManagerApproval(auth.businessId, auth.userId, requirement.permission, requirement.fingerprint, parsed.data.approvalToken, requirement.requireDistinctApprover);
+        const consumed = await this.auth.consumeManagerApproval(auth.businessId, auth.userId, requirement.permission, requirement.fingerprint, parsed.data.approvalToken, requirement.requireDistinctApprover, auth.activeBranchId ?? null);
         applied = { approverId: consumed.approverId, permission: requirement.permission, stateFingerprint: requirement.fingerprint };
       }
       res.json(await this.counts.approveCount(auth.businessId, auth.userId, rid(req), id, parsed.data.expectedVersion, perms, applied));

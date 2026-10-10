@@ -1,6 +1,7 @@
 import { CanActivate, ExecutionContext, Inject, Injectable } from "@nestjs/common";
 import { isSessionExpired, isSessionRevoked } from "@pos/auth";
 import { hashToken } from "../auth/sessions";
+import { rolePermissionsForRoles } from "../tenant/seed";
 import { defaultOnboardingState, isOnboardingComplete, type OnboardingState } from "../business/onboarding";
 import type { DbPort } from "./db.port";
 
@@ -78,14 +79,23 @@ export class SessionGuard implements CanActivate {
         await this.db.updateSession(session.id, { activeBranchId: null });
       }
     }
+    const assignments = await this.db.listActiveRoleAssignments(session.userId, targetBusinessId, activeBranchId, new Date());
+    const allAssignments = await this.db.listRoleAssignments(membership.id, targetBusinessId);
+    const roles = assignments.length > 0
+      ? [...new Set(assignments.map((assignment) => assignment.role))]
+      : allAssignments.length === 0 ? [membership.role] : [];
+    const priority = ["owner", "manager", "cashier", "inventory"];
+    const primaryRole = [...roles].sort((a, b) => priority.indexOf(a) - priority.indexOf(b))[0] ?? (allAssignments.length === 0 ? membership.role : "none");
     req.auth = {
       userId: session.userId,
       businessId: targetBusinessId,
-      role: membership.role,
+      role: primaryRole,
+      roles,
       sessionId: session.id,
       activeBranchId,
       authenticatedAt: session.authenticatedAt,
     };
+    req.rolePermissions = rolePermissionsForRoles(roles);
     return this.checkOnboarding(req);
   }
 

@@ -46,7 +46,7 @@ export class ApprovalController {
         fail(res, 403, "FORBIDDEN", "Manager approval is not available for this action", req);
         return;
       }
-      const granted = this.auth.rolePermissions(actor.role);
+      const granted = req.rolePermissions ?? this.auth.rolePermissions(actor.role);
       if (granted.includes(requirement.permission) && !requirement.requireDistinctApprover) {
         fail(res, 403, "FORBIDDEN", "Manager approval is not available for this session", req);
         return;
@@ -62,7 +62,9 @@ export class ApprovalController {
         permission: requirement.permission,
         fingerprint: requirement.fingerprint,
         requireDistinctApprover: requirement.requireDistinctApprover,
-      });
+      },
+      actor.activeBranchId ?? null,
+      );
       res.status(201).json({
         token: result.token,
         expiresAt: result.expiresAt,

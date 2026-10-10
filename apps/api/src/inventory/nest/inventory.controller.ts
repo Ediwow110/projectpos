@@ -34,7 +34,7 @@ export class InventoryController {
   ) {}
 
   private canAdjust(req: Request): boolean {
-    return this.auth.rolePermissions(req.auth!.role).includes("inventory.adjust");
+    return (req.rolePermissions ?? this.auth.rolePermissions(req.auth!.role)).includes("inventory.adjust");
   }
 
   private adjustGuard(req: Request, res: Response): boolean {
@@ -74,7 +74,7 @@ export class InventoryController {
         if (!requirement) throw new Error("FORBIDDEN");
         const consumed = await this.auth.consumeManagerApproval(
           auth.businessId, auth.userId, requirement.permission, requirement.fingerprint, parsed.data.approvalToken,
-          requirement.requireDistinctApprover,
+          requirement.requireDistinctApprover, auth.activeBranchId ?? null,
         );
         approval = { approverId: consumed.approverId, permission: requirement.permission };
       }
