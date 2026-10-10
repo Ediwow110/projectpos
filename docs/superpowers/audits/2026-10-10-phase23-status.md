@@ -5,6 +5,7 @@
 - Worktree: `G:\Vscode\POS-phase23-accounting-20261010`
 - Implementation branch: `codex/phase23-accounting`, commit `f69f27260d9155aa4a7ca1e6efe3e01adfeeea3b`.
 - Staging integration commit: `0ab61b1d7a56573d64a4e2371ab5af6ec5182ca8` on `codex/team-multirole-delegation`.
+- Test/report follow-up: `4e8047bfd59edebf979a986bcfc754496318c907`; no runtime source changed after staging deploy.
 - The original `G:\Vscode\POS` checkout remains untouched. Changes are isolated in the worktree.
 - Phase 23 implementation and staging integration branches were pushed after explicit staging approval. No PR was opened. Production/main were not changed.
 - Render “My Workspace” staging services `nexpos-phase21-staging-api` and `nexpos-phase21-staging-web` both deployed commit `0ab61b1` and reached `live`. Deploy IDs: `dep-db58vjh42hec73849kq0` (API) and `dep-db590bbbc2fs73eo50eg` (web).
@@ -30,7 +31,7 @@
 - On the Phase 23 implementation branch, the combined stored-value/accounting/payables browser run passed 21/21 desktop/tablet/mobile tests; the final focused accounting run passed 9/9. Production build succeeded.
 - On the combined staging tree, `pnpm verify`, `node scripts/verify-phase23-migration.mjs`, and `node scripts/verify-phase23.test.mjs` passed (`SCAFFOLD_OK`, `PHASE23_MIGRATION_OK`, `PHASE23_SOURCE_WIRING_OK`).
 - `pnpm e2e -- e2e/onboarding-live-api.spec.ts`: 9/9 passed across desktop, tablet, and mobile after changing step checks to assert the active heading instead of matching sidebar text.
-- GitHub Actions CI passed on staging integration commit `0ab61b1`: [run 38079349935](https://github.com/Ediwow110/projectpos/actions/runs/38079349935), including lint, typecheck, all package tests, PostgreSQL, build, audit, and phase verification.
+- GitHub Actions CI passed on integration commit `0ab61b1` ([run 38079349935](https://github.com/Ediwow110/projectpos/actions/runs/38079349935)) and test/report follow-up `4e8047b` ([run 38080569477](https://github.com/Ediwow110/projectpos/actions/runs/38080569477)). Both passed lint, typecheck, package tests, PostgreSQL, build, audit, and phase verification. The workflow skips E2E; the focused Playwright suite passed locally 9/9.
 - Staging API `/readyz` returned HTTP 200 `{"ok":true}` after deployment. A clean-context signed-out Playwright check reached `/login` from `/onboarding` (1/1).
 - The existing staging QA owner showed the dashboard getting-started state without a “Continue setup” loop. `/accounting` showed `NOT_STARTED`, required opening-balance guidance, the expected P&L activation gate, and zero journal totals.
 - A new isolated staging QA tenant completed required onboarding, skipped optional product/employee steps, posted a balanced PHP 1.00 opening entry dated 2026-10-01, and completed the bounded backfill. The API reported `ACTIVE`; the accounting page no longer showed `ACCOUNTING_ACTIVATION_REQUIRED`.
