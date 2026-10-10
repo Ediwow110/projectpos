@@ -87,3 +87,11 @@ Limits
 Working tree
 ------------
 - Changes remain local and uncommitted. Nothing was pushed.
+
+Addendum — 2026-10-10 follow-up
+------------------------------
+- Local integration commit before this documentation update: 99b7c750d4de8cab873a66de46522702b4f218e0. Integration branch contains GitHub main 2c3ace096bfa5636e166163d8c6c4110b3b77888 plus the existing multirole staging branch and local onboarding/inventory fixes. Primary checkout G:\Vscode\POS remains unchanged.
+- The server-side onboarding guard now denies protected business API requests while persisted required setup is pending. Isolated memory contracts and PostgreSQL API-token contract verify HTTP 403 ONBOARDING_REQUIRED; setup APIs remain available.
+- Dashboard and wizard navigation preserve mandatory setup and remove the completed-owner empty-state loop. Signed-out onboarding redirects to login. Detailed current evidence is in docs/superpowers/audits/2026-10-10-onboarding-route-bypass.md.
+- Current integration checks: full unit suite 675/675; focused browser matrix 36/36 across desktop/tablet/mobile; PostgreSQL suite 158/158 on a disposable local PostgreSQL 16 container; lint, typecheck, build, exit contracts 68/68, phase 0–12 and migration verifiers, scaffold check, and critical dependency audit passed.
+- My Workspace staging deploy and smoke validation are pending. Production was not accessed or changed. Phase 23 scope is not defined by the repository roadmap.
