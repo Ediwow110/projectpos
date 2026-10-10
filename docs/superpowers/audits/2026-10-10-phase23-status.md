@@ -17,14 +17,15 @@
 - Backfill now uses the confirmed accounting start date, skips pre-cutover source records already covered by opening balances, and blocks value inference when source evidence is unavailable.
 - Backfill requires an owner-confirmed opening entry and cutoff date. Owners can revise opening balances before backfill; afterward the cutoff date is locked, revisions reverse and retain the prior immutable entry, and revisions are blocked during a running batch.
 - Owners can resolve paused historical inventory movement/count cost issues using invoice/count evidence. Each resolution posts a balanced immutable journal and leaves inventory quantities/count snapshots unchanged; resolved issues no longer block activation after recheck.
+- Owners can resolve legacy standalone gift-card, store-credit, and loyalty adjustments in bounded batches using source evidence and an explicit counter account. Missing loyalty value snapshots require a supplied evidenced amount; each posting is balanced and immutable, and the issue remains open until every source row is resolved.
 - Manual gift-card, store-credit, and loyalty adjustments require an explicit counter-account selection and post their balanced journal in the same transaction. Audit and manager-approval fingerprints include the account choice.
-- Accessible Playwright coverage includes accounting/payables and explicit stored-value counter-account flows across desktop, tablet, and mobile.
+- Accessible Playwright coverage includes accounting/payables, direct stored-value counter-account selection, and legacy stored-value resolution across desktop, tablet, and mobile.
 - Management accounting only was approved. The spec excludes statutory filings and tax advice. The repository roadmap ends at Phase 10; no Phase 24 scope was invented.
 
 ## Verification evidence
 
-- `pnpm exec turbo run test --force --concurrency=1`: all 7 packages passed; API 144 files/711 tests; web 72 files/267 tests; validation 17 files/114 tests.
-- `pnpm --filter @pos/api exec vitest run --config vitest.pg.config.ts`: 19 files/166 tests passed against the local disposable PostgreSQL test setup, including migration 0039 and backfill issue persistence.
+- `pnpm exec turbo run test --force --concurrency=1`: all 7 packages passed; API 144 files/712 tests; web 72 files/267 tests; validation 18 files/116 tests.
+- `pnpm --filter @pos/api exec vitest run --config vitest.pg.config.ts`: 19 files/167 tests passed against the local disposable PostgreSQL test setup, including migration 0039 and stored-value backfill resolution.
 - `pnpm test:exit`: 16 files/68 tests passed.
 - `pnpm typecheck`: all 7 workspace packages passed.
 - `pnpm lint`: completed without reported errors.
@@ -35,13 +36,13 @@
 
 ## Remaining release blockers and limits
 
-1. Legacy standalone stored-value adjustments still fail closed when they fall on or after the chosen cutoff. New manual adjustments are journaled transactionally; historical entries need an owner evidence-based counter-account resolution path. No value is invented.
-2. Phase 23 staging validation has not occurred. The earlier “My Workspace staging” approval is scoped to onboarding. Request separate Phase 23 staging approval after reviewing this local commit.
-3. CI has not run for this commit because the branch has not been pushed. Local checks mirror the relevant repository gates.
+1. Phase 23 staging validation has not occurred. The earlier “My Workspace staging” approval is scoped to onboarding. Request separate Phase 23 staging approval after reviewing this local implementation.
+2. CI has not run for this commit because the branch has not been pushed. Local checks mirror the relevant repository gates.
+3. Each tenant still requires owner verification of historical source evidence and account mapping before activation. No source values are inferred.
 4. No production release is authorized by this work.
 
 ## Closeout
 
-- The local implementation and required code-level checks are complete.
-- Phase 23 is not release-complete until source-data issues are resolved for the intended tenant and authorized staging validation passes.
+- The local implementation, including evidence-based resolution paths for historical inventory and standalone stored-value gaps, is complete and verified.
+- Phase 23 is not release-complete until owner evidence review for the intended tenant and authorized staging validation pass.
 - Keep this implementation on `codex/phase23-accounting`; do not push, deploy, merge, or change production without explicit authorization.

@@ -205,6 +205,16 @@ describe("Phase 23 accounting activation", () => {
     expect((await db.listSupplierCredits(businessId, supplier.id)).find((credit) => credit.supplierReturnId === supplierReturn.id)?.amountMinor).toBe(300);
     const issueList = await request(app.getHttpServer()).get(`/api/v1/accounting/activation/backfill/${start.body.id}`).set("Cookie", cookieHeader);
     expect(issueList.body.issues).toEqual(expect.arrayContaining([expect.objectContaining({ sourceId: expect.any(String), reason: "historical_movement_cost_unavailable" }), expect.objectContaining({ reason: "standalone_value_adjustment_counter_account_missing" })]));
+    const storedValueIssue = issueList.body.issues.find((issue: { sourceType: string }) => issue.sourceType === "StoredValue");
+    const activationWithStoredValue = await request(app.getHttpServer()).get("/api/v1/accounting/activation").set("Cookie", cookieHeader);
+    const legacyGiftSource = activationWithStoredValue.body.backfillIssues.find((issue: { id: string }) => issue.id === storedValueIssue.id).sourceDetails.transactions[0];
+    expect(legacyGiftSource).toMatchObject({ sourceType: "GiftCardTransaction", sourceId: expect.any(String), amountMinor: 500 });
+    const storedValueResolution = await request(app.getHttpServer()).post(`/api/v1/accounting/activation/backfill/${start.body.id}/issues/${storedValueIssue.id}/resolve`)
+      .set("Cookie", cookieHeader).set("X-CSRF-Token", csrfToken).set("Idempotency-Key", "legacy-value-resolution")
+      .send({ evidence: "Legacy gift-card adjustment register", storedValueAdjustments: [{ sourceType: "GiftCardTransaction", sourceId: legacyGiftSource.sourceId, counterAccountCode: "6000" }] });
+    expect(storedValueResolution.status).toBe(201);
+    expect(storedValueResolution.body).toMatchObject({ resolved: true, remainingCount: 0 });
+    expect((await db.findJournalEntryBySource(businessId, "GiftCardTransaction", legacyGiftSource.sourceId, "adjusted"))?.entry.currency).toBe("PHP");
     const movementIssue = issueList.body.issues.find((issue: { sourceType: string }) => issue.sourceType === "InventoryMovement");
     const resolution = await request(app.getHttpServer()).post(`/api/v1/accounting/activation/backfill/${start.body.id}/issues/${movementIssue.id}/resolve`)
       .set("Cookie", cookieHeader).set("X-CSRF-Token", csrfToken).set("Idempotency-Key", "movement-resolution")

@@ -46,7 +46,15 @@ export class AccountingPage {
   async resolveMovementCost(unitCostMinor: string, evidence: string): Promise<void> {
     await this.page.getByLabel("Unit cost for movement movement-e2e").fill(unitCostMinor);
     await this.page.getByLabel("Source evidence for movement-e2e").fill(evidence);
-    await this.page.getByRole("button", { name: "Post evidenced adjustment" }).click();
+    await this.page.getByRole("button", { name: "Post evidenced adjustment" }).first().click();
+    await expect(this.page.getByText(`Resolved from: ${evidence}`, { exact: true })).toBeVisible();
+  }
+
+  async resolveStoredValue(amountMinor: string, counterAccountCode: string, evidence: string): Promise<void> {
+    await this.page.getByLabel("Evidenced value for Loyalty points for QA Customer (10 points)").fill(amountMinor);
+    await this.page.getByLabel("Counter account for Loyalty points for QA Customer (10 points)").selectOption(counterAccountCode);
+    await this.page.getByLabel("Source evidence for backfill-business").fill(evidence);
+    await this.page.getByRole("button", { name: "Post evidenced adjustment" }).last().click();
     await expect(this.page.getByText(`Resolved from: ${evidence}`, { exact: true })).toBeVisible();
   }
 

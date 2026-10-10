@@ -189,6 +189,10 @@ export class AccountingController {
           const lines = count ? await this.db.listInventoryCountLines(count.id, businessId) : [];
           return { ...issue, sourceDetails: { lines: lines.filter((line) => line.varianceQty !== null && line.varianceQty !== 0).map((line) => ({ lineId: line.id, productName: line.productNameSnapshot, varianceQty: line.varianceQty })) } };
         }
+        if (issue.sourceType === "StoredValue") {
+          const sources = await new AccountingBackfillService(this.db).storedValueIssueDetails(businessId, activation?.accountingStartAt ?? undefined);
+          return { ...issue, sourceDetails: { transactions: sources.map((row) => ({ ...row, effectiveAt: row.effectiveAt.toISOString() })) } };
+        }
         return { ...issue, sourceDetails: null };
       }));
       res.status(200).json({ ...(activation ?? { businessId, status: "NOT_STARTED", accountingStartAt: null, openingEntryId: null, csvCutoverAt: null }), latestBackfillRun, backfillIssues });
@@ -309,7 +313,10 @@ export class AccountingController {
     const idempotencyKey = Array.isArray(keyHeader) ? keyHeader[0] : keyHeader;
     if (!idempotencyKey || idempotencyKey.length < 8 || idempotencyKey.length > 128) return fail(res, 400, "VALIDATION", "A valid Idempotency-Key header is required", req);
     try {
-      const result = await new AccountingBackfillService(this.db).resolveInventoryIssue({ businessId: req.auth!.businessId, runId, issueId, actorId: req.auth!.userId, requestId: idempotencyKey, ...parsed.data });
+      const service = new AccountingBackfillService(this.db);
+      const result = parsed.data.storedValueAdjustments
+        ? await service.resolveStoredValueIssue({ businessId: req.auth!.businessId, runId, issueId, actorId: req.auth!.userId, requestId: idempotencyKey, evidence: parsed.data.evidence, storedValueAdjustments: parsed.data.storedValueAdjustments })
+        : await service.resolveInventoryIssue({ businessId: req.auth!.businessId, runId, issueId, actorId: req.auth!.userId, requestId: idempotencyKey, ...parsed.data });
       res.status(201).json(result);
     } catch (error) { failFromError(res, error, "Historical cost issue could not be resolved", req); }
   }

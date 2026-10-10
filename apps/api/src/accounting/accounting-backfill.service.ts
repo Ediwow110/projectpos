@@ -1,8 +1,11 @@
 import type { DbAccountingBackfillRun, DbInventoryCount, DbInventoryCountLine, DbMovement, DbPort, DbPurchaseReceipt, DbRefund, DbSupplierBill, DbSupplierReturn } from "../common/db.port";
-import { accountForMethod, buildExpenseDraft, buildInventoryMovementDraft, buildPurchaseReceiptDraft, buildRefundDraft, buildSaleDraft, buildStockCountDraft, buildSupplierBillDraft, buildSupplierPaymentDraft, buildSupplierReturnDraft, validateJournalDraft } from "./journal-rules";
+import { accountForMethod, buildExpenseDraft, buildInventoryMovementDraft, buildPurchaseReceiptDraft, buildRefundDraft, buildSaleDraft, buildStockCountDraft, buildStoredValueAdjustmentDraft, buildSupplierBillDraft, buildSupplierPaymentDraft, buildSupplierReturnDraft, validateJournalDraft } from "./journal-rules";
 import { JournalPostingService } from "./journal-posting.service";
 
 const PAGE_SIZE = 100;
+const LIABILITY_BY_VALUE_SOURCE = { GiftCardTransaction: "2300", StoreCreditTransaction: "2310", LoyaltyTransaction: "2320" } as const;
+type StoredValueSourceType = keyof typeof LIABILITY_BY_VALUE_SOURCE;
+interface StoredValueCandidate { sourceType: StoredValueSourceType; sourceId: string; label: string; reason: string | null; amountMinor: number | null; liabilityDeltaPositive: boolean; effectiveAt: Date }
 type BackfillFamily = "sales" | "expenses" | "refunds" | "purchase-receipts" | "supplier-returns" | "supplier-bills" | "inventory-counts" | "inventory-movements" | "remaining";
 
 function sourceEffectiveAt(family: BackfillFamily, source: unknown): Date | null {
@@ -68,6 +71,83 @@ export class AccountingBackfillService {
       if (!resolved) throw new Error("CONFLICT");
       await tx.appendAudit({ businessId: input.businessId, actorId: input.actorId, action: "accounting.backfill_issue.resolved", entityType: issue.sourceType, entityId: issue.sourceId, requestId: input.requestId, after: { issueId: issue.id, resolutionEntryId: posted.entry.id, evidence: input.evidence, valuation } });
       return { entry: posted.entry };
+    }));
+  }
+
+  private async listStoredValueCandidates(tx: DbPort, businessId: string, fromDate?: Date): Promise<StoredValueCandidate[]> {
+    const candidates: StoredValueCandidate[] = [];
+    const inPeriod = (date: Date): boolean => !fromDate || date >= fromDate;
+    for (const card of await tx.listGiftCards(businessId)) {
+      for (const row of await tx.listGiftCardTransactions(card.id, businessId)) {
+        if (!(row.type === "ADJUST_CREDIT" || row.type === "ADJUST_DEBIT") || row.saleId || row.refundId || !inPeriod(row.createdAt)) continue;
+        if (await tx.findJournalEntryBySource(businessId, "GiftCardTransaction", row.id, "adjusted")) continue;
+        candidates.push({ sourceType: "GiftCardTransaction", sourceId: row.id, label: `Gift card ${card.codePrefix}••••${card.codeLast4}`, reason: row.reason, amountMinor: Math.abs(row.amountDeltaMinor), liabilityDeltaPositive: row.amountDeltaMinor > 0, effectiveAt: row.createdAt });
+      }
+    }
+    for (const customer of await tx.listCustomersByBusiness(businessId)) {
+      const storeCredit = await tx.findStoreCreditAccount(customer.id, businessId);
+      if (storeCredit) for (const row of await tx.listStoreCreditTransactions(storeCredit.id, businessId)) {
+        if (!(row.type === "MANUAL_CREDIT" || row.type === "MANUAL_DEBIT") || row.saleId || row.refundId || !inPeriod(row.createdAt)) continue;
+        if (await tx.findJournalEntryBySource(businessId, "StoreCreditTransaction", row.id, "adjusted")) continue;
+        candidates.push({ sourceType: "StoreCreditTransaction", sourceId: row.id, label: `Store credit for ${customer.name}`, reason: row.reason, amountMinor: Math.abs(row.amountDeltaMinor), liabilityDeltaPositive: row.amountDeltaMinor > 0, effectiveAt: row.createdAt });
+      }
+      const loyalty = await tx.findLoyaltyAccount(customer.id, businessId);
+      if (loyalty) for (const row of await tx.listLoyaltyTransactions(loyalty.id, businessId)) {
+        if (!(row.type === "MANUAL_CREDIT" || row.type === "MANUAL_DEBIT") || row.saleId || row.refundId || !inPeriod(row.createdAt)) continue;
+        if (await tx.findJournalEntryBySource(businessId, "LoyaltyTransaction", row.id, "adjusted")) continue;
+        candidates.push({ sourceType: "LoyaltyTransaction", sourceId: row.id, label: `Loyalty points for ${customer.name} (${Math.abs(row.pointsDelta)} points)`, reason: row.reason, amountMinor: row.valueMinorSnapshot !== null && row.valueMinorSnapshot > 0 ? row.valueMinorSnapshot : null, liabilityDeltaPositive: row.pointsDelta > 0, effectiveAt: row.createdAt });
+      }
+    }
+    return candidates.sort((a, b) => a.effectiveAt.getTime() - b.effectiveAt.getTime() || a.sourceId.localeCompare(b.sourceId));
+  }
+
+  async storedValueIssueDetails(businessId: string, fromDate?: Date): Promise<StoredValueCandidate[]> {
+    return (await this.listStoredValueCandidates(this.db, businessId, fromDate)).slice(0, 100);
+  }
+
+  async resolveStoredValueIssue(input: {
+    businessId: string; runId: string; issueId: string; actorId: string; requestId: string; evidence: string;
+    storedValueAdjustments: Array<{ sourceType: StoredValueSourceType; sourceId: string; counterAccountCode: string; amountMinor?: number }>;
+  }): Promise<{ resolved: boolean; remainingCount: number }> {
+    return this.db.withLock(`accounting-backfill:${input.businessId}`, async () => this.db.withTransaction(async (tx) => {
+      const run = await tx.findAccountingBackfillRun(input.runId, input.businessId);
+      if (!run) throw new Error("NOT_FOUND");
+      if (run.status !== "PAUSED") throw new Error("ACCOUNTING_ISSUE_NOT_RESOLVABLE");
+      const issue = await tx.findAccountingBackfillIssue(input.issueId, input.runId, input.businessId);
+      if (!issue || issue.sourceType !== "StoredValue" || issue.reason !== "standalone_value_adjustment_counter_account_missing") throw new Error("ACCOUNTING_ISSUE_NOT_RESOLVABLE");
+      if (issue.resolvedAt) return { resolved: true, remainingCount: 0 };
+      const activation = await tx.findAccountingActivation(input.businessId);
+      const journals = new JournalPostingService(tx);
+      await journals.seedChart(input.businessId);
+      const candidates = await this.listStoredValueCandidates(tx, input.businessId, activation?.accountingStartAt ?? undefined);
+      const byKey = new Map(candidates.map((row) => [`${row.sourceType}:${row.sourceId}`, row]));
+      const submittedKeys = new Set<string>();
+      const entries: string[] = [];
+      for (const submitted of input.storedValueAdjustments) {
+        const key = `${submitted.sourceType}:${submitted.sourceId}`;
+        if (submittedKeys.has(key)) throw new Error("VALIDATION");
+        submittedKeys.add(key);
+        const source = byKey.get(key);
+        if (!source) throw new Error("ACCOUNTING_ISSUE_SOURCE_CHANGED");
+        const amountMinor = source.amountMinor ?? submitted.amountMinor;
+        if (!Number.isSafeInteger(amountMinor) || (amountMinor ?? 0) <= 0 || (source.amountMinor !== null && submitted.amountMinor !== undefined && source.amountMinor !== submitted.amountMinor)) throw new Error("VALIDATION");
+        const counterAccount = await tx.findAccountingAccountByCode(input.businessId, submitted.counterAccountCode);
+        if (!counterAccount?.isActive || counterAccount.type === "liability" || counterAccount.code === LIABILITY_BY_VALUE_SOURCE[source.sourceType]) throw new Error("ACCOUNTING_INVALID_ACCOUNT");
+        const liabilityAccountCode = LIABILITY_BY_VALUE_SOURCE[source.sourceType];
+        const business = await tx.findBusinessById(input.businessId);
+        if (!business) throw new Error("NOT_FOUND");
+        const draft = buildStoredValueAdjustmentDraft({ currency: business.currency, effectiveAt: source.effectiveAt, liabilityAccountCode, counterAccountCode: counterAccount.code, amountMinor: amountMinor!, liabilityDeltaPositive: source.liabilityDeltaPositive, description: `Historical ${source.sourceType.replace("Transaction", "").toLowerCase()} balance adjustment` });
+        const posted = await journals.postSourceEvent({ businessId: input.businessId, branchId: null, sourceType: source.sourceType, sourceId: source.sourceId, sourceEvent: "adjusted", draft, actorId: input.actorId, requestId: input.requestId });
+        entries.push(posted.entry.id);
+      }
+      const remaining = await this.listStoredValueCandidates(tx, input.businessId, activation?.accountingStartAt ?? undefined);
+      const resolved = remaining.length === 0;
+      if (resolved) {
+        const updated = await tx.resolveAccountingBackfillIssue({ issueId: issue.id, runId: input.runId, businessId: input.businessId, actorId: input.actorId, entryId: entries.at(-1) ?? issue.resolutionEntryId ?? "", evidence: input.evidence });
+        if (!updated) throw new Error("CONFLICT");
+      }
+      await tx.appendAudit({ businessId: input.businessId, actorId: input.actorId, action: resolved ? "accounting.backfill_issue.resolved" : "accounting.backfill_issue.resolution_batch", entityType: "StoredValue", entityId: issue.id, requestId: input.requestId, after: { issueId: issue.id, postedEntryIds: entries, evidence: input.evidence, resolved, remainingCount: remaining.length } });
+      return { resolved, remainingCount: remaining.length };
     }));
   }
 

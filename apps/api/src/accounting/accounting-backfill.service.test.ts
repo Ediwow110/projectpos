@@ -1,8 +1,41 @@
 import { describe, expect, it } from "vitest";
 import { createMemoryDb } from "../common/memory.db";
 import { AccountingBackfillService } from "./accounting-backfill.service";
+import { StoredValueService } from "../value/stored-value.service";
 
 describe("AccountingBackfillService cutover date", () => {
+  it("resolves legacy gift, store-credit, and loyalty adjustments with evidenced counter accounts in bounded batches", async () => {
+    const db = createMemoryDb();
+    const business = await db.createBusiness({ name: "Stored value backfill", currency: "PHP" });
+    const customer = await db.createCustomer({ businessId: business.id, name: "Legacy Customer", phone: null, email: null, address: null, notes: null, isActive: true });
+    const startAt = new Date("2026-01-01T00:00:00.000Z");
+    await db.saveAccountingActivation({ businessId: business.id, status: "BACKFILLING", accountingStartAt: startAt, openingEntryId: "opening-entry", csvCutoverAt: null });
+    const run = await db.createAccountingBackfillRun({ businessId: business.id, status: "PAUSED", cursor: { family: "remaining", afterId: null }, processedCount: 0, skippedCount: 3, debitMinor: 0, creditMinor: 0, startedAt: new Date(), completedAt: new Date(), createdBy: "owner", requestId: "stored-value-run" });
+    const issue = await db.createAccountingBackfillIssue({ businessId: business.id, runId: run.id, sourceType: "StoredValue", sourceId: business.id, reason: "standalone_value_adjustment_counter_account_missing" });
+    const valueService = new StoredValueService(db);
+    const card = (await valueService.issueGiftCard(business.id, "owner", "legacy-gift", "legacy-gift-issue")).card;
+    const gift = await db.createGiftCardTransaction({ businessId: business.id, giftCardId: card.id, type: "ADJUST_CREDIT", amountDeltaMinor: 500, saleId: null, refundId: null, actorId: "owner", requestId: "legacy-gift-adjust", idempotencyKey: "legacy-gift-adjust", reason: "Legacy documented adjustment", branchId: null });
+    const storeAccount = await valueService.ensureStoreCreditAccount(business.id, customer.id);
+    const store = await db.createStoreCreditTransaction({ businessId: business.id, accountId: storeAccount.id, customerId: customer.id, type: "MANUAL_CREDIT", amountDeltaMinor: 250, saleId: null, refundId: null, actorId: "owner", requestId: "legacy-store-adjust", idempotencyKey: "legacy-store-adjust", reason: "Legacy store correction", branchId: null });
+    const loyaltyAccount = await valueService.ensureLoyaltyAccount(business.id, customer.id);
+    const loyalty = await db.createLoyaltyTransaction({ businessId: business.id, accountId: loyaltyAccount.id, customerId: customer.id, type: "MANUAL_CREDIT", pointsDelta: 10, valueMinorSnapshot: null, saleId: null, refundId: null, actorId: "owner", requestId: "legacy-loyalty-adjust", idempotencyKey: "legacy-loyalty-adjust", reason: "Legacy points correction" });
+    const service = new AccountingBackfillService(db);
+    expect((await service.storedValueIssueDetails(business.id, startAt)).map((row) => row.sourceId)).toHaveLength(3);
+    const partial = await service.resolveStoredValueIssue({ businessId: business.id, runId: run.id, issueId: issue.id, actorId: "owner", requestId: "stored-value-resolution-1", evidence: "Archive adjustment register, page 4", storedValueAdjustments: [
+      { sourceType: "GiftCardTransaction", sourceId: gift.id, counterAccountCode: "6000" },
+      { sourceType: "StoreCreditTransaction", sourceId: store.id, counterAccountCode: "6000" },
+    ] });
+    expect(partial).toEqual({ resolved: false, remainingCount: 1 });
+    expect(await db.countAccountingBackfillIssues(run.id, business.id)).toBe(1);
+    const completed = await service.resolveStoredValueIssue({ businessId: business.id, runId: run.id, issueId: issue.id, actorId: "owner", requestId: "stored-value-resolution-2", evidence: "Archive adjustment register, page 5", storedValueAdjustments: [{ sourceType: "LoyaltyTransaction", sourceId: loyalty.id, counterAccountCode: "6000", amountMinor: 125 }] });
+    expect(completed).toEqual({ resolved: true, remainingCount: 0 });
+    expect(await db.countAccountingBackfillIssues(run.id, business.id)).toBe(0);
+    expect((await db.findJournalEntryBySource(business.id, "GiftCardTransaction", gift.id, "adjusted"))?.entry.currency).toBe("PHP");
+    expect((await db.findJournalEntryBySource(business.id, "LoyaltyTransaction", loyalty.id, "adjusted"))?.lines.reduce((sum, line) => sum + line.creditMinor, 0)).toBe(125);
+    const resolutionAudit = (await db.listAudit()).filter((entry) => entry.entityId === issue.id && entry.action.startsWith("accounting.backfill_issue."));
+    expect(resolutionAudit.map((entry) => entry.action).sort()).toEqual(["accounting.backfill_issue.resolution_batch", "accounting.backfill_issue.resolved"]);
+  });
+
   it("covers pre-cutover inventory history with opening balances and keeps later cost gaps unresolved", async () => {
     const db = createMemoryDb();
     const business = await db.createBusiness({ name: "Backfill cutover", currency: "PHP" });

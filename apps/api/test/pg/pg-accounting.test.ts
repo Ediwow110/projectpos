@@ -2,9 +2,40 @@ import { describe, expect, it } from "vitest";
 import { StoredValueService } from "../../src/value/stored-value.service";
 import { JournalPostingService } from "../../src/accounting/journal-posting.service";
 import { buildBalancedDraft } from "../../src/accounting/journal-rules";
+import { AccountingBackfillService } from "../../src/accounting/accounting-backfill.service";
 import { withPg } from "./helpers";
 
 describe("phase23 pg accounting persistence", () => {
+  it("resolves legacy stored-value adjustments against evidenced counters in PostgreSQL", async () => {
+    await withPg(async (raw) => {
+      const db = raw as any;
+      const business = await db.createBusiness({ name: "Legacy value resolution PG", currency: "PHP" });
+      const actor = await db.createUser({ name: "Backfill owner", email: `legacy-backfill-${Date.now()}@pg.test`, passwordHash: "hash" });
+      const customer = await db.createCustomer({ businessId: business.id, name: "Legacy PG Customer", phone: null, email: null, address: null, notes: null, isActive: true });
+      const startAt = new Date("2026-01-01T00:00:00.000Z");
+      await db.saveAccountingActivation({ businessId: business.id, status: "BACKFILLING", accountingStartAt: startAt, openingEntryId: null, csvCutoverAt: null });
+      const run = await db.createAccountingBackfillRun({ businessId: business.id, status: "PAUSED", cursor: { family: "remaining", afterId: null }, processedCount: 0, skippedCount: 1, debitMinor: 0, creditMinor: 0, startedAt: new Date(), completedAt: new Date(), createdBy: "owner", requestId: "legacy-pg-run" });
+      const issue = await db.createAccountingBackfillIssue({ businessId: business.id, runId: run.id, sourceType: "StoredValue", sourceId: business.id, reason: "standalone_value_adjustment_counter_account_missing" });
+      const card = await db.createGiftCard({ businessId: business.id, codeHash: "legacy-resolution-hash", codePrefix: "LEG", codeLast4: "0001", status: "ACTIVE", createdBy: "owner", activatedAt: new Date(), suspendedAt: null, version: 1 });
+      const gift = await db.createGiftCardTransaction({ businessId: business.id, giftCardId: card.id, type: "ADJUST_CREDIT", amountDeltaMinor: 700, saleId: null, refundId: null, actorId: "owner", requestId: "legacy-gift", idempotencyKey: "legacy-gift", reason: "Archive-supported value", branchId: null });
+      const storeAccount = await db.createStoreCreditAccount({ businessId: business.id, customerId: customer.id });
+      const store = await db.createStoreCreditTransaction({ businessId: business.id, accountId: storeAccount.id, customerId: customer.id, type: "MANUAL_CREDIT", amountDeltaMinor: 300, saleId: null, refundId: null, actorId: "owner", requestId: "legacy-store", idempotencyKey: "legacy-store", reason: "Archive-supported credit", branchId: null });
+      const loyaltyAccount = await db.createLoyaltyAccount({ businessId: business.id, customerId: customer.id });
+      const loyalty = await db.createLoyaltyTransaction({ businessId: business.id, accountId: loyaltyAccount.id, customerId: customer.id, type: "MANUAL_CREDIT", pointsDelta: 10, valueMinorSnapshot: null, saleId: null, refundId: null, actorId: "owner", requestId: "legacy-loyalty", idempotencyKey: "legacy-loyalty", reason: "Archive-supported points" });
+      const service = new AccountingBackfillService(db);
+      expect((await service.storedValueIssueDetails(business.id, startAt)).map((row) => row.sourceId)).toHaveLength(3);
+      const first = await service.resolveStoredValueIssue({ businessId: business.id, runId: run.id, issueId: issue.id, actorId: actor.id, requestId: "legacy-resolution-a", evidence: "Archived adjustment register page 9", storedValueAdjustments: [
+        { sourceType: "GiftCardTransaction", sourceId: gift.id, counterAccountCode: "6000" },
+        { sourceType: "StoreCreditTransaction", sourceId: store.id, counterAccountCode: "6000" },
+        { sourceType: "LoyaltyTransaction", sourceId: loyalty.id, counterAccountCode: "6000", amountMinor: 125 },
+      ] });
+      expect(first).toEqual({ resolved: true, remainingCount: 0 });
+      expect(await db.countAccountingBackfillIssues(run.id, business.id)).toBe(0);
+      expect(await db.hasUnaccountedValueAdjustments(business.id, startAt)).toBe(false);
+      expect((await db.findJournalEntryBySource(business.id, "LoyaltyTransaction", loyalty.id, "adjusted"))?.entry.currency).toBe("PHP");
+    });
+  });
+
   it("posts direct stored-value adjustment with an explicit counter account in the same PostgreSQL transaction", async () => {
     await withPg(async (raw) => {
       const db = raw as any;

@@ -66,11 +66,14 @@ test("owner previews and confirms balanced opening worksheet", async ({ page }) 
 
 test("owner sees unresolved legacy inventory costs and a fail-closed backfill pause", async ({ page }) => {
   let run: { id: string; status: string; cursor: { family: string; afterId: string | null }; processedCount: number; skippedCount: number } | null = null;
-  let issues = [{ id: "issue-movement", sourceType: "InventoryMovement", sourceId: "movement-e2e", reason: "historical_movement_cost_unavailable", resolvedAt: null as string | null, resolutionEntryId: null as string | null, resolutionEvidence: null as string | null, sourceDetails: { qtyDelta: -2, productId: "legacy-product" } }];
+  let issues = [
+    { id: "issue-movement", sourceType: "InventoryMovement", sourceId: "movement-e2e", reason: "historical_movement_cost_unavailable", resolvedAt: null as string | null, resolutionEntryId: null as string | null, resolutionEvidence: null as string | null, sourceDetails: { qtyDelta: -2, productId: "legacy-product" } },
+    { id: "issue-value", sourceType: "StoredValue", sourceId: "backfill-business", reason: "standalone_value_adjustment_counter_account_missing", resolvedAt: null as string | null, resolutionEntryId: null as string | null, resolutionEvidence: null as string | null, sourceDetails: { transactions: [{ sourceType: "LoyaltyTransaction", sourceId: "loyalty-legacy", label: "Loyalty points for QA Customer (10 points)", reason: "Legacy points adjustment", amountMinor: null, liabilityDeltaPositive: true, effectiveAt: "2026-10-02T00:00:00.000Z" }] } },
+  ];
   await page.route("**/api/v1/me", async (route) => route.fulfill({ json: { userId: "backfill-owner", businessId: "backfill-business", businessName: "Backfill E2E", role: "owner", onboardingRequired: false, workspaceTourSeen: true, activeBranchId: null, activeBranchName: null } }));
   await page.route("**/api/v1/branches", async (route) => route.fulfill({ json: { items: [] } }));
   await page.route("**/api/v1/auth/csrf", async (route) => route.fulfill({ json: { csrfToken: "backfill-csrf" } }));
-  await page.route("**/api/v1/accounting/accounts", async (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/v1/accounting/accounts", async (route) => route.fulfill({ json: [{ code: "6000", name: "Operating Expenses", type: "expense", isActive: true }] }));
   await page.route("**/api/v1/accounting/activation", async (route) => route.fulfill({ json: {
     status: run?.status === "COMPLETE" ? "ACTIVE" : run ? "BACKFILLING" : "REVIEW", accountingStartAt: "2026-10-01T00:00:00.000Z", openingEntryId: "backfill-opening-e2e",
     latestBackfillRun: run, backfillIssues: issues,
@@ -92,8 +95,13 @@ test("owner sees unresolved legacy inventory costs and a fail-closed backfill pa
   });
   await page.route(/\/api\/v1\/accounting\/activation\/backfill\/backfill-e2e\/issues\/issue-movement\/resolve$/, async (route) => {
     expect(route.request().postDataJSON()).toEqual({ evidence: "Supplier invoice INV-42", unitCostMinor: 250 });
-    issues = issues.map((issue) => ({ ...issue, resolvedAt: "2026-10-11T00:00:00.000Z", resolutionEntryId: "resolution-e2e", resolutionEvidence: "Supplier invoice INV-42" }));
+    issues = issues.map((issue) => issue.id === "issue-movement" ? { ...issue, resolvedAt: "2026-10-11T00:00:00.000Z", resolutionEntryId: "resolution-e2e", resolutionEvidence: "Supplier invoice INV-42" } : issue);
     await route.fulfill({ status: 201, json: { entry: { id: "resolution-e2e" } } });
+  });
+  await page.route(/\/api\/v1\/accounting\/activation\/backfill\/backfill-e2e\/issues\/issue-value\/resolve$/, async (route) => {
+    expect(route.request().postDataJSON()).toEqual({ evidence: "Legacy ledger archive page 12", storedValueAdjustments: [{ sourceType: "LoyaltyTransaction", sourceId: "loyalty-legacy", counterAccountCode: "6000", amountMinor: 125 }] });
+    issues = issues.map((issue) => issue.id === "issue-value" ? { ...issue, resolvedAt: "2026-10-11T00:00:00.000Z", resolutionEntryId: "legacy-loyalty-entry", resolutionEvidence: "Legacy ledger archive page 12" } : issue);
+    await route.fulfill({ status: 201, json: { resolved: true, remainingCount: 0 } });
   });
 
   const accounting = new AccountingPage(page);
@@ -101,5 +109,6 @@ test("owner sees unresolved legacy inventory costs and a fail-closed backfill pa
   await accounting.startBackfill();
   await accounting.expectBackfillPausedForUnresolvedCosts();
   await accounting.resolveMovementCost("250", "Supplier invoice INV-42");
+  await accounting.resolveStoredValue("125", "6000", "Legacy ledger archive page 12");
   await accounting.recheckBackfill();
 });
