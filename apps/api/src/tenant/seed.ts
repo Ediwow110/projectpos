@@ -38,7 +38,9 @@ export const ROLE_SEED: Record<"owner" | "manager" | "cashier" | "inventory", st
       p !== "order.fulfill" &&
       p !== "order.view_delivery_details" &&
       p !== "order.link_customer" &&
-      p !== "order.manage_access",
+      p !== "order.manage_access" &&
+      p !== "accounting.read" && p !== "accounting.manage" &&
+      p !== "payables.read" && p !== "payables.write" && p !== "payables.pay",
   ),
   inventory: ALL_PERMISSIONS.filter(
     (p) =>
@@ -52,7 +54,9 @@ export const ROLE_SEED: Record<"owner" | "manager" | "cashier" | "inventory", st
       p !== "order.cancel" &&
       p !== "order.collect" &&
       p !== "order.link_customer" &&
-      p !== "order.manage_access",
+      p !== "order.manage_access" &&
+      p !== "accounting.read" && p !== "accounting.manage" &&
+      p !== "payables.read" && p !== "payables.write" && p !== "payables.pay",
   ),
 };
 

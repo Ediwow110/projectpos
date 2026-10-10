@@ -2,6 +2,7 @@ import type { DbAccountingAccount, DbJournalEntry, DbJournalLine, DbPort } from 
 import { DEFAULT_ACCOUNTS } from "./chart-of-accounts";
 import { validateJournalDraft } from "./journal-rules";
 import type { JournalDraft, JournalLineDraft } from "./accounting-types";
+import type { AccountType, NormalSide } from "./accounting-types";
 
 export interface PostSourceEventInput {
   businessId: string;
@@ -32,6 +33,28 @@ export class JournalPostingService {
     }));
   }
 
+  async createAccount(input: { businessId: string; code: string; name: string; type: AccountType; normalSide: NormalSide; actorId: string; requestId: string }): Promise<DbAccountingAccount> {
+    if (!/^[0-9A-Z_-]{2,16}$/.test(input.code) || !input.name.trim()) throw new Error("VALIDATION");
+    if (["asset", "expense"].includes(input.type) !== (input.normalSide === "debit")) throw new Error("ACCOUNTING_INVALID_ACCOUNT_TYPE");
+    const created = await this.db.withLock(`accounting-chart:${input.businessId}`, async () => this.db.withTransaction(async (tx) => tx.createAccountingAccount({
+      businessId: input.businessId, code: input.code, name: input.name.trim(), type: input.type, normalSide: input.normalSide, isSystem: false, isActive: true,
+    })));
+    await this.db.appendAudit({ businessId: input.businessId, actorId: input.actorId, action: "accounting.account.create", entityType: "AccountingAccount", entityId: created.id, requestId: input.requestId, after: { code: created.code, name: created.name, type: created.type, normalSide: created.normalSide } });
+    return created;
+  }
+
+  async updateAccount(input: { businessId: string; accountId: string; name?: string; isActive?: boolean; actorId: string; requestId: string }): Promise<DbAccountingAccount> {
+    const accounts = await this.db.listAccountingAccounts(input.businessId);
+    const before = accounts.find((account) => account.id === input.accountId);
+    if (!before) throw new Error("NOT_FOUND");
+    if (before.isSystem && input.isActive === false) throw new Error("ACCOUNTING_SYSTEM_ACCOUNT_PROTECTED");
+    if (input.isActive === false && await this.db.isAccountingAccountUsed(input.businessId, before.id)) throw new Error("ACCOUNTING_ACCOUNT_IN_USE");
+    const updated = await this.db.updateAccountingAccount(before.id, input.businessId, { ...(input.name !== undefined ? { name: input.name.trim() } : {}), ...(input.isActive !== undefined ? { isActive: input.isActive } : {}) });
+    if (!updated) throw new Error("NOT_FOUND");
+    await this.db.appendAudit({ businessId: input.businessId, actorId: input.actorId, action: "accounting.account.update", entityType: "AccountingAccount", entityId: updated.id, requestId: input.requestId, before: { name: before.name, isActive: before.isActive }, after: { name: updated.name, isActive: updated.isActive } });
+    return updated;
+  }
+
   async postSourceEvent(input: PostSourceEventInput): Promise<{ entry: DbJournalEntry; lines: DbJournalLine[] }> {
     validateJournalDraft(input.draft);
     if (!input.businessId || !input.sourceType || !input.sourceId || !input.sourceEvent || !input.actorId || !input.requestId) throw new Error("ACCOUNTING_INVALID_SOURCE");
@@ -39,6 +62,7 @@ export class JournalPostingService {
     if (!business) throw new Error("NOT_FOUND");
     if (business.currency !== input.draft.currency) throw new Error("ACCOUNTING_CURRENCY_MISMATCH");
     if (input.branchId !== null && !(await this.db.findBranchById(input.branchId, input.businessId))) throw new Error("FORBIDDEN");
+    await this.seedChart(input.businessId);
 
     const lockKey = `journal:${input.businessId}:${input.sourceType}:${input.sourceId}:${input.sourceEvent}`;
     return this.db.withLock(lockKey, async () => this.db.withTransaction(async (tx) => {

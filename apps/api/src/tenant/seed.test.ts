@@ -14,3 +14,15 @@ describe("Phase 16 procurement grants", () => {
     for (const permission of PROCUREMENT) expect(ROLE_SEED.cashier).not.toContain(permission);
   });
 });
+
+describe("Phase 23 accounting grants", () => {
+  const accounting = ["accounting.read", "accounting.manage", "payables.read", "payables.write", "payables.pay"];
+  it("grants accounting and AP permissions to owners and managers", () => {
+    for (const role of ["owner", "manager"] as const) expect(ROLE_SEED[role]).toEqual(expect.arrayContaining(accounting));
+  });
+  it("keeps accounting and AP permissions out of cashier and inventory defaults", () => {
+    for (const role of ["cashier", "inventory"] as const) {
+      for (const permission of accounting) expect(ROLE_SEED[role]).not.toContain(permission);
+    }
+  });
+});

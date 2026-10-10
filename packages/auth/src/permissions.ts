@@ -36,6 +36,13 @@ export const SENSITIVE_ACTIONS = [
   "order.view_delivery_details",
   "order.link_customer",
   "order.manage_access",
+  // Phase 23 management ledger and supplier payables. Cashier and inventory
+  // roles receive no accounting/AP authority unless explicitly customized.
+  "accounting.read",
+  "accounting.manage",
+  "payables.read",
+  "payables.write",
+  "payables.pay",
 ] as const;
 
 export function hasPermission(

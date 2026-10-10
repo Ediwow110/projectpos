@@ -41,4 +41,23 @@ describe("JournalPostingService", () => {
     expect((await service.reverse(posted.entry.id, a.id, "owner", "request-4")).entry.id).toBe(reversal.entry.id);
     await expect(service.reverse(posted.entry.id, b.id, "owner", "request-5")).rejects.toThrow("NOT_FOUND");
   });
+
+  it("audits custom account changes and prevents deactivation after use", async () => {
+    const db = createMemoryDb();
+    const business = await db.createBusiness({ name: "Accounts", currency: "PHP" });
+    const service = new JournalPostingService(db);
+    await service.seedChart(business.id);
+    const expense = await service.createAccount({ businessId: business.id, code: "6001", name: "Rent", type: "expense", normalSide: "debit", actorId: "owner", requestId: "r1" });
+    expect(db.audit).toHaveLength(1);
+    const renamed = await service.updateAccount({ businessId: business.id, accountId: expense.id, name: "Store rent", actorId: "owner", requestId: "r2" });
+    expect(renamed.name).toBe("Store rent");
+    await service.postSourceEvent({
+      businessId: business.id, branchId: null, sourceType: "Expense", sourceId: "expense-1", sourceEvent: "posted",
+      draft: { effectiveAt: new Date("2026-10-10T12:00:00Z"), currency: "PHP", description: "Rent", lines: [
+        { accountCode: "6001", debitMinor: 50, creditMinor: 0 }, { accountCode: "1000", debitMinor: 0, creditMinor: 50 },
+      ] }, actorId: "owner", requestId: "r3",
+    });
+    await expect(service.updateAccount({ businessId: business.id, accountId: expense.id, isActive: false, actorId: "owner", requestId: "r4" })).rejects.toThrow("ACCOUNTING_ACCOUNT_IN_USE");
+    expect(db.audit).toHaveLength(2);
+  });
 });
