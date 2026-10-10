@@ -58,7 +58,7 @@ The isolated API contract now checks 403 on dashboard overview, product listing,
 | Required steps complete, optional steps pending | Pass | Isolated in-memory API contract: dashboard, catalog, and inventory reads return HTTP 200. |
 | Persisted PostgreSQL onboarding state | Pass | New `pg-onboarding-guard.test.ts`: pending tax/receipt denies a protected API-token route; completing both allows it. |
 | Onboarding and workspace browser flows against PostgreSQL-backed API | Pass | Focused desktop Playwright run: 12/12 tests across `onboarding-live-api.spec.ts` and `workspace-access.spec.ts`; migrations applied to a fresh disposable PostgreSQL 16 database. |
-| Staging and production server behavior | Not run | No remote deployment or production state change was authorized for this follow-up. |
+| Staging and production server behavior | Staging pending | Existing isolated Render staging services use a dedicated PostgreSQL database. Production remains out of scope. |
 
 Existing operational API contracts now request an explicit completed-onboarding test fixture. The fixture marks only the three required steps done in each isolated registration; optional steps remain pending. Production registration and the dedicated incomplete-owner tests continue to create an incomplete business. One Phase 22 security fixture was corrected to merge settings instead of erasing its onboarding state.
 
@@ -66,4 +66,6 @@ Local verification after the server change: focused API contracts 18/18, API sui
 
 Follow-up code commit: `a08cb7fe9e9b07ca702506ba7284ef761f23f82c`. Historical verifier correction: `cccf9a24e49e24daba3f18061d458b5f47f904c4`. GitHub main remained `2c3ace096bfa5636e166163d8c6c4110b3b77888` on the final read-only check. Neither follow-up commit was pushed.
 
-Remaining limits: the full browser run used the local in-memory API; the focused onboarding and workspace browser flows now also pass against a disposable PostgreSQL-backed API. Staging is not claimed. The current onboarding API records required-step completion but does not validate underlying tax or receipt configuration fields, as the wizard itself explains. Phase 22 remains open pending release validation and a product decision on those field-level requirements. The repository still has no verified Phase 23 scope.
+Product contract resolution: required tax/currency and receipt steps mean the owner must explicitly complete the server-backed step; they do not require non-empty tax or receipt text. The Phase 1 spec separates step progress from `PATCH /business/settings`, the settings schema makes tax and receipt values optional, and zero tax is valid. The registration default currency is PHP. On that evidence, no additional field-level gate is required for this fix; settings remain independently configurable and are not fabricated by the wizard.
+
+Remaining limits: the full browser run used the local in-memory API; focused onboarding/workspace browser flows also pass against PostgreSQL. Staging validation is pending. The repository roadmap ends at Phase 10 and does not define Phase 23; no Phase 23 features are inferred.
