@@ -1,7 +1,7 @@
 # Phase 23 — Management Accounting, Supplier Payables, and P&L
 
 **Date:** 2026-10-10
-**Status:** Draft for user review; implementation not authorized until the spec and plan are reviewed.
+**Status:** User-approved design; implementation awaits plan review and execution-method selection.
 **Baseline:** `e504afa46d5db0275af6423b03a7372cc9241be6` (clean local checkout, including the onboarding follow-up).
 **Branch:** `codex/phase23-accounting`
 **Scope source:** Phase 21 explicitly deferred “accounting journals/AP/P&L”; Phase 22 delivered omnichannel ordering. Phase 10 already exports derived journal rows; Phases 16–17 added suppliers, receipts, and supplier returns without supplier AP.
