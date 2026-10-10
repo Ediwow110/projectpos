@@ -136,7 +136,7 @@ describe("phase8 abuse: money and validation", () => {
     const ok = results.filter((r) => r.status === "fulfilled" && (r.value as { status: number }).status === 201).length;
     // Second completion fails either on stock (410/409 INSUFFICIENT_STOCK) — count non-201s:
     const failed = results.filter((r) => r.status === "rejected" || (r.value as { status: number }).status !== 201).length;
-    expect(ok).toBe(1);
+    expect(ok, JSON.stringify(results.map((r) => r.status === "fulfilled" ? { status: r.value.status, body: r.value.body } : { error: String(r.reason) }))).toBe(1);
     expect(failed).toBe(1);
   });
 

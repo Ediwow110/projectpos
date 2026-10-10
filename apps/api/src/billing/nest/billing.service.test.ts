@@ -56,11 +56,12 @@ describe("phase10 entitlement service", () => {
 describe("phase10 usage metering", () => {
   it("counts only this month's sales and advances the counter on completion", async () => {
     const db = createMemoryDb();
+    const businessId = (await db.createBusiness({ name: "Usage Store", currency: "PHP" })).id;
     const { SalesService } = await import("../../sales/nest/sales.service");
     const sales = new SalesService(db);
     const billing = new BillingService(db);
     const product = await db.createProduct({
-      businessId: "b1", categoryId: null, name: "Cola", sku: null, barcode: null,
+      businessId, categoryId: null, name: "Cola", sku: null, barcode: null,
       brand: null, unit: "pc", costMinor: 1000, priceMinor: 2500, taxRateBps: null,
       reorderLevel: 0, trackInventory: false, isActive: true, imageUrl: null,
     });
@@ -68,7 +69,7 @@ describe("phase10 usage metering", () => {
     const lastMonth = new Date();
     lastMonth.setUTCMonth(lastMonth.getUTCMonth() - 1);
     await db.createSale({
-      businessId: "b1", receiptNo: "OLD-0001", status: "COMPLETED",
+      businessId, receiptNo: "OLD-0001", status: "COMPLETED",
       customerId: null, customerName: null, notes: null, actorId: "u1", requestId: "r-old",
       currency: "PHP", registerId: null, branchId: null,
       subtotalMinor: 2500, discountMinor: 0, taxMinor: 0, totalMinor: 2500,
@@ -76,17 +77,17 @@ describe("phase10 usage metering", () => {
       createdAt: lastMonth,
     });
 
-    const draft = await sales.createDraft("b1", "u1", "r1", {
+    const draft = await sales.createDraft(businessId, "u1", "r1", {
       lines: [{ productId: product.id, qty: 1, lineDiscountMinor: 0 }], orderDiscountMinor: 0,
     }, []);
-    await sales.completeSale("b1", "u1", "r1", draft.id, {
+    await sales.completeSale(businessId, "u1", "r1", draft.id, {
       payments: [{ method: "cash", amountMinor: draft.totalMinor }], key: "meter-1", granted: [],
     });
 
-    const summary = await billing.usageSummary("b1");
+    const summary = await billing.usageSummary(businessId);
     expect(summary.salesMonthly).toBe(1);
     const period = new Date().toISOString().slice(0, 7);
-    const counter = (await db.listCounters("b1")).find((c) => c.key === "sales.monthly");
+    const counter = (await db.listCounters(businessId)).find((c) => c.key === "sales.monthly");
     expect(counter?.period).toBe(period);
     expect(counter?.count).toBe(1);
   });

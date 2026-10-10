@@ -3,6 +3,8 @@ import { withScope } from "@pos/database";
 import type { DbExpense, DbPort } from "../../common/db.port";
 import { BillingService } from "../../billing/nest/billing.service";
 import { resolvePaymentMethods } from "../../sales/payment-methods";
+import { JournalPostingService } from "../../accounting/journal-posting.service";
+import { accountForMethod, buildExpenseDraft } from "../../accounting/journal-rules";
 
 const VOID_ROLES = new Set(["owner", "manager"]);
 const BACKDATE_WINDOW_MS = 90 * 24 * 3600 * 1000;
@@ -30,7 +32,8 @@ function parseExpenseDate(raw: string | undefined, now: Date): Date {
 
 @Injectable()
 export class ExpenseService {
-  constructor(@Inject("DbPort") private readonly db: DbPort) {}
+  private readonly journals: JournalPostingService;
+  constructor(@Inject("DbPort") private readonly db: DbPort) { this.journals = new JournalPostingService(db); }
 
   async createExpense(
     businessId: string,
@@ -104,6 +107,12 @@ export class ExpenseService {
           requestId,
         });
       }
+      const business = await this.db.findBusinessById(businessId);
+      if (!business) throw new Error("NOT_FOUND");
+      await this.journals.postSourceEvent({
+        businessId, branchId, sourceType: "Expense", sourceId: expense.id, sourceEvent: "posted", actorId, requestId,
+        draft: buildExpenseDraft({ currency: business.currency, effectiveAt: expenseDate, amountMinor: expense.amountMinor, expenseAccountCode: "6000", paidFromAccountCode: accountForMethod(expense.method) }),
+      });
       await this.db.appendAudit({
         businessId,
         actorId,
@@ -115,9 +124,9 @@ export class ExpenseService {
       return expense;
     };
     if (input.method === "cash" && input.shiftId !== undefined) {
-      return this.db.withLock(`shift:${businessId}:${input.shiftId}`, write);
+      return this.db.withLock(`shift:${businessId}:${input.shiftId}`, () => this.db.withTransaction(write));
     }
-    return write();
+    return this.db.withTransaction(write);
   }
 
   async listExpenses(
@@ -223,6 +232,9 @@ export class ExpenseService {
         cashAdjusted,
       });
       if (!updated) throw new Error("NOT_FOUND");
+      const originalEntry = await this.db.findJournalEntryBySource(businessId, "Expense", expense.id, "posted");
+      if (!originalEntry) throw new Error("ACCOUNTING_ENTRY_NOT_FOUND");
+      await this.journals.reverse(originalEntry.entry.id, businessId, actorId, requestId, updated.voidedAt ?? new Date());
       await this.db.appendAudit({
         businessId,
         actorId,
@@ -235,8 +247,8 @@ export class ExpenseService {
     };
 
     if (lockedShiftId) {
-      return this.db.withLock(`shift:${businessId}:${lockedShiftId}`, write);
+      return this.db.withLock(`shift:${businessId}:${lockedShiftId}`, () => this.db.withTransaction(write));
     }
-    return write();
+    return this.db.withTransaction(write);
   }
 }

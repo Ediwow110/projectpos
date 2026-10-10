@@ -27,6 +27,7 @@ const ITEMS = {
   transfers: { href: "/transfers", label: "Transfers", icon: "⇄", tour: "transfers" },
   expenses: { href: "/expenses", label: "Expenses", icon: "−", tour: "expenses" },
   reports: { href: "/reports/sales", label: "Reports", icon: "▥", tour: "reports" },
+  accounting: { href: "/accounting", label: "Accounting", icon: "∑", tour: "accounting" },
   branches: { href: "/branches", label: "Branches", icon: "⌘", tour: "branches" },
   sync: { href: "/sync", label: "Sync", icon: "↻", tour: "sync" },
   team: { href: "/team", label: "Team", icon: "◎", tour: "team" },
@@ -38,6 +39,7 @@ const ITEMS = {
   suppliers: { href: "/suppliers", label: "Suppliers", icon: "⌁", tour: "suppliers" },
   purchaseOrders: { href: "/purchase-orders", label: "Purchase Orders", icon: "▱", tour: "purchase-orders" },
   supplierReturns: { href: "/supplier-returns", label: "Supplier Returns", icon: "↩", tour: "supplier-returns" },
+  payables: { href: "/payables", label: "Payables", icon: "¤", tour: "payables" },
 } as const satisfies Record<string, WorkspaceNavigationItem>;
 
 function group(label: string, keys: Array<keyof typeof ITEMS>): WorkspaceNavigationGroup {
@@ -63,18 +65,18 @@ export function workspaceNavigationForRole(role?: string): WorkspaceNavigationGr
     return [
       group("Sell", ["dashboard", "pos", "sales", "orders", "customers", "giftCards"]),
       group("Catalog & stock", ["products", "categories", "inventory", "stockCounts", "replenishment"]),
-      group("Procurement", ["suppliers", "purchaseOrders", "supplierReturns"]),
+      group("Procurement", ["suppliers", "purchaseOrders", "supplierReturns", "payables"]),
       group("Operations", ["registers", "shifts", "transfers", "expenses"]),
-      group("Insights", ["reports"]),
+      group("Insights", ["reports", "accounting"]),
       group("Administration", ["branches", "devices", "printers", "sync", "admin", "loyaltySettings"]),
     ];
   }
   return [
     group("Sell", ["dashboard", "pos", "sales", "orders", "customers", "giftCards"]),
     group("Catalog & stock", ["products", "categories", "inventory", "stockCounts", "replenishment"]),
-    group("Procurement", ["suppliers", "purchaseOrders", "supplierReturns"]),
+    group("Procurement", ["suppliers", "purchaseOrders", "supplierReturns", "payables"]),
     group("Operations", ["registers", "shifts", "transfers", "expenses"]),
-    group("Insights", ["reports"]),
+    group("Insights", ["reports", "accounting"]),
     group("Administration", ["branches", "devices", "printers", "sync", "team", "admin", "loyaltySettings", "onlineOrdering"]),
   ];
 }

@@ -10,6 +10,8 @@ import {
 } from "../projection";
 import { withInventoryLocks } from "../inventory-locks";
 import type { AppliedManagerApproval } from "../../auth/nest/manager-approval-policy.service";
+import { JournalPostingService } from "../../accounting/journal-posting.service";
+import { buildInventoryMovementDraft } from "../../accounting/journal-rules";
 
 export interface MovementInput {
   productId: string;
@@ -77,9 +79,10 @@ export class InventoryService {
       this.db,
       businessId,
       [{ productId: input.productId, branchId }],
-      async () => {
+      async () => this.db.withTransaction(async (tx) => {
     withScope(businessId, {});
-    const product = await this.requireProduct(businessId, input.productId);
+    const product = await tx.findProductById(input.productId, businessId);
+    if (!product) throw new Error("NOT_FOUND");
     if (product.productType === "BUNDLE" || !product.trackInventory) {
       throw new Error("PRODUCT_NOT_TRACKED");
     }
@@ -90,12 +93,12 @@ export class InventoryService {
     ) {
       throw new Error("VALIDATION");
     }
-    const current = await this.db.findBalance(input.productId, businessId, branchId);
+    const current = await tx.findBalance(input.productId, businessId, branchId);
     const onHand = current?.qtyOnHand ?? 0;
     const next = applyMovementToBalance(onHand, { qtyDelta: input.qtyDelta });
     const preventOversell = (product as DbProduct & { preventOversell?: boolean }).preventOversell ?? true;
     if (preventOversell && next < 0) throw new Error("INSUFFICIENT_STOCK");
-    const movement = await this.db.createMovement({
+    const movement = await tx.createMovement({
       businessId,
       productId: input.productId,
       type: input.type,
@@ -107,8 +110,21 @@ export class InventoryService {
       requestId,
       branchId,
     });
-    await this.db.upsertBalance({ businessId, branchId, productId: input.productId, qtyOnHand: next });
-    await this.db.appendAudit({
+    await tx.upsertBalance({ businessId, branchId, productId: input.productId, qtyOnHand: next });
+    if (input.type === "opening_stock" || input.type === "damage" || input.type === "adjustment") {
+      const business = await tx.findBusinessById(businessId);
+      if (!business) throw new Error("NOT_FOUND");
+      if (product.costMinor > 0) {
+        const journals = new JournalPostingService(tx);
+        await journals.postSourceEvent({
+          businessId, branchId, sourceType: "InventoryMovement", sourceId: movement.id, sourceEvent: "posted", actorId, requestId,
+          draft: buildInventoryMovementDraft({ currency: business.currency, qtyDelta: input.qtyDelta, unitCostMinor: product.costMinor, movementType: input.type, effectiveAt: movement.createdAt ?? new Date() }),
+        });
+      } else {
+        await tx.appendAudit({ businessId, actorId, action: "accounting.inventory.unresolved_cost", entityType: "InventoryMovement", entityId: movement.id, requestId, after: { productId: product.id, qtyDelta: input.qtyDelta, reason: "No reliable unit cost snapshot" } });
+      }
+    }
+    await tx.appendAudit({
       businessId,
       actorId,
       action: "inventory.adjust",
@@ -125,7 +141,7 @@ export class InventoryService {
       },
     });
     return movement;
-    });
+      }));
   }
 
   async getBalances(

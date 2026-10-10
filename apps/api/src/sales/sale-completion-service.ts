@@ -10,11 +10,14 @@ import type { PaymentInput, SaleWithLines } from "./sales-types";
 import { SalesStockService } from "./sale-stock-service";
 import { StoredValueService } from "../value/stored-value.service";
 import { OrderSaleService } from "../orders/order-sale-service";
+import { JournalPostingService } from "../accounting/journal-posting.service";
+import { buildSaleDraft } from "../accounting/journal-rules";
 
 const CASH_METHODS = new Set(["cash"]);
 
 export class SalesCompletionService {
   private readonly orderSales: OrderSaleService;
+  private readonly journals: JournalPostingService;
 
   constructor(
     private readonly db: DbPort,
@@ -23,6 +26,7 @@ export class SalesCompletionService {
     private readonly storedValue = new StoredValueService(db),
   ) {
     this.orderSales = new OrderSaleService(db);
+    this.journals = new JournalPostingService(db);
   }
 
   private async requireSale(businessId: string, saleId: string): Promise<DbSale> {
@@ -199,6 +203,7 @@ export class SalesCompletionService {
       );
       let redeemedPointsTotal = 0;
       let redeemedValueTotal = 0;
+      let loyaltyIssuedMinor = 0;
       for (const [legIndex, payment] of input.payments.entries()) {
         let internalInstrumentId = payment.internalInstrumentId ?? null;
         if (payment.method === "store_credit") {
@@ -260,6 +265,7 @@ export class SalesCompletionService {
         const loyalty = await this.db.getLoyaltyProgram(businessId);
         if (loyalty?.enabled && eligibleSpendMinor > 0) {
           const earned = await this.storedValue.earnLoyalty(businessId, actorId, requestId, sale.customerId, eligibleSpendMinor, sale.id, `${input.key}:loyalty:earn`);
+          loyaltyIssuedMinor = Math.floor(earned.snapshot.earnedPoints * earned.snapshot.redeemValueMinorSnapshot / earned.snapshot.redeemPointsSnapshot);
           if (redeemedPointsTotal > 0 || redeemedValueTotal > 0) await this.db.updateSaleLoyalty(earned.snapshot.id, businessId, { redeemedPoints: redeemedPointsTotal, redeemedValueMinor: redeemedValueTotal });
           const eligibleLines = items.map((item) => Math.max(0, item.lineTotalMinor));
           const lineTotal = eligibleLines.reduce((sum, value) => sum + value, 0);
@@ -304,6 +310,19 @@ export class SalesCompletionService {
           completedAt,
           ...(input.registerId !== undefined ? { registerId: input.registerId } : {}),
         })) ?? sale;
+      const business = await this.db.findBusinessById(businessId);
+      if (!business) throw new Error("NOT_FOUND");
+      await this.journals.postSourceEvent({
+        businessId, branchId, sourceType: "Sale", sourceId: sale.id, sourceEvent: "completed", actorId, requestId,
+        draft: buildSaleDraft({
+          currency: business.currency, effectiveAt: completedAt,
+          tenders: input.payments.map(({ method, amountMinor }) => ({ method, amountMinor })),
+          merchandiseRevenueMinor: totals.subtotalMinor, discountMinor: totals.discountMinor,
+          deliveryFeeMinor: sale.deliveryFeeMinor, taxPayableMinor: totals.taxMinor + sale.deliveryTaxMinor,
+          giftCardLoadMinor: giftLoadMinor, loyaltyIssuedMinor, changeMinor: change,
+          cogsMinor: items.reduce((sum, item) => sum + item.qty * item.costMinor, 0),
+        }),
+      });
       await this.orderSales.settleLinkedSaleLocked(
         this.db,
         businessId,

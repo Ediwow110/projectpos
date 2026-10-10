@@ -15,35 +15,36 @@ const GRANT = ["discount.override", "sale.void", "sale.refund", "cost.view", "in
 
 async function setup() {
   const db = createMemoryDb();
+  const businessId = (await db.createBusiness({ name: "Phase exit", currency: "PHP" })).id;
   const prod = await db.createProduct({
-    businessId: "b1", categoryId: null, name: "Coke", sku: null, barcode: null,
+    businessId: businessId, categoryId: null, name: "Coke", sku: null, barcode: null,
     brand: null, unit: "pc", costMinor: 1000, priceMinor: 2500, taxRateBps: null,
     reorderLevel: 0, trackInventory: true, isActive: true, imageUrl: null,
   });
-  await db.upsertBalance({ businessId: "b1", branchId: null, productId: prod.id, qtyOnHand: 10 });
+  await db.upsertBalance({ businessId: businessId, branchId: null, productId: prod.id, qtyOnHand: 10 });
   const sales = new SalesService(db);
-  const draft = await sales.createDraft("b1", "u1", "r0", {
+  const draft = await sales.createDraft(businessId, "u1", "r0", {
     lines: [{ productId: prod.id, qty: 1, lineDiscountMinor: 0 }], orderDiscountMinor: 0,
   }, GRANT);
-  return { db, sales, sync: new SyncService(db), devices: new DeviceService(db), productId: prod.id, totalMinor: draft.totalMinor };
+  return { db, businessId, sales, sync: new SyncService(db), devices: new DeviceService(db), productId: prod.id, totalMinor: draft.totalMinor };
 }
 
-function sender(sales: SalesService, sync: SyncService) {
+function sender(sales: SalesService, sync: SyncService, businessId: string) {
   return {
     check: async (key: string) => {
-      const out = await sync.checkKeys("b1", [{ key, commandType: "sale.complete" }]);
+      const out = await sync.checkKeys(businessId, [{ key, commandType: "sale.complete" }]);
       const hit = out.applied.find((a) => a.key === key);
       return hit ? { applied: true, resultId: hit.resultId } : { applied: false as boolean };
     },
     createDraft: async (body: { lines: Array<{ productId: string; qty: number }> }) => {
-      const d = await sales.createDraft("b1", "u1", "r1", {
+      const d = await sales.createDraft(businessId, "u1", "r1", {
         lines: body.lines.map((l) => ({ ...l, lineDiscountMinor: 0 })), orderDiscountMinor: 0,
       }, GRANT);
       return { id: d.id, totalMinor: d.totalMinor };
     },
     complete: async (key: string, body: { saleId: string; payments: Array<{ method: string; amountMinor: number }> }) => {
       try {
-        const done = await sales.completeSale("b1", "u1", "r2", body.saleId, {
+        const done = await sales.completeSale(businessId, "u1", "r2", body.saleId, {
           payments: body.payments.map((p) => ({ ...p })),
           key,
           granted: GRANT,
@@ -58,7 +59,7 @@ function sender(sales: SalesService, sync: SyncService) {
 
 describe("phase9b exit", () => {
   it("replays a queued offline sale to SYNCED with server effects", async () => {
-    const { db, sales, sync, productId, totalMinor } = await setup();
+    const { db, businessId, sales, sync, productId, totalMinor } = await setup();
     const store = new MemorySyncStore();
     const fp = "fp-exit-1";
     await store.enqueue({
@@ -68,24 +69,24 @@ describe("phase9b exit", () => {
     });
     const summary = await runReplayOnce({
       store,
-      send: (cmd) => sendSaleCommand(cmd, sender(sales, sync)),
+      send: (cmd) => sendSaleCommand(cmd, sender(sales, sync, businessId)),
       nowMs: () => Date.parse("2026-09-24T00:01:00.000Z"),
       dueCheck: () => true,
     });
     expect(summary).toEqual({ sent: 1, synced: 1, conflicts: 0, retried: 0 });
-    expect((await db.findBalance(productId, "b1", null))!.qtyOnHand).toBe(8);
+    expect((await db.findBalance(productId, businessId, null))!.qtyOnHand).toBe(8);
     const [row] = await store.listAll();
     expect(row.status).toBe("SYNCED");
     expect(row.serverResultId).not.toBeNull();
   });
 
   it("maps an oversold replay to CONFLICT without partial writes", async () => {
-    const { sales, sync, productId, totalMinor } = await setup();
+    const { businessId, sales, sync, productId, totalMinor } = await setup();
     // Rest of the world buys 10 of 10 first.
-    const drain = await sales.createDraft("b1", "u1", "r9", {
+    const drain = await sales.createDraft(businessId, "u1", "r9", {
       lines: [{ productId, qty: 10, lineDiscountMinor: 0 }], orderDiscountMinor: 0,
     }, GRANT);
-    await sales.completeSale("b1", "u1", "r9", drain.id, {
+    await sales.completeSale(businessId, "u1", "r9", drain.id, {
       payments: [{ method: "cash", amountMinor: drain.totalMinor }], key: "exit-drain-1", granted: GRANT,
     });
     const store = new MemorySyncStore();
@@ -96,7 +97,7 @@ describe("phase9b exit", () => {
     });
     const summary = await runReplayOnce({
       store,
-      send: (cmd) => sendSaleCommand(cmd, sender(sales, sync)),
+      send: (cmd) => sendSaleCommand(cmd, sender(sales, sync, businessId)),
       nowMs: () => Date.parse("2026-09-24T00:01:00.000Z"),
       dueCheck: () => true,
     });
@@ -107,11 +108,11 @@ describe("phase9b exit", () => {
   });
 
   it("sync/check reconciles applied and unknown keys, devices enroll and bind", async () => {
-    const { db, sync, devices } = await setup();
-    const dev = await devices.enrollDevice("b1", "u1", "r1", { label: "Till 1" });
+    const { db, businessId, sync, devices } = await setup();
+    const dev = await devices.enrollDevice(businessId, "u1", "r1", { label: "Till 1" });
     expect(dev.revokedAt).toBeNull();
-    expect((await devices.listDevices("b1", "u1")).map((d) => d.id)).toContain(dev.id);
-    const checked = await sync.checkKeys("b1", [
+    expect((await devices.listDevices(businessId, "u1")).map((d) => d.id)).toContain(dev.id);
+    const checked = await sync.checkKeys(businessId, [
       { key: "exit-key-1", commandType: "sale.complete" },
       { key: "never-seen", commandType: "sale.complete" },
     ]);
@@ -120,10 +121,10 @@ describe("phase9b exit", () => {
     expect(checked.unknown.map((k) => k.key)).toContain("never-seen");
     expect(typeof checked.serverTime).toBe("string");
     await db.claimIdempotency({
-      businessId: "b1", key: "k-applied", commandType: "sale.complete",
+      businessId: businessId, key: "k-applied", commandType: "sale.complete",
       fingerprint: "fp", resultId: "sale-1",
     });
-    const recheck = await sync.checkKeys("b1", [{ key: "k-applied", commandType: "sale.complete" }]);
+    const recheck = await sync.checkKeys(businessId, [{ key: "k-applied", commandType: "sale.complete" }]);
     expect(recheck.applied).toEqual([{ key: "k-applied", resultId: "sale-1" }]);
   });
 });

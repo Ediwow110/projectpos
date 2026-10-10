@@ -7,6 +7,8 @@ import type { AppliedManagerApproval } from "../../auth/nest/manager-approval-po
 import type { InventoryCountCreateInput, InventoryCountLineUpdateInput, ReplenishmentDraftPoInput } from "@pos/validation";
 import { ProcurementService } from "../../procurement/nest/procurement.service";
 import { InventoryAvailabilityService } from "../availability-service";
+import { JournalPostingService } from "../../accounting/journal-posting.service";
+import { buildStockCountDraft } from "../../accounting/journal-rules";
 
 export interface InventoryCountView extends DbInventoryCount { lines: DbInventoryCountLine[]; }
 
@@ -250,6 +252,19 @@ export class InventoryCountService {
         }
         const posted = await tx.updateInventoryCount(id, businessId, { status: "POSTED", postedBy: actorId, postedAt: now() }, expectedVersion);
         if (!posted) throw new Error("CONFLICT");
+        const valuationRows = await Promise.all(lines.filter((line) => (line.varianceQty ?? 0) !== 0).map(async (line) => {
+          const product = await tx.findProductById(line.productId, businessId);
+          if (!product) throw new Error("NOT_FOUND");
+          return { productName: line.productNameSnapshot, qtyDelta: line.varianceQty ?? 0, unitCostMinor: product.costMinor };
+        }));
+        if (valuationRows.length > 0 && valuationRows.some((row) => row.unitCostMinor > 0)) {
+          const business = await tx.findBusinessById(businessId);
+          if (!business) throw new Error("NOT_FOUND");
+          await new JournalPostingService(tx).postSourceEvent({
+            businessId, branchId: latest.branchId, sourceType: "InventoryCount", sourceId: latest.id, sourceEvent: "posted", actorId, requestId,
+            draft: buildStockCountDraft({ currency: business.currency, effectiveAt: posted.postedAt ?? now(), variances: valuationRows }),
+          });
+        }
         await tx.claimIdempotency({ businessId, key, commandType: "inventory_count.post", fingerprint: fingerprintPayload({ countId: id, version: expectedVersion }), resultId: id });
         await tx.appendAudit({ businessId, actorId, action: "inventory_count.posted", entityType: "InventoryCount", entityId: id, requestId, after: snapshot(posted) });
         return { count: { ...posted, lines: await tx.listInventoryCountLines(id, businessId) }, replayed: false, movements: movementCount };

@@ -8,32 +8,33 @@ const ALL = ["discount.override", "sale.void", "sale.refund", "cost.view"];
 
 async function setup() {
   const db = createMemoryDb();
+  const businessId = (await db.createBusiness({ name: "Phase exit", currency: "PHP" })).id;
   const prod = await db.createProduct({
-    businessId: "b1", categoryId: null, name: "Coke", sku: null, barcode: null,
+    businessId: businessId, categoryId: null, name: "Coke", sku: null, barcode: null,
     brand: null, unit: "pc", costMinor: 1000, priceMinor: 2500, taxRateBps: null,
     reorderLevel: 5, trackInventory: true, isActive: true, imageUrl: null,
   });
-  await db.upsertBalance({ businessId: "b1", productId: prod.id, qtyOnHand: 50 });
+  await db.upsertBalance({ businessId: businessId, productId: prod.id, qtyOnHand: 50 });
   await db.createProduct({
-    businessId: "b1", categoryId: null, name: "Pepsi", sku: null, barcode: null,
+    businessId: businessId, categoryId: null, name: "Pepsi", sku: null, barcode: null,
     brand: null, unit: "pc", costMinor: 900, priceMinor: 2400, taxRateBps: null,
     reorderLevel: 5, trackInventory: true, isActive: true, imageUrl: null,
   });
   const sales = new SalesService(db);
-  const draft = await sales.createDraft("b1", "u1", "r1", {
+  const draft = await sales.createDraft(businessId, "u1", "r1", {
     lines: [{ productId: prod.id, qty: 2, lineDiscountMinor: 0 }], orderDiscountMinor: 0,
   }, ALL);
-  await sales.completeSale("b1", "u1", "r2", draft.id, {
+  await sales.completeSale(businessId, "u1", "r2", draft.id, {
     payments: [{ method: "cash", amountMinor: draft.totalMinor }], key: "exit7-1", granted: ALL,
   });
-  await db.updateSale(draft.id, "b1", { createdAt: new Date("2026-09-10T10:00:00.000Z") });
-  return { db, svc: new ReportingService(db) };
+  await db.updateSale(draft.id, businessId, { createdAt: new Date("2026-09-10T10:00:00.000Z") });
+  return { db, businessId, svc: new ReportingService(db) };
 }
 
 describe("phase7 exit", () => {
   it("owner dashboard answers from source records", async () => {
-    const { svc } = await setup();
-    const out = await svc.getOverview("b1", {
+    const { businessId, svc } = await setup();
+    const out = await svc.getOverview(businessId, {
       dateFrom: "2026-09-01T00:00:00.000Z", dateTo: "2026-09-30T00:00:00.000Z", compare: "none",
     }, "owner", ALL);
     expect(out.kpis.netRevenue.value).toBe(5000);
@@ -47,10 +48,10 @@ describe("phase7 exit", () => {
     expect(isSettled("VOIDED")).toBe(false);
   });
   it("cashier gets no profit and no cashiers view", async () => {
-    const { svc } = await setup();
-    const out = await svc.getOverview("b1", { compare: "none" }, "cashier", []);
+    const { businessId, svc } = await setup();
+    const out = await svc.getOverview(businessId, { compare: "none" }, "cashier", []);
     expect(out.kpis.grossProfit).toBeUndefined();
-    await expect(svc.getCashiersReport("b1", { compare: "none" }, "cashier")).rejects.toThrow("FORBIDDEN");
+    await expect(svc.getCashiersReport(businessId, { compare: "none" }, "cashier")).rejects.toThrow("FORBIDDEN");
   });
   it("empty business returns zeros, never errors", async () => {
     const svc = new ReportingService(createMemoryDb());

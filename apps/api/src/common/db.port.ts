@@ -375,6 +375,41 @@ export interface DbJournalLine {
   position: number;
 }
 
+export interface DbAccountingActivation {
+  businessId: string;
+  status: string;
+  accountingStartAt: Date | null;
+  openingEntryId: string | null;
+  csvCutoverAt: Date | null;
+  updatedAt: Date;
+}
+
+export interface DbAccountingBackfillRun {
+  id: string;
+  businessId: string;
+  status: string;
+  cursor: { family?: string; afterId?: string | null } | null;
+  processedCount: number;
+  skippedCount: number;
+  debitMinor: number;
+  creditMinor: number;
+  startedAt: Date | null;
+  completedAt: Date | null;
+  createdBy: string;
+  requestId: string;
+  createdAt: Date;
+}
+
+export interface DbAccountingBackfillIssue {
+  id: string;
+  businessId: string;
+  runId: string;
+  sourceType: string;
+  sourceId: string;
+  reason: string;
+  createdAt: Date;
+}
+
 export interface DbJournalEntryCreate extends Omit<DbJournalEntry, "id" | "createdAt"> {
   lines: Array<Omit<DbJournalLine, "id" | "businessId" | "entryId" | "position" | "memo"> & { memo?: string | null }>;
 }
@@ -387,6 +422,12 @@ export interface DbJournalPageQuery {
   after?: { effectiveAt: Date; id: string };
   limit: number;
 }
+export interface DbJournalAccountTotal {
+  account: DbAccountingAccount;
+  debitMinor: number;
+  creditMinor: number;
+}
+export interface DbJournalTotalsQuery { dateFrom?: Date; dateTo?: Date; branchId?: string | null; }
 
 export interface DbSupplierBill {
   id: string; businessId: string; supplierId: string; branchId: string | null; invoiceNumber: string;
@@ -410,6 +451,7 @@ export interface DbSupplierPayment {
 }
 export interface DbSupplierReturnReceiptAllocation {
   id: string; businessId: string; supplierReturnLineId: string; receiptLineId: string; quantity: number; unitCostMinorSnapshot: number;
+  billedQuantity: number; billedInvoiceCostMinorSnapshot: number;
 }
 
 export interface DbBalance {
@@ -906,9 +948,10 @@ export interface DbRefund {
   requestId: string;
   approvedRequestId: string;
   singleStep: boolean;
+  createdAt: Date;
 }
 export type DbRefundCreate =
-  Omit<DbRefund, "id" | "deliveryFeeRefundMinor" | "deliveryTaxRefundMinor"> & {
+  Omit<DbRefund, "id" | "createdAt" | "deliveryFeeRefundMinor" | "deliveryTaxRefundMinor"> & {
     deliveryFeeRefundMinor?: number;
     deliveryTaxRefundMinor?: number;
   };
@@ -1147,20 +1190,37 @@ export interface DbPort {
   findJournalEntryById(id: string, businessId: string): Promise<DbJournalEntry | null>;
   listJournalEntries(businessId: string, query: DbJournalPageQuery): Promise<DbJournalEntry[]>;
   listJournalLines(entryId: string, businessId: string): Promise<DbJournalLine[]>;
+  aggregateJournalAccountTotals(businessId: string, query: DbJournalTotalsQuery): Promise<DbJournalAccountTotal[]>;
+  findAccountingActivation(businessId: string): Promise<DbAccountingActivation | null>;
+  saveAccountingActivation(activation: Omit<DbAccountingActivation, "updatedAt">): Promise<DbAccountingActivation>;
+  createAccountingBackfillRun(run: Omit<DbAccountingBackfillRun, "id" | "createdAt">): Promise<DbAccountingBackfillRun>;
+  findAccountingBackfillRunByRequest(businessId: string, requestId: string): Promise<DbAccountingBackfillRun | null>;
+  findLatestAccountingBackfillRun(businessId: string): Promise<DbAccountingBackfillRun | null>;
+  findAccountingBackfillRun(id: string, businessId: string): Promise<DbAccountingBackfillRun | null>;
+  updateAccountingBackfillRun(id: string, businessId: string, patch: Partial<Pick<DbAccountingBackfillRun, "status" | "cursor" | "processedCount" | "skippedCount" | "debitMinor" | "creditMinor" | "startedAt" | "completedAt">>): Promise<DbAccountingBackfillRun | null>;
+  createAccountingBackfillIssue(issue: Omit<DbAccountingBackfillIssue, "id" | "createdAt">): Promise<DbAccountingBackfillIssue>;
+  listAccountingBackfillIssues(runId: string, businessId: string, limit: number): Promise<DbAccountingBackfillIssue[]>;
+  countAccountingBackfillIssues(runId: string, businessId: string): Promise<number>;
+  hasUnaccountedValueAdjustments(businessId: string): Promise<boolean>;
   createSupplierBill(input: Omit<DbSupplierBill, "id" | "createdAt" | "updatedAt">): Promise<DbSupplierBill>;
   findSupplierBill(id: string, businessId: string): Promise<DbSupplierBill | null>;
   listSupplierBills(businessId: string): Promise<DbSupplierBill[]>;
+  listSupplierBillsPage(businessId: string, afterId: string | null, limit: number): Promise<DbSupplierBill[]>;
   updateSupplierBill(id: string, businessId: string, patch: Partial<Omit<DbSupplierBill, "id" | "businessId" | "createdAt" | "version">>, expectedVersion: number): Promise<DbSupplierBill | null>;
   createSupplierBillAllocation(input: Omit<DbSupplierBillAllocation, "id">): Promise<DbSupplierBillAllocation>;
   listSupplierBillAllocations(billId: string, businessId: string): Promise<DbSupplierBillAllocation[]>;
   billedQuantityByReceiptLine(businessId: string, receiptLineId: string): Promise<number>;
   createSupplierCredit(input: Omit<DbSupplierCredit, "id" | "createdAt">): Promise<DbSupplierCredit>;
+  updateSupplierCredit(id: string, businessId: string, patch: Pick<DbSupplierCredit, "billId" | "status">): Promise<DbSupplierCredit | null>;
   listSupplierCredits(businessId: string, supplierId: string): Promise<DbSupplierCredit[]>;
+  listUnappliedSupplierCredits(businessId: string): Promise<DbSupplierCredit[]>;
   createSupplierPayment(input: Omit<DbSupplierPayment, "id" | "createdAt">): Promise<DbSupplierPayment>;
+  updateSupplierPayment(id: string, businessId: string, patch: Partial<Pick<DbSupplierPayment, "cashMovementId">>): Promise<DbSupplierPayment | null>;
   listSupplierPayments(billId: string, businessId: string): Promise<DbSupplierPayment[]>;
   createSupplierReturnReceiptAllocation(input: Omit<DbSupplierReturnReceiptAllocation, "id">): Promise<DbSupplierReturnReceiptAllocation>;
   listSupplierReturnReceiptAllocations(returnLineId: string, businessId: string): Promise<DbSupplierReturnReceiptAllocation[]>;
   returnedQuantityByReceiptLine(businessId: string, receiptLineId: string): Promise<number>;
+  returnedBilledQuantityByReceiptLine(businessId: string, receiptLineId: string): Promise<number>;
   findUserByEmail(email: string): Promise<DbUser | null>;
   findUserById(id: string): Promise<DbUser | null>;
   createUser(u: Omit<DbUser, "id">): Promise<DbUser>;
@@ -1257,6 +1317,7 @@ export interface DbPort {
   createInventoryCount(c: Omit<DbInventoryCount, "id" | "createdAt" | "updatedAt">): Promise<DbInventoryCount>;
   findInventoryCountById(id: string, businessId: string): Promise<DbInventoryCount | null>;
   listInventoryCountsByBusiness(businessId: string): Promise<DbInventoryCount[]>;
+  listInventoryCountsPage(businessId: string, afterId: string | null, limit: number): Promise<DbInventoryCount[]>;
   updateInventoryCount(id: string, businessId: string, patch: Partial<Omit<DbInventoryCount, "id" | "businessId" | "createdAt" | "version">>, expectedVersion: number): Promise<DbInventoryCount | null>;
   createInventoryCountLine(l: Omit<DbInventoryCountLine, "id" | "createdAt" | "updatedAt">): Promise<DbInventoryCountLine>;
   listInventoryCountLines(countId: string, businessId: string): Promise<DbInventoryCountLine[]>;
@@ -1359,6 +1420,7 @@ export interface DbPort {
   listRefundsBySale(saleId: string, businessId: string): Promise<DbRefund[]>;
   // Phase 12 bulk read: reporting maps refund items to sales in one round-trip.
   listRefundsByBusiness(businessId: string): Promise<DbRefund[]>;
+  listRefundsPage(businessId: string, afterId: string | null, limit: number): Promise<DbRefund[]>;
   findRefundById(id: string, businessId: string): Promise<DbRefund | null>;
   createRefundItem(i: Omit<DbRefundItem, "id">): Promise<DbRefundItem>;
   listRefundItems(refundId: string, businessId: string): Promise<DbRefundItem[]>;
@@ -1480,12 +1542,14 @@ export interface DbPort {
   createPurchaseReceipt(r: Omit<DbPurchaseReceipt, "id" | "createdAt">): Promise<DbPurchaseReceipt>;
   findPurchaseReceiptById(id: string, businessId: string): Promise<DbPurchaseReceipt | null>;
   listPurchaseReceiptsByOrder(purchaseOrderId: string, businessId: string): Promise<DbPurchaseReceipt[]>;
+  listPurchaseReceiptsPage(businessId: string, afterId: string | null, limit: number): Promise<DbPurchaseReceipt[]>;
   createPurchaseReceiptLine(l: Omit<DbPurchaseReceiptLine, "id" | "createdAt">): Promise<DbPurchaseReceiptLine>;
   listPurchaseReceiptLines(receiptId: string, businessId: string): Promise<DbPurchaseReceiptLine[]>;
   nextSupplierReturnNo(businessId: string): Promise<string>;
   createSupplierReturn(r: Omit<DbSupplierReturn, "id" | "createdAt" | "updatedAt">): Promise<DbSupplierReturn>;
   findSupplierReturnById(id: string, businessId: string): Promise<DbSupplierReturn | null>;
   listSupplierReturnsByBusiness(businessId: string): Promise<DbSupplierReturn[]>;
+  listSupplierReturnsPage(businessId: string, afterId: string | null, limit: number): Promise<DbSupplierReturn[]>;
   listSupplierReturnsByOrder(purchaseOrderId: string, businessId: string): Promise<DbSupplierReturn[]>;
   updateSupplierReturn(id: string, businessId: string, patch: Partial<Omit<DbSupplierReturn, "id" | "businessId" | "createdAt" | "version">>, expectedVersion: number): Promise<DbSupplierReturn | null>;
   createSupplierReturnLine(l: Omit<DbSupplierReturnLine, "id" | "createdAt" | "updatedAt">): Promise<DbSupplierReturnLine>;

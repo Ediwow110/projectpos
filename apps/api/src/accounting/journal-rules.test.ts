@@ -68,7 +68,11 @@ describe("management accounting journal rules", () => {
     const lowerInvoice = buildSupplierBillDraft({ currency: "PHP", receiptCostMinor: 800, invoiceAmountMinor: 750, nonStockChargeMinor: 100 });
     expect(validateJournalDraft(lowerInvoice)).toEqual({ debitMinor: 900, creditMinor: 900 });
     expect(lowerInvoice.lines).toContainEqual(expect.objectContaining({ accountCode: "5100", creditMinor: 50 }));
-    expect(validateJournalDraft(buildSupplierReturnDraft({ currency: "PHP", billedCostMinor: 300, unbilledCostMinor: 200 }))).toEqual({ debitMinor: 500, creditMinor: 500 });
+    expect(validateJournalDraft(buildSupplierReturnDraft({ currency: "PHP", billedReceiptCostMinor: 300, billedInvoiceCostMinor: 300, unbilledCostMinor: 200 }))).toEqual({ debitMinor: 500, creditMinor: 500 });
+    const returnAfterHigherInvoice = buildSupplierReturnDraft({ currency: "PHP", billedReceiptCostMinor: 300, billedInvoiceCostMinor: 350, unbilledCostMinor: 0 });
+    expect(validateJournalDraft(returnAfterHigherInvoice)).toEqual({ debitMinor: 350, creditMinor: 350 });
+    expect(returnAfterHigherInvoice.lines).toContainEqual(expect.objectContaining({ accountCode: "2000", debitMinor: 350 }));
+    expect(returnAfterHigherInvoice.lines).toContainEqual(expect.objectContaining({ accountCode: "5100", creditMinor: 50 }));
     expect(validateJournalDraft(buildSupplierPaymentDraft({ currency: "PHP", amountMinor: 500, paidFromAccountCode: "1000" }))).toEqual({ debitMinor: 500, creditMinor: 500 });
   });
 });

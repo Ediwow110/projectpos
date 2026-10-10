@@ -14,7 +14,7 @@ function allocation(row: Record<string, unknown>): DbSupplierBillAllocation {
 }
 function credit(row: Record<string, unknown>): DbSupplierCredit { return { ...row, amountMinor: minor(row["amountMinor"]) } as DbSupplierCredit; }
 function payment(row: Record<string, unknown>): DbSupplierPayment { return { ...row, amountMinor: minor(row["amountMinor"]) } as DbSupplierPayment; }
-function returnAllocation(row: Record<string, unknown>): DbSupplierReturnReceiptAllocation { return { ...row, quantity: Number(row["quantity"]), unitCostMinorSnapshot: minor(row["unitCostMinorSnapshot"]) } as DbSupplierReturnReceiptAllocation; }
+function returnAllocation(row: Record<string, unknown>): DbSupplierReturnReceiptAllocation { return { ...row, quantity: Number(row["quantity"]), unitCostMinorSnapshot: minor(row["unitCostMinorSnapshot"]), billedQuantity: Number(row["billedQuantity"]), billedInvoiceCostMinorSnapshot: minor(row["billedInvoiceCostMinorSnapshot"]) } as DbSupplierReturnReceiptAllocation; }
 
 export function payablesFamily(ctx: PgContext) {
   return {
@@ -31,6 +31,9 @@ export function payablesFamily(ctx: PgContext) {
     },
     async listSupplierBills(businessId: string): Promise<DbSupplierBill[]> {
       const client = await ctx.client(); try { const r = await client.query('SELECT * FROM "SupplierBill" WHERE "businessId"=$1 ORDER BY "createdAt" DESC,"id" DESC LIMIT 500', [businessId]); return r.rows.map((row) => bill(row as Record<string, unknown>)); } finally { if (ctx.owns()) client.release(); }
+    },
+    async listSupplierBillsPage(businessId: string, afterId: string | null, limit: number): Promise<DbSupplierBill[]> {
+      const client = await ctx.client(); try { const r = await client.query(`SELECT * FROM "SupplierBill" WHERE "businessId"=$1 AND ($2::text IS NULL OR "id">$2) ORDER BY "id" LIMIT $3`, [businessId, afterId, limit]); return r.rows.map((row) => bill(row as Record<string, unknown>)); } finally { if (ctx.owns()) client.release(); }
     },
     async updateSupplierBill(id: string, businessId: string, patch: Partial<Omit<DbSupplierBill, "id" | "businessId" | "createdAt" | "version">>, expectedVersion: number): Promise<DbSupplierBill | null> {
       const client = await ctx.client();
@@ -60,8 +63,14 @@ export function payablesFamily(ctx: PgContext) {
       const client = await ctx.client(); try { const r = await client.query('INSERT INTO "SupplierCredit" ("id","businessId","supplierId","billId","supplierReturnId","creditNumber","amountMinor","status","createdBy","requestId") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *', [nid("credit"), input.businessId, input.supplierId, input.billId, input.supplierReturnId, input.creditNumber, input.amountMinor, input.status, input.createdBy, input.requestId]); return credit(r.rows[0] as Record<string, unknown>); }
       catch (error) { if ((error as { code?: string }).code === "23505") throw new Error("CONFLICT"); throw error; } finally { if (ctx.owns()) client.release(); }
     },
+    async updateSupplierCredit(id: string, businessId: string, patch: Pick<DbSupplierCredit, "billId" | "status">): Promise<DbSupplierCredit | null> {
+      const client = await ctx.client(); try { const r = await client.query('UPDATE "SupplierCredit" SET "billId"=$3,"status"=$4 WHERE "id"=$1 AND "businessId"=$2 RETURNING *', [id, businessId, patch.billId, patch.status]); return r.rows[0] ? credit(r.rows[0] as Record<string, unknown>) : null; } finally { if (ctx.owns()) client.release(); }
+    },
     async listSupplierCredits(businessId: string, supplierId: string): Promise<DbSupplierCredit[]> {
       const client = await ctx.client(); try { const r = await client.query('SELECT * FROM "SupplierCredit" WHERE "businessId"=$1 AND "supplierId"=$2 ORDER BY "createdAt"', [businessId, supplierId]); return r.rows.map((row) => credit(row as Record<string, unknown>)); } finally { if (ctx.owns()) client.release(); }
+    },
+    async listUnappliedSupplierCredits(businessId: string): Promise<DbSupplierCredit[]> {
+      const client = await ctx.client(); try { const r = await client.query('SELECT * FROM "SupplierCredit" WHERE "businessId"=$1 AND "billId" IS NULL AND "status"=\'POSTED\' ORDER BY "createdAt","id"', [businessId]); return r.rows.map((row) => credit(row as Record<string, unknown>)); } finally { if (ctx.owns()) client.release(); }
     },
     async createSupplierPayment(input: Omit<DbSupplierPayment, "id" | "createdAt">): Promise<DbSupplierPayment> {
       const client = await ctx.client(); try { const r = await client.query('INSERT INTO "SupplierPayment" ("id","businessId","supplierId","billId","branchId","amountMinor","method","paidFromAccountId","reference","paidAt","shiftId","cashMovementId","idempotencyKey","createdBy","requestId") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *', [nid("payment"), input.businessId, input.supplierId, input.billId, input.branchId, input.amountMinor, input.method, input.paidFromAccountId, input.reference, input.paidAt, input.shiftId, input.cashMovementId, input.idempotencyKey, input.createdBy, input.requestId]); return payment(r.rows[0] as Record<string, unknown>); }
@@ -70,8 +79,11 @@ export function payablesFamily(ctx: PgContext) {
     async listSupplierPayments(billId: string, businessId: string): Promise<DbSupplierPayment[]> {
       const client = await ctx.client(); try { const r = await client.query('SELECT * FROM "SupplierPayment" WHERE "billId"=$1 AND "businessId"=$2 ORDER BY "paidAt","id"', [billId, businessId]); return r.rows.map((row) => payment(row as Record<string, unknown>)); } finally { if (ctx.owns()) client.release(); }
     },
+    async updateSupplierPayment(id: string, businessId: string, patch: Partial<Pick<DbSupplierPayment, "cashMovementId">>): Promise<DbSupplierPayment | null> {
+      const client = await ctx.client(); try { const r = await client.query('UPDATE "SupplierPayment" SET "cashMovementId"=$3 WHERE "id"=$1 AND "businessId"=$2 RETURNING *', [id, businessId, patch.cashMovementId ?? null]); return r.rows[0] ? payment(r.rows[0] as Record<string, unknown>) : null; } finally { if (ctx.owns()) client.release(); }
+    },
     async createSupplierReturnReceiptAllocation(input: Omit<DbSupplierReturnReceiptAllocation, "id">): Promise<DbSupplierReturnReceiptAllocation> {
-      const client = await ctx.client(); try { const r = await client.query('INSERT INTO "SupplierReturnReceiptAllocation" ("id","businessId","supplierReturnLineId","receiptLineId","quantity","unitCostMinorSnapshot") VALUES ($1,$2,$3,$4,$5,$6) RETURNING *', [nid("retalloc"), input.businessId, input.supplierReturnLineId, input.receiptLineId, input.quantity, input.unitCostMinorSnapshot]); return returnAllocation(r.rows[0] as Record<string, unknown>); }
+      const client = await ctx.client(); try { const r = await client.query('INSERT INTO "SupplierReturnReceiptAllocation" ("id","businessId","supplierReturnLineId","receiptLineId","quantity","unitCostMinorSnapshot","billedQuantity","billedInvoiceCostMinorSnapshot") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [nid("retalloc"), input.businessId, input.supplierReturnLineId, input.receiptLineId, input.quantity, input.unitCostMinorSnapshot, input.billedQuantity, input.billedInvoiceCostMinorSnapshot]); return returnAllocation(r.rows[0] as Record<string, unknown>); }
       catch (error) { if ((error as { code?: string }).code === "23505") throw new Error("CONFLICT"); throw error; } finally { if (ctx.owns()) client.release(); }
     },
     async listSupplierReturnReceiptAllocations(returnLineId: string, businessId: string): Promise<DbSupplierReturnReceiptAllocation[]> {
@@ -79,6 +91,9 @@ export function payablesFamily(ctx: PgContext) {
     },
     async returnedQuantityByReceiptLine(businessId: string, receiptLineId: string): Promise<number> {
       const client = await ctx.client(); try { const r = await client.query('SELECT COALESCE(SUM(a."quantity"),0)::int AS "quantity" FROM "SupplierReturnReceiptAllocation" a JOIN "SupplierReturnLine" rl ON rl."id"=a."supplierReturnLineId" AND rl."businessId"=a."businessId" JOIN "SupplierReturn" sr ON sr."id"=rl."supplierReturnId" AND sr."businessId"=a."businessId" WHERE a."businessId"=$1 AND a."receiptLineId"=$2 AND sr."status"=\'POSTED\'', [businessId, receiptLineId]); return Number(r.rows[0]?.["quantity"] ?? 0); } finally { if (ctx.owns()) client.release(); }
+    },
+    async returnedBilledQuantityByReceiptLine(businessId: string, receiptLineId: string): Promise<number> {
+      const client = await ctx.client(); try { const r = await client.query('SELECT COALESCE(SUM(a."billedQuantity"),0)::int AS "quantity" FROM "SupplierReturnReceiptAllocation" a JOIN "SupplierReturnLine" rl ON rl."id"=a."supplierReturnLineId" AND rl."businessId"=a."businessId" JOIN "SupplierReturn" sr ON sr."id"=rl."supplierReturnId" AND sr."businessId"=a."businessId" WHERE a."businessId"=$1 AND a."receiptLineId"=$2 AND sr."status"=\'POSTED\'', [businessId, receiptLineId]); return Number(r.rows[0]?.["quantity"] ?? 0); } finally { if (ctx.owns()) client.release(); }
     },
   };
 }

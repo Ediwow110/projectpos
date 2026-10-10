@@ -18,6 +18,7 @@ export const DEFAULT_ACCOUNTS: readonly AccountingAccountDefinition[] = [
   { code: "3000", name: "Retained Earnings", type: "equity", normalSide: "credit", system: true },
   { code: "4000", name: "Merchandise Revenue", type: "revenue", normalSide: "credit", system: true },
   { code: "4010", name: "Delivery Revenue", type: "revenue", normalSide: "credit", system: true },
+  { code: "4020", name: "Sales Discounts", type: "expense", normalSide: "debit", system: true },
   { code: "5000", name: "Cost of Goods Sold", type: "expense", normalSide: "debit", system: true },
   { code: "5100", name: "Purchase Price Variance", type: "expense", normalSide: "debit", system: true },
   { code: "6000", name: "Operating Expenses", type: "expense", normalSide: "debit", system: true },

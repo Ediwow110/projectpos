@@ -1,5 +1,5 @@
 import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbDisplayToken, DbExchange, DbFeatureFlag, DbFulfillment, DbFulfillmentLine, DbInvoice, DbMembership, DbMovement, DbOrder, DbOrderAccessToken, DbOrderLine, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbProductFamily, DbProductOption, DbProductOptionValue, DbProductVariantOptionValue, DbProductBundle, DbBundleComponent, DbSaleItemBundleComponent, DbReceiptDelivery, DbResetToken, DbSession, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine, DbInventoryCount, DbInventoryCountLine, DbInventoryReservation, DbGiftCard, DbGiftCardTransaction, DbStoreCreditAccount, DbStoreCreditTransaction, DbLoyaltyProgram, DbLoyaltyAccount, DbLoyaltyTransaction, DbSaleGiftCardLoad, DbSaleLoyalty, DbSaleItemLoyaltyAllocation } from "./db.port";
-import type { DbAccountingAccount, DbJournalEntry, DbJournalEntryCreate, DbJournalLine } from "./db.port";
+import type { DbAccountingAccount, DbAccountingActivation, DbAccountingBackfillIssue, DbAccountingBackfillRun, DbJournalEntry, DbJournalEntryCreate, DbJournalLine } from "./db.port";
 import type { DbSupplierBill, DbSupplierBillAllocation, DbSupplierCredit, DbSupplierPayment, DbSupplierReturnReceiptAllocation } from "./db.port";
 
 let n = 0;
@@ -25,6 +25,9 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const accountingAccounts = new Map<string, DbAccountingAccount>();
   const journalEntries = new Map<string, DbJournalEntry>();
   const journalLines = new Map<string, DbJournalLine>();
+  const accountingActivations = new Map<string, DbAccountingActivation>();
+  const accountingBackfillRuns = new Map<string, DbAccountingBackfillRun>();
+  const accountingBackfillIssues = new Map<string, DbAccountingBackfillIssue>();
   const supplierBills = new Map<string, DbSupplierBill>();
   const supplierBillAllocations = new Map<string, DbSupplierBillAllocation>();
   const supplierCredits = new Map<string, DbSupplierCredit>();
@@ -138,7 +141,8 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
         purchaseOrders: new Map(purchaseOrders), purchaseOrderLines: new Map(purchaseOrderLines),
         purchaseReceipts: new Map(purchaseReceipts), purchaseReceiptLines: new Map(purchaseReceiptLines),
         supplierReturns: new Map(supplierReturns), supplierReturnLines: new Map(supplierReturnLines),
-        movements: new Map(movements), accountingAccounts: new Map(accountingAccounts), journalEntries: new Map(journalEntries), journalLines: new Map(journalLines), supplierBills: new Map(supplierBills), supplierBillAllocations: new Map(supplierBillAllocations), supplierCredits: new Map(supplierCredits), supplierPayments: new Map(supplierPayments), supplierReturnReceiptAllocations: new Map(supplierReturnReceiptAllocations), balances: new Map(balances), idempotency: new Map(idempotency),
+        movements: new Map(movements), accountingAccounts: new Map(accountingAccounts), journalEntries: new Map(journalEntries), journalLines: new Map(journalLines), accountingActivations: new Map(accountingActivations), accountingBackfillRuns: new Map(accountingBackfillRuns), accountingBackfillIssues: new Map(accountingBackfillIssues), supplierBills: new Map(supplierBills), supplierBillAllocations: new Map(supplierBillAllocations), supplierCredits: new Map(supplierCredits), supplierPayments: new Map(supplierPayments), supplierReturnReceiptAllocations: new Map(supplierReturnReceiptAllocations), balances: new Map(balances), idempotency: new Map(idempotency),
+        expenses: new Map(expenses), cashMovements: new Map(cashMovements), shifts: new Map(shifts), registers: new Map(registers), exchanges: new Map(exchanges), transfers: new Map(transfers), transferLines: new Map(transferLines),
         sales: new Map(sales), saleItems: new Map(saleItems), payments: new Map(payments), refunds: new Map(refunds), refundItems: new Map(refundItems),
         orders: new Map(orders), orderLines: new Map(orderLines), inventoryReservations: new Map(inventoryReservations),
         fulfillments: new Map(fulfillments), fulfillmentLines: new Map(fulfillmentLines), orderAccessTokens: new Map(orderAccessTokens),
@@ -156,7 +160,8 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
         restore(purchaseOrders, snapshot.purchaseOrders); restore(purchaseOrderLines, snapshot.purchaseOrderLines);
         restore(purchaseReceipts, snapshot.purchaseReceipts); restore(purchaseReceiptLines, snapshot.purchaseReceiptLines);
         restore(supplierReturns, snapshot.supplierReturns); restore(supplierReturnLines, snapshot.supplierReturnLines);
-        restore(movements, snapshot.movements); restore(accountingAccounts, snapshot.accountingAccounts); restore(journalEntries, snapshot.journalEntries); restore(journalLines, snapshot.journalLines); restore(supplierBills, snapshot.supplierBills); restore(supplierBillAllocations, snapshot.supplierBillAllocations); restore(supplierCredits, snapshot.supplierCredits); restore(supplierPayments, snapshot.supplierPayments); restore(supplierReturnReceiptAllocations, snapshot.supplierReturnReceiptAllocations); restore(balances, snapshot.balances); restore(idempotency, snapshot.idempotency);
+        restore(movements, snapshot.movements); restore(accountingAccounts, snapshot.accountingAccounts); restore(journalEntries, snapshot.journalEntries); restore(journalLines, snapshot.journalLines); restore(accountingActivations, snapshot.accountingActivations); restore(accountingBackfillRuns, snapshot.accountingBackfillRuns); restore(accountingBackfillIssues, snapshot.accountingBackfillIssues); restore(supplierBills, snapshot.supplierBills); restore(supplierBillAllocations, snapshot.supplierBillAllocations); restore(supplierCredits, snapshot.supplierCredits); restore(supplierPayments, snapshot.supplierPayments); restore(supplierReturnReceiptAllocations, snapshot.supplierReturnReceiptAllocations); restore(balances, snapshot.balances); restore(idempotency, snapshot.idempotency);
+        restore(expenses, snapshot.expenses); restore(cashMovements, snapshot.cashMovements); restore(shifts, snapshot.shifts); restore(registers, snapshot.registers); restore(exchanges, snapshot.exchanges); restore(transfers, snapshot.transfers); restore(transferLines, snapshot.transferLines);
         restore(sales, snapshot.sales); restore(saleItems, snapshot.saleItems); restore(payments, snapshot.payments); restore(refunds, snapshot.refunds); restore(refundItems, snapshot.refundItems);
         restore(orders, snapshot.orders); restore(orderLines, snapshot.orderLines); restore(inventoryReservations, snapshot.inventoryReservations);
         restore(fulfillments, snapshot.fulfillments); restore(fulfillmentLines, snapshot.fulfillmentLines); restore(orderAccessTokens, snapshot.orderAccessTokens);
@@ -230,6 +235,76 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     async listJournalLines(entryId, businessId) {
       return [...journalLines.values()].filter((line) => line.entryId === entryId && line.businessId === businessId).sort((a, b) => a.position - b.position);
     },
+    async aggregateJournalAccountTotals(businessId, query) {
+      const totals = new Map<string, { debitMinor: number; creditMinor: number }>();
+      for (const line of journalLines.values()) {
+        if (line.businessId !== businessId) continue;
+        const entry = journalEntries.get(line.entryId);
+        if (!entry || entry.businessId !== businessId) continue;
+        if (query.branchId !== undefined && entry.branchId !== query.branchId) continue;
+        if (query.dateFrom && entry.effectiveAt < query.dateFrom) continue;
+        if (query.dateTo && entry.effectiveAt >= query.dateTo) continue;
+        const total = totals.get(line.accountId) ?? { debitMinor: 0, creditMinor: 0 };
+        total.debitMinor += line.debitMinor;
+        total.creditMinor += line.creditMinor;
+        totals.set(line.accountId, total);
+      }
+      return [...accountingAccounts.values()].filter((account) => account.businessId === businessId && totals.has(account.id))
+        .map((account) => ({ account, ...totals.get(account.id)! })).sort((a, b) => a.account.code.localeCompare(b.account.code));
+    },
+    async findAccountingActivation(businessId) {
+      return accountingActivations.get(businessId) ?? null;
+    },
+    async saveAccountingActivation(input) {
+      const row: DbAccountingActivation = { ...input, updatedAt: new Date() };
+      accountingActivations.set(input.businessId, row);
+      return row;
+    },
+    async createAccountingBackfillRun(input) {
+      const duplicate = [...accountingBackfillRuns.values()].find((row) => row.businessId === input.businessId && row.requestId === input.requestId);
+      if (duplicate) throw new Error("CONFLICT");
+      const row: DbAccountingBackfillRun = { ...input, id: nid("backfill"), createdAt: new Date() };
+      accountingBackfillRuns.set(row.id, row);
+      return row;
+    },
+    async findAccountingBackfillRunByRequest(businessId, requestId) {
+      return [...accountingBackfillRuns.values()].find((row) => row.businessId === businessId && row.requestId === requestId) ?? null;
+    },
+    async findLatestAccountingBackfillRun(businessId) {
+      return [...accountingBackfillRuns.values()].filter((row) => row.businessId === businessId).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null;
+    },
+    async findAccountingBackfillRun(id, businessId) {
+      const row = accountingBackfillRuns.get(id);
+      return row?.businessId === businessId ? row : null;
+    },
+    async updateAccountingBackfillRun(id, businessId, patch) {
+      const row = accountingBackfillRuns.get(id);
+      if (!row || row.businessId !== businessId) return null;
+      const next = { ...row, ...patch };
+      accountingBackfillRuns.set(id, next);
+      return next;
+    },
+    async createAccountingBackfillIssue(input) {
+      const existing = [...accountingBackfillIssues.values()].find((row) => row.businessId === input.businessId && row.sourceType === input.sourceType && row.sourceId === input.sourceId && row.reason === input.reason);
+      if (existing) {
+        if (existing.runId !== input.runId) { const next = { ...existing, runId: input.runId }; accountingBackfillIssues.set(existing.id, next); return next; }
+        return existing;
+      }
+      const row: DbAccountingBackfillIssue = { ...input, id: nid("backfill-issue"), createdAt: new Date() };
+      accountingBackfillIssues.set(row.id, row);
+      return row;
+    },
+    async listAccountingBackfillIssues(runId, businessId, limit) {
+      return [...accountingBackfillIssues.values()].filter((row) => row.businessId === businessId && row.runId === runId).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()).slice(0, Math.max(1, Math.min(200, limit)));
+    },
+    async countAccountingBackfillIssues(runId, businessId) {
+      return [...accountingBackfillIssues.values()].filter((row) => row.businessId === businessId && row.runId === runId).length;
+    },
+    async hasUnaccountedValueAdjustments(businessId) {
+      return [...giftCardTransactions.values()].some((row) => row.businessId === businessId && row.type !== "ISSUE" && row.amountDeltaMinor !== 0 && !row.saleId && !row.refundId)
+        || [...storeCreditTransactions.values()].some((row) => row.businessId === businessId && row.amountDeltaMinor !== 0 && !row.saleId && !row.refundId)
+        || [...loyaltyTransactions.values()].some((row) => row.businessId === businessId && row.pointsDelta !== 0 && !row.saleId && !row.refundId);
+    },
     async createSupplierBill(input) {
       if ([...supplierBills.values()].some((row) => row.businessId === input.businessId && row.supplierId === input.supplierId && row.invoiceNumber === input.invoiceNumber)) throw new Error("CONFLICT");
       const now = new Date();
@@ -243,6 +318,9 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     },
     async listSupplierBills(businessId) {
       return [...supplierBills.values()].filter((row) => row.businessId === businessId).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    },
+    async listSupplierBillsPage(businessId, afterId, limit) {
+      return [...supplierBills.values()].filter((row) => row.businessId === businessId && (!afterId || row.id > afterId)).sort((a, b) => a.id.localeCompare(b.id)).slice(0, limit);
     },
     async updateSupplierBill(id, businessId, patch, expectedVersion) {
       const row = supplierBills.get(id);
@@ -269,14 +347,31 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       supplierCredits.set(row.id, row);
       return row;
     },
+    async updateSupplierCredit(id, businessId, patch) {
+      const row = supplierCredits.get(id);
+      if (!row || row.businessId !== businessId) return null;
+      const next = { ...row, ...patch };
+      supplierCredits.set(id, next);
+      return next;
+    },
     async listSupplierCredits(businessId, supplierId) {
       return [...supplierCredits.values()].filter((row) => row.businessId === businessId && row.supplierId === supplierId);
+    },
+    async listUnappliedSupplierCredits(businessId) {
+      return [...supplierCredits.values()].filter((row) => row.businessId === businessId && row.status === "POSTED" && row.billId === null);
     },
     async createSupplierPayment(input) {
       if ([...supplierPayments.values()].some((row) => row.businessId === input.businessId && row.idempotencyKey === input.idempotencyKey)) throw new Error("CONFLICT");
       const row: DbSupplierPayment = { ...input, id: nid("payment"), createdAt: new Date() };
       supplierPayments.set(row.id, row);
       return row;
+    },
+    async updateSupplierPayment(id, businessId, patch) {
+      const row = supplierPayments.get(id);
+      if (!row || row.businessId !== businessId) return null;
+      const next = { ...row, ...patch };
+      supplierPayments.set(id, next);
+      return next;
     },
     async listSupplierPayments(billId, businessId) {
       return [...supplierPayments.values()].filter((row) => row.billId === billId && row.businessId === businessId).sort((a, b) => a.paidAt.getTime() - b.paidAt.getTime());
@@ -292,6 +387,11 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     },
     async returnedQuantityByReceiptLine(businessId, receiptLineId) {
       return [...supplierReturnReceiptAllocations.values()].filter((row) => row.businessId === businessId && row.receiptLineId === receiptLineId).reduce((sum, row) => sum + row.quantity, 0);
+    },
+    async returnedBilledQuantityByReceiptLine(businessId, receiptLineId) {
+      return [...supplierReturnReceiptAllocations.values()].filter((row) => row.businessId === businessId && row.receiptLineId === receiptLineId)
+        .filter((row) => supplierReturns.get(supplierReturnLines.get(row.supplierReturnLineId)?.supplierReturnId ?? "")?.status === "POSTED")
+        .reduce((sum, row) => sum + row.billedQuantity, 0);
     },
     async findUserByEmail(email) {
       for (const u of users.values()) if (u.email === email) return u;
@@ -638,6 +738,9 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     },
     async listInventoryCountsByBusiness(businessId) {
       return [...inventoryCounts.values()].filter((row) => row.businessId === businessId);
+    },
+    async listInventoryCountsPage(businessId, afterId, limit) {
+      return [...inventoryCounts.values()].filter((row) => row.businessId === businessId && (!afterId || row.id > afterId)).sort((a, b) => a.id.localeCompare(b.id)).slice(0, Math.max(1, Math.min(500, limit)));
     },
     async updateInventoryCount(id, businessId, patch, expectedVersion) {
       const row = inventoryCounts.get(id) ?? null;
@@ -1132,12 +1235,15 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     async createSaleItemLoyaltyAllocation(a) { const row: DbSaleItemLoyaltyAllocation = { ...a, id: nid("sla"), createdAt: new Date() }; saleItemLoyaltyAllocations.set(row.id, row); return row; },
     async listSaleItemLoyaltyAllocations(saleLoyaltyId, businessId) { return [...saleItemLoyaltyAllocations.values()].filter((row) => row.saleLoyaltyId === saleLoyaltyId && row.businessId === businessId); },
     async createRefund(r) {
-      const row: DbRefund = { deliveryFeeRefundMinor: 0, deliveryTaxRefundMinor: 0, ...r, id: nid("ref") };
+      const row: DbRefund = { deliveryFeeRefundMinor: 0, deliveryTaxRefundMinor: 0, ...r, id: nid("ref"), createdAt: new Date() };
       refunds.set(row.id, row);
       return row;
     },
     async listRefundsByBusiness(businessId) {
       return [...refunds.values()].filter((r) => r.businessId === businessId);
+    },
+    async listRefundsPage(businessId, afterId, limit) {
+      return [...refunds.values()].filter((row) => row.businessId === businessId && (!afterId || row.id > afterId)).sort((a, b) => a.id.localeCompare(b.id)).slice(0, Math.max(1, Math.min(500, limit)));
     },
     async listRefundsBySale(saleId, businessId) {
       return [...refunds.values()].filter(
@@ -1625,6 +1731,9 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     async listPurchaseReceiptsByOrder(purchaseOrderId, businessId) {
       return [...purchaseReceipts.values()].filter((row) => row.purchaseOrderId === purchaseOrderId && row.businessId === businessId);
     },
+    async listPurchaseReceiptsPage(businessId, afterId, limit) {
+      return [...purchaseReceipts.values()].filter((row) => row.businessId === businessId && (!afterId || row.id > afterId)).sort((a, b) => a.id.localeCompare(b.id)).slice(0, Math.max(1, Math.min(500, limit)));
+    },
     async createPurchaseReceiptLine(l) {
       const row = { ...l, id: nid("grnl"), createdAt: new Date() };
       purchaseReceiptLines.set(row.id, row);
@@ -1651,6 +1760,9 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     },
     async listSupplierReturnsByBusiness(businessId) {
       return [...supplierReturns.values()].filter((row) => row.businessId === businessId);
+    },
+    async listSupplierReturnsPage(businessId, afterId, limit) {
+      return [...supplierReturns.values()].filter((row) => row.businessId === businessId && (!afterId || row.id > afterId)).sort((a, b) => a.id.localeCompare(b.id)).slice(0, Math.max(1, Math.min(500, limit)));
     },
     async listSupplierReturnsByOrder(purchaseOrderId, businessId) {
       return [...supplierReturns.values()].filter((row) => row.purchaseOrderId === purchaseOrderId && row.businessId === businessId);

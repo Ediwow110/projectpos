@@ -163,6 +163,7 @@ describe("phase12 pg people: refunds and items", () => {
     expect(await people.findRefundById(created.id, b.id)).toEqual({
       ...input,
       id: created.id,
+      createdAt: created.createdAt,
       deliveryFeeRefundMinor: 0,
       deliveryTaxRefundMinor: 0,
     });

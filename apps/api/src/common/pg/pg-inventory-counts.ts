@@ -59,6 +59,11 @@ export function inventoryCountsFamily(ctx: PgContext) {
       try { const r = await c.query(`SELECT ${COUNT_COLUMNS} FROM "InventoryCount" WHERE "businessId"=$1 ORDER BY "createdAt" DESC,"id" DESC`, [businessId]); return r.rows.map((row) => countRow(row)); }
       finally { if (ctx.owns()) c.release(); }
     },
+    async listInventoryCountsPage(businessId: string, afterId: string | null, limit: number): Promise<DbInventoryCount[]> {
+      const c = await ctx.client();
+      try { const r = await c.query(`SELECT ${COUNT_COLUMNS} FROM "InventoryCount" WHERE "businessId"=$1 AND ($2::text IS NULL OR "id">$2) ORDER BY "id" ASC LIMIT $3`, [businessId, afterId, limit]); return r.rows.map((row) => countRow(row)); }
+      finally { if (ctx.owns()) c.release(); }
+    },
     async updateInventoryCount(id: string, businessId: string, patch: Partial<Omit<DbInventoryCount, "id" | "businessId" | "createdAt" | "version">>, expectedVersion: number): Promise<DbInventoryCount | null> {
       const c = await ctx.client();
       try {

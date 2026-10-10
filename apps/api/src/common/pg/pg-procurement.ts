@@ -515,6 +515,11 @@ export function procurementFamily(ctx: PgContext) {
       try { const r = await c.query(`SELECT ${PURCHASE_RECEIPT_COLUMNS} FROM "PurchaseReceipt" WHERE "purchaseOrderId" = $1 AND "businessId" = $2 ORDER BY "createdAt" ASC, "id" ASC`, [purchaseOrderId,businessId]); return r.rows.map((row) => purchaseReceiptRow(row as Record<string, unknown>)); }
       finally { if (ctx.owns()) c.release(); }
     },
+    async listPurchaseReceiptsPage(businessId: string, afterId: string | null, limit: number): Promise<DbPurchaseReceipt[]> {
+      const c = await ctx.client();
+      try { const r = await c.query(`SELECT ${PURCHASE_RECEIPT_COLUMNS} FROM "PurchaseReceipt" WHERE "businessId"=$1 AND ($2::text IS NULL OR "id">$2) ORDER BY "id" ASC LIMIT $3`, [businessId,afterId,limit]); return r.rows.map((row) => purchaseReceiptRow(row as Record<string, unknown>)); }
+      finally { if (ctx.owns()) c.release(); }
+    },
     async createPurchaseReceiptLine(l0: Omit<DbPurchaseReceiptLine, "id" | "createdAt">): Promise<DbPurchaseReceiptLine> {
       const c = await ctx.client();
       try { const row = { ...l0, id: nid("grnl"), createdAt: new Date() }; await c.query('INSERT INTO "PurchaseReceiptLine" ("id","businessId","purchaseReceiptId","purchaseOrderLineId","productId","quantityReceived","unitCostMinorSnapshot","productNameSnapshot","supplierSkuSnapshot","createdAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,CURRENT_TIMESTAMP)', [row.id,row.businessId,row.purchaseReceiptId,row.purchaseOrderLineId,row.productId,row.quantityReceived,row.unitCostMinorSnapshot,row.productNameSnapshot,row.supplierSkuSnapshot]); return row; }
@@ -540,6 +545,9 @@ export function procurementFamily(ctx: PgContext) {
     },
     async listSupplierReturnsByBusiness(businessId: string): Promise<DbSupplierReturn[]> {
       const c = await ctx.client(); try { const r = await c.query(`SELECT ${SUPPLIER_RETURN_COLUMNS} FROM "SupplierReturn" WHERE "businessId"=$1 ORDER BY "createdAt" ASC, "id" ASC`, [businessId]); return r.rows.map((row) => supplierReturnRow(row as Record<string, unknown>)); } finally { if (ctx.owns()) c.release(); }
+    },
+    async listSupplierReturnsPage(businessId: string, afterId: string | null, limit: number): Promise<DbSupplierReturn[]> {
+      const c = await ctx.client(); try { const r = await c.query(`SELECT ${SUPPLIER_RETURN_COLUMNS} FROM "SupplierReturn" WHERE "businessId"=$1 AND ($2::text IS NULL OR "id">$2) ORDER BY "id" ASC LIMIT $3`, [businessId,afterId,limit]); return r.rows.map((row) => supplierReturnRow(row as Record<string, unknown>)); } finally { if (ctx.owns()) c.release(); }
     },
     async listSupplierReturnsByOrder(purchaseOrderId: string, businessId: string): Promise<DbSupplierReturn[]> {
       const c = await ctx.client(); try { const r = await c.query(`SELECT ${SUPPLIER_RETURN_COLUMNS} FROM "SupplierReturn" WHERE "purchaseOrderId"=$1 AND "businessId"=$2 ORDER BY "createdAt" ASC, "id" ASC`, [purchaseOrderId,businessId]); return r.rows.map((row) => supplierReturnRow(row as Record<string, unknown>)); } finally { if (ctx.owns()) c.release(); }

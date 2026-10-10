@@ -18,7 +18,7 @@ import { productModelFamily, type ProductModelFamily } from "./pg-product-model"
 import { valueFamily, type ValueFamily } from "./pg-value";
 import { ordersFamily } from "./pg-orders";
 import type { DbGiftCard, DbGiftCardTransaction, DbStoreCreditAccount, DbStoreCreditTransaction, DbLoyaltyProgram, DbLoyaltyAccount, DbLoyaltyTransaction, DbSaleGiftCardLoad, DbSaleLoyalty, DbSaleItemLoyaltyAllocation } from "../db.port";
-import type { DbAccountingAccount, DbJournalEntry, DbJournalEntryCreate, DbJournalLine, DbJournalPageQuery, DbSupplierBill, DbSupplierBillAllocation, DbSupplierCredit, DbSupplierPayment, DbSupplierReturnReceiptAllocation } from "../db.port";
+import type { DbAccountingAccount, DbAccountingActivation, DbAccountingBackfillIssue, DbAccountingBackfillRun, DbJournalAccountTotal, DbJournalEntry, DbJournalEntryCreate, DbJournalLine, DbJournalPageQuery, DbJournalTotalsQuery, DbSupplierBill, DbSupplierBillAllocation, DbSupplierCredit, DbSupplierPayment, DbSupplierReturnReceiptAllocation } from "../db.port";
 import { accountingFamily } from "./pg-accounting";
 import { payablesFamily } from "./pg-payables";
 
@@ -86,20 +86,36 @@ export class PgDbPort implements DbPort {
   findJournalEntryById(id: string, businessId: string): Promise<DbJournalEntry | null> { return this.accounting.findJournalEntryById(id, businessId); }
   listJournalEntries(businessId: string, query: DbJournalPageQuery): Promise<DbJournalEntry[]> { return this.accounting.listJournalEntries(businessId, query); }
   listJournalLines(entryId: string, businessId: string): Promise<DbJournalLine[]> { return this.accounting.listJournalLines(entryId, businessId); }
+  aggregateJournalAccountTotals(businessId: string, query: DbJournalTotalsQuery): Promise<DbJournalAccountTotal[]> { return this.accounting.aggregateJournalAccountTotals(businessId, query); }
+  findAccountingActivation(businessId: string): Promise<DbAccountingActivation | null> { return this.accounting.findAccountingActivation(businessId); }
+  saveAccountingActivation(activation: Omit<DbAccountingActivation, "updatedAt">): Promise<DbAccountingActivation> { return this.accounting.saveAccountingActivation(activation); }
+  createAccountingBackfillRun(run: Omit<DbAccountingBackfillRun, "id" | "createdAt">): Promise<DbAccountingBackfillRun> { return this.accounting.createAccountingBackfillRun(run); }
+  findAccountingBackfillRunByRequest(businessId: string, requestId: string): Promise<DbAccountingBackfillRun | null> { return this.accounting.findAccountingBackfillRunByRequest(businessId, requestId); }
+  findLatestAccountingBackfillRun(businessId: string): Promise<DbAccountingBackfillRun | null> { return this.accounting.findLatestAccountingBackfillRun(businessId); }
+  findAccountingBackfillRun(id: string, businessId: string): Promise<DbAccountingBackfillRun | null> { return this.accounting.findAccountingBackfillRun(id, businessId); }
+  updateAccountingBackfillRun(id: string, businessId: string, patch: Partial<Pick<DbAccountingBackfillRun, "status" | "cursor" | "processedCount" | "skippedCount" | "debitMinor" | "creditMinor" | "startedAt" | "completedAt">>): Promise<DbAccountingBackfillRun | null> { return this.accounting.updateAccountingBackfillRun(id, businessId, patch); }
+  createAccountingBackfillIssue(issue: Omit<DbAccountingBackfillIssue, "id" | "createdAt">): Promise<DbAccountingBackfillIssue> { return this.accounting.createAccountingBackfillIssue(issue); }
+  listAccountingBackfillIssues(runId: string, businessId: string, limit: number): Promise<DbAccountingBackfillIssue[]> { return this.accounting.listAccountingBackfillIssues(runId, businessId, limit); }
+  countAccountingBackfillIssues(runId: string, businessId: string): Promise<number> { return this.accounting.countAccountingBackfillIssues(runId, businessId); }
   createSupplierBill(input: Omit<DbSupplierBill, "id" | "createdAt" | "updatedAt">): Promise<DbSupplierBill> { return this.payables.createSupplierBill(input); }
   findSupplierBill(id: string, businessId: string): Promise<DbSupplierBill | null> { return this.payables.findSupplierBill(id, businessId); }
   listSupplierBills(businessId: string): Promise<DbSupplierBill[]> { return this.payables.listSupplierBills(businessId); }
+  listSupplierBillsPage(businessId: string, afterId: string | null, limit: number): Promise<DbSupplierBill[]> { return this.payables.listSupplierBillsPage(businessId, afterId, limit); }
   updateSupplierBill(id: string, businessId: string, patch: Partial<Omit<DbSupplierBill, "id" | "businessId" | "createdAt" | "version">>, expectedVersion: number): Promise<DbSupplierBill | null> { return this.payables.updateSupplierBill(id, businessId, patch, expectedVersion); }
   createSupplierBillAllocation(input: Omit<DbSupplierBillAllocation, "id">): Promise<DbSupplierBillAllocation> { return this.payables.createSupplierBillAllocation(input); }
   listSupplierBillAllocations(billId: string, businessId: string): Promise<DbSupplierBillAllocation[]> { return this.payables.listSupplierBillAllocations(billId, businessId); }
   billedQuantityByReceiptLine(businessId: string, receiptLineId: string): Promise<number> { return this.payables.billedQuantityByReceiptLine(businessId, receiptLineId); }
   createSupplierCredit(input: Omit<DbSupplierCredit, "id" | "createdAt">): Promise<DbSupplierCredit> { return this.payables.createSupplierCredit(input); }
+  updateSupplierCredit(id: string, businessId: string, patch: Pick<DbSupplierCredit, "billId" | "status">): Promise<DbSupplierCredit | null> { return this.payables.updateSupplierCredit(id, businessId, patch); }
   listSupplierCredits(businessId: string, supplierId: string): Promise<DbSupplierCredit[]> { return this.payables.listSupplierCredits(businessId, supplierId); }
+  listUnappliedSupplierCredits(businessId: string): Promise<DbSupplierCredit[]> { return this.payables.listUnappliedSupplierCredits(businessId); }
   createSupplierPayment(input: Omit<DbSupplierPayment, "id" | "createdAt">): Promise<DbSupplierPayment> { return this.payables.createSupplierPayment(input); }
+  updateSupplierPayment(id: string, businessId: string, patch: Partial<Pick<DbSupplierPayment, "cashMovementId">>): Promise<DbSupplierPayment | null> { return this.payables.updateSupplierPayment(id, businessId, patch); }
   listSupplierPayments(billId: string, businessId: string): Promise<DbSupplierPayment[]> { return this.payables.listSupplierPayments(billId, businessId); }
   createSupplierReturnReceiptAllocation(input: Omit<DbSupplierReturnReceiptAllocation, "id">): Promise<DbSupplierReturnReceiptAllocation> { return this.payables.createSupplierReturnReceiptAllocation(input); }
   listSupplierReturnReceiptAllocations(returnLineId: string, businessId: string): Promise<DbSupplierReturnReceiptAllocation[]> { return this.payables.listSupplierReturnReceiptAllocations(returnLineId, businessId); }
   returnedQuantityByReceiptLine(businessId: string, receiptLineId: string): Promise<number> { return this.payables.returnedQuantityByReceiptLine(businessId, receiptLineId); }
+  returnedBilledQuantityByReceiptLine(businessId: string, receiptLineId: string): Promise<number> { return this.payables.returnedBilledQuantityByReceiptLine(businessId, receiptLineId); }
   async close(): Promise<void> {
     await this.ctx.close();
   }
@@ -275,6 +291,7 @@ export class PgDbPort implements DbPort {
   createInventoryCount(c: Omit<DbInventoryCount, "id" | "createdAt" | "updatedAt">): Promise<DbInventoryCount> { return this.inventoryCounts.createInventoryCount(c); }
   findInventoryCountById(id: string, businessId: string): Promise<DbInventoryCount | null> { return this.inventoryCounts.findInventoryCountById(id, businessId); }
   listInventoryCountsByBusiness(businessId: string): Promise<DbInventoryCount[]> { return this.inventoryCounts.listInventoryCountsByBusiness(businessId); }
+  listInventoryCountsPage(businessId: string, afterId: string | null, limit: number): Promise<DbInventoryCount[]> { return this.inventoryCounts.listInventoryCountsPage(businessId, afterId, limit); }
   updateInventoryCount(id: string, businessId: string, patch: Partial<Omit<DbInventoryCount, "id" | "businessId" | "createdAt" | "version">>, expectedVersion: number): Promise<DbInventoryCount | null> { return this.inventoryCounts.updateInventoryCount(id, businessId, patch, expectedVersion); }
   createInventoryCountLine(l: Omit<DbInventoryCountLine, "id" | "createdAt" | "updatedAt">): Promise<DbInventoryCountLine> { return this.inventoryCounts.createInventoryCountLine(l); }
   listInventoryCountLines(countId: string, businessId: string): Promise<DbInventoryCountLine[]> { return this.inventoryCounts.listInventoryCountLines(countId, businessId); }
@@ -480,6 +497,7 @@ export class PgDbPort implements DbPort {
   updateSaleLoyalty(id: string, businessId: string, patch: Partial<Pick<DbSaleLoyalty, "redeemedPoints" | "redeemedValueMinor" | "earnedPoints">>): Promise<DbSaleLoyalty | null> { return this.values.updateSaleLoyalty(id, businessId, patch); }
   createSaleItemLoyaltyAllocation(a: Omit<DbSaleItemLoyaltyAllocation, "id" | "createdAt">): Promise<DbSaleItemLoyaltyAllocation> { return this.values.createSaleItemLoyaltyAllocation(a); }
   listSaleItemLoyaltyAllocations(saleLoyaltyId: string, businessId: string): Promise<DbSaleItemLoyaltyAllocation[]> { return this.values.listSaleItemLoyaltyAllocations(saleLoyaltyId, businessId); }
+  hasUnaccountedValueAdjustments(businessId: string): Promise<boolean> { return this.values.hasUnaccountedValueAdjustments(businessId); }
   createRefund(r: DbRefundCreate): Promise<DbRefund> {
     return this.people.createRefund(r);
   }
@@ -489,6 +507,7 @@ export class PgDbPort implements DbPort {
   listRefundsByBusiness(businessId: string): Promise<DbRefund[]> {
     return this.people.listRefundsByBusiness(businessId);
   }
+  listRefundsPage(businessId: string, afterId: string | null, limit: number): Promise<DbRefund[]> { return this.people.listRefundsPage(businessId, afterId, limit); }
   findRefundById(id: string, businessId: string): Promise<DbRefund | null> {
     return this.people.findRefundById(id, businessId);
   }
@@ -769,12 +788,14 @@ export class PgDbPort implements DbPort {
   createPurchaseReceipt(r: Omit<DbPurchaseReceipt, "id" | "createdAt">): Promise<DbPurchaseReceipt> { return this.procurement.createPurchaseReceipt(r); }
   findPurchaseReceiptById(id: string, businessId: string): Promise<DbPurchaseReceipt | null> { return this.procurement.findPurchaseReceiptById(id, businessId); }
   listPurchaseReceiptsByOrder(purchaseOrderId: string, businessId: string): Promise<DbPurchaseReceipt[]> { return this.procurement.listPurchaseReceiptsByOrder(purchaseOrderId, businessId); }
+  listPurchaseReceiptsPage(businessId: string, afterId: string | null, limit: number): Promise<DbPurchaseReceipt[]> { return this.procurement.listPurchaseReceiptsPage(businessId, afterId, limit); }
   createPurchaseReceiptLine(l: Omit<DbPurchaseReceiptLine, "id" | "createdAt">): Promise<DbPurchaseReceiptLine> { return this.procurement.createPurchaseReceiptLine(l); }
   listPurchaseReceiptLines(receiptId: string, businessId: string): Promise<DbPurchaseReceiptLine[]> { return this.procurement.listPurchaseReceiptLines(receiptId, businessId); }
   nextSupplierReturnNo(businessId: string): Promise<string> { return this.procurement.nextSupplierReturnNo(businessId); }
   createSupplierReturn(r: Omit<DbSupplierReturn, "id" | "createdAt" | "updatedAt">): Promise<DbSupplierReturn> { return this.procurement.createSupplierReturn(r); }
   findSupplierReturnById(id: string, businessId: string): Promise<DbSupplierReturn | null> { return this.procurement.findSupplierReturnById(id, businessId); }
   listSupplierReturnsByBusiness(businessId: string): Promise<DbSupplierReturn[]> { return this.procurement.listSupplierReturnsByBusiness(businessId); }
+  listSupplierReturnsPage(businessId: string, afterId: string | null, limit: number): Promise<DbSupplierReturn[]> { return this.procurement.listSupplierReturnsPage(businessId, afterId, limit); }
   listSupplierReturnsByOrder(purchaseOrderId: string, businessId: string): Promise<DbSupplierReturn[]> { return this.procurement.listSupplierReturnsByOrder(purchaseOrderId, businessId); }
   updateSupplierReturn(id: string, businessId: string, patch: Partial<Omit<DbSupplierReturn, "id" | "businessId" | "createdAt" | "version">>, expectedVersion: number): Promise<DbSupplierReturn | null> { return this.procurement.updateSupplierReturn(id, businessId, patch, expectedVersion); }
   createSupplierReturnLine(l: Omit<DbSupplierReturnLine, "id" | "createdAt" | "updatedAt">): Promise<DbSupplierReturnLine> { return this.procurement.createSupplierReturnLine(l); }

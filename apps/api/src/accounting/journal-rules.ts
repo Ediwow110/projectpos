@@ -72,6 +72,7 @@ export function buildSaleDraft(input: {
   effectiveAt: Date;
   tenders: PostingTender[];
   merchandiseRevenueMinor: number;
+  discountMinor?: number;
   deliveryFeeMinor?: number;
   taxPayableMinor?: number;
   giftCardLoadMinor?: number;
@@ -95,6 +96,10 @@ export function buildSaleDraft(input: {
     requireAmount(amount);
     if (amount > 0) lines.push(credit(accountCode, amount));
   }
+  if ((input.loyaltyIssuedMinor ?? 0) > 0) lines.push(debit("6000", input.loyaltyIssuedMinor!, "Loyalty rewards expense"));
+  const discountMinor = input.discountMinor ?? 0;
+  requireAmount(discountMinor);
+  if (discountMinor > 0) lines.push(debit("4020", discountMinor, "Sales discounts"));
   const cogsMinor = input.cogsMinor ?? 0;
   requireAmount(cogsMinor);
   if (cogsMinor > 0) lines.push(debit("5000", cogsMinor, "Cost of goods sold"), credit("1400", cogsMinor, "Inventory relieved"));
@@ -126,6 +131,9 @@ export function buildRefundDraft(input: {
     requireAmount(tender.amountMinor);
     if (tender.amountMinor > 0) lines.push(credit(accountForMethod(tender.method), tender.amountMinor));
   }
+  const loyaltyLiabilityMinor = input.loyaltyLiabilityMinor ?? 0;
+  requireAmount(loyaltyLiabilityMinor);
+  if (loyaltyLiabilityMinor > 0) lines.push(credit("6000", loyaltyLiabilityMinor, "Reverse loyalty rewards expense"));
   const restockedCostMinor = input.restockedCostMinor ?? 0;
   requireAmount(restockedCostMinor);
   if (restockedCostMinor > 0) lines.push(debit("1400", restockedCostMinor, "Restocked inventory"), credit("5000", restockedCostMinor, "Reverse cost of goods sold"));
@@ -135,6 +143,37 @@ export function buildRefundDraft(input: {
 export function buildExpenseDraft(input: { currency: string; amountMinor: number; expenseAccountCode: string; paidFromAccountCode: string; effectiveAt?: Date }): JournalDraft {
   requireAmount(input.amountMinor);
   return buildBalancedDraft({ currency: input.currency, effectiveAt: input.effectiveAt ?? new Date(), description: "Expense", lines: [debit(input.expenseAccountCode, input.amountMinor), credit(input.paidFromAccountCode, input.amountMinor)] });
+}
+
+export function buildInventoryMovementDraft(input: { currency: string; qtyDelta: number; unitCostMinor: number; movementType: "opening_stock" | "damage" | "adjustment"; effectiveAt: Date }): JournalDraft {
+  if (!Number.isSafeInteger(input.qtyDelta) || input.qtyDelta === 0 || !safeMinor(input.unitCostMinor)) invalid("ACCOUNTING_INVALID_AMOUNT");
+  const amount = Math.abs(input.qtyDelta) * input.unitCostMinor;
+  requireAmount(amount);
+  const sourceAccount = input.movementType === "opening_stock" ? "3000" : "6000";
+  const positive = input.qtyDelta > 0;
+  return buildBalancedDraft({
+    currency: input.currency, effectiveAt: input.effectiveAt, description: input.movementType === "opening_stock" ? "Opening inventory" : "Inventory adjustment",
+    lines: positive
+      ? [debit("1400", amount), credit(sourceAccount, amount)]
+      : [debit(sourceAccount, amount), credit("1400", amount)],
+  });
+}
+
+export function buildStockCountDraft(input: { currency: string; effectiveAt: Date; variances: Array<{ productName: string; qtyDelta: number; unitCostMinor: number }> }): JournalDraft {
+  const lines: JournalLineDraft[] = [];
+  for (const row of input.variances) {
+    if (!Number.isSafeInteger(row.qtyDelta) || row.qtyDelta === 0 || !safeMinor(row.unitCostMinor)) invalid("ACCOUNTING_INVALID_AMOUNT");
+    const amount = Math.abs(row.qtyDelta) * row.unitCostMinor;
+    requireAmount(amount);
+    if (amount === 0) continue;
+    lines.push(row.qtyDelta > 0
+      ? debit("1400", amount, `Stock count gain: ${row.productName}`)
+      : credit("1400", amount, `Stock count loss: ${row.productName}`));
+    lines.push(row.qtyDelta > 0
+      ? credit("6000", amount, `Stock count gain: ${row.productName}`)
+      : debit("6000", amount, `Stock count loss: ${row.productName}`));
+  }
+  return buildBalancedDraft({ currency: input.currency, effectiveAt: input.effectiveAt, description: "Posted stock count", lines });
 }
 
 export function buildPurchaseReceiptDraft(input: { currency: string; inventoryCostMinor: number; effectiveAt?: Date }): JournalDraft {
@@ -157,15 +196,19 @@ export function buildSupplierBillDraft(input: { currency: string; receiptCostMin
   return buildBalancedDraft({ currency: input.currency, effectiveAt: input.effectiveAt ?? new Date(), description: "Posted supplier bill", lines });
 }
 
-export function buildSupplierReturnDraft(input: { currency: string; billedCostMinor: number; unbilledCostMinor: number; effectiveAt?: Date }): JournalDraft {
-  requireAmount(input.billedCostMinor);
+export function buildSupplierReturnDraft(input: { currency: string; billedReceiptCostMinor: number; billedInvoiceCostMinor: number; unbilledCostMinor: number; effectiveAt?: Date }): JournalDraft {
+  requireAmount(input.billedReceiptCostMinor);
+  requireAmount(input.billedInvoiceCostMinor);
   requireAmount(input.unbilledCostMinor);
-  const total = input.billedCostMinor + input.unbilledCostMinor;
+  const total = input.billedReceiptCostMinor + input.unbilledCostMinor;
   requireAmount(total);
   const lines: JournalLineDraft[] = [];
-  if (input.billedCostMinor > 0) lines.push(debit("2000", input.billedCostMinor, "Supplier credit for billed receipt units"));
+  if (input.billedInvoiceCostMinor > 0) lines.push(debit("2000", input.billedInvoiceCostMinor, "Supplier credit for billed receipt units"));
   if (input.unbilledCostMinor > 0) lines.push(debit("2220", input.unbilledCostMinor, "Clear unbilled receipt value"));
   if (total > 0) lines.push(credit("1400", total, "Returned inventory"));
+  const variance = input.billedInvoiceCostMinor - input.billedReceiptCostMinor;
+  if (variance > 0) lines.push(credit("5100", variance, "Reverse purchase price variance"));
+  if (variance < 0) lines.push(debit("5100", -variance, "Reverse purchase price variance"));
   return buildBalancedDraft({ currency: input.currency, effectiveAt: input.effectiveAt ?? new Date(), description: "Posted supplier return", lines });
 }
 

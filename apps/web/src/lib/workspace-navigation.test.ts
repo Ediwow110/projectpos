@@ -22,6 +22,8 @@ describe("workspace navigation", () => {
       "/suppliers",
       "/purchase-orders",
       "/supplier-returns",
+      "/payables",
+      "/accounting",
       "/admin/loyalty",
       "/admin/online-ordering",
     ]));
@@ -43,6 +45,8 @@ describe("workspace navigation", () => {
     expect(hrefs).not.toContain("/suppliers");
     expect(hrefs).not.toContain("/purchase-orders");
     expect(hrefs).not.toContain("/supplier-returns");
+    expect(hrefs).not.toContain("/payables");
+    expect(hrefs).not.toContain("/accounting");
     expect(hrefs).not.toContain("/admin/loyalty");
     expect(hrefs).not.toContain("/admin/online-ordering");
   });

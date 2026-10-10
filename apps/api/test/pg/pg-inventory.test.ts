@@ -113,7 +113,7 @@ describe("phase12 pg inventory: movements", () => {
       const input = movementInput(b1.id, p1, { qtyDelta: 10 });
       const created = await inv.createMovement(input);
       expect(created.id).toBeTruthy();
-      expect(created).toEqual({ ...input, id: created.id });
+      expect(created).toEqual({ ...input, id: created.id, createdAt: created.createdAt });
       expect((await inv.listMovements(p1, b1.id)).map((m) => m.id)).toEqual([created.id]);
       // Wrong business: nothing (cross-tenant reads return [], never throw).
       expect(await inv.listMovements(p1, b2.id)).toEqual([]);
@@ -189,7 +189,7 @@ describe("phase12 pg inventory: movements", () => {
       });
       const created = await inv.createMovement(input);
       const listed = (await inv.listMovements(p, b.id, "br1"))[0];
-      expect(listed).toEqual({ ...input, id: created.id });
+      expect(listed).toEqual({ ...input, id: created.id, createdAt: created.createdAt });
     });
   });
 });

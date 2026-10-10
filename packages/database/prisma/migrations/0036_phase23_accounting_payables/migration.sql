@@ -50,6 +50,23 @@ ALTER TABLE "JournalEntry" ADD CONSTRAINT "JournalEntry_branchId_fkey" FOREIGN K
 ALTER TABLE "JournalEntry" ADD CONSTRAINT "JournalEntry_reversesEntryId_fkey" FOREIGN KEY ("reversesEntryId") REFERENCES "JournalEntry"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "JournalEntry" ENABLE ROW LEVEL SECURITY;
 
+CREATE FUNCTION "validate_journal_entry_tenant_scope"() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW."branchId" IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM "Branch" b WHERE b."id" = NEW."branchId" AND b."businessId" = NEW."businessId"
+  ) THEN
+    RAISE EXCEPTION 'ACCOUNTING_BRANCH_TENANT_MISMATCH' USING ERRCODE = '23503';
+  END IF;
+  IF NEW."reversesEntryId" IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM "JournalEntry" e WHERE e."id" = NEW."reversesEntryId" AND e."businessId" = NEW."businessId"
+  ) THEN
+    RAISE EXCEPTION 'ACCOUNTING_REVERSAL_TENANT_MISMATCH' USING ERRCODE = '23503';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER "JournalEntry_tenant_scope" BEFORE INSERT ON "JournalEntry" FOR EACH ROW EXECUTE FUNCTION "validate_journal_entry_tenant_scope"();
+
 CREATE TABLE "JournalLine" (
   "id" TEXT NOT NULL,
   "businessId" TEXT NOT NULL,
@@ -69,6 +86,20 @@ ALTER TABLE "JournalLine" ADD CONSTRAINT "JournalLine_businessId_fkey" FOREIGN K
 ALTER TABLE "JournalLine" ADD CONSTRAINT "JournalLine_entryId_fkey" FOREIGN KEY ("entryId") REFERENCES "JournalEntry"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "JournalLine" ADD CONSTRAINT "JournalLine_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "AccountingAccount"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "JournalLine" ENABLE ROW LEVEL SECURITY;
+
+CREATE FUNCTION "validate_journal_line_tenant_scope"() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM "JournalEntry" e WHERE e."id" = NEW."entryId" AND e."businessId" = NEW."businessId"
+  ) OR NOT EXISTS (
+    SELECT 1 FROM "AccountingAccount" a WHERE a."id" = NEW."accountId" AND a."businessId" = NEW."businessId"
+  ) THEN
+    RAISE EXCEPTION 'ACCOUNTING_LINE_TENANT_MISMATCH' USING ERRCODE = '23503';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER "JournalLine_tenant_scope" BEFORE INSERT ON "JournalLine" FOR EACH ROW EXECUTE FUNCTION "validate_journal_line_tenant_scope"();
 
 CREATE FUNCTION "reject_immutable_journal_change"() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN

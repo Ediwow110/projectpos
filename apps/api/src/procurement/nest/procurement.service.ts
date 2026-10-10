@@ -21,6 +21,8 @@ import {
 import { normalizeSupplierCode, normalizeSupplierPayload, parseExpectedDate, parsePurchaseOrderFilterDate } from "../normalize";
 import { InventoryAvailabilityService } from "../../inventory/availability-service";
 import { withInventoryLocks } from "../../inventory/inventory-locks";
+import { JournalPostingService } from "../../accounting/journal-posting.service";
+import { buildPurchaseReceiptDraft, buildSupplierReturnDraft } from "../../accounting/journal-rules";
 
 export interface SupplierPage {
   items: DbSupplier[];
@@ -84,7 +86,8 @@ function snapshot(value: unknown): unknown {
 
 @Injectable()
 export class ProcurementService {
-  constructor(@Inject("DbPort") private readonly db: DbPort) {}
+  private readonly journals: JournalPostingService;
+  constructor(@Inject("DbPort") private readonly db: DbPort) { this.journals = new JournalPostingService(db); }
 
   private requireGrant(granted: string[], permission: string): void {
     if (!granted.includes(permission)) throw new Error("FORBIDDEN");
@@ -472,6 +475,13 @@ export class ProcurementService {
             await tx.createMovement({ businessId, productId: source.productId, type: "receive", qtyDelta: quantityReceived, reason: null, referenceType: "PurchaseReceipt", referenceId: receipt.id, actorId, requestId, branchId: current.branchId });
             await tx.upsertBalance({ businessId, productId: source.productId, branchId: current.branchId, qtyOnHand: (balance?.qtyOnHand ?? 0) + quantityReceived });
           }
+          const business = await tx.findBusinessById(businessId);
+          if (!business) throw new Error("NOT_FOUND");
+          const inventoryCostMinor = createdLines.reduce((sum, line) => sum + line.quantityReceived * line.unitCostMinorSnapshot, 0);
+          await this.journals.postSourceEvent({
+            businessId, branchId: current.branchId, sourceType: "PurchaseReceipt", sourceId: receipt.id, sourceEvent: "posted", actorId, requestId,
+            draft: buildPurchaseReceiptDraft({ currency: business.currency, effectiveAt: receipt.receivedAt, inventoryCostMinor }),
+          });
           const cumulative = await this.receivedByLine(businessId, orderId, tx);
           for (const { source, quantityReceived } of resolved) cumulative.set(source.id, (cumulative.get(source.id) ?? 0) + quantityReceived);
           const allReceived = (await tx.listPurchaseOrderLines(orderId, businessId)).every((line) => (cumulative.get(line.id) ?? 0) >= line.quantity);
@@ -562,6 +572,95 @@ export class ProcurementService {
           );
           const next = await tx.updateSupplierReturn(id, businessId, { status: "POSTED", postedBy: actorId, postedAt: new Date() }, expectedVersion); if (!next) throw new Error("STALE_VERSION");
           for (const { source, quantity } of resolved) { const balance = await tx.findBalance(source.productId, businessId, current.branchId); await tx.createMovement({ businessId, productId: source.productId, type: "supplier_return", qtyDelta: -quantity, reason: current.reason, referenceType: "SupplierReturn", referenceId: id, actorId, requestId, branchId: current.branchId }); await tx.upsertBalance({ businessId, productId: source.productId, branchId: current.branchId, qtyOnHand: (balance?.qtyOnHand ?? 0) - quantity }); }
+          const business = await tx.findBusinessById(businessId);
+          if (!business) throw new Error("NOT_FOUND");
+          let billedReceiptCostMinor = 0;
+          let billedInvoiceCostMinor = 0;
+          let unbilledCostMinor = 0;
+          const supplierBills = (await tx.listSupplierBills(businessId))
+            .filter((bill) => ["POSTED", "PARTIALLY_PAID", "PAID"].includes(bill.status))
+            .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
+          const billAllocationsByReceiptLine = new Map<string, Array<{ billId: string; quantity: number; unitInvoiceCostMinor: number }>>();
+          for (const bill of supplierBills) {
+            for (const allocation of await tx.listSupplierBillAllocations(bill.id, businessId)) {
+              const current = billAllocationsByReceiptLine.get(allocation.receiptLineId) ?? [];
+              current.push({ billId: bill.id, quantity: allocation.quantity, unitInvoiceCostMinor: allocation.unitInvoiceCostMinor });
+              billAllocationsByReceiptLine.set(allocation.receiptLineId, current);
+            }
+          }
+          const creditBillIds = new Set<string>();
+          const receipts = (await tx.listPurchaseReceiptsByOrder(order.id, businessId))
+            .filter((receipt) => receipt.status === "POSTED")
+            .sort((a, b) => a.receivedAt.getTime() - b.receivedAt.getTime());
+          for (const { source, quantity } of resolved) {
+            let remaining = quantity;
+            for (const receipt of receipts) {
+              const receiptLines = (await tx.listPurchaseReceiptLines(receipt.id, businessId))
+                .filter((line) => line.purchaseOrderLineId === source.id);
+              for (const receiptLine of receiptLines) {
+                if (remaining <= 0) break;
+                const alreadyReturned = await tx.returnedQuantityByReceiptLine(businessId, receiptLine.id);
+                const available = Math.max(0, receiptLine.quantityReceived - alreadyReturned);
+                const allocated = Math.min(remaining, available);
+                if (allocated <= 0) continue;
+                const billedAllocations = billAllocationsByReceiptLine.get(receiptLine.id) ?? [];
+                const billed = await tx.billedQuantityByReceiptLine(businessId, receiptLine.id);
+                const alreadyBilledReturned = await tx.returnedBilledQuantityByReceiptLine(businessId, receiptLine.id);
+                const billedAllocated = Math.min(allocated, Math.max(0, billed - alreadyBilledReturned));
+                let previousBilledReturnRemaining = alreadyBilledReturned;
+                let newBilledReturnRemaining = billedAllocated;
+                let allocationInvoiceCostMinor = 0;
+                for (const billAllocation of billedAllocations) {
+                  const previouslyReturnedHere = Math.min(previousBilledReturnRemaining, billAllocation.quantity);
+                  previousBilledReturnRemaining -= previouslyReturnedHere;
+                  const availableFromThisBill = billAllocation.quantity - previouslyReturnedHere;
+                  const returnedFromThisBill = Math.min(newBilledReturnRemaining, availableFromThisBill);
+                  if (returnedFromThisBill > 0) {
+                    const amount = returnedFromThisBill * billAllocation.unitInvoiceCostMinor;
+                    billedInvoiceCostMinor += amount;
+                    allocationInvoiceCostMinor += amount;
+                    creditBillIds.add(billAllocation.billId);
+                    newBilledReturnRemaining -= returnedFromThisBill;
+                  }
+                }
+                if (newBilledReturnRemaining !== 0) throw new Error("SUPPLIER_RETURN_BILL_ALLOCATION_FAILED");
+                await tx.createSupplierReturnReceiptAllocation({
+                  businessId, supplierReturnLineId: draftLines.find((line) => line.purchaseOrderLineId === source.id)!.id,
+                  receiptLineId: receiptLine.id, quantity: allocated, unitCostMinorSnapshot: receiptLine.unitCostMinorSnapshot,
+                  billedQuantity: billedAllocated,
+                  billedInvoiceCostMinorSnapshot: allocationInvoiceCostMinor,
+                });
+                billedReceiptCostMinor += billedAllocated * receiptLine.unitCostMinorSnapshot;
+                unbilledCostMinor += (allocated - billedAllocated) * receiptLine.unitCostMinorSnapshot;
+                remaining -= allocated;
+              }
+              if (remaining <= 0) break;
+            }
+            if (remaining > 0) throw new Error("SUPPLIER_RETURN_RECEIPT_ALLOCATION_FAILED");
+          }
+          await this.journals.postSourceEvent({
+            businessId, branchId: current.branchId, sourceType: "SupplierReturn", sourceId: id, sourceEvent: "posted", actorId, requestId,
+            draft: buildSupplierReturnDraft({ currency: business.currency, effectiveAt: next.postedAt ?? new Date(), billedReceiptCostMinor, billedInvoiceCostMinor, unbilledCostMinor }),
+          });
+          if (billedInvoiceCostMinor > 0) {
+            const credit = await tx.createSupplierCredit({
+              businessId, supplierId: current.supplierId, billId: creditBillIds.size === 1 ? [...creditBillIds][0]! : null,
+              supplierReturnId: current.id, creditNumber: `RET-${current.returnNumber}`, amountMinor: billedInvoiceCostMinor,
+              status: "POSTED", createdBy: actorId, requestId,
+            });
+            if (credit.billId) {
+              const bill = await tx.findSupplierBill(credit.billId, businessId);
+              if (bill) {
+                const credits = await tx.listSupplierCredits(businessId, bill.supplierId);
+                const credited = credits.filter((row) => row.billId === bill.id && ["POSTED", "APPLIED"].includes(row.status))
+                  .reduce((sum, row) => sum + row.amountMinor, 0);
+                const gross = bill.invoiceAmountMinor + bill.nonStockChargeMinor;
+                const status = bill.paidMinor + credited >= gross ? "PAID" : bill.paidMinor > 0 ? "PARTIALLY_PAID" : "POSTED";
+                await tx.updateSupplierBill(bill.id, businessId, { status }, bill.version);
+              }
+            }
+            await tx.appendAudit({ businessId, actorId, action: "supplier_credit.posted", entityType: "SupplierCredit", entityId: credit.id, requestId, after: { supplierReturnId: current.id, billId: credit.billId, amountMinor: credit.amountMinor } });
+          }
           await tx.claimIdempotency({ businessId, key, commandType: "supplier_return.post", fingerprint, resultId: id }); const detail = await this.getSupplierReturn(businessId, id); await tx.appendAudit({ businessId, actorId, action: "supplier_return.posted", entityType: "SupplierReturn", entityId: id, requestId, before: snapshot(current), after: snapshot(detail) }); return { supplierReturn: detail, replayed: false };
         });
       });

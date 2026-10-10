@@ -8,40 +8,42 @@ const ALL = ["discount.override", "sale.void", "sale.refund", "cost.view"];
 
 async function setupReports() {
   const db = createMemoryDb();
+  const businessId = (await db.createBusiness({ name: "Reporting", currency: "PHP" })).id;
   const prod = await db.createProduct({
-    businessId: "b1", categoryId: null, name: "Coke", sku: null, barcode: null,
+    businessId: businessId, categoryId: null, name: "Coke", sku: null, barcode: null,
     brand: null, unit: "pc", costMinor: 1000, priceMinor: 2500, taxRateBps: null,
     reorderLevel: 5, trackInventory: true, isActive: true, imageUrl: null,
   });
-  await db.upsertBalance({ businessId: "b1", productId: prod.id, qtyOnHand: 100 });
+  await db.upsertBalance({ businessId: businessId, productId: prod.id, qtyOnHand: 100 });
   const sales = new SalesService(db);
   const mk = async (day: string, qty: number, key: string) => {
-    const draft = await sales.createDraft("b1", "u1", "r1", {
+    const draft = await sales.createDraft(businessId, "u1", "r1", {
       lines: [{ productId: prod.id, qty, lineDiscountMinor: 0 }], orderDiscountMinor: 0,
     }, ALL);
-    await sales.completeSale("b1", "u1", "r2", draft.id, {
+    await sales.completeSale(businessId, "u1", "r2", draft.id, {
       payments: [{ method: "cash", amountMinor: draft.totalMinor }], key, granted: ALL,
     });
-    await db.updateSale(draft.id, "b1", { createdAt: new Date(day) });
+    await db.updateSale(draft.id, businessId, { createdAt: new Date(day) });
     return draft.id;
   };
   await mk("2026-09-10T10:00:00.000Z", 2, "rep-k1");
   await mk("2026-09-20T10:00:00.000Z", 1, "rep-k2");
-  return { db, svc: new ReportingService(db), productId: prod.id };
+  return { db, businessId, svc: new ReportingService(db), productId: prod.id };
 }
 
 describe("phase7 reporting overview", () => {
   it("separates merchandise, delivery revenue/tax, excludes gift-card liability, and includes delivery refunds", async () => {
     const db = createMemoryDb();
+    const businessId = (await db.createBusiness({ name: "Delivery reporting", currency: "PHP" })).id;
     const product = await db.createProduct({
-      businessId: "b-delivery-report", categoryId: null, name: "Report item", sku: "REP-D", barcode: null,
+      businessId, categoryId: null, name: "Report item", sku: "REP-D", barcode: null,
       brand: null, unit: "pc", costMinor: 500, priceMinor: 5000, taxRateBps: null,
       reorderLevel: 0, trackInventory: true, isActive: true, imageUrl: null,
     });
-    await db.upsertBalance({ businessId: "b-delivery-report", productId: product.id, qtyOnHand: 9 });
+    await db.upsertBalance({ businessId, productId: product.id, qtyOnHand: 9 });
     const createdAt = new Date("2026-09-15T12:00:00.000Z");
     const sale = await db.createSale({
-      businessId: "b-delivery-report", receiptNo: "REP-DEL-1", status: "COMPLETED",
+      businessId, receiptNo: "REP-DEL-1", status: "COMPLETED",
       subtotalMinor: 5000, discountMinor: 0, taxMinor: 0, deliveryFeeMinor: 1000, deliveryTaxMinor: 120,
       totalMinor: 7120, paidMinor: 7120, changeMinor: 0, currency: "PHP", customerId: null, customerName: null,
       notes: null, actorId: "u1", requestId: "report-delivery", idempotencyKey: null, registerId: null, branchId: null,
@@ -82,8 +84,8 @@ describe("phase7 reporting overview", () => {
   });
 
   it("computes KPIs and deltas for a fixed range", async () => {
-    const { svc } = await setupReports();
-    const out = await svc.getOverview("b1", {
+    const { svc, businessId } = await setupReports();
+    const out = await svc.getOverview(businessId, {
       dateFrom: "2026-09-01T00:00:00.000Z", dateTo: "2026-09-30T00:00:00.000Z",
       compare: "none",
     }, "owner", ALL);
@@ -94,8 +96,8 @@ describe("phase7 reporting overview", () => {
     expect(out.generatedAt).toBeTruthy();
   });
   it("omits profit without cost.view and compares against previous period", async () => {
-    const { svc } = await setupReports();
-    const out = await svc.getOverview("b1", {
+    const { svc, businessId } = await setupReports();
+    const out = await svc.getOverview(businessId, {
       dateFrom: "2026-09-15T00:00:00.000Z", dateTo: "2026-09-30T00:00:00.000Z",
       compare: "previous_period",
     }, "cashier", []);
@@ -157,8 +159,8 @@ describe("phase7 reporting overview", () => {
 
 describe("phase7 sales and products reports", () => {
   it("buckets revenue by day", async () => {
-    const { svc } = await setupReports();
-    const out = await svc.getSalesReport("b1", {
+    const { svc, businessId } = await setupReports();
+    const out = await svc.getSalesReport(businessId, {
       dateFrom: "2026-09-01T00:00:00.000Z", dateTo: "2026-09-30T00:00:00.000Z",
       compare: "none", granularity: "day",
     }, "owner", ALL);
@@ -168,8 +170,8 @@ describe("phase7 sales and products reports", () => {
     expect(buckets["2026-09-15"]).toBe(0);
   });
   it("ranks top products with margin", async () => {
-    const { svc } = await setupReports();
-    const out = await svc.getProductsReport("b1", {
+    const { svc, businessId } = await setupReports();
+    const out = await svc.getProductsReport(businessId, {
       dateFrom: "2026-09-01T00:00:00.000Z", dateTo: "2026-09-30T00:00:00.000Z",
       compare: "none", tab: "top", limit: 20,
     }, "owner", ALL);
@@ -179,38 +181,38 @@ describe("phase7 sales and products reports", () => {
 
 describe("phase7 inventory payments cash customers cashiers", () => {
   it("reports inventory health and low stock", async () => {
-    const { svc, productId } = await setupReports();
+    const { svc, productId, businessId } = await setupReports();
     void productId;
-    const out = await svc.getInventoryReport("b1");
+    const out = await svc.getInventoryReport(businessId);
     expect(out.low).toBe(0);
     expect(out.out).toBe(0);
     expect(out.healthy).toBe(1);
     expect(out.movements.sold).toBe(3);
   });
   it("breaks payments down by method", async () => {
-    const { svc } = await setupReports();
-    const out = await svc.getPaymentsReport("b1", {
+    const { svc, businessId } = await setupReports();
+    const out = await svc.getPaymentsReport(businessId, {
       dateFrom: "2026-09-01T00:00:00.000Z", dateTo: "2026-09-30T00:00:00.000Z", compare: "none",
     }, "owner", ALL);
     expect(out.byMethod).toEqual([{ method: "cash", total: 7500, count: 2 }]);
     expect(out.unknown).toBe(0);
   });
   it("tops customers by spend without PII", async () => {
-    const { db, svc } = await setupReports();
+    const { db, svc, businessId } = await setupReports();
     const cust = await db.createCustomer({
-      businessId: "b1", name: "Ana", phone: "0917", email: null,
+      businessId: businessId, name: "Ana", phone: "0917", email: null,
       address: null, notes: null, isActive: true,
     });
     const sales = new SalesService(db);
-    const draft = await sales.createDraft("b1", "u1", "rx", {
-      lines: [{ productId: (await db.listProducts("b1"))[0].id, qty: 1, lineDiscountMinor: 0 }],
+    const draft = await sales.createDraft(businessId, "u1", "rx", {
+      lines: [{ productId: (await db.listProducts(businessId))[0].id, qty: 1, lineDiscountMinor: 0 }],
       orderDiscountMinor: 0, customerId: cust.id,
     }, ALL);
-    await sales.completeSale("b1", "u1", "ry", draft.id, {
+    await sales.completeSale(businessId, "u1", "ry", draft.id, {
       payments: [{ method: "cash", amountMinor: draft.totalMinor }], key: "top-cust-1", granted: ALL,
     });
-    await db.updateSale(draft.id, "b1", { createdAt: new Date("2026-09-21T10:00:00.000Z") });
-    const out = await svc.getCustomersReport("b1", {
+    await db.updateSale(draft.id, businessId, { createdAt: new Date("2026-09-21T10:00:00.000Z") });
+    const out = await svc.getCustomersReport(businessId, {
       dateFrom: "2026-09-01T00:00:00.000Z", dateTo: "2026-09-30T00:00:00.000Z", compare: "none",
     }, "cashier");
     expect(out.total).toBe(1);
@@ -218,11 +220,11 @@ describe("phase7 inventory payments cash customers cashiers", () => {
     expect(out.top[0]).not.toHaveProperty("phone");
   });
   it("forbids the cashiers view for non-managers", async () => {
-    const { svc } = await setupReports();
-    await expect(svc.getCashiersReport("b1", {
+    const { svc, businessId } = await setupReports();
+    await expect(svc.getCashiersReport(businessId, {
       dateFrom: "2026-09-01T00:00:00.000Z", dateTo: "2026-09-30T00:00:00.000Z", compare: "none",
     }, "cashier")).rejects.toThrow("FORBIDDEN");
-    const out = await svc.getCashiersReport("b1", {
+    const out = await svc.getCashiersReport(businessId, {
       dateFrom: "2026-09-01T00:00:00.000Z", dateTo: "2026-09-30T00:00:00.000Z", compare: "none",
     }, "owner");
     expect(out.actors[0]).toMatchObject({ sales: 7500, orders: 2 });

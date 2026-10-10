@@ -48,6 +48,11 @@ describe("phase 18 inventory counts", () => {
     const posted = await service.postCount(businessId, "owner", "r7", count.id, "post-key", approved.version, grant);
     expect(posted.replayed).toBe(false);
     expect((await db.listMovementsByBusiness(businessId)).filter((row) => row.type === "stock_count")).toHaveLength(2);
+    const countEntry = await db.findJournalEntryBySource(businessId, "InventoryCount", count.id, "posted");
+    expect(countEntry).not.toBeNull();
+    const countLines = await db.listJournalLines(countEntry!.entry.id, businessId);
+    expect(countLines.reduce((sum, line) => sum + line.debitMinor, 0)).toBe(400);
+    expect(countLines.reduce((sum, line) => sum + line.creditMinor, 0)).toBe(400);
     const replay = await service.postCount(businessId, "owner", "r8", count.id, "post-key", approved.version, grant);
     expect(replay.replayed).toBe(true);
     expect((await db.listMovementsByBusiness(businessId)).filter((row) => row.type === "stock_count")).toHaveLength(2);

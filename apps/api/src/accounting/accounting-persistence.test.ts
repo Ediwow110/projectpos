@@ -31,6 +31,11 @@ describe("memory accounting persistence", () => {
     expect(await db.isAccountingAccountUsed(a.id, cash.id)).toBe(true);
     expect(await db.findJournalEntryById(created.entry.id, b.id)).toBeNull();
     expect(await db.listJournalLines(created.entry.id, a.id)).toHaveLength(2);
+    expect(await db.aggregateJournalAccountTotals(a.id, { dateFrom: new Date("2026-10-10T00:00:00Z"), dateTo: new Date("2026-10-11T00:00:00Z"), branchId: null })).toMatchObject([
+      { account: { code: "1000" }, debitMinor: 100, creditMinor: 0 },
+      { account: { code: "4000" }, debitMinor: 0, creditMinor: 100 },
+    ]);
+    expect(await db.aggregateJournalAccountTotals(b.id, {})).toEqual([]);
   });
 
   it("rolls back journal headers and lines with the surrounding transaction", async () => {
@@ -48,6 +53,35 @@ describe("memory accounting persistence", () => {
     })).rejects.toThrow("injected source failure");
     expect(await db.findJournalEntryBySource(business.id, "Sale", "sale-rollback", "completed")).toBeNull();
     expect(await db.isAccountingAccountUsed(business.id, debit.id)).toBe(false);
+  });
+
+  it("persists business-scoped activation and rolls it back with opening journal writes", async () => {
+    const db = createMemoryDb();
+    const business = await db.createBusiness({ name: "Activation", currency: "PHP" });
+    const activation = { businessId: business.id, status: "REVIEW", accountingStartAt: new Date("2026-01-01T00:00:00Z"), openingEntryId: "opening-1", csvCutoverAt: null };
+    await expect(db.withTransaction(async (tx) => {
+      await tx.saveAccountingActivation(activation);
+      throw new Error("injected confirmation failure");
+    })).rejects.toThrow("injected confirmation failure");
+    expect(await db.findAccountingActivation(business.id)).toBeNull();
+    await db.saveAccountingActivation(activation);
+    expect(await db.findAccountingActivation(business.id)).toMatchObject({ ...activation });
+    const other = await db.createBusiness({ name: "Other activation", currency: "PHP" });
+    expect(await db.findAccountingActivation(other.id)).toBeNull();
+  });
+
+  it("stores resumable backfill cursor and deduplicates unresolved-value issues", async () => {
+    const db = createMemoryDb();
+    const business = await db.createBusiness({ name: "Backfill", currency: "PHP" });
+    const run = await db.createAccountingBackfillRun({ businessId: business.id, status: "RUNNING", cursor: { family: "sales", afterId: "sale-1" }, processedCount: 10, skippedCount: 0, debitMinor: 500, creditMinor: 500, startedAt: new Date(), completedAt: null, createdBy: "owner", requestId: "backfill-1" });
+    expect(await db.findAccountingBackfillRun(run.id, business.id)).toEqual(run);
+    await db.updateAccountingBackfillRun(run.id, business.id, { cursor: { family: "expenses", afterId: null }, processedCount: 12 });
+    expect(await db.findAccountingBackfillRun(run.id, business.id)).toMatchObject({ cursor: { family: "expenses", afterId: null }, processedCount: 12 });
+    const issue = { businessId: business.id, runId: run.id, sourceType: "InventoryMovement", sourceId: "movement-1", reason: "historical_cost_missing" };
+    const first = await db.createAccountingBackfillIssue(issue);
+    const duplicate = await db.createAccountingBackfillIssue(issue);
+    expect(duplicate.id).toBe(first.id);
+    expect(await db.listAccountingBackfillIssues(run.id, business.id, 10)).toHaveLength(1);
   });
 
   it("tracks posted supplier allocations, credits, and idempotent payment identity", async () => {

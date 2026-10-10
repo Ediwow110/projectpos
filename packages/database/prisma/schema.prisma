@@ -1713,6 +1713,8 @@ model SupplierReturnReceiptAllocation {
   receiptLineId         String
   quantity              Int
   unitCostMinorSnapshot BigInt
+  billedQuantity        Int    @default(0)
+  billedInvoiceCostMinorSnapshot BigInt @default(0)
   @@unique([businessId, supplierReturnLineId, receiptLineId])
   @@index([businessId, receiptLineId])
 }
@@ -1732,6 +1734,7 @@ model AccountingBackfillRun {
   requestId      String
   createdAt      DateTime @default(now())
   @@index([businessId, createdAt])
+  @@unique([businessId, requestId])
 }
 
 model AccountingBackfillIssue {

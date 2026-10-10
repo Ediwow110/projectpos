@@ -38,6 +38,8 @@ jobs:
       - run: node scripts/verify-phase10.test.mjs
       - run: node scripts/verify-phase10-migration.mjs
       - run: node scripts/verify-phase11.test.mjs
+      - run: node scripts/verify-phase23-migration.mjs
+      - run: node scripts/verify-phase23.test.mjs
   pg:
     # Phase 12: the PostgreSQL-backed DbPort must pass its parity and
     # concurrency suites against a real Postgres on every push.

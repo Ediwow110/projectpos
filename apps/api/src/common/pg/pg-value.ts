@@ -86,6 +86,16 @@ export function valueFamily(ctx: PgContext) {
     async updateSaleLoyalty(id:string,businessId:string,patch:Partial<Pick<DbSaleLoyalty,"redeemedPoints"|"redeemedValueMinor"|"earnedPoints">>){const c=await ctx.client();try{const sets:string[]=[];const vals:unknown[]=[];for(const [key,value] of Object.entries(patch)){sets.push(`"${key}"=$${vals.length+1}`);vals.push(value);}if(!sets.length)return this.findSaleLoyalty(id,businessId);const r=await c.query(`UPDATE "SaleLoyalty" SET ${sets.join(", ")} WHERE "id"=$${vals.length+1} AND "businessId"=$${vals.length+2} RETURNING ${SL}`,[...vals,id,businessId]);return(r.rows[0] as DbSaleLoyalty|undefined)??null;}finally{if(ctx.owns())c.release();}},
     async createSaleItemLoyaltyAllocation(input: Omit<DbSaleItemLoyaltyAllocation,"id"|"createdAt">):Promise<DbSaleItemLoyaltyAllocation>{const c=await ctx.client();try{const row={...input,id:nid("sla")};await c.query(`INSERT INTO "SaleItemLoyaltyAllocation" ("id","businessId","saleLoyaltyId","saleItemId","earnedPoints") VALUES ($1,$2,$3,$4,$5)`,[row.id,row.businessId,row.saleLoyaltyId,row.saleItemId,row.earnedPoints]);return{...row,createdAt:new Date()};}finally{if(ctx.owns())c.release();}},
     async listSaleItemLoyaltyAllocations(saleLoyaltyId:string,businessId:string){const c=await ctx.client();try{const r=await c.query(`SELECT ${SLA} FROM "SaleItemLoyaltyAllocation" WHERE "businessId"=$1 AND "saleLoyaltyId"=$2 ORDER BY "createdAt" ASC,"id" ASC`,[businessId,saleLoyaltyId]);return r.rows as DbSaleItemLoyaltyAllocation[];}finally{if(ctx.owns())c.release();}},
+    async hasUnaccountedValueAdjustments(businessId: string): Promise<boolean> {
+      const c = await ctx.client();
+      try {
+        const r = await c.query(`SELECT
+          EXISTS(SELECT 1 FROM "GiftCardTransaction" WHERE "businessId"=$1 AND "type"<>'ISSUE' AND "amountDeltaMinor"<>0 AND "saleId" IS NULL AND "refundId" IS NULL)
+          OR EXISTS(SELECT 1 FROM "StoreCreditTransaction" WHERE "businessId"=$1 AND "amountDeltaMinor"<>0 AND "saleId" IS NULL AND "refundId" IS NULL)
+          OR EXISTS(SELECT 1 FROM "LoyaltyTransaction" WHERE "businessId"=$1 AND "pointsDelta"<>0 AND "saleId" IS NULL AND "refundId" IS NULL) AS unresolved`, [businessId]);
+        return Boolean(r.rows[0]?.["unresolved"]);
+      } finally { if (ctx.owns()) c.release(); }
+    },
   };
 }
 

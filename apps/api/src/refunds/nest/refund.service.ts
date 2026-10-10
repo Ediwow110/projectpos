@@ -10,6 +10,8 @@ import { refundLockKey } from "../refund-lock";
 import type { AppliedManagerApproval } from "../../auth/nest/manager-approval-policy.service";
 import { StoredValueService } from "../../value/stored-value.service";
 import { normalizeRefundRequests } from "../refund-normalization";
+import { JournalPostingService } from "../../accounting/journal-posting.service";
+import { buildRefundDraft } from "../../accounting/journal-rules";
 
 export interface RefundItemInput {
   saleItemId: string;
@@ -27,11 +29,13 @@ const CASH_METHODS = new Set(["cash"]);
 export class RefundService {
   private readonly shifts: ShiftService;
   private readonly storedValue: StoredValueService;
+  private readonly journals: JournalPostingService;
 
   constructor(@Inject("DbPort") private readonly db: DbPort) {
     // Same-DbPort instance (not Nest DI) to avoid a Refund<->Shift DI cycle.
     this.shifts = new ShiftService(db);
     this.storedValue = new StoredValueService(db);
+    this.journals = new JournalPostingService(db);
   }
 
   private async requireSale(businessId: string, saleId: string): Promise<DbSale> {
@@ -343,6 +347,7 @@ export class RefundService {
           branchId: sale.branchId ?? null,
         });
       }
+      let loyaltyLiabilityMinor = 0;
       if (merchandiseTotalMinor > 0 && saleLoyalty && saleLoyalty.earnedPoints > 0 && saleLoyalty.eligibleSpendMinor > 0) {
         const itemAllocations = await this.db.listSaleItemLoyaltyAllocations(saleLoyalty.id, businessId);
         const resolvedByLine = new Map(resolved.map((row) => [row.line.id, row]));
@@ -358,6 +363,7 @@ export class RefundService {
           ? Math.min(saleLoyalty.earnedPoints, allocatedReversal)
           : Math.min(saleLoyalty.earnedPoints, Math.floor(saleLoyalty.earnedPoints * merchandiseTotalMinor / saleLoyalty.eligibleSpendMinor));
         if (reversal > 0) {
+          loyaltyLiabilityMinor = Math.floor(reversal * saleLoyalty.redeemValueMinorSnapshot / saleLoyalty.redeemPointsSnapshot);
           const account = await this.db.findLoyaltyAccount(saleLoyalty.customerId, businessId);
           if (account) await this.db.createLoyaltyTransaction({ businessId, accountId: account.id, customerId: saleLoyalty.customerId, type: "REFUND_EARN_REVERSAL", pointsDelta: -reversal, valueMinorSnapshot: totalMinor, saleId: sale.id, refundId: refund.id, actorId, requestId, idempotencyKey: `${input.key}:refund-earn`, reason: reason ?? "Refund" });
         }
@@ -386,6 +392,21 @@ export class RefundService {
       const status = transitionSale(sale.status, target);
       const updated =
         (await this.db.updateSale(sale.id, businessId, { status })) ?? sale;
+      const business = await this.db.findBusinessById(businessId);
+      if (!business) throw new Error("NOT_FOUND");
+      const restockedCostMinor = resolvedWithTracking.reduce((sum, row) =>
+        sum + (row.tracked || row.bundleComponents.length > 0 ? row.line.costMinor * row.qty : 0), 0);
+      await this.journals.postSourceEvent({
+        businessId, branchId: sale.branchId ?? null, sourceType: "Refund", sourceId: refund.id, sourceEvent: "approved", actorId, requestId,
+        draft: buildRefundDraft({
+          currency: business.currency, effectiveAt: new Date(),
+          tenders: allocations.map(({ method, amount }) => ({ method, amountMinor: amount })),
+          merchandiseRevenueMinor: merchandiseTotalMinor, deliveryRevenueMinor: deliveryFeeRefundMinor,
+          taxPayableMinor: deliveryTaxRefundMinor, giftCardLiabilityMinor: loadRefundTotalMinor,
+          loyaltyLiabilityMinor,
+          restockedCostMinor,
+        }),
+      });
       await this.db.claimIdempotency({
         businessId,
         key: input.key,

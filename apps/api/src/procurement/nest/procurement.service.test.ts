@@ -80,6 +80,14 @@ describe("Phase 17 receiving and supplier returns", () => {
     expect(received1.purchaseOrder.status).toBe("PARTIALLY_RECEIVED");
     expect((await db.findBalance(productA.id, businessId, branchId))?.qtyOnHand).toBe(12);
     expect((await db.listMovements(productA.id, businessId, branchId)).filter((m) => m.type === "receive")).toHaveLength(1);
+    const receiptJournal = await db.listJournalEntries(businessId, { limit: 10 });
+    expect(receiptJournal).toHaveLength(1);
+    expect(receiptJournal[0]).toMatchObject({ sourceType: "PurchaseReceipt", sourceEvent: "posted" });
+    expect((await db.listJournalLines(receiptJournal[0]!.id, businessId)).reduce((sum, line) => sum + line.debitMinor, 0)).toBe(500);
+    const receiptLine = received1.purchaseReceipt.lines[0]!;
+    const billDate = new Date("2026-10-10T12:00:00.000Z");
+    const bill = await db.createSupplierBill({ businessId, supplierId: supplier.supplier.id, branchId, invoiceNumber: "INV-17", invoiceDate: billDate, dueDate: null, currency: "PHP", status: "POSTED", invoiceAmountMinor: 150, nonStockChargeMinor: 0, paidMinor: 0, version: 1, notes: null, createdBy: "owner", postedBy: "owner", postedAt: billDate, voidedBy: null, voidedAt: null, requestId: "bill-17" });
+    await db.createSupplierBillAllocation({ businessId, billId: bill.id, receiptLineId: receiptLine.id, quantity: 1, unitInvoiceCostMinor: 150, invoiceAmountMinor: 150, receiptCostMinorSnapshot: 125 });
     await expect(svc.receivePurchaseOrder(businessId, "owner", "r14", draft.purchaseOrder.id, "receipt-key-17-bad", { lines: [{ purchaseOrderLineId: lineId, quantityReceived: 7 }] }, WRITE)).rejects.toThrow("RECEIPT_EXCEEDS_OUTSTANDING");
     const replay = await svc.receivePurchaseOrder(businessId, "owner", "r15", draft.purchaseOrder.id, "receipt-key-17-a", { lines: [{ purchaseOrderLineId: lineId, quantityReceived: 4 }] }, WRITE);
     expect(replay.replayed).toBe(true);
@@ -95,6 +103,23 @@ describe("Phase 17 receiving and supplier returns", () => {
     const supplierMoves = (await db.listMovements(productA.id, businessId, branchId)).filter((m) => m.type === "supplier_return");
     expect(supplierMoves).toHaveLength(1);
     expect(supplierMoves[0]?.qtyDelta).toBe(-3);
+    const afterReturnJournal = await db.listJournalEntries(businessId, { limit: 10 });
+    expect(afterReturnJournal.filter((entry) => entry.sourceType === "PurchaseReceipt")).toHaveLength(2);
+    const returnJournal = afterReturnJournal.find((entry) => entry.sourceType === "SupplierReturn");
+    expect(returnJournal).toBeDefined();
+    const returnLines = await db.listJournalLines(returnJournal!.id, businessId);
+    expect(returnLines.reduce((sum, line) => sum + line.debitMinor, 0)).toBe(400);
+    expect(returnLines.reduce((sum, line) => sum + line.creditMinor, 0)).toBe(400);
+    const accountCodes = new Map((await db.listAccountingAccounts(businessId)).map((account) => [account.id, account.code]));
+    expect(returnLines.map((line) => [accountCodes.get(line.accountId), line.debitMinor, line.creditMinor])).toEqual([
+      ["2000", 150, 0], ["2220", 250, 0], ["1400", 0, 375], ["5100", 0, 25],
+    ]);
+    expect(await db.listSupplierCredits(businessId, supplier.supplier.id)).toMatchObject([
+      { supplierReturnId: createdReturn.supplierReturn.id, amountMinor: 150, billId: bill.id, status: "POSTED" },
+    ]);
+    expect(await db.findSupplierBill(bill.id, businessId)).toMatchObject({ status: "PAID", paidMinor: 0 });
+    const returnedAllocations = await db.listSupplierReturnReceiptAllocations(createdReturn.supplierReturn.lines[0]!.id, businessId);
+    expect(returnedAllocations[0]).toMatchObject({ quantity: 3, billedQuantity: 1, billedInvoiceCostMinorSnapshot: 150 });
     const returnReplay = await svc.postSupplierReturn(businessId, "owner", "r19", createdReturn.supplierReturn.id, "return-post-key-17", createdReturn.supplierReturn.version, WRITE);
     expect(returnReplay.replayed).toBe(true);
     expect((await db.findBalance(productA.id, businessId, branchId))?.qtyOnHand).toBe(15);

@@ -17,7 +17,7 @@ import type { PgContext } from "./context";
 const CUSTOMER_COLUMNS = '"id", "businessId", "name", "phone", "email", "address", "notes", "isActive"';
 const REFUND_COLUMNS =
   '"id", "businessId", "saleId", "status", "totalMinor", "deliveryFeeRefundMinor", "deliveryTaxRefundMinor", "reason", "requestedBy", ' +
-  '"approvedBy", "requestId", "approvedRequestId", "singleStep"';
+  '"approvedBy", "requestId", "approvedRequestId", "singleStep", "createdAt"';
 const REFUND_ITEM_COLUMNS =
   '"id", "businessId", "refundId", "saleItemId", "productId", "qty", "amountMinor", "restocked"';
 const EXCHANGE_COLUMNS =
@@ -107,18 +107,20 @@ export function peopleFamily(ctx: PgContext) {
     async createRefund(r: DbRefundCreate): Promise<DbRefund> {
       const cl = await ctx.client();
       try {
+        const createdAt = new Date();
         const row: DbRefund = {
           deliveryFeeRefundMinor: 0,
           deliveryTaxRefundMinor: 0,
           ...r,
           id: nid("ref"),
+          createdAt,
         };
         await cl.query(
           'INSERT INTO "Refund" ("id", "businessId", "saleId", "status", "totalMinor", "deliveryFeeRefundMinor", "deliveryTaxRefundMinor", "reason", "requestedBy", "approvedBy", "requestId", "approvedRequestId", "singleStep", "createdAt")' +
-            ' VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP)',
+            ' VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)',
           [
             row.id, row.businessId, row.saleId, row.status, row.totalMinor, row.deliveryFeeRefundMinor, row.deliveryTaxRefundMinor, row.reason,
-            row.requestedBy, row.approvedBy, row.requestId, row.approvedRequestId, row.singleStep,
+            row.requestedBy, row.approvedBy, row.requestId, row.approvedRequestId, row.singleStep, row.createdAt,
           ],
         );
         return row;
@@ -138,6 +140,16 @@ export function peopleFamily(ctx: PgContext) {
       } finally {
         if (ctx.owns()) cl.release();
       }
+    },
+    async listRefundsPage(businessId: string, afterId: string | null, limit: number): Promise<DbRefund[]> {
+      const cl = await ctx.client();
+      try {
+        const r = await cl.query(
+          `SELECT ${REFUND_COLUMNS} FROM "Refund" WHERE "businessId"=$1 AND ($2::text IS NULL OR "id">$2) ORDER BY "id" ASC LIMIT $3`,
+          [businessId, afterId, Math.max(1, Math.min(500, limit))],
+        );
+        return r.rows as DbRefund[];
+      } finally { if (ctx.owns()) cl.release(); }
     },
     async listRefundsBySale(saleId: string, businessId: string): Promise<DbRefund[]> {
       const cl = await ctx.client();

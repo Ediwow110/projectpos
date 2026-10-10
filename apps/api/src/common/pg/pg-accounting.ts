@@ -1,4 +1,4 @@
-import type { DbAccountingAccount, DbJournalEntry, DbJournalEntryCreate, DbJournalLine, DbJournalPageQuery } from "../db.port";
+import type { DbAccountingAccount, DbAccountingActivation, DbAccountingBackfillIssue, DbAccountingBackfillRun, DbJournalAccountTotal, DbJournalEntry, DbJournalEntryCreate, DbJournalLine, DbJournalPageQuery, DbJournalTotalsQuery } from "../db.port";
 import { nid, type PgContext } from "./context";
 
 function safeMinor(value: unknown): number {
@@ -132,6 +132,113 @@ export function accountingFamily(ctx: PgContext) {
         const result = await client.query('SELECT * FROM "JournalLine" WHERE "entryId"=$1 AND "businessId"=$2 ORDER BY "position"', [entryId, businessId]);
         return mapLines(result.rows);
       } finally { if (ctx.owns()) client.release(); }
+    },
+    async aggregateJournalAccountTotals(businessId: string, query: DbJournalTotalsQuery): Promise<DbJournalAccountTotal[]> {
+      const client = await ctx.client();
+      try {
+        const clauses = ['e."businessId"=$1'];
+        const params: unknown[] = [businessId];
+        const add = (sql: (n: number) => string, value: unknown): void => { params.push(value); clauses.push(sql(params.length)); };
+        if (query.dateFrom) add((n) => `e."effectiveAt">=$${n}`, query.dateFrom);
+        if (query.dateTo) add((n) => `e."effectiveAt"<$${n}`, query.dateTo);
+        if (query.branchId === null) clauses.push('e."branchId" IS NULL');
+        else if (query.branchId !== undefined) add((n) => `e."branchId"=$${n}`, query.branchId);
+        const result = await client.query(
+          `SELECT a.*, COALESCE(SUM(l."debitMinor"),0)::text AS "totalDebitMinor", COALESCE(SUM(l."creditMinor"),0)::text AS "totalCreditMinor" FROM "JournalLine" l JOIN "JournalEntry" e ON e."id"=l."entryId" AND e."businessId"=l."businessId" JOIN "AccountingAccount" a ON a."id"=l."accountId" AND a."businessId"=l."businessId" WHERE ${clauses.join(" AND ")} GROUP BY a."id" ORDER BY a."code"`,
+          params,
+        );
+        return result.rows.map((row) => ({
+          account: row as unknown as DbAccountingAccount,
+          debitMinor: safeMinor(row["totalDebitMinor"]),
+          creditMinor: safeMinor(row["totalCreditMinor"]),
+        }));
+      } finally { if (ctx.owns()) client.release(); }
+    },
+    async findAccountingActivation(businessId: string): Promise<DbAccountingActivation | null> {
+      const client = await ctx.client();
+      try {
+        const result = await client.query('SELECT * FROM "AccountingActivation" WHERE "businessId"=$1', [businessId]);
+        return result.rows[0] as DbAccountingActivation | undefined ?? null;
+      } finally { if (ctx.owns()) client.release(); }
+    },
+    async saveAccountingActivation(input: Omit<DbAccountingActivation, "updatedAt">): Promise<DbAccountingActivation> {
+      const client = await ctx.client();
+      try {
+        const result = await client.query(
+          'INSERT INTO "AccountingActivation" ("businessId","status","accountingStartAt","openingEntryId","csvCutoverAt","updatedAt") VALUES ($1,$2,$3,$4,$5,CURRENT_TIMESTAMP) ON CONFLICT ("businessId") DO UPDATE SET "status"=EXCLUDED."status","accountingStartAt"=EXCLUDED."accountingStartAt","openingEntryId"=EXCLUDED."openingEntryId","csvCutoverAt"=EXCLUDED."csvCutoverAt","updatedAt"=CURRENT_TIMESTAMP RETURNING *',
+          [input.businessId, input.status, input.accountingStartAt, input.openingEntryId, input.csvCutoverAt],
+        );
+        return result.rows[0] as DbAccountingActivation;
+      } finally { if (ctx.owns()) client.release(); }
+    },
+    async createAccountingBackfillRun(input: Omit<DbAccountingBackfillRun, "id" | "createdAt">): Promise<DbAccountingBackfillRun> {
+      const client = await ctx.client();
+      try {
+        const result = await client.query(
+          'INSERT INTO "AccountingBackfillRun" ("id","businessId","status","cursor","processedCount","skippedCount","debitMinor","creditMinor","startedAt","completedAt","createdBy","requestId") VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',
+          [nid("backfill"), input.businessId, input.status, input.cursor ? JSON.stringify(input.cursor) : null, input.processedCount, input.skippedCount, input.debitMinor, input.creditMinor, input.startedAt, input.completedAt, input.createdBy, input.requestId],
+        );
+        return result.rows[0] as DbAccountingBackfillRun;
+      } finally { if (ctx.owns()) client.release(); }
+    },
+    async findAccountingBackfillRunByRequest(businessId: string, requestId: string): Promise<DbAccountingBackfillRun | null> {
+      const client = await ctx.client();
+      try {
+        const result = await client.query('SELECT * FROM "AccountingBackfillRun" WHERE "businessId"=$1 AND "requestId"=$2', [businessId, requestId]);
+        return result.rows[0] as DbAccountingBackfillRun | undefined ?? null;
+      } finally { if (ctx.owns()) client.release(); }
+    },
+    async findLatestAccountingBackfillRun(businessId: string): Promise<DbAccountingBackfillRun | null> {
+      const client = await ctx.client();
+      try {
+        const result = await client.query('SELECT * FROM "AccountingBackfillRun" WHERE "businessId"=$1 ORDER BY "createdAt" DESC,"id" DESC LIMIT 1', [businessId]);
+        return result.rows[0] as DbAccountingBackfillRun | undefined ?? null;
+      } finally { if (ctx.owns()) client.release(); }
+    },
+    async findAccountingBackfillRun(id: string, businessId: string): Promise<DbAccountingBackfillRun | null> {
+      const client = await ctx.client();
+      try {
+        const result = await client.query('SELECT * FROM "AccountingBackfillRun" WHERE "id"=$1 AND "businessId"=$2', [id, businessId]);
+        return result.rows[0] as DbAccountingBackfillRun | undefined ?? null;
+      } finally { if (ctx.owns()) client.release(); }
+    },
+    async updateAccountingBackfillRun(id: string, businessId: string, patch: Partial<Pick<DbAccountingBackfillRun, "status" | "cursor" | "processedCount" | "skippedCount" | "debitMinor" | "creditMinor" | "startedAt" | "completedAt">>): Promise<DbAccountingBackfillRun | null> {
+      const columns: Array<[keyof typeof patch, string]> = [["status", "status"], ["cursor", "cursor"], ["processedCount", "processedCount"], ["skippedCount", "skippedCount"], ["debitMinor", "debitMinor"], ["creditMinor", "creditMinor"], ["startedAt", "startedAt"], ["completedAt", "completedAt"]];
+      const updates: string[] = [];
+      const values: unknown[] = [id, businessId];
+      for (const [key, column] of columns) {
+        if (patch[key] === undefined) continue;
+        values.push(key === "cursor" && patch.cursor ? JSON.stringify(patch.cursor) : patch[key]);
+        updates.push(`"${column}"=$${values.length}${key === "cursor" ? "::jsonb" : ""}`);
+      }
+      if (!updates.length) throw new Error("ACCOUNTING_BACKFILL_EMPTY_UPDATE");
+      const client = await ctx.client();
+      try {
+        const result = await client.query(`UPDATE "AccountingBackfillRun" SET ${updates.join(",")} WHERE "id"=$1 AND "businessId"=$2 RETURNING *`, values);
+        return result.rows[0] as DbAccountingBackfillRun | undefined ?? null;
+      } finally { if (ctx.owns()) client.release(); }
+    },
+    async createAccountingBackfillIssue(input: Omit<DbAccountingBackfillIssue, "id" | "createdAt">): Promise<DbAccountingBackfillIssue> {
+      const client = await ctx.client();
+      try {
+        const result = await client.query(
+          'INSERT INTO "AccountingBackfillIssue" ("id","businessId","runId","sourceType","sourceId","reason") VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT ("businessId","sourceType","sourceId","reason") DO UPDATE SET "runId"=EXCLUDED."runId" RETURNING *',
+          [nid("backfill-issue"), input.businessId, input.runId, input.sourceType, input.sourceId, input.reason],
+        );
+        return result.rows[0] as DbAccountingBackfillIssue;
+      } finally { if (ctx.owns()) client.release(); }
+    },
+    async listAccountingBackfillIssues(runId: string, businessId: string, limit: number): Promise<DbAccountingBackfillIssue[]> {
+      const client = await ctx.client();
+      try {
+        const result = await client.query('SELECT * FROM "AccountingBackfillIssue" WHERE "businessId"=$1 AND "runId"=$2 ORDER BY "createdAt","id" LIMIT $3', [businessId, runId, Math.max(1, Math.min(200, limit))]);
+        return result.rows as DbAccountingBackfillIssue[];
+      } finally { if (ctx.owns()) client.release(); }
+    },
+    async countAccountingBackfillIssues(runId: string, businessId: string): Promise<number> {
+      const client = await ctx.client();
+      try { const result = await client.query('SELECT COUNT(*)::int AS count FROM "AccountingBackfillIssue" WHERE "businessId"=$1 AND "runId"=$2', [businessId, runId]); return Number(result.rows[0]?.["count"] ?? 0); }
+      finally { if (ctx.owns()) client.release(); }
     },
   };
 }
