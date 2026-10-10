@@ -37,4 +37,8 @@
 
 Staging smoke covered readiness and signed-out routing. Authenticated staging scenarios were not run because no isolated staging owner fixture was available; the full authenticated flow and browser history matrix passed on local disposable API state. Production remains out of scope.
 
+## Phase 22 closeout
+
+The onboarding/dashboard route and API bypass follow-up is verified locally and on staging. Mandatory setup enforcement remains in place, and the audited navigation loops are fixed. This closes the Phase 22 onboarding follow-up; the separate approved omnichannel scope remains recorded in `2026-10-06-phase22-omnichannel.md`.
+
 Phase 23 scope is not defined in the repository roadmap. Do not infer product features; request product priorities before drafting that phase.
