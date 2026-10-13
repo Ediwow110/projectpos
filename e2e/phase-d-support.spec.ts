@@ -3,6 +3,9 @@ import { API, apiAuthedContext, createStaffMember, registerOperationalBusiness }
 
 test("Phase D guest support → owner inbox → consented, revocable read-only operator health", async ({ page, request }) => {
   test.setTimeout(240_000);
+  // Match the isolated local E2E server's configured operator key; use a
+  // distinct invalid value for the negative authorization assertion.
+  const operatorKey = process.env["PLATFORM_API_KEY"] ?? "test-platform-key";
   const stamp = Date.now().toString(36);
   const password = "correct-horse-12";
   const email = await registerOperationalBusiness(page, {
@@ -81,7 +84,7 @@ test("Phase D guest support → owner inbox → consented, revocable read-only o
   expect((await guestHistory.json() as { items: Array<{ status: string }> }).items[0]?.status).toBe("CLOSED");
 
   const wrong = await request.get(`${API}/api/v1/platform/diagnostics/businesses/${business.id}`, {
-    headers: { "x-platform-key": "phase-d-test-operator-key" },
+    headers: { "x-platform-key": "deliberately-invalid-operator-key" },
   });
   expect(wrong.status()).toBe(403);
   await page.getByLabel("Purpose").fill("Investigate guest pickup incident");
@@ -94,7 +97,7 @@ test("Phase D guest support → owner inbox → consented, revocable read-only o
   await page.goto("/platform/tenant-health");
   await expect(page.getByRole("heading", { name: "Tenant health" })).toBeVisible();
   await page.getByLabel("Business ID").fill(business.id);
-  await page.getByLabel("Operator key").fill("phase-d-test-operator-key");
+  await page.getByLabel("Operator key").fill(operatorKey);
   await page.getByLabel("Owner consent token").fill(consentToken!);
   await page.getByRole("button", { name: "View authorized diagnostics" }).click();
   await expect(page.getByRole("region", { name: "Tenant diagnostics" })).toBeVisible();

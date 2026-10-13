@@ -58,7 +58,10 @@ test("owner branch assignment limits staff UI and blocks cross-branch API reads"
     email: staffEmail, name: "Scoped Cashier", role: "cashier",
   });
   await page.goto("/team");
-  const member = page.getByRole("row").filter({ hasText: staffEmail });
+  // Desktop uses a table row; small screens render accessible employee cards.
+  const member = page.getByRole("row").filter({ hasText: staffEmail }).or(
+    page.getByRole("region", { name: "Mobile employee access" }).getByRole("article").filter({ hasText: staffEmail }),
+  );
   await expect(member).toBeVisible();
   await member.getByRole("button", { name: "Branch access" }).click();
   const dialog = page.getByRole("dialog", { name: "Assign staff branch access" });
