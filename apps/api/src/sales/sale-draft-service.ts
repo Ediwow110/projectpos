@@ -24,6 +24,7 @@ export class SalesDraftService {
     granted: string[],
   ): Promise<DbSale> {
     const businessTax = await this.businessTaxRateBps(businessId);
+    const policy = await this.db.getSettings(businessId);
     const lines: Array<{ product: DbProduct; qty: number; lineDiscountMinor: number; costMinor: number }> = [];
     for (const line of input.lines) {
       const product = await this.stock.requireProduct(businessId, line.productId);
@@ -47,6 +48,10 @@ export class SalesDraftService {
       requiresDiscountOverride({
         orderDiscountMinor: input.orderDiscountMinor ?? 0,
         subtotalMinor: subtotalGuess,
+        orderDiscountApprovalPercent: typeof policy["orderDiscountApprovalPercent"] === "number"
+          ? policy["orderDiscountApprovalPercent"] : undefined,
+        lineDiscountApprovalPercent: typeof policy["lineDiscountApprovalPercent"] === "number"
+          ? policy["lineDiscountApprovalPercent"] : undefined,
         lines: lines.map((line) => ({
           lineDiscountMinor: line.lineDiscountMinor,
           qty: line.qty,

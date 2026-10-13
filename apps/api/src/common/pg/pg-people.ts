@@ -1,4 +1,4 @@
-import type { DbCustomer, DbExchange, DbExpense, DbRefund, DbRefundCreate, DbRefundItem } from "../db.port";
+import type { DbCustomer, DbCustomerConcern, DbCustomerConcernCreate, DbManagerApprovalRequest, DbManagerApprovalRequestCreate, DbExchange, DbExpense, DbRefund, DbRefundCreate, DbRefundItem } from "../db.port";
 import { nid } from "./context";
 import type { PgContext } from "./context";
 
@@ -15,6 +15,8 @@ import type { PgContext } from "./context";
 //   "voidedAt"/"voidReason" back to null). updateExpense stamps nothing: the
 //   Expense DDL has no updatedAt column.
 const CUSTOMER_COLUMNS = '"id", "businessId", "name", "phone", "email", "address", "notes", "isActive"';
+const CUSTOMER_CONCERN_COLUMNS = '"id", "businessId", "saleId", "receiptNo", "branchId", "registerId", "requesterId", "reason", "outcome", "note", "items", "requestedRefundMinor", "status", "idempotencyKey", "reviewedBy", "reviewedAt", "reviewReason", "refundId", "createdAt", "updatedAt"';
+const MANAGER_APPROVAL_REQUEST_COLUMNS = '"id", "businessId", "requesterId", "branchId", "registerId", "kind", "permission", "action", "fingerprint", "stateFingerprint", "status", "idempotencyKey", "approverId", "decidedAt", "decisionReason", "tokenCiphertext", "tokenExpiresAt", "tokenClaimedAt", "createdAt", "updatedAt"';
 const REFUND_COLUMNS =
   '"id", "businessId", "saleId", "status", "totalMinor", "deliveryFeeRefundMinor", "deliveryTaxRefundMinor", "reason", "requestedBy", ' +
   '"approvedBy", "requestId", "approvedRequestId", "singleStep"';
@@ -104,6 +106,89 @@ export function peopleFamily(ctx: PgContext) {
       }
     },
 
+    async createCustomerConcern(c: DbCustomerConcernCreate): Promise<DbCustomerConcern> {
+      const cl = await ctx.client();
+      try {
+        const row = { ...c, items: c.items.map((item) => ({ ...item })), id: nid("concern") };
+        const r = await cl.query(
+          `INSERT INTO "CustomerConcern" ("id", "businessId", "saleId", "receiptNo", "branchId", "registerId", "requesterId", "reason", "outcome", "note", "items", "requestedRefundMinor", "status", "idempotencyKey", "reviewedBy", "reviewedAt", "reviewReason", "refundId", "createdAt", "updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14,$15,$16,$17,$18,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) RETURNING ${CUSTOMER_CONCERN_COLUMNS}`,
+          [row.id,row.businessId,row.saleId,row.receiptNo,row.branchId,row.registerId,row.requesterId,row.reason,row.outcome,row.note,JSON.stringify(row.items),row.requestedRefundMinor,row.status,row.idempotencyKey,row.reviewedBy,row.reviewedAt ?? null,row.reviewReason,row.refundId],
+        );
+        return r.rows[0] as DbCustomerConcern;
+      } finally { if (ctx.owns()) cl.release(); }
+    },
+    async findCustomerConcernById(id: string, businessId: string): Promise<DbCustomerConcern | null> {
+      const cl = await ctx.client();
+      try { const r = await cl.query(`SELECT ${CUSTOMER_CONCERN_COLUMNS} FROM "CustomerConcern" WHERE "id"=$1 AND "businessId"=$2`, [id,businessId]); return (r.rows[0] as DbCustomerConcern | undefined) ?? null; }
+      finally { if (ctx.owns()) cl.release(); }
+    },
+    async findCustomerConcernByIdempotency(businessId: string, idempotencyKey: string): Promise<DbCustomerConcern | null> {
+      const cl = await ctx.client();
+      try { const r = await cl.query(`SELECT ${CUSTOMER_CONCERN_COLUMNS} FROM "CustomerConcern" WHERE "businessId"=$1 AND "idempotencyKey"=$2`, [businessId,idempotencyKey]); return (r.rows[0] as DbCustomerConcern | undefined) ?? null; }
+      finally { if (ctx.owns()) cl.release(); }
+    },
+    async listCustomerConcernsByBusiness(businessId: string): Promise<DbCustomerConcern[]> {
+      const cl = await ctx.client();
+      try { const r = await cl.query(`SELECT ${CUSTOMER_CONCERN_COLUMNS} FROM "CustomerConcern" WHERE "businessId"=$1 ORDER BY "createdAt" DESC, "id" DESC`, [businessId]); return r.rows as DbCustomerConcern[]; }
+      finally { if (ctx.owns()) cl.release(); }
+    },
+    async transitionCustomerConcern(id: string, businessId: string, expectedStatus: string, patch: Partial<Omit<DbCustomerConcern, "id" | "businessId" | "createdAt" | "updatedAt">>): Promise<DbCustomerConcern | null> {
+      const cl = await ctx.client();
+      try {
+        const { sets, values } = buildSet(patch as Record<string, unknown>);
+        const setSql = sets.length ? `${sets.join(", ")}, ` : "";
+        const r = await cl.query(`UPDATE "CustomerConcern" SET ${setSql}"updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$${values.length + 1} AND "businessId"=$${values.length + 2} AND "status"=$${values.length + 3} RETURNING ${CUSTOMER_CONCERN_COLUMNS}`, [...values,id,businessId,expectedStatus]);
+        return (r.rows[0] as DbCustomerConcern | undefined) ?? null;
+      } finally { if (ctx.owns()) cl.release(); }
+    },
+    async createManagerApprovalRequest(input: DbManagerApprovalRequestCreate): Promise<DbManagerApprovalRequest> {
+      const cl = await ctx.client();
+      try {
+        const row: DbManagerApprovalRequest = { ...input, id: nid("approval"), createdAt: new Date(), updatedAt: new Date() };
+        const values = [row.id,row.businessId,row.requesterId,row.branchId,row.registerId,row.kind,row.permission,JSON.stringify(row.action),row.fingerprint,row.stateFingerprint,row.status,row.idempotencyKey,row.approverId,row.decidedAt,row.decisionReason,row.tokenCiphertext,row.tokenExpiresAt,row.tokenClaimedAt];
+        const r = await cl.query(
+          `INSERT INTO "ManagerApprovalRequest" (${MANAGER_APPROVAL_REQUEST_COLUMNS.split(", ").slice(0,18).join(", ")}, "createdAt", "updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) RETURNING ${MANAGER_APPROVAL_REQUEST_COLUMNS}`,
+          values,
+        );
+        return r.rows[0] as DbManagerApprovalRequest;
+      } finally { if (ctx.owns()) cl.release(); }
+    },
+    async findManagerApprovalRequest(id: string, businessId: string): Promise<DbManagerApprovalRequest | null> {
+      const cl = await ctx.client();
+      try { const r = await cl.query(`SELECT ${MANAGER_APPROVAL_REQUEST_COLUMNS} FROM "ManagerApprovalRequest" WHERE "id"=$1 AND "businessId"=$2`, [id,businessId]); return (r.rows[0] as DbManagerApprovalRequest | undefined) ?? null; }
+      finally { if (ctx.owns()) cl.release(); }
+    },
+    async findManagerApprovalRequestByIdempotency(businessId: string, requesterId: string, idempotencyKey: string): Promise<DbManagerApprovalRequest | null> {
+      const cl = await ctx.client();
+      try { const r = await cl.query(`SELECT ${MANAGER_APPROVAL_REQUEST_COLUMNS} FROM "ManagerApprovalRequest" WHERE "businessId"=$1 AND "requesterId"=$2 AND "idempotencyKey"=$3`, [businessId,requesterId,idempotencyKey]); return (r.rows[0] as DbManagerApprovalRequest | undefined) ?? null; }
+      finally { if (ctx.owns()) cl.release(); }
+    },
+    async listManagerApprovalRequests(businessId: string): Promise<DbManagerApprovalRequest[]> {
+      const cl = await ctx.client();
+      try { const r = await cl.query(`SELECT ${MANAGER_APPROVAL_REQUEST_COLUMNS} FROM "ManagerApprovalRequest" WHERE "businessId"=$1 ORDER BY "createdAt" DESC, "id" DESC`, [businessId]); return r.rows as DbManagerApprovalRequest[]; }
+      finally { if (ctx.owns()) cl.release(); }
+    },
+    async transitionManagerApprovalRequest(id: string, businessId: string, expectedStatus: DbManagerApprovalRequest["status"], patch: Partial<Pick<DbManagerApprovalRequest, "status" | "approverId" | "decidedAt" | "decisionReason" | "tokenCiphertext" | "tokenExpiresAt">>): Promise<DbManagerApprovalRequest | null> {
+      const cl = await ctx.client();
+      try {
+        const { sets, values } = buildSet(patch as Record<string, unknown>);
+        const r = await cl.query(`UPDATE "ManagerApprovalRequest" SET ${sets.join(", ")}, "updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$${values.length + 1} AND "businessId"=$${values.length + 2} AND "status"=$${values.length + 3} RETURNING ${MANAGER_APPROVAL_REQUEST_COLUMNS}`, [...values,id,businessId,expectedStatus]);
+        return (r.rows[0] as DbManagerApprovalRequest | undefined) ?? null;
+      } finally { if (ctx.owns()) cl.release(); }
+    },
+    async claimManagerApprovalRequestToken(id: string, businessId: string, requesterId: string, now: Date): Promise<{ request: DbManagerApprovalRequest; encryptedToken: string; tokenExpiresAt: Date } | null> {
+      const cl = await ctx.client();
+      try {
+        const r = await cl.query(
+          `WITH picked AS (SELECT "id", "tokenCiphertext", "tokenExpiresAt" FROM "ManagerApprovalRequest" WHERE "id"=$1 AND "businessId"=$2 AND "requesterId"=$3 AND "status"='APPROVED' AND "tokenCiphertext" IS NOT NULL AND "tokenExpiresAt">$4 AND "tokenClaimedAt" IS NULL FOR UPDATE), claimed AS (UPDATE "ManagerApprovalRequest" AS request SET "tokenCiphertext"=NULL, "tokenExpiresAt"=NULL, "tokenClaimedAt"=$4, "updatedAt"=$4 FROM picked WHERE request."id"=picked."id" RETURNING request.*) SELECT claimed.*, picked."tokenCiphertext" AS "claimedEncryptedToken", picked."tokenExpiresAt" AS "claimedTokenExpiresAt" FROM claimed JOIN picked ON claimed."id"=picked."id"`,
+          [id,businessId,requesterId,now],
+        );
+        const row = r.rows[0] as (DbManagerApprovalRequest & { claimedEncryptedToken: string; claimedTokenExpiresAt: Date }) | undefined;
+        if (!row) return null;
+        const { claimedEncryptedToken, claimedTokenExpiresAt, ...request } = row;
+        return { request, encryptedToken: claimedEncryptedToken, tokenExpiresAt: claimedTokenExpiresAt };
+      } finally { if (ctx.owns()) cl.release(); }
+    },
     async createRefund(r: DbRefundCreate): Promise<DbRefund> {
       const cl = await ctx.client();
       try {

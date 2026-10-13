@@ -26,6 +26,19 @@ export interface ReceiptData {
   payments: DbPayment[];
 }
 
+export interface ReceiptLookupData {
+  receiptNo: string;
+  saleId: string;
+  status: string;
+  currency: string;
+  totalMinor: number;
+  branchId: string | null;
+  registerId: string | null;
+  createdAt: Date;
+  completedAt: Date | null;
+  items: Array<Pick<DbSaleItem, "id" | "name" | "qty" | "priceMinor" | "lineTotalMinor">>;
+}
+
 export interface SharedReceipt {
   receiptNo: string;
   status: string;
@@ -47,6 +60,24 @@ export class SalesReceiptService {
     private readonly db: DbPort,
     private readonly email: TransactionalEmailPort = NOOP_TRANSACTIONAL_EMAIL,
   ) {}
+
+  async lookupReceipt(businessId: string, receiptNo: string): Promise<ReceiptLookupData> {
+    const sale = await this.db.findSaleByReceiptNo(receiptNo, businessId);
+    if (!sale) throw new Error("NOT_FOUND");
+    const items = await this.db.listSaleItems(sale.id, businessId);
+    return {
+      receiptNo: sale.receiptNo,
+      saleId: sale.id,
+      status: sale.status,
+      currency: sale.currency,
+      totalMinor: sale.totalMinor,
+      branchId: sale.branchId ?? null,
+      registerId: sale.registerId ?? null,
+      createdAt: sale.createdAt,
+      completedAt: sale.completedAt ?? null,
+      items: items.map(({ id, name, qty, priceMinor, lineTotalMinor }) => ({ id, name, qty, priceMinor, lineTotalMinor })),
+    };
+  }
 
   async receiptData(businessId: string, saleId: string): Promise<ReceiptData> {
     const sale = await this.db.findSaleById(saleId, businessId);

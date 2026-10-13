@@ -54,6 +54,23 @@ async function setupReceipt() {
 }
 
 describe("sales receipt service", () => {
+  it("looks up an exact receipt number within its tenant and returns only cashier-needed details", async () => {
+    const { db, sale, receipts } = await setupReceipt();
+    await db.createSale({
+      businessId: "b2", receiptNo: sale.receiptNo, status: "COMPLETED",
+      subtotalMinor: 9000, discountMinor: 0, taxMinor: 0, totalMinor: 9000,
+      paidMinor: 9000, changeMinor: 0, currency: "PHP", customerId: null, customerName: "Other tenant",
+      notes: null, actorId: "u2", requestId: "r2", idempotencyKey: null,
+      registerId: "other-register", branchId: "other-branch", createdAt: new Date(), completedAt: new Date(),
+    });
+
+    const result = await receipts.lookupReceipt("b1", sale.receiptNo);
+    expect(result).toMatchObject({ receiptNo: sale.receiptNo, saleId: sale.id, status: "COMPLETED", totalMinor: 2500 });
+    expect(result.items).toEqual([expect.objectContaining({ name: "Coffee", qty: 1, priceMinor: 2500 })]);
+    expect(result).not.toHaveProperty("customerEmail");
+    await expect(receipts.lookupReceipt("b2", "missing")).rejects.toThrow("NOT_FOUND");
+  });
+
   it("projects delivery fee and delivery tax distinctly", async () => {
     const { db, sale, receipts } = await setupReceipt();
     await db.updateSale(sale.id, "b1", {

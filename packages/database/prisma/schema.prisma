@@ -82,6 +82,7 @@ model Business {
   cashMovements CashMovement[]
   customers   Customer[]
   refunds     Refund[]
+  customerConcerns CustomerConcern[]
   refundItems RefundItem[]
   expenses    Expense[]
   branches    Branch[]
@@ -399,6 +400,56 @@ model InventoryMovement {
   @@index([businessId, productId, createdAt])
 }
 
+/// Phase C: a reported damage/expiration risk. Reporting does not alter
+/// saleable stock; a separately audited disposition writes a stock movement.
+model StockException {
+  id         String   @id @default(cuid())
+  businessId String
+  productId  String
+  branchId   String?
+  kind       String
+  quantity   Int
+  expiresOn  String?
+  reason     String
+  status     String   @default("OPEN")
+  reportKey  String
+  reportedBy String
+  createdAt  DateTime @default(now())
+  disposedBy String?
+  disposedAt DateTime?
+  movementId String?
+  @@unique([businessId, reportKey])
+  @@index([businessId, branchId, status, createdAt])
+  @@index([businessId, productId])
+}
+
+model GuestSupportCase {
+  id             String   @id @default(cuid())
+  businessId     String
+  orderId        String
+  category       String
+  description    String
+  status         String   @default("OPEN")
+  idempotencyKey String
+  createdAt      DateTime @default(now())
+  closedAt       DateTime?
+  closedBy       String?
+  @@unique([businessId, idempotencyKey])
+  @@index([businessId, status, createdAt])
+}
+
+model PlatformOwnerConsent {
+  id        String   @id @default(cuid())
+  businessId String
+  ownerId   String
+  purpose   String
+  tokenHash String   @unique
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+  @@index([businessId, expiresAt])
+}
+
 model InventoryBalance {
   id         String   @id @default(cuid())
   businessId String
@@ -508,6 +559,7 @@ model Sale {
   updatedAt      DateTime   @updatedAt
   business       Business   @relation(fields: [businessId], references: [id])
   items          SaleItem[]
+  customerConcerns CustomerConcern[]
   payments       Payment[]
   receiptDeliveries ReceiptDelivery[]
   giftCardLoads  SaleGiftCardLoad[]
@@ -705,6 +757,61 @@ model Refund {
   items             RefundItem[]
   @@index([businessId, saleId])
   @@index([businessId, createdAt])
+}
+
+model CustomerConcern {
+  id                   String   @id
+  businessId           String
+  saleId               String
+  receiptNo            String
+  branchId             String?
+  registerId           String?
+  requesterId          String
+  reason               String
+  outcome              String
+  note                 String?
+  items                Json
+  requestedRefundMinor Int
+  status               String
+  idempotencyKey       String
+  reviewedBy           String?
+  reviewedAt           DateTime?
+  reviewReason         String?
+  refundId             String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  business             Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  sale                 Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  @@unique([businessId, idempotencyKey])
+  @@index([businessId, status, createdAt])
+  @@index([businessId, saleId, createdAt])
+}
+
+model ManagerApprovalRequest {
+  id                String   @id
+  businessId        String
+  requesterId       String
+  branchId          String?
+  registerId        String?
+  kind              String
+  permission        String
+  action            Json
+  fingerprint       String
+  stateFingerprint  String?
+  status            String
+  idempotencyKey    String
+  approverId        String?
+  decidedAt         DateTime?
+  decisionReason    String?
+  tokenCiphertext   String?
+  tokenExpiresAt    DateTime?
+  tokenClaimedAt    DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([businessId, requesterId, idempotencyKey])
+  @@index([businessId, status, createdAt])
+  @@index([businessId, requesterId, createdAt])
 }
 
 model Order {

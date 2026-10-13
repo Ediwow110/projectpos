@@ -4,6 +4,7 @@ import type { NestExpressApplication } from "@nestjs/platform-express";
 import type { RequestHandler } from "express";
 import cookieParser from "cookie-parser";
 import { AppModule } from "./app.module";
+import { assertProductionApprovalQueueKey } from "./auth/approval-token-crypto";
 import {
   listPayMongoPaymentMethodCapabilitiesFromEnv,
   listPayMongoWebhookDiagnosticsFromEnv,
@@ -11,6 +12,7 @@ import {
 } from "./payments/paymongo";
 
 async function bootstrap(): Promise<void> {
+  assertProductionApprovalQueueKey(process.env);
   // rawBody preserves the exact request bytes so billing webhooks can verify a
   // provider's signature over what was actually sent instead of over
   // re-serialized JSON.
@@ -54,4 +56,7 @@ async function bootstrap(): Promise<void> {
   app.enableShutdownHooks();
 }
 
-bootstrap().catch((e) => console.error(e));
+bootstrap().catch((e) => {
+  console.error(e);
+  process.exitCode = 1;
+});

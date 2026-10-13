@@ -22,12 +22,14 @@ export function auditFamily(ctx: PgContext) {
       }
     },
 
-    async listAudit(): Promise<AuditEntry[]> {
+    async listAudit(businessId?: string): Promise<AuditEntry[]> {
       const c = await ctx.client();
       try {
         const rows = await c.query(
           'SELECT "businessId", "actorId", "action", "entityType", "entityId", "requestId", "beforeSnapshot", "afterSnapshot", "reason", "createdAt"' +
-            ' FROM "AuditLog" ORDER BY "createdAt" ASC, "id" ASC',
+          ' FROM "AuditLog" ' + (businessId ? 'WHERE "businessId" = $1 ' : '') +
+            'ORDER BY "createdAt" ASC, "id" ASC',
+          businessId ? [businessId] : [],
         );
         return rows.rows.map((r) => ({
           businessId: r.businessId as string | null,

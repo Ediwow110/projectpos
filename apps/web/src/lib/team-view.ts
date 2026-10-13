@@ -23,3 +23,7 @@ export function canDeactivateMember(currentUserId: string, member: TeamMemberRow
 export function canManageApprovalPin(member: TeamMemberRow): boolean {
   return member.deactivatedAt === null && (member.role === "owner" || member.role === "manager");
 }
+
+export function canChangeMemberRole(currentUserId: string, member: TeamMemberRow): boolean {
+  return member.deactivatedAt === null && member.role !== "owner" && member.userId !== currentUserId;
+}

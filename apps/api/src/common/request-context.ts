@@ -5,6 +5,10 @@ export interface RequestAuth {
   sessionId: string;
   activeBranchId: string | null;
   authenticatedAt: Date;
+  effectivePermissions?: string[];
+  /** Null means unassigned/legacy all-branch access; [] means deny all. */
+  allowedBranchIds?: string[] | null;
+  allowedRegisterIds?: string[] | null;
 }
 
 declare global {

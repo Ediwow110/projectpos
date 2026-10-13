@@ -5,6 +5,7 @@ import type { JSX } from "react";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { NexposLogo } from "../../components/brand/NexposLogo";
+import { GuestSupportForm } from "../../components/GuestSupportForm";
 import { ApiError, apiFetch } from "../../lib/api";
 import { consumeStatusTokenFromLocation } from "../../lib/order-status-token";
 import { formatOrderMoney, paymentStatusCopy, type PublicOrderStatus } from "../../lib/orders";
@@ -192,6 +193,7 @@ function OrderStatusExperience(): JSX.Element {
             </div>
           </section>
         ) : null}
+        {status && tokenRef.current ? <div className="mt-5"><GuestSupportForm statusToken={tokenRef.current} /></div> : null}
       </div>
     </main>
   );

@@ -46,6 +46,7 @@ export class BusinessService {
     // PLAN FR-RBAC-02: settings changes are a permission-sensitive action; the
     // role seed withholds settings.write from manager/cashier.
     if (!granted.includes("settings.write")) throw new Error("FORBIDDEN");
+    return this.db.withLock(`business-settings:${businessId}`, async () => {
     const current = await this.db.getSettings(businessId);
     // Receipt customization is a paid feature: the settings schema accepts
     // receipt, receipt.*, receiptHeader and receiptFooter, so the gate matches
@@ -88,6 +89,7 @@ export class BusinessService {
       after: next,
     });
     return next;
+    });
   }
 
   async getOnboarding(businessId: string): Promise<OnboardingState> {
@@ -104,6 +106,7 @@ export class BusinessService {
     granted: string[] = [],
   ): Promise<OnboardingState> {
     if (!granted.includes("settings.write")) throw new Error("FORBIDDEN");
+    return this.db.withLock(`business-settings:${businessId}`, async () => {
     const current = await this.getOnboarding(businessId);
     const next = applyOnboardingPatch(current, patch);
     const settings = await this.db.getSettings(businessId);
@@ -117,5 +120,6 @@ export class BusinessService {
       requestId,
     });
     return next;
+    });
   }
 }

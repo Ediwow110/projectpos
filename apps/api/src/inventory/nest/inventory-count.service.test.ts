@@ -18,6 +18,22 @@ async function fixture(): Promise<{ db: DbPort; service: InventoryCountService; 
 }
 
 describe("phase 18 inventory counts", () => {
+  it("blocks count creation, entry and submission for employees without inventory-adjust permission", async () => {
+    const { service, businessId, products } = await fixture();
+    await expect(service.createCount(businessId, "cashier", "deny-create", {
+      scopeType: "PARTIAL", name: "Denied", branchId: null, productIds: [products[0]!],
+    }, [])).rejects.toThrow("FORBIDDEN");
+    const count = await service.createCount(businessId, "owner", "create", {
+      scopeType: "PARTIAL", name: "Protected", branchId: null, productIds: [products[0]!],
+    }, grant);
+    await expect(service.startCount(businessId, "cashier", "deny-start", count.id, count.version, [])).rejects.toThrow("FORBIDDEN");
+    const started = await service.startCount(businessId, "owner", "start", count.id, count.version, grant);
+    await expect(service.updateLines(businessId, "cashier", "deny-lines", count.id, {
+      expectedVersion: started.version, lines: [{ lineId: started.lines[0]!.id, countedQty: 7 }],
+    }, [])).rejects.toThrow("FORBIDDEN");
+    await expect(service.submitCount(businessId, "cashier", "deny-submit", count.id, started.version, [])).rejects.toThrow("FORBIDDEN");
+    await expect(service.cancelCount(businessId, "cashier", "deny-cancel", count.id, started.version, [])).rejects.toThrow("FORBIDDEN");
+  });
   it("rejects a stale count before submission without writing a stock_count movement", async () => {
     const { db, service, businessId, products } = await fixture();
     const count = await service.createCount(businessId, "owner", "r1", { scopeType: "PARTIAL", name: "Cycle", branchId: null, productIds: [products[0]!] }, grant);

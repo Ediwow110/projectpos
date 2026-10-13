@@ -382,10 +382,12 @@ export class SalesService {
 
   async listSales(
     businessId: string,
-    opts: { cursor?: string; limit: number; status?: string; customerId?: string; dateFrom?: string; dateTo?: string },
+    opts: { cursor?: string; limit: number; status?: string; customerId?: string; dateFrom?: string; dateTo?: string; branchId?: string; allowedRegisterIds?: string[] },
   ): Promise<{ items: DbSale[]; nextCursor: string | null }> {
     withScope(businessId, {});
     let rows = await this.db.listSalesByBusiness(businessId);
+    if (opts.branchId) rows = rows.filter((s) => s.branchId === opts.branchId);
+    if (opts.allowedRegisterIds) rows = rows.filter((s) => Boolean(s.registerId && opts.allowedRegisterIds!.includes(s.registerId)));
     if (opts.status) rows = rows.filter((s) => s.status === opts.status);
     if (opts.customerId) rows = rows.filter((s) => s.customerId === opts.customerId);
     let from: number | null = null;
@@ -449,6 +451,11 @@ export class SalesService {
   }> {
     withScope(businessId, {});
     return this.receipts.receiptData(businessId, saleId);
+  }
+
+  async lookupReceipt(businessId: string, receiptNo: string) {
+    withScope(businessId, {});
+    return this.receipts.lookupReceipt(businessId, receiptNo);
   }
 
   // FR-RECEIPT-01: the downloadable form of the receipt.

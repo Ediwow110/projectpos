@@ -21,6 +21,14 @@ export function useTeamPageState() {
   const [copyStatus, setCopyStatus] = useState("");
   const [deactivateTarget, setDeactivateTarget] = useState<TeamMemberRow | null>(null);
   const [pinTarget, setPinTarget] = useState<TeamMemberRow | null>(null);
+  const [roleTarget, setRoleTarget] = useState<TeamMemberRow | null>(null);
+  const [nextRole, setNextRole] = useState<"manager" | "cashier" | "inventory">("cashier");
+  const [roleConfirmation, setRoleConfirmation] = useState("");
+  const [permissionTarget, setPermissionTarget] = useState<TeamMemberRow | null>(null);
+  const [permissionOptions, setPermissionOptions] = useState<string[]>([]);
+  const [deniedPermissions, setDeniedPermissions] = useState<string[]>([]);
+  const [permissionConfirmation, setPermissionConfirmation] = useState("");
+  const [permissionLoading, setPermissionLoading] = useState(false);
   const [approvalPin, setApprovalPin] = useState("");
   const [approvalPinConfirm, setApprovalPinConfirm] = useState("");
 
@@ -29,6 +37,10 @@ export function useTeamPageState() {
     busy, setBusy, error, setError, success, setSuccess,
     temporaryCredential, setTemporaryCredential, copyStatus, setCopyStatus,
     deactivateTarget, setDeactivateTarget, pinTarget, setPinTarget,
+    roleTarget, setRoleTarget, nextRole, setNextRole, roleConfirmation, setRoleConfirmation,
+    permissionTarget, setPermissionTarget, permissionOptions, setPermissionOptions,
+    deniedPermissions, setDeniedPermissions, permissionConfirmation, setPermissionConfirmation,
+    permissionLoading, setPermissionLoading,
     approvalPin, setApprovalPin, approvalPinConfirm, setApprovalPinConfirm,
   };
 }

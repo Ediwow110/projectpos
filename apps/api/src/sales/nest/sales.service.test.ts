@@ -52,6 +52,42 @@ async function setupSale() {
 }
 
 describe("phase4 sales service", () => {
+  it("filters sales by assigned branch before pagination", async () => {
+    const db = createMemoryDb();
+    const service = new SalesService(db);
+    for (const [receiptNo, branchId] of [
+      ["2026-000001", "north"],
+      ["2026-000002", "south"],
+      ["2026-000003", "north"],
+    ] as const) {
+      await db.createSale({
+        businessId: "b1", receiptNo, status: "DRAFT",
+        subtotalMinor: 0, discountMinor: 0, taxMinor: 0, totalMinor: 0,
+        paidMinor: 0, changeMinor: 0, currency: "PHP",
+        customerId: null, customerName: null, notes: null,
+        actorId: "cashier", requestId: "scope-test", idempotencyKey: null,
+        registerId: null, branchId, createdAt: new Date(),
+      });
+    }
+    const page = await service.listSales("b1", { limit: 1, branchId: "north" });
+    expect(page.items.map((sale) => sale.receiptNo)).toEqual(["2026-000003"]);
+    expect(page.nextCursor).not.toBeNull();
+    const second = await service.listSales("b1", { limit: 1, branchId: "north", cursor: page.nextCursor! });
+    expect(second.items.map((sale) => sale.receiptNo)).toEqual(["2026-000001"]);
+    expect(second.nextCursor).toBeNull();
+    expect((await service.listSales("b1", { limit: 10 })).items).toHaveLength(3);
+  });
+  it("enforces configured owner discount limits for a staff role without override grant", async () => {
+    const { db, svc, productId } = await setupSale();
+    const input = { lines: [{ productId, qty: 1, lineDiscountMinor: 0 }], orderDiscountMinor: 250 };
+    // Existing default rule (10%) allows a discount exactly at the boundary.
+    await expect(svc.createDraft("b1", "cashier", "discount-default", input, [])).resolves.toBeTruthy();
+    await db.saveSettings("b1", { orderDiscountApprovalPercent: 5, lineDiscountApprovalPercent: 5 });
+    await expect(svc.createDraft("b1", "cashier", "discount-restricted", input, []))
+      .rejects.toThrow("FORBIDDEN");
+    await expect(svc.createDraft("b1", "manager", "discount-approved", input, ["discount.override"]))
+      .resolves.toBeTruthy();
+  });
   it("creates one POS Order companion with every new POS draft", async () => {
     const { db, svc, productId, ALL } = await setupSale();
     const draft = await svc.createDraft("b1", "u1", "r-pos-order", {

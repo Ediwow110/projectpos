@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { FormEvent, JSX } from "react";
 
 import { exchangePreview } from "../lib/exchange-view";
@@ -29,6 +29,7 @@ export interface SaleExchangeProduct {
 
 export function SaleExchangeDialog({
   lines,
+  initialReturnQty,
   products,
   businessTaxRateBps,
   search,
@@ -40,6 +41,7 @@ export function SaleExchangeDialog({
   onClose,
 }: {
   lines: SaleExchangeLine[];
+  initialReturnQty?: Record<string, string>;
   products: SaleExchangeProduct[];
   businessTaxRateBps: number | null;
   search: string;
@@ -58,6 +60,7 @@ export function SaleExchangeDialog({
   const [replacementQty, setReplacementQty] = useState<Record<string, string>>({});
   const [reason, setReason] = useState("");
   const [localError, setLocalError] = useState("");
+  useEffect(() => { if (initialReturnQty) setReturnQty(initialReturnQty); }, [initialReturnQty]);
 
   const numericReturnQty = useMemo(() => Object.fromEntries(
     lines.map((line) => [line.id, Number(returnQty[line.id] ?? 0)]),

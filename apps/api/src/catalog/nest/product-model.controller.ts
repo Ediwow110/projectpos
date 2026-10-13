@@ -33,7 +33,7 @@ export class ProductModelController {
   ) {}
 
   private canWrite(req: Request): boolean {
-    return (req.auth as { via?: string } | undefined)?.via === "api-token" || this.auth.rolePermissions(req.auth!.role).includes("price.edit");
+    return (req.auth as { via?: string } | undefined)?.via === "api-token" || this.auth.permissionsForRequest(req.auth!).includes("price.edit");
   }
 
   private guardWrite(req: Request, res: Response): boolean {

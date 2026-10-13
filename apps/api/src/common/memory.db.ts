@@ -1,4 +1,7 @@
-import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbDisplayToken, DbExchange, DbFeatureFlag, DbFulfillment, DbFulfillmentLine, DbInvoice, DbMembership, DbMovement, DbOrder, DbOrderAccessToken, DbOrderLine, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbProductFamily, DbProductOption, DbProductOptionValue, DbProductVariantOptionValue, DbProductBundle, DbBundleComponent, DbSaleItemBundleComponent, DbReceiptDelivery, DbResetToken, DbSession, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine, DbInventoryCount, DbInventoryCountLine, DbInventoryReservation, DbGiftCard, DbGiftCardTransaction, DbStoreCreditAccount, DbStoreCreditTransaction, DbLoyaltyProgram, DbLoyaltyAccount, DbLoyaltyTransaction, DbSaleGiftCardLoad, DbSaleLoyalty, DbSaleItemLoyaltyAllocation } from "./db.port";
+import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbCustomerConcern, DbCustomerConcernCreate, DbManagerApprovalRequest, DbManagerApprovalRequestCreate, DbDevice, DbDisplayToken, DbExchange, DbFeatureFlag, DbFulfillment, DbFulfillmentLine, DbInvoice, DbMembership, DbMovement, DbOrder, DbOrderAccessToken, DbOrderLine, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbProductFamily, DbProductOption, DbProductOptionValue, DbProductVariantOptionValue, DbProductBundle, DbBundleComponent, DbSaleItemBundleComponent, DbReceiptDelivery, DbResetToken, DbSession, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine, DbInventoryCount, DbInventoryCountLine, DbInventoryReservation, DbGiftCard, DbGiftCardTransaction, DbStoreCreditAccount, DbStoreCreditTransaction, DbLoyaltyProgram, DbLoyaltyAccount, DbLoyaltyTransaction, DbSaleGiftCardLoad, DbSaleLoyalty, DbSaleItemLoyaltyAllocation } from "./db.port";
+
+import type { DbStockException } from "./db.port";
+import type { DbGuestSupportCase, DbPlatformConsent } from "./db.port";
 
 let n = 0;
 const nid = (p: string): string => `${p}_${Date.now().toString(36)}_${(n += 1)}`;
@@ -20,6 +23,9 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const bundleComponents = new Map<string, DbBundleComponent>();
   const saleItemBundleComponents = new Map<string, DbSaleItemBundleComponent>();
   const movements = new Map<string, DbMovement>();
+  const stockExceptions = new Map<string, DbStockException>();
+  const guestSupportCases = new Map<string, DbGuestSupportCase>();
+  const platformConsents = new Map<string, DbPlatformConsent>();
   const balances = new Map<string, DbBalance>();
   const inventoryCounts = new Map<string, DbInventoryCount>();
   const inventoryCountLines = new Map<string, DbInventoryCountLine>();
@@ -51,6 +57,8 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const saleLoyalty = new Map<string, DbSaleLoyalty>();
   const saleItemLoyaltyAllocations = new Map<string, DbSaleItemLoyaltyAllocation>();
   const refunds = new Map<string, DbRefund>();
+  const customerConcerns = new Map<string, DbCustomerConcern>();
+  const managerApprovalRequests = new Map<string, DbManagerApprovalRequest>();
   const refundItems = new Map<string, DbRefundItem>();
   const exchanges = new Map<string, DbExchange>();
   const expenses = new Map<string, DbExpense>();
@@ -128,8 +136,8 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
         purchaseOrders: new Map(purchaseOrders), purchaseOrderLines: new Map(purchaseOrderLines),
         purchaseReceipts: new Map(purchaseReceipts), purchaseReceiptLines: new Map(purchaseReceiptLines),
         supplierReturns: new Map(supplierReturns), supplierReturnLines: new Map(supplierReturnLines),
-        movements: new Map(movements), balances: new Map(balances), idempotency: new Map(idempotency),
-        sales: new Map(sales), saleItems: new Map(saleItems), payments: new Map(payments), refunds: new Map(refunds), refundItems: new Map(refundItems),
+        movements: new Map(movements), balances: new Map(balances), stockExceptions: new Map(stockExceptions), guestSupportCases: new Map(guestSupportCases), platformConsents: new Map(platformConsents), idempotency: new Map(idempotency),
+        sales: new Map(sales), saleItems: new Map(saleItems), payments: new Map(payments), refunds: new Map(refunds), customerConcerns: new Map(customerConcerns), refundItems: new Map(refundItems),
         orders: new Map(orders), orderLines: new Map(orderLines), inventoryReservations: new Map(inventoryReservations),
         fulfillments: new Map(fulfillments), fulfillmentLines: new Map(fulfillmentLines), orderAccessTokens: new Map(orderAccessTokens),
         giftCards: new Map(giftCards), giftCardTransactions: new Map(giftCardTransactions),
@@ -146,8 +154,8 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
         restore(purchaseOrders, snapshot.purchaseOrders); restore(purchaseOrderLines, snapshot.purchaseOrderLines);
         restore(purchaseReceipts, snapshot.purchaseReceipts); restore(purchaseReceiptLines, snapshot.purchaseReceiptLines);
         restore(supplierReturns, snapshot.supplierReturns); restore(supplierReturnLines, snapshot.supplierReturnLines);
-        restore(movements, snapshot.movements); restore(balances, snapshot.balances); restore(idempotency, snapshot.idempotency);
-        restore(sales, snapshot.sales); restore(saleItems, snapshot.saleItems); restore(payments, snapshot.payments); restore(refunds, snapshot.refunds); restore(refundItems, snapshot.refundItems);
+        restore(movements, snapshot.movements); restore(balances, snapshot.balances); restore(stockExceptions, snapshot.stockExceptions); restore(guestSupportCases, snapshot.guestSupportCases); restore(platformConsents, snapshot.platformConsents); restore(idempotency, snapshot.idempotency);
+        restore(sales, snapshot.sales); restore(saleItems, snapshot.saleItems); restore(payments, snapshot.payments); restore(refunds, snapshot.refunds); restore(customerConcerns, snapshot.customerConcerns); restore(refundItems, snapshot.refundItems);
         restore(orders, snapshot.orders); restore(orderLines, snapshot.orderLines); restore(inventoryReservations, snapshot.inventoryReservations);
         restore(fulfillments, snapshot.fulfillments); restore(fulfillmentLines, snapshot.fulfillmentLines); restore(orderAccessTokens, snapshot.orderAccessTokens);
         restore(giftCards, snapshot.giftCards); restore(giftCardTransactions, snapshot.giftCardTransactions);
@@ -487,6 +495,62 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     async listBalances(businessId) {
       return [...balances.values()].filter((b) => b.businessId === businessId);
     },
+    async createStockException(input) {
+      const row: DbStockException = { ...input, id: nid("risk"), createdAt: new Date() };
+      if ([...stockExceptions.values()].some((value) => value.businessId === input.businessId && value.reportKey === input.reportKey)) throw new Error("CONFLICT");
+      stockExceptions.set(row.id, row);
+      return row;
+    },
+    async findStockExceptionById(id, businessId) {
+      const row = stockExceptions.get(id);
+      return row?.businessId === businessId ? row : null;
+    },
+    async findStockExceptionByKey(businessId, key) {
+      return [...stockExceptions.values()].find((row) => row.businessId === businessId && row.reportKey === key) ?? null;
+    },
+    async listStockExceptions(businessId) {
+      return [...stockExceptions.values()].filter((row) => row.businessId === businessId);
+    },
+    async disposeStockException(id, businessId, actorId, movementId) {
+      const row = stockExceptions.get(id);
+      if (!row || row.businessId !== businessId || row.status !== "OPEN") return null;
+      const next: DbStockException = { ...row, status: "DISPOSED", disposedBy: actorId, disposedAt: new Date(), movementId };
+      stockExceptions.set(id, next);
+      return next;
+    },
+    async createGuestSupportCase(input) {
+      if ([...guestSupportCases.values()].some((row) => row.businessId === input.businessId && row.idempotencyKey === input.idempotencyKey)) throw new Error("CONFLICT");
+      const row: DbGuestSupportCase = { ...input, id: nid("gsc"), createdAt: new Date() };
+      guestSupportCases.set(row.id, row); return row;
+    },
+    async findGuestSupportCaseByKey(businessId, key) {
+      return [...guestSupportCases.values()].find((row) => row.businessId === businessId && row.idempotencyKey === key) ?? null;
+    },
+    async listGuestSupportCases(businessId) {
+      return [...guestSupportCases.values()].filter((row) => row.businessId === businessId);
+    },
+    async closeGuestSupportCase(id, businessId, actorId) {
+      const row = guestSupportCases.get(id);
+      if (!row || row.businessId !== businessId || row.status !== "OPEN") return null;
+      const next: DbGuestSupportCase = { ...row, status: "CLOSED", closedAt: new Date(), closedBy: actorId };
+      guestSupportCases.set(id, next); return next;
+    },
+    async createPlatformConsent(input) {
+      const row: DbPlatformConsent = { ...input, id: nid("consent"), createdAt: new Date() };
+      platformConsents.set(row.id, row); return row;
+    },
+    async findPlatformConsentByHash(businessId, hash) {
+      return [...platformConsents.values()].find((row) => row.businessId === businessId && row.tokenHash === hash) ?? null;
+    },
+    async listPlatformConsents(businessId) {
+      return [...platformConsents.values()].filter((row) => row.businessId === businessId);
+    },
+    async revokePlatformConsent(id, businessId) {
+      const row = platformConsents.get(id);
+      if (!row || row.businessId !== businessId) return null;
+      const next: DbPlatformConsent = { ...row, revokedAt: row.revokedAt ?? new Date() };
+      platformConsents.set(id, next); return next;
+    },
     async nextInventoryCountNo(businessId) {
       const year = new Date().getUTCFullYear();
       const seq = (inventoryCountSeq.get(businessId) ?? 0) + 1;
@@ -549,6 +613,9 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       const s = sales.get(id) ?? null;
       if (!s || s.businessId !== businessId) return null;
       return s;
+    },
+    async findSaleByReceiptNo(receiptNo, businessId) {
+      return [...sales.values()].find((s) => s.businessId === businessId && s.receiptNo === receiptNo) ?? null;
     },
     async listSalesByBusiness(businessId) {
       return [...sales.values()].filter((s) => s.businessId === businessId);
@@ -1002,6 +1069,66 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       const row: DbRefund = { deliveryFeeRefundMinor: 0, deliveryTaxRefundMinor: 0, ...r, id: nid("ref") };
       refunds.set(row.id, row);
       return row;
+    },
+    async createCustomerConcern(c: DbCustomerConcernCreate) {
+      if ([...customerConcerns.values()].some((row) => row.businessId === c.businessId && row.idempotencyKey === c.idempotencyKey)) {
+        throw new Error("IDEMPOTENCY_MISMATCH");
+      }
+      const now = new Date();
+      const row: DbCustomerConcern = { ...c, reviewedAt: c.reviewedAt ?? null, items: c.items.map((item) => ({ ...item })), id: nid("concern"), createdAt: now, updatedAt: now };
+      customerConcerns.set(row.id, row);
+      return row;
+    },
+    async findCustomerConcernById(id, businessId) {
+      const row = customerConcerns.get(id) ?? null;
+      return row?.businessId === businessId ? row : null;
+    },
+    async findCustomerConcernByIdempotency(businessId, idempotencyKey) {
+      return [...customerConcerns.values()].find((row) => row.businessId === businessId && row.idempotencyKey === idempotencyKey) ?? null;
+    },
+    async listCustomerConcernsByBusiness(businessId) {
+      return [...customerConcerns.values()].filter((row) => row.businessId === businessId)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id));
+    },
+    async transitionCustomerConcern(id, businessId, expectedStatus, patch) {
+      const row = customerConcerns.get(id);
+      if (!row || row.businessId !== businessId || row.status !== expectedStatus) return null;
+      const updated: DbCustomerConcern = { ...row, ...patch, updatedAt: new Date() };
+      customerConcerns.set(id, updated);
+      return updated;
+    },
+    async createManagerApprovalRequest(input: DbManagerApprovalRequestCreate) {
+      if ([...managerApprovalRequests.values()].some((row) => row.businessId === input.businessId && row.requesterId === input.requesterId && row.idempotencyKey === input.idempotencyKey)) throw new Error("IDEMPOTENCY_MISMATCH");
+      const now = new Date();
+      const row: DbManagerApprovalRequest = { ...input, action: { ...input.action }, id: nid("approval"), createdAt: now, updatedAt: now };
+      managerApprovalRequests.set(row.id, row);
+      return row;
+    },
+    async findManagerApprovalRequest(id, businessId) {
+      const row = managerApprovalRequests.get(id) ?? null;
+      return row?.businessId === businessId ? row : null;
+    },
+    async findManagerApprovalRequestByIdempotency(businessId, requesterId, idempotencyKey) {
+      return [...managerApprovalRequests.values()].find((row) => row.businessId === businessId && row.requesterId === requesterId && row.idempotencyKey === idempotencyKey) ?? null;
+    },
+    async listManagerApprovalRequests(businessId) {
+      return [...managerApprovalRequests.values()].filter((row) => row.businessId === businessId)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id));
+    },
+    async transitionManagerApprovalRequest(id, businessId, expectedStatus, patch) {
+      const row = managerApprovalRequests.get(id);
+      if (!row || row.businessId !== businessId || row.status !== expectedStatus) return null;
+      const updated: DbManagerApprovalRequest = { ...row, ...patch, updatedAt: new Date() };
+      managerApprovalRequests.set(id, updated);
+      return updated;
+    },
+    async claimManagerApprovalRequestToken(id, businessId, requesterId, now) {
+      const row = managerApprovalRequests.get(id);
+      if (!row || row.businessId !== businessId || row.requesterId !== requesterId || row.status !== "APPROVED" || row.tokenClaimedAt || !row.tokenCiphertext || !row.tokenExpiresAt || row.tokenExpiresAt <= now) return null;
+      const encryptedToken = row.tokenCiphertext;
+      const request: DbManagerApprovalRequest = { ...row, tokenCiphertext: null, tokenExpiresAt: null, tokenClaimedAt: now, updatedAt: now };
+      managerApprovalRequests.set(id, request);
+      return { request, encryptedToken, tokenExpiresAt: row.tokenExpiresAt };
     },
     async listRefundsByBusiness(businessId) {
       return [...refunds.values()].filter((r) => r.businessId === businessId);

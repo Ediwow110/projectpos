@@ -168,6 +168,7 @@ export class PrintService {
     if (!PRINT_MANAGERS.has(role)) throw new Error("FORBIDDEN");
     const printer = await this.db.findPrinterById(printerId, businessId);
     if (!printer) throw new Error("NOT_FOUND");
+    return this.db.withLock(`business-settings:${businessId}`, async () => {
     const settings = await this.db.getSettings(businessId);
     await this.db.saveSettings(businessId, { ...settings, defaultPrinterId: printer.id });
     await this.db.appendAudit({
@@ -175,6 +176,7 @@ export class PrintService {
       entityId: printer.id, requestId, after: { defaultPrinterId: printer.id },
     });
     return printerView(printer, printer.id);
+    });
   }
 
   async queueJob(

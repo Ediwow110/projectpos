@@ -45,7 +45,7 @@ export class ProcurementController {
   ) {}
 
   private perms(req: Request): string[] {
-    return this.auth.rolePermissions(req.auth!.role);
+    return this.auth.permissionsForRequest(req.auth!);
   }
 
   private requireKey(req: Request, res: Response): string | null {
@@ -146,7 +146,12 @@ export class ProcurementController {
   async listPurchaseOrders(@Req() req: Request, @Res() res: Response, @Query() query: Record<string, string>): Promise<void> {
     const parsed = purchaseOrderListSchema.safeParse(query);
     if (!parsed.success) { fail(res, 400, "VALIDATION", "Invalid purchase-orders query", req); return; }
-    try { res.json(await this.procurement.listPurchaseOrders(req.auth!.businessId, parsed.data)); }
+    try {
+      const auth = req.auth!;
+      res.json(await this.procurement.listPurchaseOrders(auth.businessId, {
+        ...parsed.data, ...(auth.allowedBranchIds ? { branchId: auth.activeBranchId! } : {}),
+      }));
+    }
     catch (e) { failFromError(res, e, "Purchase-order fetch failed", req); }
   }
 

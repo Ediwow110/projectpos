@@ -3,6 +3,8 @@ import { isSessionExpired, isSessionRevoked } from "@pos/auth";
 import { hashToken } from "../auth/sessions";
 import { defaultOnboardingState, isOnboardingComplete, type OnboardingState } from "../business/onboarding";
 import type { DbPort } from "./db.port";
+import { assignedBranches, assignedRegisters, effectivePermissions } from "../auth/member-permissions";
+import { permitsAssignedBranchRequest } from "../auth/branch-access-policy";
 
 const SETUP_SETTINGS = new Set(["currency", "taxName", "taxRateBps", "receiptHeader", "receiptFooter"]);
 
@@ -78,6 +80,49 @@ export class SessionGuard implements CanActivate {
         await this.db.updateSession(session.id, { activeBranchId: null });
       }
     }
+    // Assignments are applied to the server session on each request rather
+    // than trusting a client-selected branch or stale session cookie.
+    const settings = await this.db.getSettings(targetBusinessId);
+    const allowedBranchIds = membership.role === "owner" ? undefined : assignedBranches(settings, membership.id);
+    const registerAssignment = membership.role === "owner" ? undefined : assignedRegisters(settings, membership.id);
+    let allowedRegisterIds: string[] | null = registerAssignment ?? null;
+    if (registerAssignment && !allowedBranchIds) {
+      req.authError = "FORBIDDEN";
+      return false;
+    }
+    if (registerAssignment && allowedBranchIds) {
+      const valid: string[] = [];
+      for (const id of registerAssignment) {
+        const register = await this.db.findRegisterById(id, targetBusinessId);
+        if (register?.isActive && register.branchId && allowedBranchIds.includes(register.branchId)) {
+          valid.push(id);
+        }
+      }
+      allowedRegisterIds = valid;
+    }
+    if (allowedBranchIds) {
+      const active: string[] = [];
+      for (const id of allowedBranchIds) {
+        const branch = await this.db.findBranchById(id, targetBusinessId);
+        if (branch?.isActive) active.push(id);
+      }
+      if (active.length === 0) {
+        req.authError = "FORBIDDEN";
+        return false;
+      }
+      if (!activeBranchId || !active.includes(activeBranchId)) {
+        activeBranchId = active[0]!;
+        await this.db.updateSession(session.id, { activeBranchId });
+      }
+      if (!(await permitsAssignedBranchRequest(this.db, req, targetBusinessId, activeBranchId, allowedRegisterIds, active))) {
+        req.authError = "FORBIDDEN";
+        return false;
+      }
+    }
+    // This is the effective permission boundary for every staff request.
+    // Do not rely on hiding disabled buttons: controllers must check this
+    // reduced set instead of reading the static role seed directly.
+    const granted = effectivePermissions(membership.role, membership.id, settings);
     req.auth = {
       userId: session.userId,
       businessId: targetBusinessId,
@@ -85,13 +130,20 @@ export class SessionGuard implements CanActivate {
       sessionId: session.id,
       activeBranchId,
       authenticatedAt: session.authenticatedAt,
+      effectivePermissions: granted,
+      allowedBranchIds: allowedBranchIds ?? null,
+      allowedRegisterIds,
     };
-    return this.checkOnboarding(req);
+    req.rolePermissions = granted;
+    return this.checkOnboarding(req, settings);
   }
 
-  private async checkOnboarding(req: { auth: { businessId: string }; authError?: string; method: string; path: string; body?: unknown }): Promise<boolean> {
+  private async checkOnboarding(
+    req: { auth: { businessId: string }; authError?: string; method: string; path: string; body?: unknown },
+    sessionSettings?: Record<string, unknown>,
+  ): Promise<boolean> {
     if (isSetupRoute(req.method, req.path, req.body)) return true;
-    const settings = await this.db.getSettings(req.auth.businessId);
+    const settings = sessionSettings ?? await this.db.getSettings(req.auth.businessId);
     const onboarding = (settings["onboarding"] as OnboardingState | undefined) ?? defaultOnboardingState();
     if (isOnboardingComplete(onboarding)) return true;
     req.authError = "ONBOARDING_REQUIRED";

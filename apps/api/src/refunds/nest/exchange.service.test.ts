@@ -47,6 +47,42 @@ async function setupExchange(opts?: { originalMethod?: "cash" | "card" }) {
 }
 
 describe("direct exchange service", () => {
+  it("resolves an approved exchange concern only after the linked exchange executes", async () => {
+    const { db, originalSaleId, item, replacementProduct } = await setupExchange();
+    const sale = (await db.findSaleById(originalSaleId, "b1"))!;
+    const concern = await db.createCustomerConcern({
+      businessId: "b1", saleId: originalSaleId, receiptNo: sale.receiptNo, branchId: sale.branchId ?? null,
+      registerId: sale.registerId, requesterId: "cashier-1", reason: "WRONG_ITEM", outcome: "EXCHANGE", note: null,
+      items: [{ saleItemId: item.id, name: item.name, qty: 1, amountMinor: 2500 }], requestedRefundMinor: 2500,
+      status: "APPROVED", idempotencyKey: "case-exchange", reviewedBy: "manager-1", reviewedAt: new Date(),
+      reviewReason: "Exchange approved", refundId: null,
+    });
+    const result = await new ExchangeService(db).completeExchange("b1", "owner-1", "exchange-case", originalSaleId, {
+      returns: [{ saleItemId: item.id, qty: 1 }], replacements: [{ productId: replacementProduct.id, qty: 1 }],
+      reason: "Case exchange", concernId: concern.id, key: "exchange-case-key",
+    }, OWNER, "owner");
+    expect(await db.findCustomerConcernById(concern.id, "b1")).toMatchObject({ status: "RESOLVED", refundId: result.refund.id });
+    expect((await db.listAudit()).map((entry) => entry.action)).toContain("customer_concern.exchange_execute");
+  });
+
+  it("rejects exchanges whose return lines do not match the approved concern", async () => {
+    const { db, originalSaleId, item, replacementProduct } = await setupExchange();
+    const sale = (await db.findSaleById(originalSaleId, "b1"))!;
+    const concern = await db.createCustomerConcern({
+      businessId: "b1", saleId: originalSaleId, receiptNo: sale.receiptNo, branchId: sale.branchId ?? null,
+      registerId: sale.registerId, requesterId: "cashier-1", reason: "WRONG_ITEM", outcome: "EXCHANGE", note: null,
+      items: [{ saleItemId: item.id, name: item.name, qty: 1, amountMinor: 2500 }], requestedRefundMinor: 2500,
+      status: "APPROVED", idempotencyKey: "case-exchange-mismatch", reviewedBy: "manager-1", reviewedAt: new Date(),
+      reviewReason: "Exchange approved", refundId: null,
+    });
+    await expect(new ExchangeService(db).completeExchange("b1", "owner-1", "exchange-case-mismatch", originalSaleId, {
+      returns: [{ saleItemId: item.id, qty: 2 }], replacements: [{ productId: replacementProduct.id, qty: 1 }],
+      reason: "Changed return", concernId: concern.id, key: "exchange-case-mismatch-key",
+    }, OWNER, "owner")).rejects.toThrow("CONCERN_NOT_APPROVED");
+    expect(await db.listRefundsBySale(originalSaleId, "b1")).toEqual([]);
+    expect(await db.findCustomerConcernById(concern.id, "b1")).toMatchObject({ status: "APPROVED", refundId: null });
+  });
+
   it("links a full return to a replacement sale and exposes the net amount to collect", async () => {
     const { db, originalSaleId, item, returnedProduct, replacementProduct } = await setupExchange();
     const service = new ExchangeService(db);

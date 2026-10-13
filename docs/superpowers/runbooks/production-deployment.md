@@ -26,7 +26,8 @@ Key constraints the architecture imposes on any hosting choice:
   is the server-side API origin used only by that proxy shape.
 - Production refuses to boot without `DATABASE_URL` and a complete
   transactional-email configuration (`ENV_MISSING_DATABASE_URL` /
-  `ENV_MISSING_EMAIL_CONFIG`).
+  `ENV_MISSING_EMAIL_CONFIG`), and rejects a missing or malformed
+  `APPROVAL_QUEUE_ENCRYPTION_KEY` before accepting traffic.
   There is no silent fallback to the in-memory store.
 - The API needs **Node >= 24** (see `.nvmrc`).
 
@@ -39,6 +40,7 @@ in an image.
 |---|---|---|---|
 | `NODE_ENV` | no | yes | `production` (secure cookies, https-strict email config) |
 | `DATABASE_URL` | **yes** | yes | Postgres connection string of the production DB |
+| `APPROVAL_QUEUE_ENCRYPTION_KEY` | **yes** | yes | Stable 64-character hex encoding of 32 random bytes, used for encrypted manager grants. Generate once; do not rotate without a grant-expiry/rotation plan. |
 | `WEB_URL` | no | yes | Public https origin of the web app (CORS + email links) |
 | `API_PORT` | no | per platform | API listen port (default 3001; platforms often inject `PORT`) |
 | `BREVO_API_KEY` | **yes** | one email transport required | Brevo HTTPS API key; preferred on Railway Free/Hobby because SMTP is blocked there |
@@ -65,10 +67,15 @@ in an image.
 1. Provision a **clean** PostgreSQL 16 database. The SQL migrations are
    tracked in a `_migrations` ledger table, not written with `IF NOT EXISTS`,
    so first application must start from an empty database.
-2. Apply all migrations **before first boot**:
-   `DATABASE_URL=postgres://… node scripts/apply-migrations.mjs`
-   (16 migrations, ~47 tables). Re-running is a no-op — the ledger makes it
-   idempotent, which is what makes multi-instance rollouts safe.
+2. Apply all migrations **before first boot and before every schema-changing
+   release**, using a separately authorized migration job:
+   `node scripts/apply-migrations.mjs` with `DATABASE_URL` provided securely.
+   Never use the production API container startup as a migration trigger.
+   The runner serializes attempts with a database advisory lock, wraps each
+   migration in a transaction, and records it in `_migrations`; re-running
+   successful migrations is a no-op. Take and verify a backup before proceeding.
+   Review each SQL change for backward compatibility with the still-running
+   API; if it is incompatible, schedule maintenance rather than hot-deploying.
 3. Never run destructive commands (`DROP`, `pg_restore --clean`) against the
    production database outside the documented restore runbook
    (`docs/superpowers/runbooks/backup-restore.md`).
@@ -148,9 +155,10 @@ disabled, so configure `BREVO_API_KEY` and do **not** set the SMTP variables.
    `API_PROXY_TARGET=https://<api-host>` so Next.js forwards `/api/*` without
    exposing the session cookie cross-site. Attach the secret env from section
    2 to the API service.
-3. Add a one-off release step (or run it once manually) that executes
-   `node scripts/apply-migrations.mjs` with `DATABASE_URL` set — before the
-   API receives traffic.
+3. Add a one-off release step (or run it manually from an authorized machine)
+   that executes `node scripts/apply-migrations.mjs` with `DATABASE_URL` set
+   only for the approved target database, **before** new API code receives
+   traffic. Do not use a normal API restart for this operation.
 4. Health probes: liveness `GET /healthz`, readiness `GET /readyz` on the API
    service. Prefer one registrable custom domain for web/API. If using the
    same-origin proxy shape, the API service can keep its platform hostname
@@ -175,6 +183,20 @@ reference, while `API_PROXY_TARGET` is derived from the API service's private
 args, so the same generic web image receives the values when Next.js builds.
 Do not change the session cookie to `SameSite=None` merely to make the two
 generated Render hostnames talk directly from the browser.
+
+**Render Free staged release checklist:** Free web services do not support
+`preDeployCommand`, so `render.yaml` disables automatic deploys on both API
+and web. (1) Record current commit and back up the database; (2) audit new
+migration SQL and verify mixed-version compatibility; (3) configure
+`APPROVAL_QUEUE_ENCRYPTION_KEY` in the API service's secret settings (generate
+with `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`);
+(4) on an approved, trusted machine with Node 24, installed dependencies,
+and the intended `DATABASE_URL`, manually run `node scripts/apply-migrations.mjs`
+**once** and verify `_migrations`; (5) manually deploy the selected API commit,
+verify `/readyz` and critical flows, then manually deploy web. Never paste
+database credentials or encryption keys into chat or logs. A failed migration
+is a release stop; investigate and restore from backup only under the restore
+runbook. This checklist is guidance, **not authorization** to access production.
 
 ### 5.4 Floot (evaluated, not viable)
 

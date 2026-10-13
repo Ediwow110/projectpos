@@ -15,6 +15,7 @@ export const ROLE_SEED: Record<"owner" | "manager" | "cashier" | "inventory", st
       p !== "cost.view" &&
       p !== "discount.override" &&
       p !== "sale.refund" &&
+      p !== "customer_concern.review" &&
       p !== "stored_value.adjust" &&
       p !== "gift_card.manage" &&
       p !== "loyalty.manage" &&
@@ -43,6 +44,8 @@ export const ROLE_SEED: Record<"owner" | "manager" | "cashier" | "inventory", st
   inventory: ALL_PERMISSIONS.filter(
     (p) =>
       p !== "sale.refund" &&
+      p !== "customer_concern.request" &&
+      p !== "customer_concern.review" &&
       p !== "refund.override" &&
       p !== "user.manage" &&
       p !== "settings.write" &&

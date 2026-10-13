@@ -59,6 +59,7 @@ export class RefundService {
       deliveryRefundMinor?: number;
       reason?: string;
       destination?: "ORIGINAL_TENDER" | "STORE_CREDIT";
+      concernId?: string;
       key: string;
     },
     granted: string[],
@@ -81,6 +82,7 @@ export class RefundService {
         deliveryRefundMinor: requestedDeliveryRefundMinor,
         reason: input.reason ?? null,
         destination,
+        concernId: input.concernId ?? null,
       });
       const existing = await this.db.findIdempotency(businessId, input.key, "refund.approve");
       if (existing) {
@@ -91,6 +93,13 @@ export class RefundService {
         return { refund, sale, replayed: true };
       }
       const sale = await this.requireSale(businessId, saleId);
+      const linkedConcern = input.concernId ? await this.db.findCustomerConcernById(input.concernId, businessId) : null;
+      if (input.concernId) {
+        if (!linkedConcern || linkedConcern.saleId !== saleId || linkedConcern.status !== "APPROVED" || linkedConcern.outcome !== "REFUND" ||
+          normalizedLoads.length > 0 || requestedDeliveryRefundMinor > 0 ||
+          JSON.stringify(linkedConcern.items.map(({ saleItemId, qty }) => ({ saleItemId, qty })).sort((a, b) => a.saleItemId.localeCompare(b.saleItemId))) !==
+          JSON.stringify([...requestedItems].sort((a, b) => a.saleItemId.localeCompare(b.saleItemId)))) throw new Error("CONCERN_NOT_APPROVED");
+      }
       if (sale.status !== "COMPLETED" && sale.status !== "REFUND_REQUESTED" && sale.status !== "PARTIALLY_REFUNDED") {
         throw new Error("SALE_INVALID_TRANSITION");
       }
@@ -159,6 +168,7 @@ export class RefundService {
       const deliveryRefundTotalMinor = deliveryFeeRefundMinor + deliveryTaxRefundMinor;
       const totalMinor = merchandiseTotalMinor + loadRefundTotalMinor + deliveryRefundTotalMinor;
       if (totalMinor <= 0) throw new Error("VALIDATION");
+      if (linkedConcern && totalMinor !== linkedConcern.requestedRefundMinor) throw new Error("CONCERN_AMOUNT_MISMATCH");
       // FR-REFUND-02: approval follows role AND threshold policy. Above the
       // configured threshold only a role holding refund.override may approve.
       const threshold = (await this.db.getSettings(businessId))["refundApprovalThresholdMinor"];
@@ -386,6 +396,14 @@ export class RefundService {
       const status = transitionSale(sale.status, target);
       const updated =
         (await this.db.updateSale(sale.id, businessId, { status })) ?? sale;
+      if (linkedConcern) {
+        const completedConcern = await this.db.transitionCustomerConcern(linkedConcern.id, businessId, "APPROVED", {
+          status: "REFUND_EXECUTED", refundId: refund.id,
+        });
+        if (!completedConcern) throw new Error("CONCERN_NOT_APPROVED");
+        await this.db.appendAudit({ businessId, actorId, action: "customer_concern.refund_execute", entityType: "CustomerConcern", entityId: linkedConcern.id, requestId,
+          after: { status: "REFUND_EXECUTED", refundId: refund.id, amountMinor: totalMinor } });
+      }
       await this.db.claimIdempotency({
         businessId,
         key: input.key,

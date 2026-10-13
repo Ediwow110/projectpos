@@ -67,4 +67,7 @@ export const businessSettingsSchema = z.object({
   onlinePickupBranchIds: z.array(z.string().min(1, "VALIDATION")).max(100, "VALIDATION").optional(),
   onlineFulfillmentBranchId: z.string().min(1, "VALIDATION").nullable().optional(),
   deliveryFlatFeeMinor: z.number().int().min(0, "VALIDATION").max(Number.MAX_SAFE_INTEGER, "VALIDATION").optional(),
+  refundApprovalThresholdMinor: z.number().int().min(0, "VALIDATION").max(100_000_000, "VALIDATION").optional(),
+  orderDiscountApprovalPercent: z.number().int().min(0, "VALIDATION").max(100, "VALIDATION").optional(),
+  lineDiscountApprovalPercent: z.number().int().min(0, "VALIDATION").max(100, "VALIDATION").optional(),
 });

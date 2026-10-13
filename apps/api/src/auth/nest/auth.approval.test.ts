@@ -29,6 +29,34 @@ async function setupApprovers() {
 }
 
 describe("manager action approvals", () => {
+  it("does not mint a manager approval when the individual approver permission has been denied", async () => {
+    const { auth, db, business, cashier, manager, managerMembership } = await setupApprovers();
+    await db.saveSettings(business.id, {
+      memberPermissionDenials: { [managerMembership.id]: ["discount.override"] },
+    });
+    await expect(auth.mintManagerApproval(business.id, cashier.id, "restricted-approval", {
+      email: manager.email,
+      password: "manager-password-12",
+      permission: "discount.override",
+      fingerprint: "restricted-cart",
+    })).rejects.toThrow("AUTH_INVALID_CREDENTIALS");
+  });
+
+  it("rejects consumption if an approver loses authority after granting a token", async () => {
+    const { auth, db, business, cashier, manager, managerMembership } = await setupApprovers();
+    const granted = await auth.mintManagerApproval(business.id, cashier.id, "before-restriction", {
+      email: manager.email,
+      password: "manager-password-12",
+      permission: "discount.override",
+      fingerprint: "approved-cart",
+    });
+    await db.saveSettings(business.id, {
+      memberPermissionDenials: { [managerMembership.id]: ["discount.override"] },
+    });
+    await expect(auth.consumeManagerApproval(
+      business.id, cashier.id, "discount.override", "approved-cart", granted.token,
+    )).rejects.toThrow("FORBIDDEN");
+  });
   it("mints and consumes one short-lived grant bound to requester, permission and fingerprint", async () => {
     const { auth, business, cashier, manager } = await setupApprovers();
     const minted = await auth.mintManagerApproval(

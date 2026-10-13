@@ -272,6 +272,7 @@ export default function PosPage(): JSX.Element {
             open
             permission="discount.override"
             action={{ kind: "discount", lines: cart.map((entry) => ({ productId: entry.productId, qty: entry.qty, lineDiscountMinor: entry.lineDiscountMinor })), orderDiscountMinor }}
+            registerId={registerId}
             title={`Manager approval · approve ₱${(discountSummary.totalDiscountMinor / 100).toFixed(2)} discount`}
             description={`This ${approvalRequest === "pay" ? "payment" : "held sale"} includes discounts above the cashier threshold.`}
             summary={`Discount total ₱${(discountSummary.totalDiscountMinor / 100).toFixed(2)} · exact current cart`}

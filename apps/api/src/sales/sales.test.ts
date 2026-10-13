@@ -28,6 +28,19 @@ describe("phase4 sales domain", () => {
     expect(
       requiresDiscountOverride({ orderDiscountMinor: 50, subtotalMinor: 1000, lines: [] }),
     ).toBe(false);
+    expect(requiresDiscountOverride({
+      orderDiscountMinor: 150, subtotalMinor: 1000, lines: [],
+      orderDiscountApprovalPercent: 20,
+    })).toBe(false);
+    expect(requiresDiscountOverride({
+      orderDiscountMinor: 150, subtotalMinor: 1000, lines: [],
+      orderDiscountApprovalPercent: 5,
+    })).toBe(true);
+    expect(requiresDiscountOverride({
+      orderDiscountMinor: 0, subtotalMinor: 1000,
+      lines: [{ qty: 1, priceMinor: 1000, lineDiscountMinor: 100 }],
+      lineDiscountApprovalPercent: 5,
+    })).toBe(true);
   });
   it("allows DRAFT->PENDING_PAYMENT->PAID->COMPLETED and rejects skips", () => {
     expect(transitionSale("DRAFT", "PENDING_PAYMENT")).toBe("PENDING_PAYMENT");

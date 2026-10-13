@@ -3,6 +3,17 @@ import { createMemoryDb } from "../../common/memory.db";
 import { BusinessService } from "./business.service";
 
 describe("phase11 settings gate and audit context", () => {
+  it("persists the refund threshold used by existing owner-approval policy", async () => {
+    const db = createMemoryDb();
+    const biz = await db.createBusiness({ name: "Financial Rules", currency: "PHP" });
+    const service = new BusinessService(db);
+    await service.patchSettings(biz.id, "owner", { refundApprovalThresholdMinor: 250000 }, "financial-rule", ["settings.write"]);
+    expect((await db.getSettings(biz.id))["refundApprovalThresholdMinor"]).toBe(250000);
+    const events = await db.listAudit();
+    expect(events.some((entry) => entry.action === "settings.write" && entry.requestId === "financial-rule")).toBe(true);
+    await expect(service.patchSettings(biz.id, "cashier", { refundApprovalThresholdMinor: 0 }, "blocked", []))
+      .rejects.toThrow("FORBIDDEN");
+  });
   it("denies settings writes without settings.write and allows the owner", async () => {
     const db = createMemoryDb();
     const biz = await db.createBusiness({ name: "S", currency: "PHP" });

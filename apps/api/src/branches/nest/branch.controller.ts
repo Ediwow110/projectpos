@@ -37,7 +37,9 @@ export class BranchController {
   @Get("branches")
   async listBranches(@Req() req: Request, @Res() res: Response): Promise<void> {
     try {
-      res.status(200).json({ items: await this.branches.listBranches(req.auth!.businessId) });
+      const items = await this.branches.listBranches(req.auth!.businessId);
+      const allowed = req.auth!.allowedBranchIds;
+      res.status(200).json({ items: allowed ? items.filter((branch) => allowed.includes(branch.id)) : items });
     } catch (e) {
       failFromError(res, e, "Branch fetch failed", req);
     }

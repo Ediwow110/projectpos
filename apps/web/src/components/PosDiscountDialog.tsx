@@ -115,7 +115,7 @@ export function PosDiscountDialog({
     >
       <form id="pos-discount-form" noValidate onSubmit={submit} className="space-y-5">
         <div className="rounded-xl border border-[#f0e2d7] bg-[#fff8f3] p-4 text-[11px] leading-5 text-[#6d6057]">
-          Order discounts above <strong>10%</strong> or line discounts above <strong>20%</strong> require
+          Discounts above your business&apos;s <strong>configured approval limits</strong> require
           <code className="mx-1 rounded bg-white px-1.5 py-0.5 font-data text-[10px] text-[#b94832]">discount.override</code>.
           Cashiers can request an owner or manager approval in context when the sale is held or paid.
         </div>

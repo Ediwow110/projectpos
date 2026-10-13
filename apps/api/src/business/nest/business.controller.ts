@@ -7,6 +7,7 @@ import { getCorrelationId } from "../../correlation";
 import { fail, failFromError } from "../../common/http-helpers";
 import { AuthService } from "../../auth/nest/auth.service";
 import { BusinessService } from "./business.service";
+import { visibleBusinessSettings } from "../../auth/member-permissions";
 
 function rid(req: Request): string {
   const headers: Record<string, string | undefined> = {};
@@ -26,7 +27,11 @@ export class BusinessController {
 
   @Get("business")
   async getBusiness(@Req() req: Request, @Res() res: Response): Promise<void> {
-    res.json(await this.business.getBusiness(req.auth!.businessId));
+    const business = await this.business.getBusiness(req.auth!.businessId);
+    res.json({
+      ...business,
+      settings: visibleBusinessSettings(req.auth!.role, business.settings),
+    });
   }
 
   @Patch("business/settings")
@@ -55,7 +60,7 @@ export class BusinessController {
         auth.userId,
         parsed.data as Record<string, unknown>,
         rid(req),
-        this.auth.rolePermissions(auth.role),
+        this.auth.permissionsForRequest(auth),
       );
       res.json({ settings });
     } catch (e) {
@@ -87,7 +92,7 @@ export class BusinessController {
         auth.userId,
         parsed.data,
         rid(req),
-        this.auth.rolePermissions(auth.role),
+        this.auth.permissionsForRequest(auth),
       );
       res.json(state);
     } catch (e) {

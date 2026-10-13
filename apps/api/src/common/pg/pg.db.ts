@@ -5,6 +5,10 @@ import { auditFamily } from "./pg-audit";
 import { tenantsFamily } from "./pg-tenants";
 import { catalogFamily } from "./pg-catalog";
 import { inventoryFamily } from "./pg-inventory";
+import { stockExceptionsFamily } from "./pg-stock-exceptions";
+import { phaseDFamily } from "./pg-phase-d";
+import type { DbGuestSupportCase, DbPlatformConsent } from "../db.port";
+import type { DbStockException } from "../db.port";
 import { inventoryCountsFamily } from "./pg-inventory-counts";
 import { salesFamily } from "./pg-sales";
 import { shiftsFamily } from "./pg-shifts";
@@ -18,6 +22,7 @@ import { productModelFamily, type ProductModelFamily } from "./pg-product-model"
 import { valueFamily, type ValueFamily } from "./pg-value";
 import { ordersFamily } from "./pg-orders";
 import type { DbGiftCard, DbGiftCardTransaction, DbStoreCreditAccount, DbStoreCreditTransaction, DbLoyaltyProgram, DbLoyaltyAccount, DbLoyaltyTransaction, DbSaleGiftCardLoad, DbSaleLoyalty, DbSaleItemLoyaltyAllocation } from "../db.port";
+import type { DbCustomerConcern, DbCustomerConcernCreate, DbManagerApprovalRequest, DbManagerApprovalRequestCreate } from "../db.port";
 
 // Phase 12: the PostgreSQL-backed DbPort. Composed from per-family modules
 // over one PgContext; `implements DbPort` makes the compiler enforce that the
@@ -28,6 +33,8 @@ export class PgDbPort implements DbPort {
   private readonly tenants: ReturnType<typeof tenantsFamily>;
   private readonly catalog: ReturnType<typeof catalogFamily>;
   private readonly inventory: ReturnType<typeof inventoryFamily>;
+  private readonly stockExceptions: ReturnType<typeof stockExceptionsFamily>;
+  private readonly phaseD: ReturnType<typeof phaseDFamily>;
   private readonly inventoryCounts: ReturnType<typeof inventoryCountsFamily>;
   private readonly sales: ReturnType<typeof salesFamily>;
   private readonly shifts: ReturnType<typeof shiftsFamily>;
@@ -47,6 +54,8 @@ export class PgDbPort implements DbPort {
     this.tenants = tenantsFamily(ctx);
     this.catalog = catalogFamily(ctx);
     this.inventory = inventoryFamily(ctx);
+    this.stockExceptions = stockExceptionsFamily(ctx);
+    this.phaseD = phaseDFamily(ctx);
     this.inventoryCounts = inventoryCountsFamily(ctx);
     this.sales = salesFamily(ctx);
     this.shifts = shiftsFamily(ctx);
@@ -131,7 +140,7 @@ export class PgDbPort implements DbPort {
   createMembership(m: Omit<DbMembership, "id">): Promise<DbMembership> {
     return this.tenants.createMembership(m);
   }
-  updateMembership(id: string, businessId: string, patch: { deactivatedAt: Date | null }): Promise<void> {
+  updateMembership(id: string, businessId: string, patch: { deactivatedAt?: Date | null; approvalPinHash?: string | null; role?: "manager" | "cashier" | "inventory" }): Promise<void> {
     return this.tenants.updateMembership(id, businessId, patch);
   }
   createSession(s: Omit<DbSession, "id">): Promise<DbSession> {
@@ -240,6 +249,19 @@ export class PgDbPort implements DbPort {
   listBalances(businessId: string): Promise<DbBalance[]> {
     return this.inventory.listBalances(businessId);
   }
+  createStockException(input: Omit<DbStockException, "id" | "createdAt">): Promise<DbStockException> { return this.stockExceptions.createStockException(input); }
+  findStockExceptionById(id: string, businessId: string): Promise<DbStockException | null> { return this.stockExceptions.findStockExceptionById(id, businessId); }
+  findStockExceptionByKey(businessId: string, key: string): Promise<DbStockException | null> { return this.stockExceptions.findStockExceptionByKey(businessId, key); }
+  listStockExceptions(businessId: string): Promise<DbStockException[]> { return this.stockExceptions.listStockExceptions(businessId); }
+  disposeStockException(id: string, businessId: string, actorId: string, movementId: string): Promise<DbStockException | null> { return this.stockExceptions.disposeStockException(id, businessId, actorId, movementId); }
+  createGuestSupportCase(input: Omit<DbGuestSupportCase, "id" | "createdAt">): Promise<DbGuestSupportCase> { return this.phaseD.createGuestSupportCase(input); }
+  findGuestSupportCaseByKey(businessId: string, key: string): Promise<DbGuestSupportCase | null> { return this.phaseD.findGuestSupportCaseByKey(businessId, key); }
+  listGuestSupportCases(businessId: string): Promise<DbGuestSupportCase[]> { return this.phaseD.listGuestSupportCases(businessId); }
+  closeGuestSupportCase(id: string, businessId: string, actorId: string): Promise<DbGuestSupportCase | null> { return this.phaseD.closeGuestSupportCase(id, businessId, actorId); }
+  createPlatformConsent(input: Omit<DbPlatformConsent, "id" | "createdAt">): Promise<DbPlatformConsent> { return this.phaseD.createPlatformConsent(input); }
+  findPlatformConsentByHash(businessId: string, tokenHash: string): Promise<DbPlatformConsent | null> { return this.phaseD.findPlatformConsentByHash(businessId, tokenHash); }
+  listPlatformConsents(businessId: string): Promise<DbPlatformConsent[]> { return this.phaseD.listPlatformConsents(businessId); }
+  revokePlatformConsent(id: string, businessId: string): Promise<DbPlatformConsent | null> { return this.phaseD.revokePlatformConsent(id, businessId); }
   nextInventoryCountNo(businessId: string): Promise<string> { return this.inventoryCounts.nextInventoryCountNo(businessId); }
   createInventoryCount(c: Omit<DbInventoryCount, "id" | "createdAt" | "updatedAt">): Promise<DbInventoryCount> { return this.inventoryCounts.createInventoryCount(c); }
   findInventoryCountById(id: string, businessId: string): Promise<DbInventoryCount | null> { return this.inventoryCounts.findInventoryCountById(id, businessId); }
@@ -452,6 +474,17 @@ export class PgDbPort implements DbPort {
   createRefund(r: DbRefundCreate): Promise<DbRefund> {
     return this.people.createRefund(r);
   }
+  createCustomerConcern(c: DbCustomerConcernCreate): Promise<DbCustomerConcern> { return this.people.createCustomerConcern(c); }
+  findCustomerConcernById(id: string, businessId: string): Promise<DbCustomerConcern | null> { return this.people.findCustomerConcernById(id, businessId); }
+  findCustomerConcernByIdempotency(businessId: string, idempotencyKey: string): Promise<DbCustomerConcern | null> { return this.people.findCustomerConcernByIdempotency(businessId, idempotencyKey); }
+  listCustomerConcernsByBusiness(businessId: string): Promise<DbCustomerConcern[]> { return this.people.listCustomerConcernsByBusiness(businessId); }
+  transitionCustomerConcern(id: string, businessId: string, expectedStatus: string, patch: Partial<Omit<DbCustomerConcern, "id" | "businessId" | "createdAt" | "updatedAt">>): Promise<DbCustomerConcern | null> { return this.people.transitionCustomerConcern(id, businessId, expectedStatus, patch); }
+  createManagerApprovalRequest(request: DbManagerApprovalRequestCreate): Promise<DbManagerApprovalRequest> { return this.people.createManagerApprovalRequest(request); }
+  findManagerApprovalRequest(id: string, businessId: string): Promise<DbManagerApprovalRequest | null> { return this.people.findManagerApprovalRequest(id, businessId); }
+  findManagerApprovalRequestByIdempotency(businessId: string, requesterId: string, idempotencyKey: string): Promise<DbManagerApprovalRequest | null> { return this.people.findManagerApprovalRequestByIdempotency(businessId, requesterId, idempotencyKey); }
+  listManagerApprovalRequests(businessId: string): Promise<DbManagerApprovalRequest[]> { return this.people.listManagerApprovalRequests(businessId); }
+  transitionManagerApprovalRequest(id: string, businessId: string, expectedStatus: DbManagerApprovalRequest["status"], patch: Partial<Pick<DbManagerApprovalRequest, "status" | "approverId" | "decidedAt" | "decisionReason" | "tokenCiphertext" | "tokenExpiresAt">>): Promise<DbManagerApprovalRequest | null> { return this.people.transitionManagerApprovalRequest(id, businessId, expectedStatus, patch); }
+  claimManagerApprovalRequestToken(id: string, businessId: string, requesterId: string, now: Date): Promise<{ request: DbManagerApprovalRequest; encryptedToken: string; tokenExpiresAt: Date } | null> { return this.people.claimManagerApprovalRequestToken(id, businessId, requesterId, now); }
   listRefundsBySale(saleId: string, businessId: string): Promise<DbRefund[]> {
     return this.people.listRefundsBySale(saleId, businessId);
   }
@@ -537,6 +570,9 @@ export class PgDbPort implements DbPort {
   }
   findSaleById(id: string, businessId: string): Promise<DbSale | null> {
     return this.sales.findSaleById(id, businessId);
+  }
+  findSaleByReceiptNo(receiptNo: string, businessId: string): Promise<DbSale | null> {
+    return this.sales.findSaleByReceiptNo(receiptNo, businessId);
   }
   listSalesByBusiness(businessId: string): Promise<DbSale[]> {
     return this.sales.listSalesByBusiness(businessId);

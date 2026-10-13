@@ -132,3 +132,22 @@ export const managerApprovalRequestSchema = credentialsSchema.extend({
     context.addIssue({ code: z.ZodIssueCode.custom, message: "VALIDATION", path: ["permission"] });
   }
 });
+
+export const managerApprovalQueueRequestSchema = z.object({
+  action: managerApprovalActionSchema,
+  registerId: z.string().min(1, "VALIDATION").nullable().optional(),
+  idempotencyKey: z.string().trim().min(8, "VALIDATION").max(128, "VALIDATION"),
+}).strict().superRefine(({ action, registerId }, context) => {
+  if (["discount", "shift_close", "refund", "sale_void"].includes(action.kind) && !registerId) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "VALIDATION", path: ["registerId"] });
+  }
+});
+
+export const managerApprovalQueueDecisionSchema = z.discriminatedUnion("decision", [
+  credentialsSchema.extend({ decision: z.literal("APPROVED") }),
+  z.object({ decision: z.literal("REJECTED"), reason: z.string().trim().min(3, "VALIDATION").max(300, "VALIDATION") }).strict(),
+]).superRefine((value, context) => {
+  if (value.decision === "APPROVED" && (value.password ? 1 : 0) + (value.pin ? 1 : 0) !== 1) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "VALIDATION", path: ["password"] });
+  }
+});

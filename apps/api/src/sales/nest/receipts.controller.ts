@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Param, Post, Req, Res, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
 import type { Request, Response } from "express";
 import {
   receiptEmailSchema,
@@ -24,8 +24,43 @@ export class ReceiptsController {
   ) {}
 
   private perms(req: Request): string[] {
-    return this.auth.rolePermissions(req.auth!.role);
+    return this.auth.permissionsForRequest(req.auth!);
   }
+
+  @Get("receipts/lookup")
+  async lookup(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Query("receiptNo") receiptNo?: string,
+  ): Promise<void> {
+    const permissions = this.perms(req);
+    if (!permissions.includes("customer_concern.request") && !permissions.includes("customer_concern.review")) {
+      fail(res, 403, "FORBIDDEN", "Receipt lookup is not available", req);
+      return;
+    }
+    const exactReceiptNo = receiptNo?.trim();
+    if (!exactReceiptNo || exactReceiptNo.length > 64) {
+      fail(res, 400, "VALIDATION", "Enter a valid receipt number", req);
+      return;
+    }
+    try {
+      const auth = req.auth!;
+      const receipt = await this.sales.lookupReceipt(auth.businessId, exactReceiptNo);
+      const allowedBranchIds = auth.allowedBranchIds ?? null;
+      const allowedRegisterIds = auth.allowedRegisterIds ?? null;
+      if ((auth.activeBranchId && receipt.branchId !== auth.activeBranchId) ||
+          (allowedBranchIds !== null &&
+          (!auth.activeBranchId || !receipt.branchId || receipt.branchId !== auth.activeBranchId || !allowedBranchIds.includes(receipt.branchId))) ||
+          (allowedRegisterIds !== null && (!receipt.registerId || !allowedRegisterIds.includes(receipt.registerId)))) {
+        throw new Error("NOT_FOUND");
+      }
+      res.status(200).json(receipt);
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "VALIDATION";
+      fail(res, statusFor(code), code, "Receipt lookup failed", req);
+    }
+  }
+
 @Get("receipts/:saleId")
   async receipt(
     @Req() req: Request,

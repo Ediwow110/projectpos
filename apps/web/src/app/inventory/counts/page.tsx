@@ -10,7 +10,7 @@ import { GhostButton, PrimaryButton, StatusPill } from "../../../components/ui";
 import { ApiError, apiFetch } from "../../../lib/api";
 import { countTone, type InventoryCount } from "../../../lib/inventory-counts";
 
-interface Me { role: string; businessName?: string; activeBranchId: string | null; activeBranchName: string | null; }
+interface Me { role: string; businessName?: string; activeBranchId: string | null; activeBranchName: string | null; permissions: string[]; }
 interface CountPage { items: InventoryCount[]; total: number; page: number; pageSize: number; }
 interface BalancePage { items: Array<{ productId: string; productName: string; qtyOnHand: number }>; }
 
@@ -30,7 +30,7 @@ export default function StockCountsPage(): JSX.Element {
   const query = useQuery({ queryKey: ["inventory-counts", status, me.data?.activeBranchId], queryFn: () => apiFetch<CountPage>(`/api/v1/inventory/counts?status=${status}${me.data?.activeBranchId ? `&branchId=${encodeURIComponent(me.data.activeBranchId)}` : ""}`), enabled: me.data !== undefined, retry: false });
   const balances = useQuery({ queryKey: ["count-products", me.data?.activeBranchId], queryFn: () => apiFetch<BalancePage>(`/api/v1/inventory/balances?page=1&pageSize=100${me.data?.activeBranchId ? `&branchId=${encodeURIComponent(me.data.activeBranchId)}` : ""}`), enabled: me.data !== undefined && scopeType === "PARTIAL", retry: false });
   const role = me.data?.role ?? "cashier";
-  const canCreate = ["owner", "manager", "inventory"].includes(role);
+  const canCreate = me.data?.permissions.includes("inventory.adjust") ?? false;
 
   async function scanProduct(): Promise<void> {
     if (!barcode.trim()) return;

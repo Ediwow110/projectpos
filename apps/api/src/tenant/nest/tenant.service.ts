@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { defaultOnboardingState, isOnboardingComplete, type OnboardingState } from "../../business/onboarding";
 import type { DbPort } from "../../common/db.port";
+import { assignedBranches } from "../../auth/member-permissions";
 
 @Injectable()
 export class TenantService {
@@ -46,6 +47,11 @@ export class TenantService {
     branchId: string | null,
     requestId: string,
   ): Promise<{ activeBranchId: string | null; activeBranchName: string | null }> {
+    const membership = await this.db.findMembership(userId, businessId);
+    if (!membership || membership.deactivatedAt) throw new Error("FORBIDDEN");
+    const allowed = membership.role === "owner"
+      ? undefined : assignedBranches(await this.db.getSettings(businessId), membership.id);
+    if (allowed && (branchId === null || !allowed.includes(branchId))) throw new Error("FORBIDDEN");
     if (branchId === null) {
       await this.db.updateSession(sessionId, { activeBranchId: null });
       await this.db.appendAudit({

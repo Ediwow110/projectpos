@@ -11,7 +11,7 @@ import { GhostButton, PrimaryButton, StatusPill } from "../../../components/ui";
 import { ApiError, apiFetch } from "../../../lib/api";
 import type { ReplenishmentRow } from "../../../lib/inventory-counts";
 
-interface Me { role: string; businessName?: string; activeBranchId: string | null; activeBranchName: string | null; }
+interface Me { role: string; businessName?: string; activeBranchId: string | null; activeBranchName: string | null; permissions: string[]; }
 interface RecommendationPage { items: ReplenishmentRow[]; }
 interface Supplier { id: string; name: string; }
 
@@ -25,7 +25,7 @@ export default function ReplenishmentPage(): JSX.Element {
   const suppliers = useQuery({ queryKey: ["suppliers"], queryFn: () => apiFetch<{ items: Supplier[] }>("/api/v1/suppliers?status=active&pageSize=100"), enabled: me.data !== undefined, retry: false });
   const rows = useQuery({ queryKey: ["replenishment", me.data?.activeBranchId, supplierId], queryFn: () => apiFetch<RecommendationPage>(`/api/v1/inventory/replenishment${me.data?.activeBranchId ? `?branchId=${encodeURIComponent(me.data.activeBranchId)}` : ""}${supplierId ? `${me.data?.activeBranchId ? "&" : "?"}supplierId=${encodeURIComponent(supplierId)}` : ""}`), enabled: me.data !== undefined, retry: false });
   const role = me.data?.role ?? "cashier";
-  const canCreate = ["owner", "manager", "inventory"].includes(role);
+  const canCreate = me.data?.permissions.includes("purchase_order.write") ?? false;
   const selectedRows = (rows.data?.items ?? []).filter((row) => selected[row.productId] !== undefined);
   const selectedSupplier = selectedRows[0]?.supplierId ?? "";
   const sameSupplier = selectedRows.every((row) => row.supplierId && row.supplierId === selectedSupplier);

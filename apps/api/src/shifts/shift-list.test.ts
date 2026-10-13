@@ -14,6 +14,22 @@ const rows = [
 ];
 
 describe("shift list read model", () => {
+  it("filters by assigned branch before cursor pagination and close-candidate expansion", () => {
+    const scoped = [
+      { ...shift("a1", "me"), branchId: "north" },
+      { ...shift("z9", "other"), branchId: "south" },
+      { ...shift("b2", "other"), branchId: "north" },
+    ];
+    const page = selectShiftList(scoped, {
+      branchId: "north", limit: 1, includeCloseCandidates: true,
+    }, "cashier", "me");
+    expect(page.items.map((row) => row.id)).toEqual(["b2"]);
+    expect(page.nextCursor).toBe("b2");
+    expect(selectShiftList(scoped, {
+      branchId: "north", cursor: page.nextCursor!, includeCloseCandidates: true,
+    }, "cashier", "me").items.map((row) => row.id)).toEqual(["a1"]);
+    expect(page.items.some((row) => row.branchId === "south")).toBe(false);
+  });
   it("limits cashier visibility to own shifts without close candidates", () => {
     const result = selectShiftList(rows, {}, "cashier", "me");
     expect(result.items.map((item) => item.id)).toEqual(["s3", "s1"]);

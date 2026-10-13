@@ -8,6 +8,7 @@ import { issueCsrfToken } from "../csrf";
 import { incrementMetric } from "../../common/metrics";
 import { billingEnabled } from "../../billing/entitlements";
 import { buildRegistrationSeed, resolveActiveBusiness, ROLE_SEED } from "../../tenant/seed";
+import { effectivePermissions } from "../member-permissions";
 import { defaultOnboardingState, isOnboardingComplete, type OnboardingState } from "../../business/onboarding";
 import type { DbPort } from "../../common/db.port";
 import {
@@ -323,7 +324,9 @@ export class AuthService {
     const approver = await this.db.findUserByEmail(input.email.trim().toLowerCase());
     const membership = approver ? await this.db.findMembership(approver.id, businessId) : null;
     const eligibleRole = membership?.role === "owner" || membership?.role === "manager";
-    const eligiblePermission = membership ? this.rolePermissions(membership.role).includes(input.permission) : false;
+    const eligiblePermission = membership ? (
+      effectivePermissions(membership.role, membership.id, await this.db.getSettings(businessId)).includes(input.permission)
+    ) : false;
     const credentialValid = input.pin !== undefined
       ? membership?.approvalPinHash != null && await verifyApprovalPin(membership.approvalPinHash, input.pin)
       : input.password !== undefined && approver !== null && await verifyPassword(approver.passwordHash, input.password);
@@ -387,7 +390,7 @@ export class AuthService {
         !membership ||
         membership.deactivatedAt != null ||
         (membership.role !== "owner" && membership.role !== "manager") ||
-        !this.rolePermissions(membership.role).includes(permission) ||
+        !effectivePermissions(membership.role, membership.id, await this.db.getSettings(businessId)).includes(permission) ||
         (requireDistinctApprover && approver.id === requesterId)
       ) throw new Error("FORBIDDEN");
       await this.db.markManagerApprovalGrantUsed(grant.id);
@@ -397,6 +400,12 @@ export class AuthService {
 
   rolePermissions(role: string): string[] {
     return ROLE_SEED[role as keyof typeof ROLE_SEED] ?? [];
+  }
+
+  permissionsForRequest(auth: { role: string; effectivePermissions?: string[] }): string[] {
+    // Staff sessions set this on every request in SessionGuard. The fallback
+    // retains compatibility with API-token and direct-controller test paths.
+    return auth.effectivePermissions ?? this.rolePermissions(auth.role);
   }
 
   checkReAuth(authenticatedAt: Date): void {

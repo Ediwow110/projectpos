@@ -15,6 +15,7 @@ interface Me {
 }
 
 const OWNER_DESTINATIONS = [
+  { href: "/admin/owner-controls", title: "Owner controls", description: "Review staff access, branches, account security and sensitive-action safeguards.", icon: "◆" },
   { href: "/team", title: "Team", description: "Add staff, review roles, and deactivate access.", icon: "◎" },
   { href: "/devices", title: "Devices", description: "Register, review, and revoke trusted tills or workstations.", icon: "▦" },
   { href: "/branches", title: "Branches", description: "Manage the store locations used by operational records.", icon: "⌘" },

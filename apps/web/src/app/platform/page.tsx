@@ -55,16 +55,17 @@ export default function PlatformPage(): JSX.Element {
   return (
     <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role}>
       <main className="mx-auto max-w-[1240px] space-y-5 px-4 pb-10 pt-3 sm:px-6">
+        <p className="text-xs font-semibold"><Link href="/platform/tenant-health" className="underline">Open owner-consented tenant health diagnostics</Link></p>
         <PageHeader
           eyebrow="Platform / Restricted operations"
           title="Platform operations"
-          description="Operator-only controls for targeted platform overrides. The operator key stays in memory for this page and is never persisted by the frontend."
+          description="Platform-wide administrative overrides use an operator key. Tenant diagnostic access is separate and requires explicit owner consent."
           actions={<Link href="/" className="inline-flex min-h-10 items-center rounded-[10px] border border-[#e4d9d0] bg-white px-4 text-sm font-semibold text-[#2a241f] hover:border-[#f35d3f]">← Dashboard</Link>}
         />
 
         <Panel className="border-[#f0d7ab] bg-[#fff8eb] p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div><h2 className="font-display text-base font-semibold text-[#5f3b04]">Restricted operator surface</h2><p className="mt-1 text-[11px] leading-5 text-[#8a5606]">Actions require both an authenticated session and the separate platform key. Do not use this page for normal store operations.</p></div>
+            <div><h2 className="font-display text-base font-semibold text-[#5f3b04]">Restricted operator surface</h2><p className="mt-1 text-[11px] leading-5 text-[#8a5606]">Platform overrides require the independent operator key. This privileged administrative surface is not the owner-consented, read-only diagnostic view; do not use it for normal store operations.</p></div>
             <StatusPill tone="warn">Privileged</StatusPill>
           </div>
         </Panel>

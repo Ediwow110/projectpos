@@ -234,6 +234,20 @@ export function AppShell({
   return (
     <div className="relative flex min-h-screen flex-col overflow-x-clip bg-[#fcf8f3]">
       <DecorativeBackdrop />
+      <a
+        href="#main-content"
+        onClick={(event) => {
+          event.preventDefault();
+          const main = document.querySelector("main");
+          if (!(main instanceof HTMLElement)) return;
+          main.id = "main-content";
+          main.tabIndex = -1;
+          main.focus();
+        }}
+        className="absolute left-4 top-2 z-[100] -translate-y-20 rounded-lg bg-[#202826] px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition-transform focus:translate-y-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f35d3f] focus-visible:ring-offset-2"
+      >
+        Skip to main content
+      </a>
 
       <div className="sticky top-0 z-50">
         <header

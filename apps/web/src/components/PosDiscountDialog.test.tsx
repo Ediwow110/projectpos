@@ -18,8 +18,7 @@ describe("POS discount dialog", () => {
     expect(html).toContain("Sale discounts");
     expect(html).toContain("Order discount (PHP)");
     expect(html).toContain("Line discount — Coffee (PHP)");
-    expect(html).toContain("10%");
-    expect(html).toContain("20%");
+    expect(html).toContain("configured approval limits");
     expect(html).toContain("discount.override");
     expect(html).toContain("request an owner or manager approval");
     expect(html).toContain("Apply discounts");

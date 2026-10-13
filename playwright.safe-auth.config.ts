@@ -28,6 +28,11 @@ const isolatedApiEnv: Record<string, string> = {
   PAYMONGO_MANAGED_WEBHOOK: "0",
   PAYMONGO_WEBHOOK_DIAGNOSTICS: "0",
   PAYMONGO_CAPABILITY_DIAGNOSTICS: "0",
+  // Disposable local-only operator credential for Phase D acceptance tests.
+  PLATFORM_API_KEY: "phase-d-test-operator-key",
+  // Disposable E2E-only 256-bit key for queued manager grants.
+  // Production requires its own independently generated secret.
+  APPROVAL_QUEUE_ENCRYPTION_KEY: "b7".repeat(32),
   BREVO_API_KEY: "",
   EMAIL_FROM: "",
   SMTP_HOST: "",

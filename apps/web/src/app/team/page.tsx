@@ -1,17 +1,20 @@
 "use client";
 
 import type { JSX } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { AppShell } from "../../components/AppShell";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { TeamBranchAssignmentDialog } from "../../components/TeamBranchAssignmentDialog";
+import { TeamRegisterAssignmentDialog } from "../../components/TeamRegisterAssignmentDialog";
 import { Modal } from "../../components/Modal";
 import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "../../components/premium";
 import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { apiFetch } from "../../lib/api";
 import { errorText } from "../../lib/billing";
-import { createTeamMemberRequest, deactivateTeamMemberRequest, saveTeamApprovalPinRequest } from "../../lib/team-api";
-import { canDeactivateMember, canManageApprovalPin, teamRoleLabel, type TeamMemberRow } from "../../lib/team-view";
+import { changeTeamMemberRoleRequest, createTeamMemberRequest, deactivateTeamMemberRequest, loadTeamPermissionRestrictions, saveTeamApprovalPinRequest, saveTeamPermissionRestrictions } from "../../lib/team-api";
+import { canChangeMemberRole, canDeactivateMember, canManageApprovalPin, teamRoleLabel, type TeamMemberRow } from "../../lib/team-view";
 import { useTeamPageState } from "./use-team-page-state";
 
 interface Me {
@@ -27,11 +30,17 @@ const ROLES = [
 ] as const;
 
 export default function TeamPage(): JSX.Element {
+  const [branchTarget, setBranchTarget] = useState<TeamMemberRow | null>(null);
+  const [registerTarget, setRegisterTarget] = useState<TeamMemberRow | null>(null);
   const {
     createOpen, setCreateOpen, name, setName, email, setEmail, role, setRole,
     busy, setBusy, error, setError, success, setSuccess,
     temporaryCredential, setTemporaryCredential, copyStatus, setCopyStatus,
     deactivateTarget, setDeactivateTarget, pinTarget, setPinTarget,
+    roleTarget, setRoleTarget, nextRole, setNextRole, roleConfirmation, setRoleConfirmation,
+    permissionTarget, setPermissionTarget, permissionOptions, setPermissionOptions,
+    deniedPermissions, setDeniedPermissions, permissionConfirmation, setPermissionConfirmation,
+    permissionLoading, setPermissionLoading,
     approvalPin, setApprovalPin, approvalPinConfirm, setApprovalPinConfirm,
   } = useTeamPageState();
 
@@ -158,6 +167,86 @@ export default function TeamPage(): JSX.Element {
     }
   }
 
+  function closeRoleChange(): void {
+    if (busy) return;
+    setRoleTarget(null);
+    setRoleConfirmation("");
+    setError("");
+  }
+
+  async function changeMemberRole(event: React.FormEvent): Promise<void> {
+    event.preventDefault();
+    if (!roleTarget || busy) return;
+    if (!canChangeMemberRole(meQuery.data?.userId ?? "", roleTarget) || !roleConfirmation) {
+      setError("Select an eligible staff member and confirm your owner account.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setSuccess("");
+    try {
+      await changeTeamMemberRoleRequest(roleTarget.id, nextRole, roleConfirmation);
+      setSuccess(`${roleTarget.name}'s role changed to ${teamRoleLabel(nextRole)}. Their previous approval PIN was reset.`);
+      setRoleTarget(null);
+      await membersQuery.refetch();
+    } catch (cause) {
+      setError(errorText(cause, "Could not update this staff role."));
+    } finally {
+      setRoleConfirmation("");
+      setBusy(false);
+    }
+  }
+
+  async function openPermissionRestrictions(member: TeamMemberRow): Promise<void> {
+    if (!canChangeMemberRole(meQuery.data?.userId ?? "", member)) return;
+    setPermissionTarget(member);
+    setPermissionOptions([]);
+    setDeniedPermissions([]);
+    setPermissionConfirmation("");
+    setError("");
+    setPermissionLoading(true);
+    try {
+      const permissions = await loadTeamPermissionRestrictions(member.id);
+      setPermissionOptions(permissions.rolePermissions);
+      setDeniedPermissions(permissions.deniedPermissions);
+    } catch (cause) {
+      setError(errorText(cause, "Unable to load employee permissions."));
+    } finally {
+      setPermissionLoading(false);
+    }
+  }
+
+  function closePermissionRestrictions(): void {
+    if (busy || permissionLoading) return;
+    setPermissionTarget(null);
+    setPermissionOptions([]);
+    setDeniedPermissions([]);
+    setPermissionConfirmation("");
+    setError("");
+  }
+
+  async function savePermissionRestrictions(event: React.FormEvent): Promise<void> {
+    event.preventDefault();
+    if (!permissionTarget || busy || permissionLoading) return;
+    if (!permissionConfirmation || permissionOptions.length === 0) {
+      setError("Load the permission policy and confirm your owner password.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setSuccess("");
+    try {
+      await saveTeamPermissionRestrictions(permissionTarget.id, deniedPermissions, permissionConfirmation);
+      setSuccess(`Permission restrictions saved for ${permissionTarget.name}.`);
+      setPermissionTarget(null);
+    } catch (cause) {
+      setError(errorText(cause, "Could not update employee restrictions."));
+    } finally {
+      setPermissionConfirmation("");
+      setBusy(false);
+    }
+  }
+
   return (
     <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role}>
       <main className="mx-auto max-w-[1240px] space-y-5 px-4 pb-10 pt-3 sm:px-6">
@@ -204,7 +293,48 @@ export default function TeamPage(): JSX.Element {
               {membersQuery.isLoading ? <p className="px-5 pb-6 text-sm text-[#73685f]">Loading team…</p> : null}
               {members.length === 0 && !membersQuery.isLoading ? <p className="px-5 pb-8 text-sm text-[#8b8077]">No active team members.</p> : null}
               {members.length > 0 ? (
-                <div className="overflow-x-auto">
+                <section className="grid gap-3 px-4 pb-5 sm:hidden" aria-label="Mobile employee access">
+                  {members.map((member) => {
+                    const editable = canChangeMemberRole(meQuery.data?.userId ?? "", member);
+                    return <article key={member.id} className="min-w-0 rounded-xl border border-[#eee4db] bg-[#fcf8f3] p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <h3 className="break-words font-display text-base font-semibold text-[#202826]">{member.name}</h3>
+                          <p className="mt-1 break-all text-xs text-[#73685f]">{member.email}</p>
+                        </div>
+                        <StatusPill tone={member.role === "owner" ? "ok" : "info"}>{teamRoleLabel(member.role)}</StatusPill>
+                      </div>
+                      <p className="mt-3 text-xs text-[#655b53]">
+                        {editable
+                          ? "Employee access: review and restrict permissions, locations, or registers."
+                          : member.userId === meQuery.data?.userId
+                            ? "Current user · Protected owner access"
+                            : "Protected membership"}
+                      </p>
+                      {editable ? <div className="mt-4 grid grid-cols-2 gap-2">
+                        <GhostButton type="button" onClick={() => void openPermissionRestrictions(member)}>Permissions</GhostButton>
+                        <GhostButton type="button" onClick={() => setBranchTarget(member)}>Branch access</GhostButton>
+                        <GhostButton type="button" onClick={() => setRegisterTarget(member)}>Register access</GhostButton>
+                        <GhostButton type="button" onClick={() => {
+                          setError("");
+                          setRoleTarget(member);
+                          setNextRole(member.role as "manager" | "cashier" | "inventory");
+                          setRoleConfirmation("");
+                        }}>Change role</GhostButton>
+                        {canManageApprovalPin(member) && <GhostButton type="button" className="col-span-2" onClick={() => {
+                          setError("");
+                          setPinTarget(member);
+                          setApprovalPin("");
+                          setApprovalPinConfirm("");
+                        }}>{member.approvalPinSet ? "Rotate approval PIN" : "Set approval PIN"}</GhostButton>}
+                        {canDeactivateMember(meQuery.data?.userId ?? "", member) && <GhostButton type="button" className="col-span-2" onClick={() => setDeactivateTarget(member)}>Deactivate employee</GhostButton>}
+                      </div> : null}
+                    </article>;
+                  })}
+                </section>
+              ) : null}
+              {members.length > 0 ? (
+                <div className="hidden overflow-x-auto sm:block">
                   <table className="premium-table min-w-[760px] text-left text-[12px]">
                     <thead>
                       <tr>
@@ -222,10 +352,48 @@ export default function TeamPage(): JSX.Element {
                           <td className="px-5 py-3"><StatusPill tone={member.role === "owner" ? "ok" : "info"}>{teamRoleLabel(member.role)}</StatusPill></td>
                           <td className="px-5 py-3 text-right">
                             <div className="flex flex-wrap justify-end gap-2">
+                              {canChangeMemberRole(meQuery.data?.userId ?? "", member) ? (
+                                <GhostButton type="button" className="!min-h-11 !px-3 !py-1.5 text-xs"
+                                  onClick={() => setRegisterTarget(member)}>
+                                  Register access
+                                </GhostButton>
+                              ) : null}
+                              {canChangeMemberRole(meQuery.data?.userId ?? "", member) ? (
+                                <GhostButton
+                                  type="button"
+                                  className="!min-h-11 !px-3 !py-1.5 text-xs"
+                                  onClick={() => setBranchTarget(member)}
+                                >
+                                  Branch access
+                                </GhostButton>
+                              ) : null}
+                              {canChangeMemberRole(meQuery.data?.userId ?? "", member) ? (
+                                <GhostButton
+                                  type="button"
+                                  className="!min-h-11 !px-3 !py-1.5 text-xs"
+                                  onClick={() => void openPermissionRestrictions(member)}
+                                >
+                                  Permissions
+                                </GhostButton>
+                              ) : null}
+                              {canChangeMemberRole(meQuery.data?.userId ?? "", member) ? (
+                                <GhostButton
+                                  type="button"
+                                  className="!min-h-11 !px-3 !py-1.5 text-xs"
+                                  onClick={() => {
+                                    setError("");
+                                    setRoleTarget(member);
+                                    setNextRole(member.role as "manager" | "cashier" | "inventory");
+                                    setRoleConfirmation("");
+                                  }}
+                                >
+                                  Change role
+                                </GhostButton>
+                              ) : null}
                               {canManageApprovalPin(member) ? (
                                 <GhostButton
                                   type="button"
-                                  className="!min-h-8 !px-3 !py-1.5 text-xs"
+                                  className="!min-h-11 !px-3 !py-1.5 text-xs"
                                   onClick={() => {
                                     setError("");
                                     setPinTarget(member);
@@ -237,7 +405,7 @@ export default function TeamPage(): JSX.Element {
                                 </GhostButton>
                               ) : null}
                               {canDeactivateMember(meQuery.data?.userId ?? "", member) ? (
-                                <GhostButton type="button" className="!min-h-8 !px-3 !py-1.5 text-xs" onClick={() => setDeactivateTarget(member)}>
+                                <GhostButton type="button" className="!min-h-11 !px-3 !py-1.5 text-xs" onClick={() => setDeactivateTarget(member)}>
                                   Deactivate
                                 </GhostButton>
                               ) : !canManageApprovalPin(member) ? (
@@ -257,6 +425,118 @@ export default function TeamPage(): JSX.Element {
           </>
         ) : null}
       </main>
+
+      <TeamBranchAssignmentDialog
+        member={branchTarget}
+        onClose={() => setBranchTarget(null)}
+        onSaved={(name) => setSuccess(`Branch access updated for ${name}.`)}
+      />
+      <TeamRegisterAssignmentDialog
+        member={registerTarget}
+        onClose={() => setRegisterTarget(null)}
+        onSaved={(name) => setSuccess(`Register access updated for ${name}.`)}
+      />
+
+      <Modal
+        open={permissionTarget !== null}
+        onClose={closePermissionRestrictions}
+        title="Employee permission restrictions"
+        description={permissionTarget ? `Restrict existing ${teamRoleLabel(permissionTarget.role)} permissions for ${permissionTarget.name}. You cannot add permissions that the role does not already grant.` : undefined}
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <GhostButton type="button" onClick={closePermissionRestrictions} disabled={busy || permissionLoading}>Cancel</GhostButton>
+            <PrimaryButton type="submit" form="team-permission-restrictions" disabled={busy || permissionLoading || permissionOptions.length === 0}>
+              {busy ? "Saving…" : "Verify & save restrictions"}
+            </PrimaryButton>
+          </div>
+        }
+      >
+        <form id="team-permission-restrictions" onSubmit={(event) => void savePermissionRestrictions(event)} className="space-y-4">
+          <p className="rounded-xl border border-[#f1d6ad] bg-[#fff8ea] p-3 text-xs leading-5 text-[#836027]">
+            Checked permissions remain available within the employee&apos;s existing role. Unchecking a permission removes it
+            immediately from the employee&apos;s server authorization. Owner roles cannot be restricted here.
+            Manager approvals and other security checks may still apply.
+          </p>
+          {permissionLoading ? <p role="status" className="text-sm text-[#707b75]">Loading current permissions…</p> : null}
+          <div className="max-h-72 space-y-2 overflow-y-auto rounded-xl border border-[#e5e9e3] p-3">
+            {permissionOptions.map((permission) => {
+              const enabled = !deniedPermissions.includes(permission);
+              return (
+                <label key={permission} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg bg-[#f7f8f5] px-3 py-2 text-sm text-[#202826]">
+                  <input
+                    type="checkbox"
+                    checked={enabled}
+                    disabled={busy || permissionLoading}
+                    onChange={(event) => setDeniedPermissions((previous) => (
+                      event.target.checked
+                        ? previous.filter((entry) => entry !== permission)
+                        : [...previous.filter((entry) => entry !== permission), permission]
+                    ))}
+                    className="size-4 accent-[#da614c]"
+                  />
+                  <span className="font-mono text-xs">{permission}</span>
+                </label>
+              );
+            })}
+          </div>
+          <label className="block text-xs font-semibold text-[#655b53]">
+            Confirm with your owner password
+            <input
+              type="password"
+              autoComplete="current-password"
+              className="field mt-1.5"
+              required
+              value={permissionConfirmation}
+              onChange={(event) => setPermissionConfirmation(event.target.value)}
+            />
+          </label>
+          {error ? <p role="alert" className="rounded-xl bg-[#fff0f0] p-3 text-xs text-[#c43e3e]">{error}</p> : null}
+        </form>
+      </Modal>
+
+      <Modal
+        open={roleTarget !== null}
+        onClose={closeRoleChange}
+        title="Change staff role"
+        description={roleTarget ? `Set ${roleTarget.name}'s business role. Updated permissions take effect on their next authenticated request.` : undefined}
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <GhostButton type="button" onClick={closeRoleChange} disabled={busy}>Cancel</GhostButton>
+            <PrimaryButton type="submit" form="team-change-role-form" disabled={busy}>
+              {busy ? "Saving…" : "Verify and update role"}
+            </PrimaryButton>
+          </div>
+        }
+      >
+        <form id="team-change-role-form" onSubmit={(event) => void changeMemberRole(event)} className="space-y-4">
+          <label className="block text-xs font-semibold text-[#655b53]">
+            New role
+            <select
+              className="field mt-1.5"
+              value={nextRole}
+              onChange={(event) => setNextRole(event.target.value as "manager" | "cashier" | "inventory")}
+            >
+              {ROLES.map((entry) => <option key={entry.value} value={entry.value}>{entry.label}</option>)}
+            </select>
+          </label>
+          <p className="rounded-xl border border-[#f1d6ad] bg-[#fff8ea] p-3 text-xs leading-5 text-[#836027]">
+            Roles carry server-defined permissions. The current Inventory template has broad sensitive grants.
+            Role changes clear any previously configured manager approval PIN. Owner memberships are protected.
+          </p>
+          <label className="block text-xs font-semibold text-[#655b53]">
+            Confirm with your account password
+            <input
+              type="password"
+              autoComplete="current-password"
+              required
+              className="field mt-1.5"
+              value={roleConfirmation}
+              onChange={(event) => setRoleConfirmation(event.target.value)}
+            />
+          </label>
+          {error ? <p role="alert" className="rounded-xl bg-[#fff0f0] px-3 py-2 text-xs text-[#c43e3e]">{error}</p> : null}
+        </form>
+      </Modal>
 
       <Modal
         open={createOpen}

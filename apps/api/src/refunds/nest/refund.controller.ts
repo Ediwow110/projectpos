@@ -39,7 +39,7 @@ export class RefundController {
   ) {}
 
   private perms(req: Request): string[] {
-    return this.auth.rolePermissions(req.auth!.role);
+    return this.auth.permissionsForRequest(req.auth!);
   }
 
   // Same abuse brake as sales money commands: 1000/min/business.
@@ -78,6 +78,7 @@ export class RefundController {
           returns: parsed.data.returns,
           replacements: parsed.data.replacements,
           reason: parsed.data.reason,
+          concernId: parsed.data.concernId,
           key,
         },
         this.perms(req),
@@ -120,7 +121,7 @@ export class RefundController {
       if (existing) {
         const replay = await this.refunds.approveRefund(
           auth.businessId, auth.userId, rid(req), id,
-          { items: parsed.data.items, loadRefunds: parsed.data.loadRefunds, deliveryRefundMinor: parsed.data.deliveryRefundMinor, reason: parsed.data.reason, destination: parsed.data.destination, key },
+          { items: parsed.data.items, loadRefunds: parsed.data.loadRefunds, deliveryRefundMinor: parsed.data.deliveryRefundMinor, reason: parsed.data.reason, destination: parsed.data.destination, concernId: parsed.data.concernId, key },
           this.perms(req), auth.role,
         );
         res.status(200).json({ refund: replay.refund, sale: replay.sale, replayed: true });
@@ -153,6 +154,7 @@ export class RefundController {
           deliveryRefundMinor: parsed.data.deliveryRefundMinor,
           reason: parsed.data.reason,
           destination: parsed.data.destination,
+          concernId: parsed.data.concernId,
           key,
         },
         granted,

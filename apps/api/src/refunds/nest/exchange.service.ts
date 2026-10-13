@@ -10,6 +10,7 @@ import { lineRefundAmount, refundableQty } from "../refund-math";
 import { RefundService } from "./refund.service";
 
 export interface ExchangeInput {
+  concernId?: string;
   returns: Array<{ saleItemId: string; qty: number }>;
   replacements: Array<{ productId: string; qty: number }>;
   reason: string;
@@ -49,6 +50,7 @@ export class ExchangeService {
       returns: [...input.returns].sort((a, b) => a.saleItemId.localeCompare(b.saleItemId)),
       replacements: [...input.replacements].sort((a, b) => a.productId.localeCompare(b.productId)),
       reason,
+      concernId: input.concernId ?? null,
     });
 
     return this.db.withTransaction(async (tx) => tx.withLock(`exchange:${businessId}:${originalSaleId}`, async () => {
@@ -65,6 +67,10 @@ export class ExchangeService {
 
       const originalSale = await tx.findSaleById(originalSaleId, businessId);
       if (!originalSale) throw new Error("NOT_FOUND");
+      const linkedConcern = input.concernId ? await tx.findCustomerConcernById(input.concernId, businessId) : null;
+      if (input.concernId && (!linkedConcern || linkedConcern.saleId !== originalSaleId || linkedConcern.status !== "APPROVED" || linkedConcern.outcome !== "EXCHANGE" ||
+        JSON.stringify(linkedConcern.items.map(({ saleItemId, qty }) => ({ saleItemId, qty })).sort((a, b) => a.saleItemId.localeCompare(b.saleItemId))) !==
+        JSON.stringify([...input.returns].sort((a, b) => a.saleItemId.localeCompare(b.saleItemId))))) throw new Error("CONCERN_NOT_APPROVED");
       if (originalSale.status !== "COMPLETED" && originalSale.status !== "PARTIALLY_REFUNDED") {
         throw new Error("SALE_INVALID_TRANSITION");
       }
@@ -104,6 +110,7 @@ export class ExchangeService {
         });
       }
       const returnMinor = resolvedReturns.reduce((sum, row) => sum + row.amountMinor, 0);
+      if (linkedConcern && returnMinor !== linkedConcern.requestedRefundMinor) throw new Error("CONCERN_AMOUNT_MISMATCH");
       const threshold = (await tx.getSettings(businessId))["refundApprovalThresholdMinor"];
       if (typeof threshold === "number" && returnMinor > threshold && !granted.includes("refund.override")) {
         throw new Error("FORBIDDEN");
@@ -198,6 +205,14 @@ export class ExchangeService {
         },
       );
       const replacementSale = completed.sale;
+      if (linkedConcern) {
+        const resolvedConcern = await tx.transitionCustomerConcern(linkedConcern.id, businessId, "APPROVED", {
+          status: "RESOLVED", refundId: refundResult.refund.id,
+        });
+        if (!resolvedConcern) throw new Error("CONCERN_NOT_APPROVED");
+        await tx.appendAudit({ businessId, actorId, action: "customer_concern.exchange_execute", entityType: "CustomerConcern", entityId: linkedConcern.id, requestId,
+          after: { status: "RESOLVED", refundId: refundResult.refund.id, replacementSaleId: replacementSale.id, amountMinor: returnMinor } });
+      }
       const netMinor = replacementSale.totalMinor - refundResult.refund.totalMinor;
       const direction: DbExchange["direction"] = netMinor > 0 ? "COLLECT" : netMinor < 0 ? "REFUND" : "EVEN";
       const exchange = await tx.createExchange({

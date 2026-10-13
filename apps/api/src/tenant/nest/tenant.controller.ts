@@ -27,7 +27,7 @@ export class TenantController {
     const auth = req.auth!;
     const profile = await this.tenant.me(auth.userId, auth.businessId, auth.activeBranchId);
     const requestId = rid(req);
-    res.json({ ...me({ businessId: profile.businessId, userId: profile.userId }, requestId), ...profile });
+    res.json({ ...me({ businessId: profile.businessId, userId: profile.userId }, requestId), ...profile, permissions: auth.effectivePermissions ?? [] });
   }
 
   @Post("me/active-branch")

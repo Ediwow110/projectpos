@@ -156,6 +156,38 @@ describe("phase7 reporting overview", () => {
 });
 
 describe("phase7 sales and products reports", () => {
+  it("excludes remote-branch sales and totals from a branch-filtered report", async () => {
+    const db = createMemoryDb();
+    const svc = new ReportingService(db);
+    for (const [receiptNo, branchId, totalMinor] of [
+      ["REP-LOCAL", "branch-local", 1900],
+      ["REP-REMOTE", "branch-remote", 8400],
+    ] as const) {
+      await db.createSale({
+        businessId: "b-report-scope", receiptNo, status: "COMPLETED",
+        subtotalMinor: totalMinor, discountMinor: 0, taxMinor: 0,
+        totalMinor, paidMinor: totalMinor, changeMinor: 0,
+        currency: "PHP", customerId: null, customerName: null, notes: null,
+        actorId: "staff", requestId: "scoped-report", idempotencyKey: null,
+        registerId: null, branchId,
+        createdAt: new Date("2026-09-20T12:00:00.000Z"),
+      });
+    }
+    const query = {
+      dateFrom: "2026-09-01T00:00:00.000Z",
+      dateTo: "2026-09-30T23:59:59.999Z",
+      compare: "none",
+    };
+    const local = await svc.getSalesReport(
+      "b-report-scope", { ...query, branchId: "branch-local" }, "cashier", [],
+    );
+    expect(local.totals.orders).toBe(1);
+    expect(local.totals.netRevenue).toBe(1900);
+    expect(local.totals.grossProfit).toBeNull();
+    const all = await svc.getSalesReport("b-report-scope", query, "owner", []);
+    expect(all.totals.orders).toBe(2);
+    expect(all.totals.netRevenue).toBe(10300);
+  });
   it("buckets revenue by day", async () => {
     const { svc } = await setupReports();
     const out = await svc.getSalesReport("b1", {
@@ -178,6 +210,32 @@ describe("phase7 sales and products reports", () => {
 });
 
 describe("phase7 inventory payments cash customers cashiers", () => {
+  it("scopes inventory movement totals and stock health to the requested branch", async () => {
+    const { db, svc, productId } = await setupReports();
+    const north = await db.createBranch({ businessId: "b1", name: "North", type: "store", isActive: true });
+    const south = await db.createBranch({ businessId: "b1", name: "South", type: "store", isActive: true });
+    await db.upsertBalance({ businessId: "b1", branchId: north.id, productId, qtyOnHand: 6 });
+    await db.upsertBalance({ businessId: "b1", branchId: south.id, productId, qtyOnHand: 44 });
+    for (const [branchId, qtyDelta, type] of [
+      [north.id, 6, "receive"], [south.id, 44, "receive"], [south.id, -7, "sale"],
+    ] as const) {
+      await db.createMovement({
+        businessId: "b1", productId, branchId, type, qtyDelta,
+        reason: null, referenceType: null, referenceId: null,
+        actorId: "u1", requestId: "branch-report",
+      });
+    }
+    const northOnly = await svc.getInventoryReport("b1", north.id);
+    expect(northOnly.movements.received).toBe(6);
+    expect(northOnly.movements.sold).toBe(0);
+    expect(northOnly.healthy).toBe(1);
+    const southOnly = await svc.getInventoryReport("b1", south.id);
+    expect(southOnly.movements.received).toBe(44);
+    expect(southOnly.movements.sold).toBe(7);
+    const unrestricted = await svc.getInventoryReport("b1");
+    expect(unrestricted.movements.received).toBe(50);
+    expect(unrestricted.movements.sold).toBe(10);
+  });
   it("reports inventory health and low stock", async () => {
     const { svc, productId } = await setupReports();
     void productId;

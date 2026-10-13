@@ -49,6 +49,7 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgres://pos:${DB_PASSWORD}@db:5432/pos
       API_PORT: 3001
+      APPROVAL_QUEUE_ENCRYPTION_KEY: ${APPROVAL_QUEUE_ENCRYPTION_KEY:?set a stable 64-character hex key}
       WEB_URL: ${WEB_URL:?set WEB_URL}
       SMTP_HOST: smtp-relay.brevo.com
       SMTP_PORT: "587"

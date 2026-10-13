@@ -54,7 +54,7 @@ export class OrderController {
   }
 
   private permissions(req: Request): string[] {
-    return this.auth.rolePermissions(req.auth!.role);
+    return this.auth.permissionsForRequest(req.auth!);
   }
 
   private canView(req: Request, res: Response): boolean {

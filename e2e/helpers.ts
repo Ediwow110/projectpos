@@ -173,9 +173,11 @@ export async function signIn(page: Page, email: string, password: string): Promi
   await page.getByRole("button", { name: "Sign in securely" }).click();
   await expect(page).toHaveURL(/\/$/, { timeout: 30_000 });
   const tour = page.getByRole("dialog", { name: "Welcome to NexPOS" });
-  await expect(tour).toBeVisible({ timeout: 30_000 });
-  await tour.getByRole("button", { name: "Skip tour" }).click();
-  await expect(tour).toBeHidden();
+  const tourVisible = await tour.waitFor({ state: "visible", timeout: 5_000 }).then(() => true).catch(() => false);
+  if (tourVisible) {
+    await tour.getByRole("button", { name: "Skip tour" }).click();
+    await expect(tour).toBeHidden();
+  }
 }
 
 export async function signOut(page: Page): Promise<void> {

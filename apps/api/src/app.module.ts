@@ -7,8 +7,10 @@ import type { NextFunction, Request, RequestHandler, Response } from "express";
 import cookieParser from "cookie-parser";
 import { AuthController } from "./auth/nest/auth.controller";
 import { ApprovalController } from "./auth/nest/approval.controller";
+import { ManagerApprovalQueueController } from "./auth/nest/manager-approval-queue.controller";
 import { AuthService } from "./auth/nest/auth.service";
 import { ManagerApprovalPolicyService } from "./auth/nest/manager-approval-policy.service";
+import { ManagerApprovalQueueService } from "./auth/nest/manager-approval-queue.service";
 import { TenantController } from "./tenant/nest/tenant.controller";
 import { TenantService } from "./tenant/nest/tenant.service";
 import { BusinessController } from "./business/nest/business.controller";
@@ -18,9 +20,12 @@ import { CatalogController } from "./catalog/nest/catalog.controller";
 import { ProductModelController } from "./catalog/nest/product-model.controller";
 import { InventoryController } from "./inventory/nest/inventory.controller";
 import { InventoryCountController } from "./inventory/nest/inventory-count.controller";
+import { StockExceptionController } from "./inventory/nest/stock-exception.controller";
+import { StockExceptionService } from "./inventory/nest/stock-exception.service";
 import { SalesController } from "./sales/nest/sales.controller";
 import { PaymentsController } from "./sales/nest/payments.controller";
 import { ReceiptsController } from "./sales/nest/receipts.controller";
+import { CustomerConcernsController } from "./sales/nest/customer-concerns.controller";
 import { ShiftController } from "./shifts/nest/shift.controller";
 import { CustomerController } from "./customers/nest/customer.controller";
 import { ExpenseController } from "./expenses/nest/expense.controller";
@@ -46,6 +51,7 @@ import { ProductModelService } from "./catalog/nest/product-model.service";
 import { InventoryService } from "./inventory/nest/inventory.service";
 import { InventoryCountService } from "./inventory/nest/inventory-count.service";
 import { SalesService } from "./sales/nest/sales.service";
+import { CustomerConcernService } from "./sales/nest/customer-concern.service";
 import { ShiftService } from "./shifts/nest/shift.service";
 import { CustomerService } from "./customers/nest/customer.service";
 import { ExpenseService } from "./expenses/nest/expense.service";
@@ -77,6 +83,8 @@ import { MetricsMiddleware, httpMetrics } from "./common/metrics.middleware";
 import { MetricsController } from "./common/metrics.controller";
 import { OrderController } from "./orders/nest/order.controller";
 import { PublicOrderController } from "./orders/nest/public-order.controller";
+import { GuestSupportPublicController, OwnerSupportController, PlatformDiagnosticsController } from "./orders/nest/guest-support.controller";
+import { GuestSupportService, PlatformConsentService } from "./orders/guest-support.service";
 import { OrderService } from "./orders/order-service";
 import { OrderNotificationService } from "./orders/order-notification-service";
 import { OrderExpiryService } from "./orders/order-expiry-service";
@@ -112,8 +120,11 @@ function runtimeDatabaseUrl(): string | undefined {
 }
 
 @Module({
-    controllers: [HealthController, AuthController, ApprovalController, TenantController, BusinessController, ProductModelController, CatalogController, InventoryController, InventoryCountController, SalesController, PaymentsController, ReceiptsController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, ProcurementController, ValueController, MetricsController, OrderController, PublicOrderController],
+    controllers: [HealthController, AuthController, ApprovalController, ManagerApprovalQueueController, TenantController, BusinessController, ProductModelController, CatalogController, InventoryController, InventoryCountController, StockExceptionController, SalesController, PaymentsController, ReceiptsController, CustomerConcernsController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, PlatformDiagnosticsController, OwnerSupportController, GuestSupportPublicController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, ProcurementController, ValueController, MetricsController, OrderController, PublicOrderController],
   providers: [
+    StockExceptionService,
+    GuestSupportService,
+    PlatformConsentService,
     {
       provide: HUMAN_VERIFICATION_PORT,
       useFactory: () => createHumanVerificationFromEnv(process.env),
@@ -132,6 +143,8 @@ function runtimeDatabaseUrl(): string | undefined {
       inject: ["DbPort", TRANSACTIONAL_EMAIL_PORT],
     },
     ManagerApprovalPolicyService,
+    ManagerApprovalQueueService,
+    CustomerConcernService,
     TenantService,
     BusinessService,
     CatalogService,
@@ -237,8 +250,11 @@ export async function createTestApp(options: { paymongo?: PayMongoPort; humanVer
     ? new PgDbPort(new PgContext(databaseUrl))
     : createMemoryDb();
   const moduleRef = await Test.createTestingModule({
-  controllers: [HealthController, AuthController, ApprovalController, TenantController, BusinessController, ProductModelController, CatalogController, InventoryController, InventoryCountController, SalesController, PaymentsController, ReceiptsController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, ProcurementController, ValueController, MetricsController, OrderController, PublicOrderController],
-    providers: [
+  controllers: [HealthController, AuthController, ApprovalController, ManagerApprovalQueueController, TenantController, BusinessController, ProductModelController, CatalogController, InventoryController, InventoryCountController, StockExceptionController, SalesController, PaymentsController, ReceiptsController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, PlatformDiagnosticsController, OwnerSupportController, GuestSupportPublicController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, ProcurementController, ValueController, MetricsController, OrderController, PublicOrderController],
+  providers: [
+      StockExceptionService,
+      GuestSupportService,
+      PlatformConsentService,
       { provide: "DbPort", useValue: db },
       { provide: PAYMONGO_PORT, useValue: options.paymongo ?? createPayMongoFromEnv({}) },
       { provide: HUMAN_VERIFICATION_PORT, useValue: options.humanVerification ?? DISABLED_HUMAN_VERIFICATION },
@@ -264,6 +280,7 @@ export async function createTestApp(options: { paymongo?: PayMongoPort; humanVer
         inject: ["DbPort", TRANSACTIONAL_EMAIL_PORT],
       },
       ManagerApprovalPolicyService,
+      ManagerApprovalQueueService,
       {
         provide: TenantService,
         useFactory: (d: DbPort) => new TenantService(d),

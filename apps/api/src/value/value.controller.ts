@@ -27,7 +27,7 @@ export class ValueController {
     this.service = new StoredValueService(db);
   }
 
-  private granted(req: Request): string[] { return this.auth.rolePermissions(req.auth!.role); }
+  private granted(req: Request): string[] { return this.auth.permissionsForRequest(req.auth!); }
 
   private async authorizeAdjustment(req: Request, valueType: "gift_card" | "store_credit" | "loyalty", targetId: string, amountDelta: number, reason: string, approvalToken?: string): Promise<{ approverId?: string }> {
     const auth = req.auth!;
@@ -138,7 +138,7 @@ export class ValueController {
   async adjustLoyalty(@Req() req: Request, @Res() res: Response, @Param("id") customerId: string, @Body() body: unknown): Promise<void> {
     const parsed = storedValueAdjustSchema.safeParse(body);
     if (!parsed.success) { fail(res, 400, "VALIDATION", "Invalid loyalty adjustment", req); return; }
-    try { const account = await this.service.ensureLoyaltyAccount(req.auth!.businessId, customerId); const approval = await this.authorizeAdjustment(req, "loyalty", account.id, parsed.data.amountMinor, parsed.data.reason, parsed.data.approvalToken); const key = String(req.headers["idempotency-key"] ?? ""); if (key.length < 8) throw new Error("VALIDATION"); const adjustment = await this.service.adjustLoyaltyWithMetadata(req.auth!.businessId, req.auth!.userId, requestId(req), customerId, parsed.data.amountMinor, parsed.data.reason, key); await this.auditApproval(req, account.id, approval.approverId, parsed.data.amountMinor, parsed.data.reason, adjustment.created); res.json({ customerId, points: adjustment.result }); }
+    try { const account = await this.service.ensureLoyaltyAccount(req.auth!.businessId, customerId); const approval = await this.authorizeAdjustment(req, "loyalty", customerId, parsed.data.amountMinor, parsed.data.reason, parsed.data.approvalToken); const key = String(req.headers["idempotency-key"] ?? ""); if (key.length < 8) throw new Error("VALIDATION"); const adjustment = await this.service.adjustLoyaltyWithMetadata(req.auth!.businessId, req.auth!.userId, requestId(req), customerId, parsed.data.amountMinor, parsed.data.reason, key); await this.auditApproval(req, account.id, approval.approverId, parsed.data.amountMinor, parsed.data.reason, adjustment.created); res.json({ customerId, points: adjustment.result }); }
     catch (error) { const code = error instanceof Error ? error.message : "VALIDATION"; fail(res, statusFor(code), code, "Loyalty adjustment failed", req); }
   }
 

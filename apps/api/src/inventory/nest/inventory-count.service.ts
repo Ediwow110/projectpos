@@ -76,7 +76,8 @@ export class InventoryCountService {
     return this.countFingerprint(count, await this.db.listInventoryCountLines(count.id, businessId));
   }
 
-  async createCount(businessId: string, actorId: string, requestId: string, input: InventoryCountCreateInput, _granted: string[]): Promise<InventoryCountView> {
+  async createCount(businessId: string, actorId: string, requestId: string, input: InventoryCountCreateInput, granted: string[]): Promise<InventoryCountView> {
+    this.requireCountPermission(granted);
     withScope(businessId, {});
     const branchId = input.branchId ?? null;
     await this.requireBranch(businessId, branchId);
@@ -125,11 +126,17 @@ export class InventoryCountService {
       const balance = await this.db.findBalance(line.productId, businessId, count.branchId);
       const currentAt = balance?.updatedAt ?? null;
       const snapshotAt = line.balanceUpdatedAtSnapshot ?? null;
-      if ((currentAt?.getTime() ?? null) !== (snapshotAt?.getTime() ?? null)) throw new Error("COUNT_STALE");
+      // Clock timestamps may collide at millisecond precision when an
+      // inventory mutation happens immediately after counting starts.
+      // Comparing the frozen quantity as well prevents a same-ms movement
+      // from slipping past count freshness checks.
+      if ((balance?.qtyOnHand ?? 0) !== line.expectedQtySnapshot ||
+          (currentAt?.getTime() ?? null) !== (snapshotAt?.getTime() ?? null)) throw new Error("COUNT_STALE");
     }
   }
 
-  async startCount(businessId: string, actorId: string, requestId: string, id: string, expectedVersion: number, _granted: string[]): Promise<InventoryCountView> {
+  async startCount(businessId: string, actorId: string, requestId: string, id: string, expectedVersion: number, granted: string[]): Promise<InventoryCountView> {
+    this.requireCountPermission(granted);
     return this.db.withLock(`inventory-count:${businessId}:${id}`, async () => {
       const count = await this.requireCount(businessId, id);
       if (count.status !== "DRAFT") throw new Error("INVALID_STATE");
@@ -149,7 +156,8 @@ export class InventoryCountService {
     });
   }
 
-  async updateLines(businessId: string, actorId: string, requestId: string, id: string, input: InventoryCountLineUpdateInput, _granted: string[]): Promise<InventoryCountView> {
+  async updateLines(businessId: string, actorId: string, requestId: string, id: string, input: InventoryCountLineUpdateInput, granted: string[]): Promise<InventoryCountView> {
+    this.requireCountPermission(granted);
     return this.db.withLock(`inventory-count:${businessId}:${id}`, async () => {
       const count = await this.requireCount(businessId, id);
       if (count.status !== "COUNTING") throw new Error("INVALID_STATE");
@@ -174,7 +182,8 @@ export class InventoryCountService {
     await this.verifyFreshness(businessId, count, lines);
   }
 
-  async submitCount(businessId: string, actorId: string, requestId: string, id: string, expectedVersion: number, _granted: string[]): Promise<InventoryCountView> {
+  async submitCount(businessId: string, actorId: string, requestId: string, id: string, expectedVersion: number, granted: string[]): Promise<InventoryCountView> {
+    this.requireCountPermission(granted);
     return this.db.withLock(`inventory-count:${businessId}:${id}`, async () => {
       const count = await this.requireCount(businessId, id);
       if (count.status !== "COUNTING") throw new Error("INVALID_STATE");
@@ -257,7 +266,8 @@ export class InventoryCountService {
     }));
   }
 
-  async cancelCount(businessId: string, actorId: string, requestId: string, id: string, expectedVersion: number, _granted: string[]): Promise<InventoryCountView> {
+  async cancelCount(businessId: string, actorId: string, requestId: string, id: string, expectedVersion: number, granted: string[]): Promise<InventoryCountView> {
+    this.requireCountPermission(granted);
     return this.db.withLock(`inventory-count:${businessId}:${id}`, async () => {
       const count = await this.requireCount(businessId, id);
       if (["POSTED", "CANCELLED"].includes(count.status)) throw new Error("INVALID_STATE");

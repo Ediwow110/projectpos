@@ -15,6 +15,7 @@ describe("workspace navigation", () => {
       "/expenses",
       "/transfers",
       "/team",
+      "/admin/owner-controls",
       "/devices",
       "/printers",
       "/admin",
@@ -33,9 +34,11 @@ describe("workspace navigation", () => {
       .map((item) => item.href);
 
     expect(hrefs).toContain("/pos");
+    expect(hrefs).toContain("/receipts/lookup");
     expect(hrefs).toContain("/orders");
     expect(hrefs).toContain("/shifts");
     expect(hrefs).not.toContain("/team");
+    expect(hrefs).not.toContain("/admin/owner-controls");
     expect(hrefs).not.toContain("/printers");
     expect(hrefs).not.toContain("/admin");
     expect(hrefs).not.toContain("/expenses");
@@ -45,6 +48,7 @@ describe("workspace navigation", () => {
     expect(hrefs).not.toContain("/supplier-returns");
     expect(hrefs).not.toContain("/admin/loyalty");
     expect(hrefs).not.toContain("/admin/online-ordering");
+    expect(hrefs).not.toContain("/admin/owner-controls");
   });
 
   it.each(["manager", "inventory"])("shows Orders but keeps online-ordering settings out of %s navigation", (role) => {

@@ -106,11 +106,16 @@ export class TransferService {
 
   async listTransfers(
     businessId: string,
-    opts: { status?: string; page: number; pageSize: number },
+    opts: { status?: string; page: number; pageSize: number; allowedBranchIds?: string[] },
   ): Promise<TransferListPage> {
     withScope(businessId, {});
     const all = await this.db.listTransfersByBusiness(businessId);
-    const filtered = (opts.status ? all.filter((t) => t.status === opts.status) : all).sort((a, b) =>
+    const scoped = opts.allowedBranchIds
+      ? all.filter((transfer) =>
+        opts.allowedBranchIds!.includes(transfer.fromBranchId) &&
+        opts.allowedBranchIds!.includes(transfer.toBranchId))
+      : all;
+    const filtered = (opts.status ? scoped.filter((t) => t.status === opts.status) : scoped).sort((a, b) =>
       a.id < b.id ? 1 : -1,
     );
     const total = filtered.length;

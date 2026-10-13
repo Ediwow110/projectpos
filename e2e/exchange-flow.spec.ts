@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { API, apiAuthedContext, registerOperationalBusiness, seedProduct } from "./helpers";
+import { API, apiAuthedContext, createStaffMember, registerOperationalBusiness, seedProduct, signIn, signOut } from "./helpers";
 
 test("owner exchanges a cash sale for a higher-priced replacement and sees the linked transaction", async ({ page, request }) => {
   test.setTimeout(150_000);
@@ -86,4 +86,83 @@ test("owner exchanges a cash sale for a higher-priced replacement and sees the l
   expect(detailBody.exchanges).toEqual([
     expect.objectContaining({ netMinor: 500, direction: "COLLECT" }),
   ]);
+});
+
+test("cashier exchange concern is manager-approved before the existing exchange executes", async ({ page, request }) => {
+  test.setTimeout(180_000);
+  const stamp = Date.now();
+  const ownerPassword = "correct-horse-12";
+  const ownerEmail = await registerOperationalBusiness(page, {
+    ownerName: "Exchange Case Owner", email: `exchange-case-owner-${stamp}@example.com`, password: ownerPassword,
+    businessName: `Exchange Case Store ${stamp}`,
+  });
+  const { headers: ownerHeaders } = await apiAuthedContext(request, ownerEmail, ownerPassword, page);
+  const managerEmail = `exchange-case-manager-${stamp}@example.com`;
+  const manager = await createStaffMember(request, ownerHeaders, { email: managerEmail, name: "Exchange Case Manager", role: "manager" });
+  const cashierEmail = `exchange-case-cashier-${stamp}@example.com`;
+  const cashier = await createStaffMember(request, ownerHeaders, { email: cashierEmail, name: "Exchange Case Cashier", role: "cashier" });
+  const originalName = `Case Original ${stamp}`;
+  const replacementName = `Case Replacement ${stamp}`;
+  const originalProductId = await seedProduct(request, ownerHeaders, { name: originalName, priceMinor: 2500, stock: 5 });
+  await seedProduct(request, ownerHeaders, { name: replacementName, priceMinor: 3000, stock: 5 });
+  const registerResponse = await request.post(`${API}/api/v1/registers`, { headers: ownerHeaders, data: { name: `Case Exchange Till ${stamp}` } });
+  expect(registerResponse.ok()).toBe(true);
+  const registerId = ((await registerResponse.json()) as { id: string }).id;
+  const opened = await request.post(`${API}/api/v1/registers/${registerId}/open`, { headers: ownerHeaders, data: { registerId, openingFloatMinor: 0 } });
+  expect(opened.ok()).toBe(true);
+  const draftResponse = await request.post(`${API}/api/v1/sales/drafts`, { headers: ownerHeaders, data: { lines: [{ productId: originalProductId, qty: 1 }], registerId } });
+  expect(draftResponse.ok()).toBe(true);
+  const draft = await draftResponse.json() as { id: string; totalMinor: number };
+  const completeResponse = await request.post(`${API}/api/v1/sales/complete`, {
+    headers: { ...ownerHeaders, "Idempotency-Key": `exchange-case-sale-${stamp}` },
+    data: { saleId: draft.id, registerId, payments: [{ method: "cash", amountMinor: draft.totalMinor }] },
+  });
+  expect(completeResponse.ok()).toBe(true);
+  const sale = await completeResponse.json() as { id: string; receiptNo: string };
+  const saleDetailResponse = await request.get(`${API}/api/v1/sales/${sale.id}`, { headers: ownerHeaders });
+  expect(saleDetailResponse.ok()).toBe(true);
+  const saleDetail = await saleDetailResponse.json() as { items: Array<{ id: string }> };
+  const { headers: cashierHeaders } = await apiAuthedContext(request, cashierEmail, cashier.tempPassword);
+  const concernResponse = await request.post(`${API}/api/v1/customer-concerns`, {
+    headers: { ...cashierHeaders, "Idempotency-Key": `exchange-case-${stamp}` },
+    data: { saleId: sale.id, items: [{ saleItemId: saleDetail.items[0]!.id, qty: 1 }], reason: "DAMAGED", outcome: "EXCHANGE", note: "Customer requested a size replacement." },
+  });
+  expect(concernResponse.status()).toBe(201);
+  const concern = (await concernResponse.json() as { concern: { id: string } }).concern;
+
+  await signOut(page);
+  await signIn(page, managerEmail, manager.tempPassword);
+  await page.goto("/customer-concerns");
+  await expect(page.getByRole("heading", { name: "Customer case inbox" })).toBeVisible();
+  await page.getByLabel("Case type").selectOption("EXCHANGE");
+  const card = page.locator("section[aria-label='Customer case results']").filter({ hasText: sale.receiptNo });
+  await expect(card).toContainText("PENDING");
+  await card.getByLabel("Decision note").fill("Approved replacement after review.");
+  await card.getByRole("button", { name: "Authorize request" }).click();
+  await expect(page.getByText("No cases match these filters.")).toBeVisible();
+  await page.getByLabel("Case status").selectOption("ALL");
+  await expect(card).toContainText("APPROVED");
+  await expect(card.getByRole("link", { name: "Open approved exchange" })).toBeVisible();
+  await card.getByRole("link", { name: "Open approved exchange" }).click();
+  await expect(page.getByRole("heading", { name: `Sale ${sale.receiptNo}` })).toBeVisible();
+  await page.getByRole("button", { name: "Exchange items", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Exchange items" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("region", { name: "Items to return" }).getByRole("spinbutton").fill("1");
+  await dialog.getByLabel("Search replacement products").fill(replacementName);
+  const replacements = dialog.getByRole("region", { name: "Replacement products" });
+  await expect(replacements.getByText(replacementName, { exact: true })).toBeVisible();
+  await replacements.getByRole("spinbutton").fill("1");
+  await dialog.getByLabel("Reason for exchange").fill("Customer requested a size replacement.");
+  await dialog.getByRole("button", { name: "Complete exchange", exact: true }).click();
+  await expect(dialog).toBeHidden({ timeout: 30_000 });
+  await expect(page.getByRole("status")).toContainText("Exchange completed. Collect ₱5.00.");
+
+  const { headers: managerHeaders } = await apiAuthedContext(request, managerEmail, manager.tempPassword);
+  const concernStatus = await request.get(`${API}/api/v1/customer-concerns/${concern.id}`, { headers: managerHeaders });
+  expect(concernStatus.ok()).toBe(true);
+  expect(await concernStatus.json()).toMatchObject({ status: "RESOLVED", outcome: "EXCHANGE" });
+  const finalSale = await request.get(`${API}/api/v1/sales/${sale.id}`, { headers: managerHeaders });
+  expect(finalSale.ok()).toBe(true);
+  expect(await finalSale.json()).toMatchObject({ status: "REFUNDED", exchanges: [expect.objectContaining({ direction: "COLLECT", netMinor: 500 })] });
 });

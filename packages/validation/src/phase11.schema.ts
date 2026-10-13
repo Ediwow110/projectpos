@@ -34,6 +34,24 @@ export const membershipCreateSchema = z.object({
   role: z.enum(["manager", "cashier", "inventory"]),
 });
 
+export const membershipRoleChangeSchema = z.object({
+  role: z.enum(["manager", "cashier", "inventory"]),
+}).strict();
+
+export const membershipRestrictionSchema = z.object({
+  deniedPermissions: z.array(z.string().min(1).max(80)).max(80),
+}).strict();
+
+export const membershipBranchAssignmentSchema = z.object({
+  // null restores legacy all-branch access; [] intentionally blocks all branches.
+  branchIds: z.array(z.string().min(1).max(120)).max(25).nullable(),
+}).strict();
+
+export const membershipRegisterAssignmentSchema = z.object({
+  registerIds: z.array(z.string().min(1).max(120)).max(50).nullable(),
+}).strict();
+
+
 export const approvalPinSchema = z.object({
   pin: z.string().regex(/^\d{6}$/, "VALIDATION"),
 });
