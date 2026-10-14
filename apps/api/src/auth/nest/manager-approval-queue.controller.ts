@@ -43,6 +43,12 @@ export class ManagerApprovalQueueController {
     catch (e) { const code = e instanceof Error ? e.message : "FORBIDDEN"; fail(res, statusFor(code, 400), code, "Approval requests could not be loaded", req); }
   }
 
+  @Get(":id")
+  async detail(@Req() req: Request, @Res() res: Response, @Param("id") id: string): Promise<void> {
+    try { res.json({ request: await this.queue.detail(req.auth!, id) }); }
+    catch (e) { const code = e instanceof Error ? e.message : "NOT_FOUND"; fail(res, statusFor(code, 404), code, "Approval request unavailable", req); }
+  }
+
   @Post(":id/decision")
   @UseGuards(CsrfGuard)
   async decide(@Req() req: Request, @Res() res: Response, @Param("id") id: string, @Body() body: unknown): Promise<void> {

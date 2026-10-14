@@ -148,17 +148,26 @@ export class StoredValueService {
   }
 
   async adjustStoreCreditWithMetadata(businessId: string, actorId: string, requestId: string, customerId: string, amountDeltaMinor: number, reason: string, idempotencyKey: string): Promise<StoredValueAdjustment<number>> {
-    if (!Number.isInteger(amountDeltaMinor) || amountDeltaMinor === 0 || reason.trim().length < 3) throw new Error("VALIDATION");
-    return this.db.withLock(`store-credit:${businessId}:${customerId}`, async () => {
-      const account = await this.ensureStoreCreditAccount(businessId, customerId);
-      const existing = await this.db.findStoreCreditTransactionByIdempotency(businessId, idempotencyKey);
-      const previousBalance = await this.storeCreditBalance(businessId, customerId);
-      if (!existing) {
-        await this.db.createStoreCreditTransaction({ businessId, accountId: account.id, customerId, type: amountDeltaMinor > 0 ? "MANUAL_CREDIT" : "MANUAL_DEBIT", amountDeltaMinor, saleId: null, refundId: null, actorId, requestId, idempotencyKey, reason: reason.trim(), branchId: null });
+    if (!Number.isSafeInteger(amountDeltaMinor) || amountDeltaMinor === 0 || reason.trim().length < 3 || !idempotencyKey) throw new Error("VALIDATION");
+    return this.db.withLock(`store-credit:${businessId}:${customerId}`, () => this.db.withTransaction(async (tx) => {
+      const existing = await tx.findStoreCreditTransactionByIdempotency(businessId, idempotencyKey);
+      const type = amountDeltaMinor > 0 ? "MANUAL_CREDIT" : "MANUAL_DEBIT";
+      if (existing && (existing.customerId !== customerId || existing.actorId !== actorId ||
+        existing.type !== type || existing.amountDeltaMinor !== amountDeltaMinor || existing.reason !== reason.trim())) {
+        throw new Error("IDEMPOTENCY_MISMATCH");
       }
-      const balance = await this.storeCreditBalance(businessId, customerId);
+      const values = new StoredValueService(tx);
+      const account = existing
+        ? await tx.findStoreCreditAccount(customerId, businessId)
+        : await values.ensureStoreCreditAccount(businessId, customerId);
+      if (!account) throw new Error("NOT_FOUND");
+      const previousBalance = await values.storeCreditBalance(businessId, customerId);
       if (!existing) {
-        await this.db.appendAudit({
+        await tx.createStoreCreditTransaction({ businessId, accountId: account.id, customerId, type, amountDeltaMinor, saleId: null, refundId: null, actorId, requestId, idempotencyKey, reason: reason.trim(), branchId: null });
+      }
+      const balance = await values.storeCreditBalance(businessId, customerId);
+      if (!existing) {
+        await tx.appendAudit({
           businessId,
           actorId,
           action: "store-credit.adjust",
@@ -171,7 +180,7 @@ export class StoredValueService {
         });
       }
       return { result: balance, created: !existing, previousBalance, newBalance: balance };
-    });
+    }));
   }
 
   async saveLoyaltyProgram(businessId: string, input: Omit<DbLoyaltyProgram, "id" | "businessId" | "updatedAt" | "version">): Promise<DbLoyaltyProgram> {
@@ -192,17 +201,26 @@ export class StoredValueService {
   }
 
   async adjustLoyaltyWithMetadata(businessId: string, actorId: string, requestId: string, customerId: string, pointsDelta: number, reason: string, idempotencyKey: string): Promise<StoredValueAdjustment<number>> {
-    if (!Number.isInteger(pointsDelta) || pointsDelta === 0 || reason.trim().length < 3) throw new Error("VALIDATION");
-    return this.db.withLock(`loyalty:${businessId}:${customerId}`, async () => {
-      const account = await this.ensureLoyaltyAccount(businessId, customerId);
-      const existing = await this.db.findLoyaltyTransactionByIdempotency(businessId, idempotencyKey);
-      const previousBalance = await this.loyaltyBalance(businessId, customerId);
-      if (!existing) {
-        await this.db.createLoyaltyTransaction({ businessId, accountId: account.id, customerId, type: pointsDelta > 0 ? "MANUAL_CREDIT" : "MANUAL_DEBIT", pointsDelta, valueMinorSnapshot: null, saleId: null, refundId: null, actorId, requestId, idempotencyKey, reason: reason.trim() });
+    if (!Number.isSafeInteger(pointsDelta) || pointsDelta === 0 || reason.trim().length < 3 || !idempotencyKey) throw new Error("VALIDATION");
+    return this.db.withLock(`loyalty:${businessId}:${customerId}`, () => this.db.withTransaction(async (tx) => {
+      const existing = await tx.findLoyaltyTransactionByIdempotency(businessId, idempotencyKey);
+      const type = pointsDelta > 0 ? "MANUAL_CREDIT" : "MANUAL_DEBIT";
+      if (existing && (existing.customerId !== customerId || existing.actorId !== actorId ||
+        existing.type !== type || existing.pointsDelta !== pointsDelta || existing.reason !== reason.trim())) {
+        throw new Error("IDEMPOTENCY_MISMATCH");
       }
-      const balance = await this.loyaltyBalance(businessId, customerId);
+      const values = new StoredValueService(tx);
+      const account = existing
+        ? await tx.findLoyaltyAccount(customerId, businessId)
+        : await values.ensureLoyaltyAccount(businessId, customerId);
+      if (!account) throw new Error("NOT_FOUND");
+      const previousBalance = await values.loyaltyBalance(businessId, customerId);
       if (!existing) {
-        await this.db.appendAudit({
+        await tx.createLoyaltyTransaction({ businessId, accountId: account.id, customerId, type, pointsDelta, valueMinorSnapshot: null, saleId: null, refundId: null, actorId, requestId, idempotencyKey, reason: reason.trim() });
+      }
+      const balance = await values.loyaltyBalance(businessId, customerId);
+      if (!existing) {
+        await tx.appendAudit({
           businessId,
           actorId,
           action: "loyalty.adjust",
@@ -215,7 +233,7 @@ export class StoredValueService {
         });
       }
       return { result: balance, created: !existing, previousBalance, newBalance: balance };
-    });
+    }));
   }
 
   async earnLoyalty(businessId: string, actorId: string, requestId: string, customerId: string, eligibleSpendMinor: number, saleId: string, idempotencyKey: string): Promise<{ points: number; snapshot: DbSaleLoyalty }> {

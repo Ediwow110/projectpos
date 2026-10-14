@@ -98,6 +98,40 @@ describe("ManagerApprovalQueueService", () => {
     });
   });
 
+  it("does not create value accounts for denied, replayed or mismatched queue requests", async () => {
+    const { db, queue, cashierActor, managerActor } = await setup();
+    const customer = await db.createCustomer({
+      businessId: cashierActor.businessId, name: "New value customer", phone: null, email: null,
+      address: null, notes: null, isActive: true,
+    });
+    const action = { kind: "value_adjustment" as const, valueType: "store_credit" as const,
+      targetId: customer.id, amountDelta: 500, reason: "Correct customer balance" };
+    await expect(queue.request(managerActor, "wrong-role", action, null, "value-wrong-role"))
+      .rejects.toThrow("FORBIDDEN");
+    await expect(queue.request(cashierActor, "wrong-branch", action, null, "value-wrong-branch"))
+      .rejects.toThrow("FORBIDDEN");
+    expect(await db.findStoreCreditAccount(customer.id, cashierActor.businessId)).toBeNull();
+
+    const unrestricted = { ...cashierActor, activeBranchId: null, allowedBranchIds: null,
+      allowedRegisterIds: null } as RequestAuth;
+    await expect(queue.request(unrestricted, "missing-customer", { ...action, targetId: "missing" },
+      null, "value-missing-customer")).rejects.toThrow("NOT_FOUND");
+    const created = await queue.request(unrestricted, "valid-request", action, null, "value-new-account");
+    expect(created.replayed).toBe(false);
+    expect((await queue.request(unrestricted, "replay", action, null, "value-new-account")).replayed).toBe(true);
+    await expect(queue.request(unrestricted, "mismatch", { ...action, amountDelta: 700 },
+      null, "value-new-account")).rejects.toThrow("IDEMPOTENCY_MISMATCH");
+    expect(await db.findStoreCreditAccount(customer.id, cashierActor.businessId)).toBeNull();
+    await queue.decide({ ...managerActor, activeBranchId: null, allowedBranchIds: null,
+      allowedRegisterIds: null } as RequestAuth, "deny", created.request.id,
+    { decision: "REJECTED", reason: "No supporting evidence" });
+    expect(await db.findStoreCreditAccount(customer.id, cashierActor.businessId)).toBeNull();
+
+    const loyalty = { ...action, valueType: "loyalty" as const };
+    await queue.request(unrestricted, "loyalty-request", loyalty, null, "value-new-loyalty");
+    expect(await db.findLoyaltyAccount(customer.id, cashierActor.businessId)).toBeNull();
+  });
+
   it("queues only submitted stock counts and gives managers snapshot variance context", async () => {
     const { db, queue, cashierActor, managerActor, register } = await setup();
     const count = await db.createInventoryCount({
@@ -247,6 +281,49 @@ describe("ManagerApprovalQueueService", () => {
     expect(claimed).toMatchObject({ token: "one-use-manager-grant-token", approver: { id: manager.id, role: "manager" } });
     expect(Date.parse(claimed.expiresAt)).toBeGreaterThan(Date.now());
     await expect(queue.claim(cashierActor, created.request.id)).rejects.toThrow("APPROVAL_TOKEN_UNAVAILABLE");
+  });
+
+  it("preserves the encrypted grant when the key or approver membership is invalid", async () => {
+    const { db, queue, cashierActor, managerActor, register, action, manager } = await setup();
+    const created = await queue.request(cashierActor, "claim-recovery", action, register.id, "claim-recovery-key");
+    await queue.decide(managerActor, "approve-recovery", created.request.id,
+      { decision: "APPROVED", email: manager.email, password: "verified" });
+    const before = await db.findManagerApprovalRequest(created.request.id, cashierActor.businessId);
+    process.env["APPROVAL_QUEUE_ENCRYPTION_KEY"] = "b7".repeat(32);
+    await expect(queue.claim(cashierActor, created.request.id)).rejects.toThrow("APPROVAL_TOKEN_UNAVAILABLE");
+    expect(await db.findManagerApprovalRequest(created.request.id, cashierActor.businessId))
+      .toMatchObject({ tokenCiphertext: before!.tokenCiphertext, tokenClaimedAt: null });
+    process.env["APPROVAL_QUEUE_ENCRYPTION_KEY"] = KEY;
+
+    const membership = await db.findMembership(manager.id, cashierActor.businessId);
+    await db.updateMembership(membership!.id, cashierActor.businessId, { deactivatedAt: new Date() });
+    await expect(queue.claim(cashierActor, created.request.id)).rejects.toThrow("APPROVAL_TOKEN_UNAVAILABLE");
+    expect(await db.findManagerApprovalRequest(created.request.id, cashierActor.businessId))
+      .toMatchObject({ tokenCiphertext: before!.tokenCiphertext, tokenClaimedAt: null });
+    await db.updateMembership(membership!.id, cashierActor.businessId, { deactivatedAt: null });
+    await expect(queue.claim(cashierActor, created.request.id)).resolves.toMatchObject({
+      token: "one-use-manager-grant-token",
+    });
+  });
+
+  it("allows only one concurrent claim and denies other requesters and businesses", async () => {
+    const { db, queue, cashierActor, managerActor, register, action, manager } = await setup();
+    const created = await queue.request(cashierActor, "claim-race", action, register.id, "claim-race-key");
+    await queue.decide(managerActor, "approve-race", created.request.id,
+      { decision: "APPROVED", email: manager.email, password: "verified" });
+    await expect(queue.claim({ ...cashierActor, userId: "another-cashier" }, created.request.id))
+      .rejects.toThrow("APPROVAL_TOKEN_UNAVAILABLE");
+    const other = await db.createBusiness({ name: "Foreign business", currency: "PHP" });
+    await expect(queue.claim({ ...cashierActor, businessId: other.id }, created.request.id))
+      .rejects.toThrow("APPROVAL_TOKEN_UNAVAILABLE");
+    const results = await Promise.allSettled([
+      queue.claim(cashierActor, created.request.id),
+      queue.claim(cashierActor, created.request.id),
+    ]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+    expect(await db.findManagerApprovalRequest(created.request.id, cashierActor.businessId))
+      .toMatchObject({ tokenCiphertext: null, tokenClaimedAt: expect.any(Date) });
   });
 
   it("audits expiry when a manager attempts to decide an aged request directly", async () => {

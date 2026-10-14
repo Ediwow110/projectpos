@@ -28,5 +28,24 @@ describe("ValueController approval fingerprints", () => {
       amountDelta: 25, reason: "Service correction",
     });
     expect(response.status).toHaveBeenCalledWith(403);
+    expect(await db.findLoyaltyAccount(customer.id, business.id)).toBeNull();
+  });
+
+  it("does not create a store-credit account for a denied cashier adjustment", async () => {
+    const db = createMemoryDb();
+    const business = await db.createBusiness({ name: "Credit Approval", currency: "PHP" });
+    const customer = await db.createCustomer({ businessId: business.id, name: "New credit customer",
+      phone: null, email: null, address: null, notes: null, isActive: true });
+    const auth = { permissionsForRequest: vi.fn().mockReturnValue([]) };
+    const policy = { resolveRequirement: vi.fn().mockResolvedValue(null) };
+    const controller = new ValueController(db, auth as never, policy as never);
+    const response = { status: vi.fn().mockReturnThis(), json: vi.fn() } as unknown as Response;
+    const request = { auth: { businessId: business.id, userId: "cashier", role: "cashier" },
+      headers: { "idempotency-key": "credit-denied-key" } } as unknown as Request;
+    await controller.adjustStoreCredit(request, response, customer.id, {
+      amountMinor: 100, reason: "Unsupported correction",
+    });
+    expect(response.status).toHaveBeenCalledWith(403);
+    expect(await db.findStoreCreditAccount(customer.id, business.id)).toBeNull();
   });
 });

@@ -76,6 +76,26 @@ describe("StoredValueService", () => {
     expect(account.customerId).toBe(customer.id);
   });
 
+  it("rolls back first-account creation on failed adjustments and rejects key reuse with different values", async () => {
+    const { db, service, business, customer } = await fixture();
+    await expect(service.adjustStoreCredit(business.id, "actor", "debit", customer.id,
+      -100, "Unsupported debit", "credit-first-debit")).rejects.toThrow("STORE_CREDIT_INSUFFICIENT_BALANCE");
+    expect(await db.findStoreCreditAccount(customer.id, business.id)).toBeNull();
+    await service.adjustStoreCredit(business.id, "actor", "credit", customer.id,
+      300, "Approved credit", "credit-first-key");
+    await expect(service.adjustStoreCredit(business.id, "actor", "mismatch", customer.id,
+      400, "Approved credit", "credit-first-key")).rejects.toThrow("IDEMPOTENCY_MISMATCH");
+    const credit = await db.findStoreCreditAccount(customer.id, business.id);
+    expect(await db.listStoreCreditTransactions(credit!.id, business.id)).toHaveLength(1);
+
+    await service.adjustLoyalty(business.id, "actor", "loyalty", customer.id,
+      20, "Approved points", "loyalty-first-key");
+    await expect(service.adjustLoyalty(business.id, "actor", "mismatch", customer.id,
+      21, "Approved points", "loyalty-first-key")).rejects.toThrow("IDEMPOTENCY_MISMATCH");
+    const loyalty = await db.findLoyaltyAccount(customer.id, business.id);
+    expect(await db.listLoyaltyTransactions(loyalty!.id, business.id)).toHaveLength(1);
+  });
+
   it("uses integer loyalty math and snapshots program settings", async () => {
     const { service, business, customer } = await fixture();
     await service.saveLoyaltyProgram(business.id, { enabled: true, earnAmountMinor: 100, earnPoints: 3, redeemPoints: 100, redeemValueMinor: 50, minimumRedeemPoints: 100 });

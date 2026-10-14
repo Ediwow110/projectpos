@@ -17,6 +17,20 @@ import type { PgContext } from "./context";
 const CUSTOMER_COLUMNS = '"id", "businessId", "name", "phone", "email", "address", "notes", "isActive"';
 const CUSTOMER_CONCERN_COLUMNS = '"id", "businessId", "saleId", "receiptNo", "branchId", "registerId", "requesterId", "reason", "outcome", "note", "items", "requestedRefundMinor", "status", "idempotencyKey", "reviewedBy", "reviewedAt", "reviewReason", "refundId", "createdAt", "updatedAt"';
 const MANAGER_APPROVAL_REQUEST_COLUMNS = '"id", "businessId", "requesterId", "branchId", "registerId", "kind", "permission", "action", "fingerprint", "stateFingerprint", "status", "idempotencyKey", "approverId", "decidedAt", "decisionReason", "tokenCiphertext", "tokenExpiresAt", "tokenClaimedAt", "createdAt", "updatedAt"';
+// Migration 0037 stores UTC instants in timestamp-without-time-zone columns.
+// Read them as timestamptz so pg does not reinterpret them in the Node process timezone.
+function managerApprovalRequestReadColumns(prefix = ""): string {
+  return MANAGER_APPROVAL_REQUEST_COLUMNS.split(", ").map((column) =>
+    ["\"decidedAt\"", "\"tokenExpiresAt\"", "\"tokenClaimedAt\"", "\"createdAt\"", "\"updatedAt\""].includes(column)
+      ? `(${prefix}${column} AT TIME ZONE 'UTC') AS ${column}`
+      : `${prefix}${column}`,
+  ).join(", ");
+}
+const MANAGER_APPROVAL_REQUEST_READ_COLUMNS = managerApprovalRequestReadColumns();
+const MANAGER_APPROVAL_CLAIMED_READ_COLUMNS = managerApprovalRequestReadColumns("claimed.");
+function utcTimestamp(date: Date): string {
+  return date.toISOString().replace("T", " ").replace("Z", "");
+}
 const REFUND_COLUMNS =
   '"id", "businessId", "saleId", "status", "totalMinor", "deliveryFeeRefundMinor", "deliveryTaxRefundMinor", "reason", "requestedBy", ' +
   '"approvedBy", "requestId", "approvedRequestId", "singleStep"';
@@ -145,9 +159,9 @@ export function peopleFamily(ctx: PgContext) {
       const cl = await ctx.client();
       try {
         const row: DbManagerApprovalRequest = { ...input, id: nid("approval"), createdAt: new Date(), updatedAt: new Date() };
-        const values = [row.id,row.businessId,row.requesterId,row.branchId,row.registerId,row.kind,row.permission,JSON.stringify(row.action),row.fingerprint,row.stateFingerprint,row.status,row.idempotencyKey,row.approverId,row.decidedAt,row.decisionReason,row.tokenCiphertext,row.tokenExpiresAt,row.tokenClaimedAt];
+        const values = [row.id,row.businessId,row.requesterId,row.branchId,row.registerId,row.kind,row.permission,JSON.stringify(row.action),row.fingerprint,row.stateFingerprint,row.status,row.idempotencyKey,row.approverId,row.decidedAt && utcTimestamp(row.decidedAt),row.decisionReason,row.tokenCiphertext,row.tokenExpiresAt && utcTimestamp(row.tokenExpiresAt),row.tokenClaimedAt && utcTimestamp(row.tokenClaimedAt)];
         const r = await cl.query(
-          `INSERT INTO "ManagerApprovalRequest" (${MANAGER_APPROVAL_REQUEST_COLUMNS.split(", ").slice(0,18).join(", ")}, "createdAt", "updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) RETURNING ${MANAGER_APPROVAL_REQUEST_COLUMNS}`,
+          `INSERT INTO "ManagerApprovalRequest" (${MANAGER_APPROVAL_REQUEST_COLUMNS.split(", ").slice(0,18).join(", ")}, "createdAt", "updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'),(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')) RETURNING ${MANAGER_APPROVAL_REQUEST_READ_COLUMNS}`,
           values,
         );
         return r.rows[0] as DbManagerApprovalRequest;
@@ -155,24 +169,26 @@ export function peopleFamily(ctx: PgContext) {
     },
     async findManagerApprovalRequest(id: string, businessId: string): Promise<DbManagerApprovalRequest | null> {
       const cl = await ctx.client();
-      try { const r = await cl.query(`SELECT ${MANAGER_APPROVAL_REQUEST_COLUMNS} FROM "ManagerApprovalRequest" WHERE "id"=$1 AND "businessId"=$2`, [id,businessId]); return (r.rows[0] as DbManagerApprovalRequest | undefined) ?? null; }
+      try { const r = await cl.query(`SELECT ${MANAGER_APPROVAL_REQUEST_READ_COLUMNS} FROM "ManagerApprovalRequest" WHERE "id"=$1 AND "businessId"=$2`, [id,businessId]); return (r.rows[0] as DbManagerApprovalRequest | undefined) ?? null; }
       finally { if (ctx.owns()) cl.release(); }
     },
     async findManagerApprovalRequestByIdempotency(businessId: string, requesterId: string, idempotencyKey: string): Promise<DbManagerApprovalRequest | null> {
       const cl = await ctx.client();
-      try { const r = await cl.query(`SELECT ${MANAGER_APPROVAL_REQUEST_COLUMNS} FROM "ManagerApprovalRequest" WHERE "businessId"=$1 AND "requesterId"=$2 AND "idempotencyKey"=$3`, [businessId,requesterId,idempotencyKey]); return (r.rows[0] as DbManagerApprovalRequest | undefined) ?? null; }
+      try { const r = await cl.query(`SELECT ${MANAGER_APPROVAL_REQUEST_READ_COLUMNS} FROM "ManagerApprovalRequest" WHERE "businessId"=$1 AND "requesterId"=$2 AND "idempotencyKey"=$3`, [businessId,requesterId,idempotencyKey]); return (r.rows[0] as DbManagerApprovalRequest | undefined) ?? null; }
       finally { if (ctx.owns()) cl.release(); }
     },
     async listManagerApprovalRequests(businessId: string): Promise<DbManagerApprovalRequest[]> {
       const cl = await ctx.client();
-      try { const r = await cl.query(`SELECT ${MANAGER_APPROVAL_REQUEST_COLUMNS} FROM "ManagerApprovalRequest" WHERE "businessId"=$1 ORDER BY "createdAt" DESC, "id" DESC`, [businessId]); return r.rows as DbManagerApprovalRequest[]; }
+      try { const r = await cl.query(`SELECT ${MANAGER_APPROVAL_REQUEST_READ_COLUMNS} FROM "ManagerApprovalRequest" WHERE "businessId"=$1 ORDER BY "createdAt" DESC, "id" DESC`, [businessId]); return r.rows as DbManagerApprovalRequest[]; }
       finally { if (ctx.owns()) cl.release(); }
     },
     async transitionManagerApprovalRequest(id: string, businessId: string, expectedStatus: DbManagerApprovalRequest["status"], patch: Partial<Pick<DbManagerApprovalRequest, "status" | "approverId" | "decidedAt" | "decisionReason" | "tokenCiphertext" | "tokenExpiresAt">>): Promise<DbManagerApprovalRequest | null> {
       const cl = await ctx.client();
       try {
-        const { sets, values } = buildSet(patch as Record<string, unknown>);
-        const r = await cl.query(`UPDATE "ManagerApprovalRequest" SET ${sets.join(", ")}, "updatedAt"=CURRENT_TIMESTAMP WHERE "id"=$${values.length + 1} AND "businessId"=$${values.length + 2} AND "status"=$${values.length + 3} RETURNING ${MANAGER_APPROVAL_REQUEST_COLUMNS}`, [...values,id,businessId,expectedStatus]);
+        const utcPatch = Object.fromEntries(Object.entries(patch).map(([key, value]) =>
+          [key, value instanceof Date ? utcTimestamp(value) : value]));
+        const { sets, values } = buildSet(utcPatch);
+        const r = await cl.query(`UPDATE "ManagerApprovalRequest" SET ${sets.join(", ")}, "updatedAt"=(CURRENT_TIMESTAMP AT TIME ZONE 'UTC') WHERE "id"=$${values.length + 1} AND "businessId"=$${values.length + 2} AND "status"=$${values.length + 3} RETURNING ${MANAGER_APPROVAL_REQUEST_READ_COLUMNS}`, [...values,id,businessId,expectedStatus]);
         return (r.rows[0] as DbManagerApprovalRequest | undefined) ?? null;
       } finally { if (ctx.owns()) cl.release(); }
     },
@@ -180,8 +196,8 @@ export function peopleFamily(ctx: PgContext) {
       const cl = await ctx.client();
       try {
         const r = await cl.query(
-          `WITH picked AS (SELECT "id", "tokenCiphertext", "tokenExpiresAt" FROM "ManagerApprovalRequest" WHERE "id"=$1 AND "businessId"=$2 AND "requesterId"=$3 AND "status"='APPROVED' AND "tokenCiphertext" IS NOT NULL AND "tokenExpiresAt">$4 AND "tokenClaimedAt" IS NULL FOR UPDATE), claimed AS (UPDATE "ManagerApprovalRequest" AS request SET "tokenCiphertext"=NULL, "tokenExpiresAt"=NULL, "tokenClaimedAt"=$4, "updatedAt"=$4 FROM picked WHERE request."id"=picked."id" RETURNING request.*) SELECT claimed.*, picked."tokenCiphertext" AS "claimedEncryptedToken", picked."tokenExpiresAt" AS "claimedTokenExpiresAt" FROM claimed JOIN picked ON claimed."id"=picked."id"`,
-          [id,businessId,requesterId,now],
+          `WITH picked AS (SELECT "id", "tokenCiphertext", "tokenExpiresAt" FROM "ManagerApprovalRequest" WHERE "id"=$1 AND "businessId"=$2 AND "requesterId"=$3 AND "status"='APPROVED' AND "tokenCiphertext" IS NOT NULL AND "tokenExpiresAt">$4 AND "tokenClaimedAt" IS NULL FOR UPDATE), claimed AS (UPDATE "ManagerApprovalRequest" AS request SET "tokenCiphertext"=NULL, "tokenExpiresAt"=NULL, "tokenClaimedAt"=$4, "updatedAt"=$4 FROM picked WHERE request."id"=picked."id" RETURNING request.*) SELECT ${MANAGER_APPROVAL_CLAIMED_READ_COLUMNS}, picked."tokenCiphertext" AS "claimedEncryptedToken", (picked."tokenExpiresAt" AT TIME ZONE 'UTC') AS "claimedTokenExpiresAt" FROM claimed JOIN picked ON claimed."id"=picked."id"`,
+          [id,businessId,requesterId,utcTimestamp(now)],
         );
         const row = r.rows[0] as (DbManagerApprovalRequest & { claimedEncryptedToken: string; claimedTokenExpiresAt: Date }) | undefined;
         if (!row) return null;
