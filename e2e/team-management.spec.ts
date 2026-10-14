@@ -13,7 +13,13 @@ test("owner creates and deactivates a cashier while temporary credentials are di
 
   await page.goto("/team");
 
-  const ownerRow = page.getByRole("row").filter({ hasText: "Team Owner" });
+  // Desktop/tablet display table rows, while mobile presents employee cards.
+  // Scope to the visible member surface so hidden responsive duplicates
+  // cannot satisfy the action or confuse strict-mode selectors.
+  const visibleMember = (text: string) =>
+    page.locator('table tbody tr:visible, section[aria-label="Mobile employee access"] article:visible')
+      .filter({ hasText: text });
+  const ownerRow = visibleMember("Team Owner");
   await ownerRow.getByRole("button", { name: "Set approval PIN" }).click();
   const pinDialog = page.getByRole("dialog", { name: "Set approval PIN" });
   await pinDialog.getByLabel("Six-digit approval PIN").fill("482615");
@@ -44,9 +50,9 @@ test("owner creates and deactivates a cashier while temporary credentials are di
   await expect(page.getByRole("dialog", { name: "Temporary password" })).toHaveCount(0);
   await expect(page.locator('[data-ui="temporary-password-value"]')).toHaveCount(0);
 
-  const memberRow = page.getByRole("row").filter({ hasText: cashierEmail });
+  const memberRow = visibleMember(cashierEmail);
   await expect(memberRow).toBeVisible();
-  await memberRow.getByRole("button", { name: "Deactivate" }).click();
+  await memberRow.getByRole("button", { name: /^Deactivate(?: employee)?$/ }).click();
   const confirm = page.getByRole("dialog", { name: "Deactivate team member?" });
   await expect(confirm).toBeVisible();
   await confirm.getByRole("button", { name: "Deactivate" }).click();

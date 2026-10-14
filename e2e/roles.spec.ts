@@ -23,8 +23,9 @@ test("owner surfaces: registers, cashiers report, export buttons", async ({ page
   await page.getByLabel("Email").fill(`counter-${Date.now()}@example.com`);
   await page.getByLabel("Role").selectOption("cashier");
   await page.getByRole("button", { name: "Create team member", exact: true }).click();
-  await expect(page.getByText("Temporary password", { exact: true })).toBeVisible();
-  await expect(page.getByText("Counter Cashier", { exact: true })).toBeVisible();
+  const credentials = page.getByRole("dialog", { name: "Temporary password" });
+  await expect(credentials).toBeVisible();
+  await expect(credentials).toContainText("Counter Cashier");
 
   await page.goto("/registers");
   await expect(page.getByRole("heading", { name: "Registers", exact: true })).toBeVisible();

@@ -311,23 +311,27 @@ export default function TeamPage(): JSX.Element {
                             ? "Current user · Protected owner access"
                             : "Protected membership"}
                       </p>
-                      {editable ? <div className="mt-4 grid grid-cols-2 gap-2">
-                        <GhostButton type="button" onClick={() => void openPermissionRestrictions(member)}>Permissions</GhostButton>
-                        <GhostButton type="button" onClick={() => setBranchTarget(member)}>Branch access</GhostButton>
-                        <GhostButton type="button" onClick={() => setRegisterTarget(member)}>Register access</GhostButton>
-                        <GhostButton type="button" onClick={() => {
-                          setError("");
-                          setRoleTarget(member);
-                          setNextRole(member.role as "manager" | "cashier" | "inventory");
-                          setRoleConfirmation("");
-                        }}>Change role</GhostButton>
+                      {(editable || canManageApprovalPin(member)) ? <div className="mt-4 grid grid-cols-2 gap-2">
+                        {editable ? (
+                          <>
+                            <GhostButton type="button" onClick={() => void openPermissionRestrictions(member)}>Permissions</GhostButton>
+                            <GhostButton type="button" onClick={() => setBranchTarget(member)}>Branch access</GhostButton>
+                            <GhostButton type="button" onClick={() => setRegisterTarget(member)}>Register access</GhostButton>
+                            <GhostButton type="button" onClick={() => {
+                              setError("");
+                              setRoleTarget(member);
+                              setNextRole(member.role as "manager" | "cashier" | "inventory");
+                              setRoleConfirmation("");
+                            }}>Change role</GhostButton>
+                          </>
+                        ) : null}
                         {canManageApprovalPin(member) && <GhostButton type="button" className="col-span-2" onClick={() => {
                           setError("");
                           setPinTarget(member);
                           setApprovalPin("");
                           setApprovalPinConfirm("");
                         }}>{member.approvalPinSet ? "Rotate approval PIN" : "Set approval PIN"}</GhostButton>}
-                        {canDeactivateMember(meQuery.data?.userId ?? "", member) && <GhostButton type="button" className="col-span-2" onClick={() => setDeactivateTarget(member)}>Deactivate employee</GhostButton>}
+                        {editable && canDeactivateMember(meQuery.data?.userId ?? "", member) && <GhostButton type="button" className="col-span-2" onClick={() => setDeactivateTarget(member)}>Deactivate employee</GhostButton>}
                       </div> : null}
                     </article>;
                   })}
