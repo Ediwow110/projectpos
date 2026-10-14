@@ -40,11 +40,6 @@ export class ValueController {
     return { approverId: consumed.approverId };
   }
 
-  private async auditApproval(req: Request, targetId: string, approverId: string | undefined, amountDelta: number, reason: string, created: boolean): Promise<void> {
-    if (!approverId || !created) return;
-    await this.db.appendAudit({ businessId: req.auth!.businessId, actorId: req.auth!.userId, action: "manager.approval.applied", entityType: "StoredValue", entityId: targetId, requestId: requestId(req), reason: "stored_value.adjust", after: { approverId, amountDelta, reason } });
-  }
-
   @Get("gift-cards")
   async listGiftCards(@Req() req: Request, @Res() res: Response): Promise<void> {
     try { const cards = await this.db.listGiftCards(req.auth!.businessId); res.json(await Promise.all(cards.map(async (card) => ({ id: card.id, maskedCode: this.service.maskGiftCard(card), codeLast4: card.codeLast4, status: card.status, balanceMinor: await this.service.giftCardBalance(card.businessId, card.id) })))); }
@@ -95,7 +90,7 @@ export class ValueController {
   async adjustGiftCard(@Req() req: Request, @Res() res: Response, @Param("id") id: string, @Body() body: unknown): Promise<void> {
     const parsed = storedValueAdjustSchema.safeParse(body);
     if (!parsed.success) { fail(res, 400, "VALIDATION", "Invalid gift-card adjustment", req); return; }
-    try { const approval = await this.authorizeAdjustment(req, "gift_card", id, parsed.data.amountMinor, parsed.data.reason, parsed.data.approvalToken); const key = String(req.headers["idempotency-key"] ?? ""); if (key.length < 8) throw new Error("VALIDATION"); const result = await this.service.adjustGiftCardWithMetadata(req.auth!.businessId, req.auth!.userId, requestId(req), id, parsed.data.amountMinor, parsed.data.reason, key); await this.auditApproval(req, id, approval.approverId, parsed.data.amountMinor, parsed.data.reason, result.created); res.json(result.result); }
+    try { const key = String(req.headers["idempotency-key"] ?? ""); if (key.length < 8) throw new Error("VALIDATION"); const approval = await this.authorizeAdjustment(req, "gift_card", id, parsed.data.amountMinor, parsed.data.reason, parsed.data.approvalToken); const result = await this.service.adjustGiftCardWithMetadata(req.auth!.businessId, req.auth!.userId, requestId(req), id, parsed.data.amountMinor, parsed.data.reason, key, approval.approverId); res.json(result.result); }
     catch (error) { const code = error instanceof Error ? error.message : "VALIDATION"; fail(res, statusFor(code), code, "Gift card adjustment failed", req); }
   }
 
@@ -133,12 +128,7 @@ export class ValueController {
       const key = String(req.headers["idempotency-key"] ?? "");
       if (key.length < 8) throw new Error("VALIDATION");
       const approval = await this.authorizeAdjustment(req, "store_credit", customerId, parsed.data.amountMinor, parsed.data.reason, parsed.data.approvalToken);
-      const adjustment = await this.service.adjustStoreCreditWithMetadata(req.auth!.businessId, req.auth!.userId, requestId(req), customerId, parsed.data.amountMinor, parsed.data.reason, key);
-      if (approval.approverId && adjustment.created) {
-        const account = await this.db.findStoreCreditAccount(customerId, req.auth!.businessId);
-        if (!account) throw new Error("NOT_FOUND");
-        await this.auditApproval(req, account.id, approval.approverId, parsed.data.amountMinor, parsed.data.reason, true);
-      }
+      const adjustment = await this.service.adjustStoreCreditWithMetadata(req.auth!.businessId, req.auth!.userId, requestId(req), customerId, parsed.data.amountMinor, parsed.data.reason, key, approval.approverId);
       res.json({ customerId, balanceMinor: adjustment.result });
     }
     catch (error) { const code = error instanceof Error ? error.message : "VALIDATION"; fail(res, statusFor(code), code, "Store-credit adjustment failed", req); }
@@ -153,12 +143,7 @@ export class ValueController {
       const key = String(req.headers["idempotency-key"] ?? "");
       if (key.length < 8) throw new Error("VALIDATION");
       const approval = await this.authorizeAdjustment(req, "loyalty", customerId, parsed.data.amountMinor, parsed.data.reason, parsed.data.approvalToken);
-      const adjustment = await this.service.adjustLoyaltyWithMetadata(req.auth!.businessId, req.auth!.userId, requestId(req), customerId, parsed.data.amountMinor, parsed.data.reason, key);
-      if (approval.approverId && adjustment.created) {
-        const account = await this.db.findLoyaltyAccount(customerId, req.auth!.businessId);
-        if (!account) throw new Error("NOT_FOUND");
-        await this.auditApproval(req, account.id, approval.approverId, parsed.data.amountMinor, parsed.data.reason, true);
-      }
+      const adjustment = await this.service.adjustLoyaltyWithMetadata(req.auth!.businessId, req.auth!.userId, requestId(req), customerId, parsed.data.amountMinor, parsed.data.reason, key, approval.approverId);
       res.json({ customerId, points: adjustment.result });
     }
     catch (error) { const code = error instanceof Error ? error.message : "VALIDATION"; fail(res, statusFor(code), code, "Loyalty adjustment failed", req); }

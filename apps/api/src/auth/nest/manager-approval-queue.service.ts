@@ -134,10 +134,13 @@ export class ManagerApprovalQueueService {
         visible.push(expired ?? { ...row, status: "EXPIRED" });
       } else visible.push(row);
     }
-    return Promise.all(visible.map(async (row) => {
-      const safe = publicRequest(row);
-      const action = row.action as unknown as ManagerApprovalAction;
-      const [requester, branch, register] = await Promise.all([
+    return Promise.all(visible.map((row) => this.describeRequest(actor, row)));
+  }
+
+  private async describeRequest(actor: RequestAuth, row: DbManagerApprovalRequest) {
+    const safe = publicRequest(row);
+    const action = row.action as unknown as ManagerApprovalAction;
+    const [requester, branch, register] = await Promise.all([
         this.db.findUserById(row.requesterId),
         row.branchId ? this.db.findBranchById(row.branchId, actor.businessId) : null,
         row.registerId ? this.db.findRegisterById(row.registerId, actor.businessId) : null,
@@ -202,13 +205,18 @@ export class ManagerApprovalQueueService {
         } };
       }
       return { ...safe, ...labels };
-    }));
   }
 
   async detail(actor: RequestAuth, id: string) {
-    const row = (await this.list(actor)).find((request) => request.id === id);
-    if (!row) throw new Error("NOT_FOUND");
-    return row;
+    const row = await this.db.findManagerApprovalRequest(id, actor.businessId);
+    if (!row || !inScope(actor, row)) throw new Error("NOT_FOUND");
+    const reviewer = actor.role === "owner" || actor.role === "manager";
+    if (reviewer
+      ? !this.auth.permissionsForRequest(actor).includes(row.permission)
+      : row.requesterId !== actor.userId) throw new Error("NOT_FOUND");
+    // A single-item read must not expire or audit other requests.
+    const expired = row.status === "PENDING" && Date.now() - row.createdAt.getTime() >= REQUEST_LIFETIME_MS;
+    return this.describeRequest(actor, expired ? { ...row, status: "EXPIRED" } : row);
   }
 
   async decide(actor: RequestAuth, requestId: string, id: string, decision: { decision: "APPROVED"; email: string; password?: string; pin?: string } | { decision: "REJECTED"; reason: string }) {

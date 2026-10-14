@@ -1,8 +1,49 @@
 import { createMemoryDb } from "../common/memory.db";
 import { StoredValueService } from "./stored-value.service";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 describe("StoredValueService", () => {
+  it("keeps gift-card money and approval audit atomic and rejects mismatched replays", async () => {
+    const { db, service, business } = await fixture();
+    const issued = await service.issueGiftCard(business.id, "cashier", "issue", "gift-issue");
+    const realAudit = db.appendAudit.bind(db);
+    const spy = vi.spyOn(db, "appendAudit").mockImplementation(async (entry) => {
+      if (entry.action === "manager.approval.applied") throw new Error("AUDIT_UNAVAILABLE");
+      return realAudit(entry);
+    });
+    const adjust = (amount: number) => service.adjustGiftCardWithMetadata(
+      business.id, "cashier", "request", issued.card.id, amount, "Approved correction", "gift-atomic-key", "manager");
+    await expect(adjust(25)).rejects.toThrow("AUDIT_UNAVAILABLE");
+    expect(await service.giftCardBalance(business.id, issued.card.id)).toBe(0);
+    spy.mockRestore();
+    await adjust(25);
+    await adjust(25);
+    await expect(adjust(30)).rejects.toThrow("IDEMPOTENCY_MISMATCH");
+    expect(await service.giftCardBalance(business.id, issued.card.id)).toBe(25);
+    expect((await db.listAudit()).filter((entry) => entry.action === "manager.approval.applied")).toHaveLength(1);
+  });
+  it.each(["store_credit", "loyalty"] as const)("rolls back %s monetary writes if the manager-applied audit fails", async (kind) => {
+    const { db, service, business, customer } = await fixture();
+    const realAudit = db.appendAudit.bind(db);
+    const spy = vi.spyOn(db, "appendAudit").mockImplementation(async (entry) => {
+      if (entry.action === "manager.approval.applied") throw new Error("AUDIT_UNAVAILABLE");
+      return realAudit(entry);
+    });
+    const apply = () => kind === "store_credit"
+      ? service.adjustStoreCreditWithMetadata(business.id, "cashier", "request", customer.id, 25, "Approved correction", "audit-failure-key", "manager")
+      : service.adjustLoyaltyWithMetadata(business.id, "cashier", "request", customer.id, 25, "Approved correction", "audit-failure-key", "manager");
+    await expect(apply()).rejects.toThrow("AUDIT_UNAVAILABLE");
+    expect(kind === "store_credit"
+      ? await db.findStoreCreditAccount(customer.id, business.id)
+      : await db.findLoyaltyAccount(customer.id, business.id)).toBeNull();
+    expect((await db.listAudit()).filter((entry) => entry.action.endsWith(".adjust") || entry.action === "manager.approval.applied")).toHaveLength(0);
+    spy.mockRestore();
+    await apply();
+    await apply();
+    const audits = (await db.listAudit()).filter((entry) => entry.action === "manager.approval.applied");
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toMatchObject({ actorId: "cashier", after: { approverId: "manager", amountDelta: 25 } });
+  });
   async function fixture() {
     const db = createMemoryDb();
     const business = await db.createBusiness({ name: "Value test", currency: "PHP" });

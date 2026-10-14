@@ -90,20 +90,26 @@ export class StoredValueService {
     return (await this.adjustGiftCardWithMetadata(businessId, actorId, requestId, giftCardId, amountDeltaMinor, reason, idempotencyKey)).result;
   }
 
-  async adjustGiftCardWithMetadata(businessId: string, actorId: string, requestId: string, giftCardId: string, amountDeltaMinor: number, reason: string, idempotencyKey: string): Promise<StoredValueAdjustment<SafeGiftCard>> {
-    if (!Number.isInteger(amountDeltaMinor) || amountDeltaMinor === 0 || reason.trim().length < 3) throw new Error("VALIDATION");
-    return this.db.withLock(`gift-card:${businessId}:${giftCardId}`, async () => {
-      const card = await this.db.findGiftCardById(giftCardId, businessId);
+  async adjustGiftCardWithMetadata(businessId: string, actorId: string, requestId: string, giftCardId: string, amountDeltaMinor: number, reason: string, idempotencyKey: string, approverId?: string): Promise<StoredValueAdjustment<SafeGiftCard>> {
+    if (!Number.isSafeInteger(amountDeltaMinor) || amountDeltaMinor === 0 || reason.trim().length < 3 || !idempotencyKey) throw new Error("VALIDATION");
+    return this.db.withLock(`gift-card:${businessId}:${giftCardId}`, () => this.db.withTransaction(async (tx) => {
+      const card = await tx.findGiftCardById(giftCardId, businessId);
       if (!card) throw new Error("NOT_FOUND");
       if (card.status === "SUSPENDED" || card.status === "VOID") throw new Error("GIFT_CARD_INVALID_STATUS");
-      const existing = await this.db.findGiftCardTransactionByIdempotency(businessId, idempotencyKey);
-      const previousBalance = await this.giftCardBalance(businessId, giftCardId);
-      if (!existing) {
-        await this.db.createGiftCardTransaction({ businessId, giftCardId, type: amountDeltaMinor > 0 ? "ADJUST_CREDIT" : "ADJUST_DEBIT", amountDeltaMinor, saleId: null, refundId: null, actorId, requestId, idempotencyKey, reason: reason.trim(), branchId: null });
+      const existing = await tx.findGiftCardTransactionByIdempotency(businessId, idempotencyKey);
+      const type = amountDeltaMinor > 0 ? "ADJUST_CREDIT" : "ADJUST_DEBIT";
+      if (existing && (existing.giftCardId !== giftCardId || existing.actorId !== actorId ||
+        existing.type !== type || existing.amountDeltaMinor !== amountDeltaMinor || existing.reason !== reason.trim())) {
+        throw new Error("IDEMPOTENCY_MISMATCH");
       }
-      const balance = await this.giftCardBalance(businessId, giftCardId);
+      const values = new StoredValueService(tx);
+      const previousBalance = await values.giftCardBalance(businessId, giftCardId);
       if (!existing) {
-        await this.db.appendAudit({
+        await tx.createGiftCardTransaction({ businessId, giftCardId, type, amountDeltaMinor, saleId: null, refundId: null, actorId, requestId, idempotencyKey, reason: reason.trim(), branchId: null });
+      }
+      const balance = await values.giftCardBalance(businessId, giftCardId);
+      if (!existing) {
+        await tx.appendAudit({
           businessId,
           actorId,
           action: "gift-card.adjust",
@@ -114,10 +120,15 @@ export class StoredValueService {
           before: { balanceMinor: previousBalance },
           after: { balanceMinor: balance, amountDeltaMinor },
         });
+        if (approverId) await tx.appendAudit({
+          businessId, actorId, action: "manager.approval.applied", entityType: "StoredValue",
+          entityId: giftCardId, requestId, reason: "stored_value.adjust",
+          after: { approverId, amountDelta: amountDeltaMinor, reason },
+        });
       }
       const result = { id: card.id, maskedCode: this.maskGiftCard(card), codeLast4: card.codeLast4, status: balance === 0 ? "EXHAUSTED" : card.status, balanceMinor: balance };
       return { result, created: !existing, previousBalance, newBalance: balance };
-    });
+    }));
   }
 
   async setGiftCardStatus(businessId: string, actorId: string, requestId: string, giftCardId: string, status: "SUSPENDED" | "ACTIVE", reason: string): Promise<SafeGiftCard> {
@@ -147,7 +158,7 @@ export class StoredValueService {
     return (await this.adjustStoreCreditWithMetadata(businessId, actorId, requestId, customerId, amountDeltaMinor, reason, idempotencyKey)).result;
   }
 
-  async adjustStoreCreditWithMetadata(businessId: string, actorId: string, requestId: string, customerId: string, amountDeltaMinor: number, reason: string, idempotencyKey: string): Promise<StoredValueAdjustment<number>> {
+  async adjustStoreCreditWithMetadata(businessId: string, actorId: string, requestId: string, customerId: string, amountDeltaMinor: number, reason: string, idempotencyKey: string, approverId?: string): Promise<StoredValueAdjustment<number>> {
     if (!Number.isSafeInteger(amountDeltaMinor) || amountDeltaMinor === 0 || reason.trim().length < 3 || !idempotencyKey) throw new Error("VALIDATION");
     return this.db.withLock(`store-credit:${businessId}:${customerId}`, () => this.db.withTransaction(async (tx) => {
       const existing = await tx.findStoreCreditTransactionByIdempotency(businessId, idempotencyKey);
@@ -178,6 +189,11 @@ export class StoredValueService {
           before: { balanceMinor: previousBalance },
           after: { balanceMinor: balance, amountDeltaMinor },
         });
+        if (approverId) await tx.appendAudit({
+          businessId, actorId, action: "manager.approval.applied", entityType: "StoredValue",
+          entityId: account.id, requestId, reason: "stored_value.adjust",
+          after: { approverId, amountDelta: amountDeltaMinor, reason },
+        });
       }
       return { result: balance, created: !existing, previousBalance, newBalance: balance };
     }));
@@ -200,7 +216,7 @@ export class StoredValueService {
     return (await this.adjustLoyaltyWithMetadata(businessId, actorId, requestId, customerId, pointsDelta, reason, idempotencyKey)).result;
   }
 
-  async adjustLoyaltyWithMetadata(businessId: string, actorId: string, requestId: string, customerId: string, pointsDelta: number, reason: string, idempotencyKey: string): Promise<StoredValueAdjustment<number>> {
+  async adjustLoyaltyWithMetadata(businessId: string, actorId: string, requestId: string, customerId: string, pointsDelta: number, reason: string, idempotencyKey: string, approverId?: string): Promise<StoredValueAdjustment<number>> {
     if (!Number.isSafeInteger(pointsDelta) || pointsDelta === 0 || reason.trim().length < 3 || !idempotencyKey) throw new Error("VALIDATION");
     return this.db.withLock(`loyalty:${businessId}:${customerId}`, () => this.db.withTransaction(async (tx) => {
       const existing = await tx.findLoyaltyTransactionByIdempotency(businessId, idempotencyKey);
@@ -230,6 +246,11 @@ export class StoredValueService {
           reason: reason.trim(),
           before: { points: previousBalance },
           after: { points: balance, pointsDelta },
+        });
+        if (approverId) await tx.appendAudit({
+          businessId, actorId, action: "manager.approval.applied", entityType: "StoredValue",
+          entityId: account.id, requestId, reason: "stored_value.adjust",
+          after: { approverId, amountDelta: pointsDelta, reason },
         });
       }
       return { result: balance, created: !existing, previousBalance, newBalance: balance };

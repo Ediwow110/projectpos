@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RequestAuth } from "../../common/request-context";
 import { createMemoryDb } from "../../common/memory.db";
 import { AuthService } from "./auth.service";
+import { hashToken } from "../sessions";
 import { ManagerApprovalPolicyService } from "./manager-approval-policy.service";
 import { StoredValueService } from "../../value/stored-value.service";
 import { ManagerApprovalQueueService } from "./manager-approval-queue.service";
@@ -47,6 +48,62 @@ async function setup() {
 }
 
 describe("ManagerApprovalQueueService", () => {
+  it("rechecks approver authorization at grant redemption even if revocation races with claim", async () => {
+    const { db, queue, cashierActor, managerActor, register, action, manager } = await setup();
+    const requested = await queue.request(cashierActor, "revocation-request", action, register.id, "revocation-idempotency");
+    await queue.decide(managerActor, "revocation-decision", requested.request.id, {
+      decision: "APPROVED", email: manager.email, password: "synthetic-password",
+    });
+    const request = await db.findManagerApprovalRequest(requested.request.id, cashierActor.businessId);
+    expect(request).not.toBeNull();
+    const token = "one-use-manager-grant-token";
+    await db.createManagerApprovalGrant({
+      businessId: cashierActor.businessId, requesterId: cashierActor.userId, approverId: manager.id,
+      permission: request!.permission, fingerprint: request!.fingerprint, tokenHash: hashToken(token),
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    const actualMembership = db.findMembership.bind(db);
+    let unblock!: () => void;
+    let inspected!: () => void;
+    const inspectedPromise = new Promise<void>((resolve) => { inspected = resolve; });
+    const unblockPromise = new Promise<void>((resolve) => { unblock = resolve; });
+    const membershipSpy = vi.spyOn(db, "findMembership").mockImplementation(async (userId, businessId) => {
+      const membership = await actualMembership(userId, businessId);
+      if (userId === manager.id) { inspected(); await unblockPromise; }
+      return membership;
+    });
+    const claimedPromise = queue.claim(cashierActor, requested.request.id);
+    await inspectedPromise;
+    const membership = await actualMembership(manager.id, cashierActor.businessId);
+    await db.updateMembership(membership!.id, cashierActor.businessId, { deactivatedAt: new Date() });
+    unblock();
+    await expect(claimedPromise).resolves.toMatchObject({ token });
+    membershipSpy.mockRestore();
+    const auth = new AuthService(db);
+    await expect(auth.consumeManagerApproval(
+      cashierActor.businessId, cashierActor.userId, request!.permission, request!.fingerprint, token,
+    )).rejects.toThrow("FORBIDDEN");
+    await db.updateMembership(membership!.id, cashierActor.businessId, { deactivatedAt: null });
+    await expect(auth.consumeManagerApproval(
+      cashierActor.businessId, cashierActor.userId, request!.permission, request!.fingerprint, token,
+    )).resolves.toMatchObject({ approverId: manager.id });
+  });
+  it("reads only the requested approval without expiring unrelated pending requests", async () => {
+    const { db, queue, cashierActor, managerActor, register, action } = await setup();
+    const first = await queue.request(cashierActor, "old-request", action, register.id, "old-detail-key");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 16 * 60_000);
+    const second = await queue.request(cashierActor, "new-request", action, register.id, "new-detail-key");
+    const list = vi.spyOn(db, "listManagerApprovalRequests").mockRejectedValue(new Error("UNEXPECTED_FULL_SCAN"));
+    const read = await queue.detail(cashierActor, second.request.id);
+    expect(read).toMatchObject({ id: second.request.id, status: "PENDING" });
+    expect(await db.findManagerApprovalRequest(first.request.id, cashierActor.businessId)).toMatchObject({ status: "PENDING" });
+    expect((await db.listAudit()).filter((entry) => entry.action === "manager.approval.expired")).toHaveLength(0);
+    expect(list).not.toHaveBeenCalled();
+    await expect(queue.detail(managerActor, "different-business-id")).rejects.toThrow("NOT_FOUND");
+    list.mockRestore();
+  });
+
   it("queues branch-scoped inventory movements without inventing a register or executing the movement", async () => {
     const { db, queue, cashierActor, managerActor, register } = await setup();
     const product = await db.createProduct({
