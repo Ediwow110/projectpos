@@ -11,7 +11,7 @@ API & WEB TYPECHECK AND CROSS-PHASE TESTS: PASS (from earlier cross-phase run)
 RELEASE / COMMIT APPROVAL: HOLD — outstanding critical integration and Git gates.
 
 PURPOSE
-=======
+======
 Continue the prior A–E release-readiness audit without changing live services,
 committing, resetting the dirty workspace, or testing payments on production.
 
@@ -181,7 +181,7 @@ SAFETY AND NONCHANGES
 - Generated Next.js build directories are local, ignored and preserved.
 
 SUMMARY
-=======
+======
 PASS: web production build and one safe desktop frontend security smoke test.
 HOLD: release approval. The remaining work is more than a formatting or
 isolated unit-test gate, and must be completed before production promotion.

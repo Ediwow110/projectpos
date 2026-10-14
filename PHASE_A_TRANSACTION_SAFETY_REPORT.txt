@@ -11,7 +11,7 @@ An independent fresh rerun of the API typecheck, focused lint, and diff hygiene
 also exited with code 0. All planned scoped Phase A gates passed.
 
 PURPOSE
-=======
+======
 Characterize existing refund/sale critical invariants and evaluate the static DB-port import cycle. Prioritize transaction integrity over arbitrary file-size reductions.
 
 FILES MODIFIED / CREATED

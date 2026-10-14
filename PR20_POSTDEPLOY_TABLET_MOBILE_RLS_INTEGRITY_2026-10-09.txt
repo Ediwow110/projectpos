@@ -140,7 +140,7 @@ No authenticated production checkout/refund/inventory mutation was
 attempted in this phase.
 
 VERDICT
-=======
+======
 Read-only QA integrity: PASS.
 Direct Supabase RLS/grants exposure checks: PASS, no confirmed exposure.
 Tablet/mobile synthetic business workflows: PASS 22/22.
