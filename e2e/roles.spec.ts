@@ -17,7 +17,10 @@ test.beforeEach(async ({ page }) => {
 
 test("owner surfaces: registers, cashiers report, export buttons", async ({ page }) => {
   await page.goto("/team");
-  await expect(page.getByRole("heading", { name: "Team", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", {
+    name: (page.viewportSize()?.width ?? 1440) < 640 ? "Employee access" : "Team",
+    exact: true,
+  })).toBeVisible();
   await page.getByRole("button", { name: "+ Add team member", exact: true }).click();
   await page.getByLabel("Name").fill("Counter Cashier");
   await page.getByLabel("Email").fill(`counter-${Date.now()}@example.com`);

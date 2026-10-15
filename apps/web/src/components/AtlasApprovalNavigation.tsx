@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { JSX } from "react";
+import { AtlasWorkspaceDestinations } from "./AtlasWorkspaceDestinations";
 
 const DESTINATIONS = [
   { label: "Overview", href: "/" },
@@ -24,7 +25,7 @@ export function AtlasApprovalNavigation({
     ? { label: "Activity audit", href: "/admin/owner-controls#activity-audit" }
     : { label: "Activity reports", href: "/reports/sales" };
   return (
-    <div className="flex h-full min-h-[630px] flex-col bg-white px-3 pb-5 pt-6">
+    <div className="flex h-full min-h-[630px] flex-col overflow-y-auto bg-white px-3 pb-5 pt-6">
       <Link href="/" aria-label="NexPOS dashboard" className="mx-3 flex items-center gap-3 rounded-lg focus-visible:outline-2 focus-visible:outline-[#da614c]">
         <span aria-hidden className="grid size-[43px] place-items-center rounded-[11px] bg-[#29332d] font-display text-[22px] font-semibold text-white">N</span>
         <span className="font-display text-[22px] font-semibold tracking-tight text-[#202826]">NexPOS</span>
@@ -43,6 +44,7 @@ export function AtlasApprovalNavigation({
           >{item.label}</Link>;
         })}
       </nav>
+      <AtlasWorkspaceDestinations role={role} onNavigate={onNavigate} excludedPaths={DESTINATIONS.map((item) => item.href)} />
       <div className="mt-auto space-y-1 border-t border-[#e5e9e3] px-3 pt-4">
         <Link href="/admin" className="block rounded-lg py-2 text-[13px] text-[#748078] hover:text-[#202826]">Support &amp; guide</Link>
         <button type="button" onClick={onSignOut} disabled={signingOut} className="w-full rounded-lg py-2 text-left text-[13px] text-[#748078] hover:text-[#202826] disabled:opacity-60">{signingOut ? "Signing out…" : "Sign out"}</button>

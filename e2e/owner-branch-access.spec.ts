@@ -107,6 +107,10 @@ test("owner branch assignment limits staff UI and blocks cross-branch API reads"
     await expect(intake.getByText("RECEIPT VERIFIED")).toHaveCount(0);
     await expect(intake.getByRole("group", { name: "Items and quantities" })).toHaveCount(0);
   }
+  const atlasHeader = page.locator('[data-ui="atlas-mobile-header"]');
+  if (await atlasHeader.isVisible()) {
+    await atlasHeader.getByRole("button", { name: "Open workspace menu" }).click();
+  }
   const branchSelect = page.locator('select[aria-label="Active branch"]:visible');
   await expect(branchSelect).toHaveValue(northId);
   await page.goto("/pos");

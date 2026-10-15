@@ -1,15 +1,33 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { API, apiAuthedContext, registerOperationalBusiness } from "./helpers";
+import { API, apiAuthedContext, registerOperationalBusiness, signOut } from "./helpers";
 
 async function openWorkspaceDestination(page: Page, label: string, href: string): Promise<void> {
   const width = page.viewportSize()?.width ?? 1440;
   if (width >= 1280) {
     const sidebar = page.getByRole("complementary", { name: "Workspace navigation" });
     await expect(sidebar).toBeVisible();
-    await sidebar.getByRole("link", { name: label, exact: true }).click();
+    const direct = sidebar.getByRole("link", { name: label, exact: true });
+    if (await direct.isVisible()) {
+      await direct.click();
+    } else {
+      const details = sidebar.locator('[data-ui="atlas-workspace-destinations"]');
+      const disclosure = details.getByText("All workspace destinations", { exact: true });
+      await expect(disclosure).toBeVisible();
+      if ((await details.getAttribute("open")) === null) await disclosure.click();
+      await sidebar.getByRole("navigation", { name: "All workspace destinations" }).getByRole("link", { name: label, exact: true }).click();
+    }
   } else {
-    const moreButton = page.getByRole("button", { name: /More workspace navigation/ });
+    const atlasButton = page.locator('[data-ui="atlas-mobile-header"]');
+    const legacyMore = page.getByRole("button", { name: /More workspace navigation/ });
+    // The AppShell variant can change across routes after URL navigation.
+    // Wait for a visible control rather than sampling the old shell too soon.
+    await expect.poll(async () =>
+      await atlasButton.isVisible() || await legacyMore.isVisible(),
+    ).toBe(true);
+    const moreButton = await atlasButton.isVisible()
+      ? atlasButton.getByRole("button", { name: "Open workspace menu" })
+      : legacyMore;
     await expect(moreButton).toBeVisible();
     if ((await moreButton.getAttribute("aria-expanded")) !== "true") await moreButton.click();
     const menu = page.locator("#workspace-more-menu");
@@ -71,8 +89,7 @@ test("cashier navigation hides owner management destinations", async ({ page, re
   const tempPassword = ((await created.json()) as { tempPassword?: string }).tempPassword;
   expect(tempPassword).toBeTruthy();
 
-  await page.getByRole("button", { name: "Sign out" }).click();
-  await expect(page).toHaveURL(/\/login/);
+  await signOut(page);
   await page.getByLabel("Email").fill(cashierEmail);
   await page.getByLabel("Password").fill(tempPassword!);
   await page.getByRole("button", { name: "Sign in securely" }).click();
@@ -92,7 +109,14 @@ test("cashier navigation hides owner management destinations", async ({ page, re
     const sidebar = page.getByRole("complementary", { name: "Workspace navigation" });
     await expect(sidebar.getByRole("link", { name: "Devices", exact: true })).toBeVisible();
   } else {
-    const moreButton = page.getByRole("button", { name: /More workspace navigation/ });
+    const atlasButton = page.locator('[data-ui="atlas-mobile-header"]');
+    const legacyMore = page.getByRole("button", { name: /More workspace navigation/ });
+    await expect.poll(async () =>
+      await atlasButton.isVisible() || await legacyMore.isVisible(),
+    ).toBe(true);
+    const moreButton = await atlasButton.isVisible()
+      ? atlasButton.getByRole("button", { name: "Open workspace menu" })
+      : legacyMore;
     await expect(moreButton).toBeVisible();
     await moreButton.click();
     await expect(page.locator("#workspace-more-menu").getByRole("link", { name: "Devices", exact: true })).toBeVisible();

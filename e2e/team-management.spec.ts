@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { registerOperationalBusiness } from "./helpers";
+import { registerOperationalBusiness, signOut } from "./helpers";
 
 test("owner creates and deactivates a cashier while temporary credentials are display-once", async ({ page }) => {
   const ownerPassword = "correct-horse-12";
@@ -73,8 +73,7 @@ test("owner creates and deactivates a cashier while temporary credentials are di
   await restrictedDialog.getByRole("button", { name: "Close temporary password" }).click();
   await expect(restrictedDialog).toBeHidden();
 
-  await page.getByRole("button", { name: "Sign out" }).click();
-  await expect(page).toHaveURL(/\/login/);
+  await signOut(page);
   await page.getByLabel("Email").fill(restrictedEmail);
   await page.getByLabel("Password").fill(restrictedPassword);
   await page.getByRole("button", { name: "Sign in securely" }).click();

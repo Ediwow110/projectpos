@@ -514,7 +514,7 @@ export function AppShell({
           ) : cashierAtlas ? (
             <AtlasCashierNavigation pathname={pathname} onNavigate={beginNavigation} onSignOut={() => void signOut()} signingOut={signingOut} />
           ) : inventoryAtlas ? (
-            <AtlasInventoryNavigation pathname={pathname} onNavigate={beginNavigation} onSignOut={() => void signOut()} signingOut={signingOut} />
+            <AtlasInventoryNavigation role={currentRole} pathname={pathname} onNavigate={beginNavigation} onSignOut={() => void signOut()} signingOut={signingOut} />
           ) : <div className="flex h-full min-h-[540px] flex-col overflow-y-auto p-4 xl:pt-5">
             <div className="mb-3 px-2">
               <p className="font-data text-[8px] font-semibold uppercase tracking-[0.16em] text-[#9a8d83]">Workspace</p>

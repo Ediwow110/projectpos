@@ -258,9 +258,11 @@ test("cashier discount request appears in manager inbox and resumes only after a
     decisionResponse = { status: response.status(), body: await response.json().catch(() => null) };
   });
   await managerPage.goto("/customer-concerns");
-  await expect(managerPage.getByRole("heading", { name: "Manager approval inbox" })).toBeVisible();
+  // Manager approvals is the stable task heading beneath the responsive
+  // inbox title; avoid sampling the shell before its viewport variant settles.
+  await expect(managerPage.getByRole("heading", { name: "Manager approvals", exact: true })).toBeVisible();
   await expect(managerPage.getByRole("region", { name: "Approval overview" })).toBeVisible();
-  const atlasQueue = managerPage.getByRole("list", { name: "Pending approval requests" });
+  const atlasQueue = managerPage.getByRole("list", { name: /^(?:Mobile pending approvals|Pending approval requests)$/ });
   await expect(atlasQueue.getByText("Discount override")).toBeVisible();
   await managerPage.screenshot({ path: `test-results/atlas-v4-approval-populated-inbox-${testInfo.project.name}.png`, fullPage: false });
   await atlasQueue.getByRole("link", { name: /Discount override/ }).click();
