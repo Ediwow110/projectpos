@@ -6,7 +6,6 @@ import { decryptApprovalToken, encryptApprovalToken } from "../approval-token-cr
 import { AuthService } from "./auth.service";
 import { ManagerApprovalPolicyService } from "./manager-approval-policy.service";
 import { lineRefundAmount } from "../../refunds/refund-math";
-import { StoredValueService } from "../../value/stored-value.service";
 
 const REQUEST_LIFETIME_MS = 15 * 60_000;
 
@@ -40,15 +39,9 @@ export class ManagerApprovalQueueService {
     if (actor.role !== "cashier" || !idempotencyKey || idempotencyKey.length > 128) throw new Error("FORBIDDEN");
     const registerBound = ["discount", "shift_close", "refund", "sale_void"].includes(action.kind);
     if (registerBound && !requestedRegisterId) throw new Error("FORBIDDEN");
+    if (!registerBound && requestedRegisterId) throw new Error("FORBIDDEN");
     if (!registerBound && !["inventory_movement", "inventory_count", "value_adjustment"].includes(action.kind)) throw new Error("FORBIDDEN");
     let normalizedAction = action;
-    if (action.kind === "value_adjustment" && action.valueType !== "gift_card") {
-      await this.db.withLock(`customer-value-account:${actor.businessId}:${action.targetId}`, async () => {
-        const values = new StoredValueService(this.db);
-        if (action.valueType === "store_credit") await values.ensureStoreCreditAccount(actor.businessId, action.targetId);
-        else await values.ensureLoyaltyAccount(actor.businessId, action.targetId);
-      });
-    }
     if (action.kind === "inventory_movement") {
       normalizedAction = { ...action, ...(action.branchId ?? actor.activeBranchId ? { branchId: action.branchId ?? actor.activeBranchId! } : {}) };
     }
@@ -141,10 +134,13 @@ export class ManagerApprovalQueueService {
         visible.push(expired ?? { ...row, status: "EXPIRED" });
       } else visible.push(row);
     }
-    return Promise.all(visible.map(async (row) => {
-      const safe = publicRequest(row);
-      const action = row.action as unknown as ManagerApprovalAction;
-      const [requester, branch, register] = await Promise.all([
+    return Promise.all(visible.map((row) => this.describeRequest(actor, row)));
+  }
+
+  private async describeRequest(actor: RequestAuth, row: DbManagerApprovalRequest) {
+    const safe = publicRequest(row);
+    const action = row.action as unknown as ManagerApprovalAction;
+    const [requester, branch, register] = await Promise.all([
         this.db.findUserById(row.requesterId),
         row.branchId ? this.db.findBranchById(row.branchId, actor.businessId) : null,
         row.registerId ? this.db.findRegisterById(row.registerId, actor.businessId) : null,
@@ -209,7 +205,18 @@ export class ManagerApprovalQueueService {
         } };
       }
       return { ...safe, ...labels };
-    }));
+  }
+
+  async detail(actor: RequestAuth, id: string) {
+    const row = await this.db.findManagerApprovalRequest(id, actor.businessId);
+    if (!row || !inScope(actor, row)) throw new Error("NOT_FOUND");
+    const reviewer = actor.role === "owner" || actor.role === "manager";
+    if (reviewer
+      ? !this.auth.permissionsForRequest(actor).includes(row.permission)
+      : row.requesterId !== actor.userId) throw new Error("NOT_FOUND");
+    // A single-item read must not expire or audit other requests.
+    const expired = row.status === "PENDING" && Date.now() - row.createdAt.getTime() >= REQUEST_LIFETIME_MS;
+    return this.describeRequest(actor, expired ? { ...row, status: "EXPIRED" } : row);
   }
 
   async decide(actor: RequestAuth, requestId: string, id: string, decision: { decision: "APPROVED"; email: string; password?: string; pin?: string } | { decision: "REJECTED"; reason: string }) {
@@ -269,13 +276,33 @@ export class ManagerApprovalQueueService {
   }
 
   async claim(actor: RequestAuth, id: string) {
-    const claimed = await this.db.claimManagerApprovalRequestToken(id, actor.businessId, actor.userId, new Date());
-    if (!claimed) throw new Error("APPROVAL_TOKEN_UNAVAILABLE");
-    const token = decryptApprovalToken(claimed.encryptedToken, process.env["APPROVAL_QUEUE_ENCRYPTION_KEY"]);
-    const approver = claimed.request.approverId ? await this.db.findUserById(claimed.request.approverId) : null;
-    const membership = approver ? await this.db.findMembership(approver.id, actor.businessId) : null;
-    if (!approver || !membership || membership.deactivatedAt || (membership.role !== "owner" && membership.role !== "manager")) throw new Error("APPROVAL_TOKEN_UNAVAILABLE");
-    return { token, expiresAt: claimed.tokenExpiresAt.toISOString(),
-      approver: { id: approver.id, name: approver.name, role: membership.role } };
+    return this.db.withLock(`manager-approval-claim:${actor.businessId}:${id}`, () =>
+      this.db.withTransaction(async (tx) => {
+        const now = new Date();
+        const row = await tx.findManagerApprovalRequest(id, actor.businessId);
+        if (!row || row.requesterId !== actor.userId || row.status !== "APPROVED" ||
+          !row.tokenCiphertext || !row.tokenExpiresAt || row.tokenExpiresAt <= now || row.tokenClaimedAt) {
+          throw new Error("APPROVAL_TOKEN_UNAVAILABLE");
+        }
+        const approver = row.approverId ? await tx.findUserById(row.approverId) : null;
+        const membership = approver ? await tx.findMembership(approver.id, actor.businessId) : null;
+        if (!approver || !membership || membership.deactivatedAt ||
+          (membership.role !== "owner" && membership.role !== "manager")) {
+          throw new Error("APPROVAL_TOKEN_UNAVAILABLE");
+        }
+        let token: string;
+        try {
+          token = decryptApprovalToken(row.tokenCiphertext, process.env["APPROVAL_QUEUE_ENCRYPTION_KEY"]);
+        } catch {
+          // Keep the ciphertext for a corrected key or a fresh approval request.
+          throw new Error("APPROVAL_TOKEN_UNAVAILABLE");
+        }
+        // The adapter's conditional, atomic claim remains the cross-process
+        // authority if a competing worker changes the row during validation.
+        const claimed = await tx.claimManagerApprovalRequestToken(id, actor.businessId, actor.userId, now);
+        if (!claimed) throw new Error("APPROVAL_TOKEN_UNAVAILABLE");
+        return { token, expiresAt: claimed.tokenExpiresAt.toISOString(),
+          approver: { id: approver.id, name: approver.name, role: membership.role } };
+      }));
   }
 }

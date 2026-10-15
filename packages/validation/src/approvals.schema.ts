@@ -141,6 +141,9 @@ export const managerApprovalQueueRequestSchema = z.object({
   if (["discount", "shift_close", "refund", "sale_void"].includes(action.kind) && !registerId) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: "VALIDATION", path: ["registerId"] });
   }
+  if (["inventory_movement", "inventory_count", "value_adjustment"].includes(action.kind) && registerId != null) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "VALIDATION", path: ["registerId"] });
+  }
 });
 
 export const managerApprovalQueueDecisionSchema = z.discriminatedUnion("decision", [

@@ -200,4 +200,61 @@ describe("restricted branch request policy", () => {
     expect(await permits("GET", `/api/v1/transfers/${transfer.id}`)).toBe(false);
     expect(await twoBranches("POST", `/api/v1/transfers/${transfer.id}/dispatch`)).toBe(true);
   });
+
+  it("routes registerless inventory approvals by assigned branch and preserves register checks", async () => {
+    const db = createMemoryDb();
+    const business = await db.createBusiness({ name: "Approval scope", currency: "PHP" });
+    const foreign = await db.createBusiness({ name: "Foreign approval scope", currency: "PHP" });
+    const main = await db.createBranch({ businessId: business.id, name: "Main", type: "store", isActive: true });
+    const remote = await db.createBranch({ businessId: business.id, name: "Remote", type: "store", isActive: true });
+    const register = await db.createRegister({ businessId: business.id, name: "Main till", branchId: main.id, isActive: true });
+    const remoteRegister = await db.createRegister({ businessId: business.id, name: "Remote till", branchId: remote.id, isActive: true });
+    const product = await db.createProduct({ businessId: business.id, categoryId: null, name: "Local stock", sku: "LOCAL",
+      barcode: null, brand: null, unit: "pc", costMinor: 100, priceMinor: 200, taxRateBps: null,
+      reorderLevel: 1, trackInventory: true, isActive: true, imageUrl: null });
+    const foreignProduct = await db.createProduct({ businessId: foreign.id, categoryId: null, name: "Foreign stock", sku: "FOREIGN",
+      barcode: null, brand: null, unit: "pc", costMinor: 100, priceMinor: 200, taxRateBps: null,
+      reorderLevel: 1, trackInventory: true, isActive: true, imageUrl: null });
+    const countInput = { businessId: business.id, countNumber: "COUNT-APPROVAL", scopeType: "PARTIAL" as const,
+      name: "Approval count", notes: null, createdBy: "cashier", startedAt: new Date(), submittedBy: "cashier",
+      submittedAt: new Date(), approvedBy: null, approvedAt: null, approvalFingerprint: null,
+      postedBy: null, postedAt: null, cancelledBy: null, cancelledAt: null, version: 2 };
+    const count = await db.createInventoryCount({ ...countInput, branchId: main.id, status: "SUBMITTED" });
+    const wrongCount = await db.createInventoryCount({ ...countInput, countNumber: "COUNT-REMOTE", branchId: remote.id, status: "SUBMITTED" });
+    const draft = await db.createInventoryCount({ ...countInput, countNumber: "COUNT-DRAFT", branchId: main.id, status: "DRAFT" });
+
+    const route = (method: string, path: string, body?: Record<string, unknown>) =>
+      permitsAssignedBranchRequest(db, { method, path, body }, business.id, main.id, [register.id], [main.id]);
+    const endpoint = "/api/v1/approvals/requests";
+    const movement = { kind: "inventory_movement", productId: product.id, movementType: "adjustment", qtyDelta: -1 };
+    const cases = [
+      { body: { action: { ...movement }, idempotencyKey: "movement-good" }, allowed: true },
+      { body: { action: { ...movement, branchId: remote.id }, idempotencyKey: "movement-wrong" }, allowed: false },
+      { body: { action: { ...movement, productId: foreignProduct.id }, idempotencyKey: "movement-foreign" }, allowed: false },
+      { body: { action: { kind: "inventory_count", countId: count.id }, idempotencyKey: "count-good" }, allowed: true },
+      { body: { action: { kind: "inventory_count", countId: wrongCount.id }, idempotencyKey: "count-wrong" }, allowed: false },
+      { body: { action: { kind: "inventory_count", countId: draft.id }, idempotencyKey: "count-draft" }, allowed: false },
+      { body: { action: { kind: "value_adjustment", targetId: "customer" }, idempotencyKey: "value-denied" }, allowed: false },
+      { body: { action: { kind: "sale_void" }, registerId: register.id, idempotencyKey: "register-good" }, allowed: true },
+      { body: { action: { kind: "sale_void" }, registerId: remoteRegister.id, idempotencyKey: "register-wrong" }, allowed: false },
+    ];
+    for (const { body, allowed } of cases) expect(await route("POST", endpoint, body)).toBe(allowed);
+    expect((cases[0]!.body.action as Record<string, unknown>).branchId).toBe(main.id);
+
+    const base = { businessId: business.id, requesterId: "cashier", branchId: main.id, registerId: null,
+      kind: "inventory_count", permission: "inventory.adjust", action: { kind: "inventory_count", countId: count.id },
+      fingerprint: "count-fingerprint", stateFingerprint: null, status: "APPROVED" as const,
+      idempotencyKey: "count-route-request", approverId: "manager", decidedAt: new Date(), decisionReason: null,
+      tokenCiphertext: "synthetic-envelope", tokenExpiresAt: new Date(Date.now() + 60_000), tokenClaimedAt: null };
+    const request = await db.createManagerApprovalRequest(base);
+    for (const [method, suffix] of [["GET", ""], ["POST", "/claim"], ["POST", "/decision"]] as const) {
+      expect(await route(method, `${endpoint}/${request.id}${suffix}`)).toBe(true);
+    }
+    const foreignRequest = await db.createManagerApprovalRequest({ ...base, businessId: foreign.id,
+      idempotencyKey: "foreign-route-request" });
+    expect(await route("POST", `${endpoint}/${foreignRequest.id}/claim`)).toBe(false);
+    const registerRequest = await db.createManagerApprovalRequest({ ...base, kind: "sale_void", registerId: remoteRegister.id,
+      action: { kind: "sale_void", saleId: "sale", reason: "Duplicate" }, idempotencyKey: "remote-register-request" });
+    expect(await route("POST", `${endpoint}/${registerRequest.id}/claim`)).toBe(false);
+  });
 });

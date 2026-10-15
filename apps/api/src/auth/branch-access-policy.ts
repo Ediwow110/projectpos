@@ -42,17 +42,41 @@ export async function permitsAssignedBranchRequest(
 
   if (method === "GET" && path === "/api/v1/approvals/requests") return true;
   if (method === "POST" && path === "/api/v1/approvals/requests") {
-    const registerId = req.body?.registerId;
-    if (typeof registerId !== "string" || !registerId) return false;
-    const register = await db.findRegisterById(registerId, businessId);
-    return Boolean(register && register.isActive && register.branchId === activeBranchId &&
-      (allowedRegisterIds === null || allowedRegisterIds.includes(register.id)));
+    const action = req.body?.action;
+    if (!action || typeof action !== "object" || Array.isArray(action)) return false;
+    const kind = (action as Record<string, unknown>).kind;
+    if (["discount", "shift_close", "refund", "sale_void"].includes(String(kind))) {
+      const registerId = req.body?.registerId;
+      if (typeof registerId !== "string" || !registerId) return false;
+      const register = await db.findRegisterById(registerId, businessId);
+      return Boolean(register && register.isActive && register.branchId === activeBranchId &&
+        (allowedRegisterIds === null || allowedRegisterIds.includes(register.id)));
+    }
+    if (req.body?.registerId != null) return false;
+    if (kind === "inventory_movement") {
+      const movement = action as Record<string, unknown>;
+      if (movement.branchId != null && movement.branchId !== activeBranchId) return false;
+      if (typeof movement.productId !== "string" || !await db.findProductById(movement.productId, businessId)) return false;
+      req.body!.action = { ...movement, branchId: activeBranchId };
+      return true;
+    }
+    if (kind === "inventory_count") {
+      const countId = (action as Record<string, unknown>).countId;
+      if (typeof countId !== "string") return false;
+      const count = await db.findInventoryCountById(countId, businessId);
+      return Boolean(count && count.status === "SUBMITTED" && count.branchId === activeBranchId);
+    }
+    return false;
   }
   const approvalRequestMatch = /^\/api\/v1\/approvals\/requests\/([^/]+)(?:\/(?:decision|claim))?$/.exec(path);
   if (approvalRequestMatch && (method === "GET" || method === "POST")) {
     const request = await db.findManagerApprovalRequest(decodeURIComponent(approvalRequestMatch[1]!), businessId);
-    return Boolean(request && request.branchId === activeBranchId && permittedBranchIds.includes(request.branchId) &&
-      (allowedRegisterIds === null || Boolean(request.registerId && allowedRegisterIds.includes(request.registerId))));
+    if (!request || request.branchId !== activeBranchId || !permittedBranchIds.includes(request.branchId)) return false;
+    if (request.kind === "inventory_movement" || request.kind === "inventory_count") return request.registerId === null;
+    if (!["discount", "shift_close", "refund", "sale_void"].includes(request.kind) || !request.registerId) return false;
+    const register = await db.findRegisterById(request.registerId, businessId);
+    return Boolean(register && register.isActive && register.branchId === activeBranchId &&
+      (allowedRegisterIds === null || allowedRegisterIds.includes(register.id)));
   }
 
   if (method === "GET" && path === "/api/v1/receipts/lookup") {
