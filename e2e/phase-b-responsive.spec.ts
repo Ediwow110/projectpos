@@ -27,6 +27,9 @@ for (const viewport of viewports) {
       await page.goto(route.path);
       await expect(page.getByRole("heading", { name: route.heading, exact: true })).toBeVisible();
       await expect(page.locator("main")).toBeVisible();
+      if (route.path === "/exceptions") {
+        await page.screenshot({ path: `test-results/atlas-v4-exceptions-${viewport.name}.png`, fullPage: false });
+      }
       const documentWidth = await page.evaluate(() => document.documentElement.scrollWidth);
       expect(documentWidth, `${route.path} overflows at ${viewport.width}px`).toBeLessThanOrEqual(viewport.width + 2);
     }

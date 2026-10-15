@@ -58,6 +58,7 @@ export default function TeamPage(): JSX.Element {
   });
 
   const members = membersQuery.data?.items ?? [];
+  const mobileMembers = [...members].sort((left, right) => Number(left.role === "owner") - Number(right.role === "owner"));
   const staffCount = members.filter((member) => member.role !== "owner").length;
 
   function resetCreate(): void {
@@ -248,9 +249,15 @@ export default function TeamPage(): JSX.Element {
   }
 
   return (
-    <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role}>
-      <main className="mx-auto max-w-[1240px] space-y-5 px-4 pb-10 pt-3 sm:px-6">
-        <PageHeader
+    <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role} atlasOwner>
+      <main className="mx-auto w-full max-w-[1240px] space-y-5 px-4 pb-10 pt-5 sm:px-6">
+        {isOwner ? <section aria-label="Mobile employee permissions" className="space-y-3 sm:hidden">
+          <p className="font-data text-[11px] tracking-[0.07em] text-[#da614c]">OWNER / EMPLOYEE ACCESS</p>
+          <h1 className="font-display text-[25px] font-semibold tracking-tight text-[#202826]">Employee access</h1>
+          <p className="text-[13px] leading-5 text-[#748078]">Choose a staff member to review their role, permission restrictions, and assigned locations.</p>
+          <PrimaryButton type="button" className="min-h-11" onClick={() => { resetCreate(); setCreateOpen(true); }}>+ Add team member</PrimaryButton>
+        </section> : null}
+        <div className={isOwner ? "hidden sm:block" : ""}><PageHeader
           eyebrow="Administration / Team"
           title="Team"
           description="Manage who can sign in to this business and which operational role they receive."
@@ -261,7 +268,7 @@ export default function TeamPage(): JSX.Element {
               </PrimaryButton>
             ) : undefined
           }
-        />
+        /></div>
 
         {!meQuery.isLoading && !isOwner ? (
           <Panel className="border-[#f1d6ad] bg-[#fff8ea] p-5">
@@ -274,7 +281,7 @@ export default function TeamPage(): JSX.Element {
 
         {isOwner ? (
           <>
-            <section className="grid gap-4 sm:grid-cols-3" aria-label="Team summary">
+            <section className="hidden gap-4 sm:grid sm:grid-cols-3" aria-label="Team summary">
               <MetricCard label="Active users" value={members.length} icon="◎" meta="Current memberships" />
               <MetricCard label="Staff" value={staffCount} icon="○" tone="info" meta="Non-owner users" />
               <MetricCard label="Owner seats" value={members.filter((member) => member.role === "owner").length} icon="◆" tone="success" meta="Protected role" />
@@ -294,9 +301,9 @@ export default function TeamPage(): JSX.Element {
               {members.length === 0 && !membersQuery.isLoading ? <p className="px-5 pb-8 text-sm text-[#8b8077]">No active team members.</p> : null}
               {members.length > 0 ? (
                 <section className="grid gap-3 px-4 pb-5 sm:hidden" aria-label="Mobile employee access">
-                  {members.map((member) => {
+                  {mobileMembers.map((member) => {
                     const editable = canChangeMemberRole(meQuery.data?.userId ?? "", member);
-                    return <article key={member.id} className="min-w-0 rounded-xl border border-[#eee4db] bg-[#fcf8f3] p-4">
+                    return <article key={member.id} className="min-w-0 rounded-[11px] border border-[#e5e9e3] bg-white p-4">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
                           <h3 className="break-words font-display text-base font-semibold text-[#202826]">{member.name}</h3>
@@ -311,6 +318,7 @@ export default function TeamPage(): JSX.Element {
                             ? "Current user · Protected owner access"
                             : "Protected membership"}
                       </p>
+                      <p className="mt-3 text-[11px] text-[#748078]">Role-based access is enforced by the server. Use Permissions to review actual allowed and blocked actions.</p>
                       {(editable || canManageApprovalPin(member)) ? <div className="mt-4 grid grid-cols-2 gap-2">
                         {editable ? (
                           <>
@@ -478,7 +486,8 @@ export default function TeamPage(): JSX.Element {
                     ))}
                     className="size-4 accent-[#da614c]"
                   />
-                  <span className="font-mono text-xs">{permission}</span>
+                  <span className="min-w-0 flex-1 break-all font-mono text-xs">{permission}</span>
+                  <span className={"rounded-md px-2 py-1 font-data text-[10px] font-semibold " + (enabled ? "bg-[#e8f4ec] text-[#267552]" : "bg-[#fcf1df] text-[#9a6e32]")}>{enabled ? "Allowed" : "Blocked"}</span>
                 </label>
               );
             })}

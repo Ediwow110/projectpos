@@ -16,6 +16,10 @@ import {
 } from "../lib/workspace-navigation";
 import { branchScopeLabel } from "../lib/workspace-branch";
 import { GuidedTour } from "./GuidedTour";
+import { AtlasOwnerNavigation } from "./AtlasOwnerNavigation";
+import { AtlasApprovalNavigation } from "./AtlasApprovalNavigation";
+import { AtlasCashierNavigation } from "./AtlasCashierNavigation";
+import { AtlasInventoryNavigation } from "./AtlasInventoryNavigation";
 import { useBranchSwitcher } from "./use-branch-switcher";
 import { useNavigationProgress } from "./use-navigation-progress";
 import { useWorkspaceTour } from "./use-workspace-tour";
@@ -83,6 +87,10 @@ export function AppShell({
   offline,
   topbar,
   posMode = false,
+  atlasOwner = false,
+  atlasApprovals = false,
+  atlasCashier = false,
+  atlasInventory = false,
 }: {
   children: ReactNode;
   businessName?: string;
@@ -90,6 +98,10 @@ export function AppShell({
   offline?: boolean;
   topbar?: ReactNode;
   posMode?: boolean;
+  atlasOwner?: boolean;
+  atlasApprovals?: boolean;
+  atlasCashier?: boolean;
+  atlasInventory?: boolean;
 }): JSX.Element {
   const pathname = usePathname();
   const router = useRouter();
@@ -120,6 +132,7 @@ export function AppShell({
   const [signingOut, setSigningOut] = React.useState(false);
   const [signOutError, setSignOutError] = React.useState("");
   const [showMobileMenu, setShowMobileMenu] = React.useState(false);
+  const atlasMenuButtonRef = React.useRef<HTMLButtonElement>(null);
   const { branchError, switchingBranch, switchBranch } = useBranchSwitcher(shellMe.data, queryClient);
   const { showNavigationProgress, beginNavigation } = useNavigationProgress(pathname);
   const { showTour, setShowTour, dismissTour } = useWorkspaceTour(shellMe.data, queryClient);
@@ -127,6 +140,11 @@ export function AppShell({
   const year = new Date().getFullYear();
   const name = businessName ?? "NexPOS";
   const currentRole = shellMe.data?.role ?? role ?? "owner";
+  const ownerAtlas = atlasOwner && currentRole === "owner";
+  const approvalAtlas = atlasApprovals && (currentRole === "manager" || currentRole === "owner");
+  const cashierAtlas = atlasCashier && currentRole === "cashier";
+  const inventoryAtlas = atlasInventory && ["inventory", "manager", "owner"].includes(currentRole);
+  const atlasLayout = ownerAtlas || approvalAtlas || cashierAtlas || inventoryAtlas;
   const activeBranchId = shellMe.data?.activeBranchId ?? null;
   const activeBranchName = shellMe.data?.activeBranchName ?? null;
   const activeBranches = (branchesQuery.data?.items ?? []).filter((branch) => branch.isActive);
@@ -146,11 +164,14 @@ export function AppShell({
   React.useEffect(() => {
     if (!showMobileMenu) return;
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") setShowMobileMenu(false);
+      if (event.key === "Escape") {
+        setShowMobileMenu(false);
+        if (atlasLayout) atlasMenuButtonRef.current?.focus();
+      }
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [showMobileMenu]);
+  }, [showMobileMenu, atlasLayout]);
 
   // Redirect exactly once per signed-out denial. Clearing the ["me"] query
   // forces an immediate refetch, which settles back into the same denial;
@@ -232,8 +253,8 @@ export function AppShell({
 
 
   return (
-    <div className="relative flex min-h-screen flex-col overflow-x-clip bg-[#fcf8f3]">
-      <DecorativeBackdrop />
+    <div data-ui={ownerAtlas ? "atlas-owner-shell" : approvalAtlas ? "atlas-approval-shell" : cashierAtlas ? "atlas-cashier-shell" : inventoryAtlas ? "atlas-inventory-shell" : undefined} className={"relative flex min-h-screen flex-col overflow-x-clip " + (atlasLayout ? "bg-[#f7f8f5]" : "bg-[#fcf8f3]")}>
+      {!atlasLayout ? <DecorativeBackdrop /> : null}
       <a
         href="#main-content"
         onClick={(event) => {
@@ -250,15 +271,31 @@ export function AppShell({
       </a>
 
       <div className="sticky top-0 z-50">
+        {atlasLayout ? (
+          <header data-ui="atlas-mobile-header" className="flex min-h-[77px] items-center justify-between gap-3 border-b border-[#e5e9e3] bg-white px-[18px] xl:hidden">
+            <Link href="/" aria-label="NexPOS dashboard" className="inline-flex min-w-0 items-center gap-2.5 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#da614c]">
+              <span aria-hidden className="grid h-[42px] w-[42px] shrink-0 place-items-center rounded-[10px] bg-[#29332d] font-display text-[24px] font-semibold text-white">N</span>
+              <span className="font-display text-[21px] font-semibold tracking-tight text-[#202826]">NexPOS</span>
+            </Link>
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="rounded-[7px] bg-[#f0f3ef] px-3 py-2 text-[10px] font-medium uppercase tracking-[0.05em] text-[#53615a]">{currentRole}</span>
+              <button ref={atlasMenuButtonRef} type="button" aria-label={showMobileMenu ? "Close workspace menu" : "Open workspace menu"} aria-expanded={showMobileMenu} aria-controls="atlas-mobile-navigation"
+                onClick={() => setShowMobileMenu((open) => !open)}
+                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-[#e5e9e3] bg-white text-sm font-semibold text-[#29332d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#da614c]">
+                <span aria-hidden>{showMobileMenu ? "×" : "☰"}</span>
+              </button>
+            </div>
+          </header>
+        ) : null}
         <header
           data-ui="shell-header"
           className={
-            "border-b border-[#eadfd6] bg-[#fcf8f3]/95 px-4 backdrop-blur sm:px-6 " +
+            (atlasLayout ? "hidden border-b border-[#e5e9e3] bg-white px-4 backdrop-blur sm:px-6 xl:block " + (ownerAtlas ? "xl:pl-[264px] " : inventoryAtlas ? "xl:pl-[251px] " : "xl:pl-[255px] ") : "border-b border-[#eadfd6] bg-[#fcf8f3]/95 px-4 backdrop-blur sm:px-6 ") +
             mobileHeaderHeight
           }
         >
-          <div className="mx-auto flex min-h-[64px] w-full max-w-[1480px] items-center gap-4">
-            <Link href="/" className="flex min-w-0 shrink-0 items-center" aria-label="NexPOS dashboard">
+          <div className={"mx-auto flex w-full items-center gap-4 " + (atlasLayout ? "min-h-[78px] max-w-none" : "min-h-[64px] max-w-[1480px]")}>
+            <Link href="/" className={"flex min-w-0 shrink-0 items-center " + (atlasLayout ? "xl:hidden" : "")} aria-label="NexPOS dashboard">
               <span className="hidden sm:block">
                 <NexposLogo variant="light" size="md" withWordmark />
               </span>
@@ -266,6 +303,8 @@ export function AppShell({
                 <NexposMark size={36} />
               </span>
             </Link>
+            {ownerAtlas ? <span className="hidden min-w-0 truncate text-[15px] font-medium text-[#202826] xl:block">{activeBranchName ?? name} / Owner workspace</span> : null}
+            {approvalAtlas ? <span className="hidden min-w-0 truncate text-[14px] font-medium text-[#202826] xl:block">{currentRole === "owner" ? "Owner" : "Manager"} desk / {activeBranchName ?? name}</span> : null}
 
             <div className={posMode ? "hidden items-center gap-2 lg:flex" : "hidden items-center gap-2 md:flex"}>
               <label className="rounded-[10px] border border-[#eee4db] bg-white px-2.5 py-1.5 text-[9px] font-semibold text-[#2a241f]">
@@ -364,9 +403,10 @@ export function AppShell({
         </header>
 
         <nav
+          id="atlas-mobile-navigation"
           data-ui="shell-mobile-nav"
           aria-label="Primary navigation"
-          className="border-b border-[#eadfd6] bg-white/95 px-3 shadow-[0_4px_14px_-10px_rgb(28_20_15/0.12)] backdrop-blur xl:hidden"
+          className={atlasLayout && !showMobileMenu ? "hidden xl:hidden" : "border-b border-[#e5e9e3] bg-white/95 px-3 shadow-[0_4px_14px_-10px_rgb(28_20_15/0.12)] backdrop-blur xl:hidden"}
         >
           <div className="mx-auto flex w-full items-center overflow-x-auto">
             {primaryMobileNavigation.map((item) => (
@@ -380,7 +420,7 @@ export function AppShell({
                 }}
               />
             ))}
-            {secondaryMobileNavigation.length > 0 ? (
+            {secondaryMobileNavigation.length > 0 && !atlasLayout ? (
               <button
                 type="button"
                 aria-expanded={showMobileMenu}
@@ -404,8 +444,25 @@ export function AppShell({
           <div
             id="workspace-more-menu"
             data-ui="shell-mobile-more"
-            className="max-h-[calc(100vh-132px)] overflow-y-auto border-b border-[#eadfd6] bg-[#fcf8f3] px-4 py-4 shadow-[0_14px_26px_-18px_rgb(28_20_15/0.35)] xl:hidden"
+            className={"max-h-[calc(100vh-132px)] overflow-y-auto border-b px-4 py-4 shadow-[0_14px_26px_-18px_rgb(28_20_15/0.35)] xl:hidden " + (atlasLayout ? "border-[#e5e9e3] bg-[#f7f8f5]" : "border-[#eadfd6] bg-[#fcf8f3]")}
           >
+            {atlasLayout ? (
+              <div className="mx-auto mb-4 grid max-w-[920px] gap-3 border-b border-[#e5e9e3] pb-4 sm:grid-cols-3 sm:items-end">
+                <label className="text-xs font-semibold text-[#53615a]">
+                  Active branch
+                  <select aria-label="Active branch" value={activeBranchId ?? ""} onChange={(event) => void switchBranch(event.target.value)} disabled={switchingBranch}
+                    className="mt-1 block min-h-11 w-full rounded-lg border border-[#dce3dc] bg-white px-3 text-sm text-[#202826]">
+                    <option value="">All branches</option>
+                    {activeBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                  </select>
+                </label>
+                <button type="button" onClick={() => { setShowMobileMenu(false); setShowTour(true); }}
+                  className="min-h-11 rounded-lg border border-[#dce3dc] bg-white px-4 text-sm font-semibold text-[#29332d]">Restart system tour</button>
+                <button type="button" disabled={signingOut} onClick={() => void signOut()}
+                  className="min-h-11 rounded-lg border border-[#dce3dc] bg-white px-4 text-sm font-semibold text-[#29332d] disabled:opacity-60">{signingOut ? "Signing out…" : "Sign out"}</button>
+                {branchError || signOutError ? <p role="alert" className="text-xs text-[#a34132] sm:col-span-3">{branchError || signOutError}</p> : null}
+              </div>
+            ) : null}
             <nav aria-label="More workspace navigation" className="mx-auto grid w-full max-w-[920px] gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {secondaryNavigationGroups.map((group) => (
                 <section key={group.label} aria-label={group.label}>
@@ -443,14 +500,22 @@ export function AppShell({
 
       <div
         data-ui="shell-body"
-        className="relative mx-auto grid w-full max-w-[1480px] flex-1 xl:grid-cols-[220px_minmax(0,1fr)]"
+        className={"relative mx-auto grid w-full flex-1 " + (ownerAtlas ? "max-w-none xl:grid-cols-[239px_minmax(0,1fr)]" : approvalAtlas || cashierAtlas ? "max-w-none xl:grid-cols-[230px_minmax(0,1fr)]" : inventoryAtlas ? "max-w-none xl:grid-cols-[226px_minmax(0,1fr)]" : "max-w-[1480px] xl:grid-cols-[220px_minmax(0,1fr)]")}
       >
         <aside
           data-ui="shell-sidebar"
-          className="hidden border-r border-[#eadfd6] bg-white/55 xl:sticky xl:top-[65px] xl:block xl:h-[calc(100vh-65px)] xl:self-start"
+          className={atlasLayout ? "z-[60] hidden border-r border-[#e5e9e3] bg-white xl:sticky xl:top-0 xl:-mt-[78px] xl:block xl:h-screen xl:self-start" : "hidden border-r border-[#eadfd6] bg-white/55 xl:sticky xl:top-[65px] xl:block xl:h-[calc(100vh-65px)] xl:self-start"}
           aria-label="Workspace navigation"
         >
-          <div className="flex h-full min-h-[540px] flex-col overflow-y-auto p-4 xl:pt-5">
+          {ownerAtlas ? (
+            <AtlasOwnerNavigation pathname={pathname} onNavigate={beginNavigation} onSignOut={() => void signOut()} signingOut={signingOut} />
+          ) : approvalAtlas ? (
+            <AtlasApprovalNavigation role={currentRole} pathname={pathname} onNavigate={beginNavigation} onSignOut={() => void signOut()} signingOut={signingOut} />
+          ) : cashierAtlas ? (
+            <AtlasCashierNavigation pathname={pathname} onNavigate={beginNavigation} onSignOut={() => void signOut()} signingOut={signingOut} />
+          ) : inventoryAtlas ? (
+            <AtlasInventoryNavigation pathname={pathname} onNavigate={beginNavigation} onSignOut={() => void signOut()} signingOut={signingOut} />
+          ) : <div className="flex h-full min-h-[540px] flex-col overflow-y-auto p-4 xl:pt-5">
             <div className="mb-3 px-2">
               <p className="font-data text-[8px] font-semibold uppercase tracking-[0.16em] text-[#9a8d83]">Workspace</p>
               <p className="mt-1 text-[11px] leading-4 text-[#746960]">Store operations and administration.</p>
@@ -492,7 +557,7 @@ export function AppShell({
                 </div>
               </div>
             </div>
-          </div>
+          </div>}
         </aside>
 
         <div data-ui="shell-main" className="min-w-0">

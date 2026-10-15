@@ -88,13 +88,17 @@ export default function ReceiptLookupPage(): JSX.Element {
   const role = meQuery.data?.role ?? "cashier";
 
   return (
-    <AppShell businessName={meQuery.data?.businessName} role={role}>
-      <main className="mx-auto max-w-[1240px] space-y-5 px-4 pb-10 pt-3 sm:px-6">
-        <PageHeader
+    <AppShell businessName={meQuery.data?.businessName} role={role} atlasCashier>
+      <main className={role === "cashier" ? "mx-auto w-full max-w-none space-y-6 px-4 pb-10 pt-8 sm:px-8 lg:px-[38px]" : "mx-auto max-w-[1240px] space-y-5 px-4 pb-10 pt-3 sm:px-6"}>
+        {role === "cashier" ? <header className="space-y-2">
+          <p className="font-data text-[11px] tracking-[0.06em] text-[#748078]">SALES / RECEIPT LOOKUP</p>
+          <h1 className="font-display text-[29px] font-semibold tracking-tight text-[#202826]">Find a receipt</h1>
+          <p className="text-[13px] leading-5 text-[#748078]">Search a receipt to verify a purchase before handling a customer concern.</p>
+        </header> : <PageHeader
           eyebrow="Sales / Receipt lookup"
           title="Find a receipt"
           description="Search a receipt to verify a purchase before handling a customer concern."
-        />
+        />}
 
         <Panel className="!rounded-[14px] !border-[#e4e9e3] p-5 sm:p-6">
           <form onSubmit={submit} className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
@@ -131,7 +135,7 @@ export default function ReceiptLookupPage(): JSX.Element {
         <section aria-label="Receipt lookup result" aria-live="polite" aria-busy={lookup.isPending}>
           {lookup.isPending ? (
             <Panel className="grid min-h-[280px] place-items-center !rounded-[14px] !border-[#e4e9e3] p-8 text-center">
-              <div><span aria-hidden className="mx-auto grid h-14 w-14 animate-pulse place-items-center rounded-[18px] bg-[#eff2ed] text-2xl text-[#267552] motion-reduce:animate-none">⌕</span><p className="mt-5 font-display text-lg font-semibold text-[#202826]">Searching receipts in your current access</p><p className="mt-2 text-sm text-[#707b75]">Receipt details will appear after the exact match is verified.</p></div>
+              <div><span aria-hidden className="mx-auto grid h-14 w-14 animate-pulse place-items-center rounded-[18px] bg-[#eff2ed] text-2xl text-[#267552] motion-reduce:animate-none">⌕</span><p className="mt-5 font-display text-lg font-semibold text-[#202826]">Looking for receipt {receiptNo.trim()}</p><p className="mt-2 text-sm text-[#707b75]">Checking within your authorized business and branch.</p></div>
             </Panel>
           ) : lookup.data ? (
             <Panel className="overflow-hidden !rounded-[14px] !border-[#e4e9e3] p-4 sm:p-5">
@@ -180,7 +184,7 @@ export default function ReceiptLookupPage(): JSX.Element {
             <Panel className="grid min-h-[300px] place-items-center !rounded-[14px] !border-[#e4e9e3] p-8 text-center sm:min-h-[340px]">
               <div>
                 <span aria-hidden className="mx-auto grid h-[76px] w-[84px] place-items-center rounded-[20px] bg-[#eff2ed] text-[42px] leading-none text-[#267552]">⌕</span>
-                <h2 className="font-display mt-5 text-lg font-semibold text-[#202826] sm:text-xl">Enter a receipt number to get started</h2>
+                <h2 className="font-display mt-5 text-lg font-semibold text-[#202826] sm:text-xl">{receiptNo.trim() ? 'Receipt number ready to search' : 'Enter a receipt number to get started'}</h2>
                 <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-[#707b75]">No receipt details or product lines appear until an exact number is searched.</p>
                 <span className="mt-6 inline-flex rounded-md bg-[#e7f0f6] px-3 py-2 text-[10px] font-medium text-[#496b81]">Customer concern lookup · authorized access only</span>
               </div>

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { API, apiAuthedContext, createStaffMember, registerOperationalBusiness } from "./helpers";
 
-test("Phase D guest support → owner inbox → consented, revocable read-only operator health", async ({ page, request }) => {
+test("Phase D guest support → owner inbox → consented, revocable read-only operator health", async ({ page, request }, testInfo) => {
   test.setTimeout(240_000);
   // Match the isolated local E2E server's configured operator key; use a
   // distinct invalid value for the negative authorization assertion.
@@ -60,12 +60,27 @@ test("Phase D guest support → owner inbox → consented, revocable read-only o
   expect(submitted.ok()).toBe(true);
   const token = (await submitted.json() as { statusToken: string }).statusToken;
   await page.goto(`/order-status#token=${token}`);
-  await expect(page.getByRole("heading", { name: "Need help with this order?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: testInfo.project.name === "mobile" ? "Get order support" : "Need help with this order?" })).toBeVisible();
+  await expect(page.getByText("Order reference", { exact: true })).toBeVisible();
+  await expect(page.getByText(draft.id.slice(-8).toUpperCase(), { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Submit an order issue" })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "Support privacy" })).toBeVisible();
+  await page.getByRole("link", { name: "Report an order issue" }).click();
+  await expect(page.getByRole("heading", { name: "Submit an order issue" })).toBeInViewport();
+  await page.screenshot({ path: `test-results/atlas-v4-phase-d-guest-issue-${testInfo.project.name}.png`, fullPage: false });
   expect(page.url()).not.toContain(token);
   await page.getByLabel("What do you need help with?").selectOption("FULFILLMENT");
   await page.getByLabel("Describe the issue").fill("My pickup time has not been confirmed.");
+  if (testInfo.project.name === "mobile") {
+    const sendButton = page.getByRole("button", { name: "Send support request" });
+    expect(await sendButton.evaluate((button) => getComputedStyle(button).position)).toBe("fixed");
+    expect(await sendButton.evaluate((button) => button.getBoundingClientRect().height)).toBeGreaterThanOrEqual(53);
+  }
   await page.getByRole("button", { name: "Send support request" }).click();
   await expect(page.getByText("Support request received")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Support request received" })).toBeFocused();
+  await expect(page.getByText("AWAITING REVIEW")).toBeVisible();
+  await page.screenshot({ path: `test-results/atlas-v4-phase-d-guest-received-${testInfo.project.name}.png`, fullPage: false });
   const reference = await page.getByText(/Reference:/).textContent();
   expect(reference).toContain("gsc_");
   await page.getByRole("button", { name: /View this order's support history/ }).click();
@@ -73,6 +88,9 @@ test("Phase D guest support → owner inbox → consented, revocable read-only o
 
   await page.goto("/admin/support");
   await expect(page.getByRole("heading", { name: "Support & platform consent" })).toBeVisible();
+  await expect(page.locator('[data-ui="atlas-owner-shell"]')).toBeVisible();
+  await expect(page.getByRole("region", { name: "Support overview" })).toBeVisible();
+  await page.screenshot({ path: `test-results/atlas-v4-phase-d-owner-support-${testInfo.project.name}.png`, fullPage: false });
   await expect(page.getByText("My pickup time has not been confirmed.")).toBeVisible();
   await page.getByRole("button", { name: "Close case" }).click();
   await page.getByRole("dialog", { name: "Close support case?" }).getByRole("button", { name: "Close case" }).click();
@@ -95,7 +113,7 @@ test("Phase D guest support → owner inbox → consented, revocable read-only o
   const consentToken = (await page.locator('[role="status"] .font-data').last().textContent())?.trim();
   expect(consentToken).toMatch(/^ownerconsent_[a-f0-9]{64}$/);
   await page.goto("/platform/tenant-health");
-  await expect(page.getByRole("heading", { name: "Tenant health" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Platform tenant health", level: 1 })).toBeVisible();
   await page.getByLabel("Business ID").fill(business.id);
   await page.getByLabel("Operator key").fill(operatorKey);
   await page.getByLabel("Owner consent token").fill(consentToken!);
@@ -117,8 +135,8 @@ test("Phase D guest support → owner inbox → consented, revocable read-only o
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
     for (const entry of [
       { path: "/admin/support", heading: "Support & platform consent" },
-      { path: "/platform/tenant-health", heading: "Tenant health" },
-      { path: `/order-status#token=${token}`, heading: "Need help with this order?" },
+      { path: "/platform/tenant-health", heading: "Platform tenant health" },
+      { path: `/order-status#token=${token}`, heading: width === 390 ? "Get order support" : "Need help with this order?" },
     ]) {
       await page.goto(entry.path);
       await expect(page.getByRole("heading", { name: entry.heading })).toBeVisible();

@@ -4,6 +4,13 @@ import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
 const lockPath = resolve(".e2e-run.lock");
+// Allow isolated NexPOS verification alongside another local project's E2E
+// backend without sharing or terminating its listener on the default port.
+const apiPort = process.env.E2E_API_PORT ?? "3101";
+if (!/^\d{4,5}$/.test(apiPort) || Number(apiPort) > 65535 || Number(apiPort) < 1024) {
+  throw new Error("E2E_API_PORT must be a valid unprivileged TCP port");
+}
+const apiOrigin = `http://localhost:${apiPort}`;
 const apiCli = resolve("apps/api/node_modules/tsx/dist/cli.mjs");
 const nextCli = resolve("apps/web/node_modules/next/dist/bin/next");
 const playwrightCli = resolve("node_modules/@playwright/test/cli.js");
@@ -65,13 +72,13 @@ const webBuildEnv = {
   ...process.env,
   NODE_ENV: "production",
   NEXT_PUBLIC_API_BASE: "http://localhost:3100",
-  API_PROXY_TARGET: "http://localhost:3101",
+  API_PROXY_TARGET: apiOrigin,
 };
 const apiEnv = {
   ...process.env,
   NODE_ENV: "development",
   TSX_TSCONFIG_PATH: resolve("apps/api/tsconfig.json"),
-  API_PORT: "3101",
+  API_PORT: apiPort,
   WEB_URL: "http://localhost:3100",
   REGISTRATION_RATE_LIMIT: "1000",
   LOGIN_RATE_LIMIT: "1000",
@@ -122,7 +129,7 @@ try {
     );
 
     await Promise.all([
-      waitForServer("http://localhost:3101/healthz", apiServer, "API"),
+      waitForServer(`${apiOrigin}/healthz`, apiServer, "API"),
       waitForServer("http://localhost:3100/login", webServer, "web"),
     ]);
 

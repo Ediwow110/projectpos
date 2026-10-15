@@ -87,8 +87,8 @@ export default function OperationalExceptionsPage(): JSX.Element {
   const exceptionCount = unknownPayments.length + countVariances.length + staleHeld.length + delayedOrders.length;
   const role = me.data?.role ?? "";
 
-  return <AppShell role={role} businessName={me.data?.businessName}>
-    <main className="mx-auto w-full max-w-[1480px] space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+  return <AppShell role={role} businessName={me.data?.businessName} atlasApprovals={canReview}>
+    <main className={canReview ? "mx-auto w-full max-w-none space-y-6 px-4 pb-12 pt-8 sm:px-8 lg:px-[40px]" : "mx-auto w-full max-w-[1480px] space-y-6 px-4 py-6 sm:px-6 lg:px-8"}>
       <PageHeader eyebrow="APPROVAL OPERATIONS / ATLAS 2026" title="Operational exception center" description="Review by urgency and ownership. Exceptions link to their existing protected workflows; this page does not change payment, stock, or order state." />
       {!me.isPending && !canReview ? <Panel className="p-6"><h2 className="font-semibold text-[#202826]">Manager access required</h2><p className="mt-2 text-sm text-[#748078]">Operational exceptions are available to managers and owners.</p></Panel> :
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_270px]">

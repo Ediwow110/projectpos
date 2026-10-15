@@ -1,6 +1,6 @@
 import { expect, type Page, type APIRequestContext, type Locator } from "@playwright/test";
 
-export const API = "http://localhost:3101";
+export const API = `http://localhost:${process.env.E2E_API_PORT ?? "3101"}`;
 
 export function posCartRegion(page: Page): Locator {
   const width = page.viewportSize()?.width ?? 1440;
@@ -181,7 +181,15 @@ export async function signIn(page: Page, email: string, password: string): Promi
 }
 
 export async function signOut(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Sign out" }).click();
+  // Atlas V4 mobile keeps session actions in the accessible workspace menu.
+  // Other layouts retain the persistent header sign-out action.
+  const mobileHeader = page.locator('[data-ui="atlas-mobile-header"]');
+  if (await mobileHeader.isVisible()) {
+    await mobileHeader.getByRole("button", { name: "Open workspace menu" }).click();
+    await page.locator('[data-ui="shell-mobile-more"]').getByRole("button", { name: "Sign out" }).click();
+  } else {
+    await page.getByRole("banner").getByRole("button", { name: "Sign out" }).click();
+  }
   await expect(page).toHaveURL(/\/login/, { timeout: 30_000 });
 }
 

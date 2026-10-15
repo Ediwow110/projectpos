@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { AppShell } from "../../../components/AppShell";
 import { ConfirmDialog } from "../../../components/ConfirmDialog";
-import { MetricCard, PageHeader, Panel, SectionHeader } from "../../../components/premium";
+import { MetricCard, Panel, SectionHeader } from "../../../components/premium";
 import { GhostButton, StatusPill } from "../../../components/ui";
 import { OwnerFinancialPolicies } from "../../../components/OwnerFinancialPolicies";
 import { OwnerActivityLog } from "../../../components/OwnerActivityLog";
@@ -38,6 +38,24 @@ interface RolePermissionRow {
   role: string;
   permissions: string[];
 }
+
+interface OwnerApprovalRequest {
+  id: string;
+  kind: string;
+  status: string;
+  createdAt: string;
+}
+
+const APPROVAL_LABELS: Record<string, string> = {
+  value_adjustment: "Stored value adjustment",
+  refund: "Refund approval",
+  sale_refund: "Refund approval",
+  sale_void: "Sale void request",
+  shift_close: "Shift close request",
+  discount: "Discount override",
+  inventory_movement: "Inventory movement",
+  inventory_adjustment: "Inventory adjustment",
+};
 
 const SENSITIVE_ROLE_PERMISSIONS = [
   { key: "price.edit", label: "Edit selling prices" },
@@ -124,9 +142,16 @@ export default function OwnerControlsPage(): JSX.Element {
     enabled: isOwner,
     retry: false,
   });
+  const approvals = useQuery({
+    queryKey: ["owner-approval-requests"],
+    queryFn: () => apiFetch<{ requests: OwnerApprovalRequest[] }>("/api/v1/approvals/requests"),
+    enabled: isOwner,
+    retry: false,
+  });
 
   const summary = ownerControlSummary(memberships.data?.items ?? [], branches.data?.items ?? []);
   const loadingCounts = memberships.isLoading || branches.isLoading;
+  const pendingApprovals = (approvals.data?.requests ?? []).filter((request) => request.status === "PENDING");
 
   async function confirmRevoke(): Promise<void> {
     if (!targetSession || !canRevokeAccountSession(targetSession) || busy) return;
@@ -146,13 +171,13 @@ export default function OwnerControlsPage(): JSX.Element {
   }
 
   return (
-    <AppShell businessName={profile.data?.businessName} role={profile.data?.role}>
-      <main className="mx-auto max-w-[1240px] space-y-6 px-4 pb-12 pt-3 sm:px-6">
-        <PageHeader
-          eyebrow="Owner / Control center"
-          title="Owner controls"
-          description="One place to review staff, business locations, sensitive access and account sessions. Only saved settings and actions supported by NexPOS are interactive."
-        />
+    <AppShell businessName={profile.data?.businessName} role={profile.data?.role} atlasOwner>
+      <main className="mx-auto w-full max-w-none space-y-7 px-4 pb-12 pt-8 sm:px-8 lg:pt-9 xl:px-[38px]">
+        <header className="space-y-2">
+          <p className="font-data text-[11px] font-medium tracking-[0.05em] text-[#da614c]">OWNER CONTROLS / OWNER</p>
+          <h1 className="font-display text-[29px] font-semibold tracking-tight text-[#202826]">Owner Control Center</h1>
+          <p className="text-[13px] leading-6 text-[#758078]">Review the requests and access settings that your account is authorized to manage.</p>
+        </header>
 
         {!profile.isLoading && !isOwner ? (
           <Panel className="border-[#f1d6ad] bg-[#fff8ea] p-6">
@@ -165,7 +190,59 @@ export default function OwnerControlsPage(): JSX.Element {
 
         {isOwner ? (
           <>
-            <section aria-label="Business access summary" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <section aria-label="Owner overview" className="grid gap-4 sm:grid-cols-3">
+              {[
+                { label: "TEAM ACCOUNTS", value: memberships.isLoading ? "—" : memberships.isError ? "Unavailable" : String(summary.staffMembers + summary.ownerSeats), detail: "Current business memberships" },
+                { label: "SENSITIVE REQUESTS", value: approvals.isLoading ? "—" : approvals.isError ? "Unavailable" : String(pendingApprovals.length), detail: "Pending requests in your approval scope" },
+                { label: "ACTIVE BRANCHES", value: branches.isLoading ? "—" : branches.isError ? "Unavailable" : String(summary.activeBranches), detail: "Active business branches, not staff assignments" },
+              ].map((item) => (
+                <div key={item.label} className="min-h-[119px] rounded-xl border border-[#e5e9e3] bg-white px-[18px] py-4">
+                  <p className="text-[11px] font-semibold text-[#758078]">{item.label}</p>
+                  <p className="mt-1 font-display text-[28px] font-semibold text-[#202826]">{item.value}</p>
+                  <p className="mt-1 text-[12px] text-[#758078]">{item.detail}</p>
+                </div>
+              ))}
+            </section>
+            <div className="grid items-stretch gap-5 lg:grid-cols-[minmax(0,1fr)_311px]">
+              <section id="owner-approvals" aria-labelledby="owner-attention-title" className="flex min-h-[436px] flex-col rounded-[13px] border border-[#e5e9e3] bg-white p-5 sm:p-6">
+                <h2 id="owner-attention-title" className="font-display text-[21px] font-semibold text-[#202826]">Your attention</h2>
+                <p className="mt-2 text-[14px] text-[#758078]">{approvals.isLoading ? "Checking protected requests…" : approvals.isError ? "Approval requests could not be loaded." : pendingApprovals.length > 0 ? `${pendingApprovals.length} pending request${pendingApprovals.length === 1 ? "" : "s"} in your authorized queue.` : "No pending approval requests in your scope."}</p>
+                {approvals.isError ? <button type="button" onClick={() => void approvals.refetch()} className="mt-3 self-start text-sm font-semibold text-[#b74945] underline">Try again</button> : null}
+                <ul className="mt-5 space-y-3">
+                  {pendingApprovals.slice(0, 3).map((item, index) => (
+                    <li key={item.id} className="flex min-h-[77px] items-center gap-4 rounded-[9px] bg-[#fbfcfa] px-4">
+                      <span aria-hidden className="grid size-[35px] shrink-0 place-items-center rounded-[9px] bg-[#fff1ef] font-data text-xs text-[#b74945]">{String(index + 1).padStart(2, "0")}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[15px] font-semibold text-[#202826]">{APPROVAL_LABELS[item.kind] ?? item.kind.replaceAll("_", " ")}</p>
+                        <p className="mt-1 text-[12px] text-[#758078]">Request awaiting an authorized decision</p>
+                      </div>
+                      <span className="rounded-md bg-[#fcf1df] px-2.5 py-1 text-[11px] font-semibold text-[#9a6e32]">PENDING</span>
+                    </li>
+                  ))}
+                </ul>
+                <Link href="/customer-concerns" className="mt-auto self-end rounded-lg bg-[#29332d] px-6 py-3 text-center text-[13px] font-semibold text-white transition hover:bg-[#405247] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#da614c]">
+                  Open approvals
+                </Link>
+                <p className="mt-2 text-right text-[11px] text-[#758078]">Protected decisions remain in their authorized workflows.</p>
+              </section>
+              <section aria-labelledby="owner-quick-controls-title" className="min-h-[436px] rounded-[13px] border border-[#e5e9e3] bg-white p-5">
+                <h2 id="owner-quick-controls-title" className="font-display text-[21px] font-semibold text-[#202826]">Access & policies</h2>
+                <div className="mt-8 space-y-3">
+                  {[
+                    { title: "Team permissions", detail: "Set access per employee", href: "/team" },
+                    { title: "Branch assignments", detail: "Limit working locations", href: "/team" },
+                    { title: "Financial policies", detail: "Approval thresholds", href: "#financial-policies" },
+                    { title: "Activity audit", detail: "Review sensitive changes", href: "#activity-audit" },
+                  ].map((item) => (
+                    <Link key={item.title} href={item.href} className="block rounded-lg bg-[#f0f3ef] px-3 py-2.5 transition-colors hover:bg-[#e5e9e3] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#da614c]">
+                      <span className="block text-[14px] font-semibold text-[#202826]">{item.title} <span aria-hidden>→</span></span>
+                      <span className="mt-0.5 block text-[12px] text-[#758078]">{item.detail}</span>
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            </div>
+            <section aria-label="Additional owner account context" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <MetricCard label="Staff" value={loadingCounts ? "—" : summary.staffMembers} icon="◎" meta="Non-owner memberships" />
               <MetricCard label="Owner seats" value={loadingCounts ? "—" : summary.ownerSeats} icon="◆" tone="success" meta="Protected business access" />
               <MetricCard label="Active branches" value={loadingCounts ? "—" : summary.activeBranches} icon="⌘" tone="info" meta="Current locations" />
@@ -205,6 +282,7 @@ export default function OwnerControlsPage(): JSX.Element {
             </section>
 
             <div className="grid items-start gap-5 lg:grid-cols-[1.08fr_0.92fr]">
+              <section id="security-sessions" className="scroll-mt-24">
               <Panel className="p-5">
                 <SectionHeader
                   title="Staff permission overview"
@@ -258,6 +336,7 @@ export default function OwnerControlsPage(): JSX.Element {
                   ))}
                 </ul>
               </Panel>
+              </section>
             </div>
 
             <Panel className="p-5">
@@ -323,9 +402,9 @@ export default function OwnerControlsPage(): JSX.Element {
                 ))}
               </div>
             </Panel>
-            <OwnerFinancialPolicies />
+            <div id="financial-policies" className="scroll-mt-24"><OwnerFinancialPolicies /></div>
             <OwnerDiscountPolicies />
-            <OwnerActivityLog />
+            <div id="activity-audit" className="scroll-mt-24"><OwnerActivityLog /></div>
           </>
         ) : null}
       </main>

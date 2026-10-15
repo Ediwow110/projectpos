@@ -197,7 +197,7 @@ test("cashier queues an exact inventory movement and the manager grant writes it
   await managerPage.close();
 });
 
-test("cashier discount request appears in manager inbox and resumes only after approval", async ({ page, request, browser }) => {
+test("cashier discount request appears in manager inbox and resumes only after approval", async ({ page, request, browser }, testInfo) => {
   test.setTimeout(180_000);
   const stamp = Date.now();
   const ownerEmail = await registerOperationalBusiness(page, {
@@ -258,10 +258,27 @@ test("cashier discount request appears in manager inbox and resumes only after a
     decisionResponse = { status: response.status(), body: await response.json().catch(() => null) };
   });
   await managerPage.goto("/customer-concerns");
+  await expect(managerPage.getByRole("heading", { name: "Manager approval inbox" })).toBeVisible();
+  await expect(managerPage.getByRole("region", { name: "Approval overview" })).toBeVisible();
+  const atlasQueue = managerPage.getByRole("list", { name: "Pending approval requests" });
+  await expect(atlasQueue.getByText("Discount override")).toBeVisible();
+  await managerPage.screenshot({ path: `test-results/atlas-v4-approval-populated-inbox-${testInfo.project.name}.png`, fullPage: false });
+  await atlasQueue.getByRole("link", { name: /Discount override/ }).click();
+  await expect(managerPage).toHaveURL(/#manager-approval-/);
   await managerPage.getByLabel("Approval action type").selectOption("discount");
   const approvalCard = managerPage.locator("article").filter({ hasText: productName });
+  await expect(approvalCard.getByRole("region", { name: "Protected action review" })).toBeVisible();
+  await expect(approvalCard.getByRole("complementary", { name: "Decision safeguards" })).toBeVisible();
+  await expect(approvalCard.getByText("Required permission")).toBeVisible();
   await expect(approvalCard).toContainText("Discount override");
   await expect(approvalCard).toContainText("₱3.00");
+  await expect(approvalCard.getByText("Policy verified")).toHaveCount(0);
+  const layout = await managerPage.evaluate(() => ({
+    viewport: document.documentElement.clientWidth,
+    content: document.documentElement.scrollWidth,
+  }));
+  expect(layout.content, "Populated approval review must not overflow horizontally").toBeLessThanOrEqual(layout.viewport + 2);
+  await approvalCard.screenshot({ path: `test-results/atlas-v4-protected-action-review-${testInfo.project.name}.png` });
   await approvalCard.getByLabel("Your manager email").fill(managerEmail);
   await approvalCard.getByLabel("Approval PIN (instead)").fill("482615");
   const decisionNote = approvalCard.getByLabel("Decision note");
@@ -286,6 +303,74 @@ test("cashier discount request appears in manager inbox and resumes only after a
   expect(completed.ok()).toBe(true);
   expect(((await completed.json()) as { items: Array<{ status: string; totalMinor: number; discountMinor: number }> }).items)
     .toEqual(expect.arrayContaining([expect.objectContaining({ status: "COMPLETED", totalMinor: 2200, discountMinor: 300 })]));
+  await managerPage.close();
+});
+
+test("cashier cannot decide a queued stock exception, manager can reject it without inventory mutation", async ({ page, request, browser }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Authorization rejection is covered in desktop; other viewports use the populated approval scenario.");
+  test.setTimeout(180_000);
+  const stamp = Date.now();
+  const ownerEmail = await registerOperationalBusiness(page, {
+    ownerName: "Rejection Queue Owner", email: `reject-owner-${stamp}@example.com`,
+    password: OWNER_PASSWORD, businessName: `Rejection QA ${stamp}`,
+  });
+  const { headers: ownerHeaders } = await apiAuthedContext(request, ownerEmail, OWNER_PASSWORD, page);
+  const managerEmail = `reject-manager-${stamp}@example.com`;
+  const manager = await createStaffMember(request, ownerHeaders, {
+    email: managerEmail, name: "Rejection Manager", role: "manager",
+  });
+  const cashierEmail = `reject-cashier-${stamp}@example.com`;
+  const cashier = await createStaffMember(request, ownerHeaders, {
+    email: cashierEmail, name: "Rejection Cashier", role: "cashier",
+  });
+  const productName = `Rejection QA Goods ${stamp}`;
+  const productId = await seedProduct(request, ownerHeaders, { name: productName, priceMinor: 2500, stock: 10 });
+  // The browser's owner session is revoked by signOut below. Use a separate,
+  // still-authorized read session to verify stock after the manager decision.
+  const { headers: ownerReadHeaders } = await apiAuthedContext(request, ownerEmail, OWNER_PASSWORD);
+  await signOut(page);
+  await signIn(page, cashierEmail, cashier.tempPassword);
+  await page.goto("/inventory");
+  await page.getByLabel("Product ID or barcode").fill(productId);
+  await page.getByLabel("Movement type").selectOption("damage");
+  await page.getByLabel("Quantity").fill("2");
+  await page.getByLabel("Reason").fill("Needs photographic damage evidence");
+  await page.getByRole("button", { name: "Record", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: /Manager approval · approve damage/ });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Send to manager inbox" }).click();
+  await expect(dialog.getByRole("status")).toContainText("Request sent");
+
+  const { headers: cashierHeaders } = await apiAuthedContext(request, cashierEmail, cashier.tempPassword, page);
+  await page.goto("/customer-concerns");
+  await expect(page.getByRole("region", { name: "Approval overview" })).toHaveCount(0);
+  const managerPage = await browser.newPage();
+  await signIn(managerPage, managerEmail, manager.tempPassword);
+  await managerPage.goto("/customer-concerns");
+  const managerContext = await apiAuthedContext(request, managerEmail, manager.tempPassword, managerPage);
+  const queued = await request.get(`${API}/api/v1/approvals/requests`, { headers: managerContext.headers });
+  expect(queued.ok()).toBe(true);
+  const records = (await queued.json()) as { requests: Array<{ id: string; status: string; context?: { productName?: string } }> };
+  const target = records.requests.find((row) => row.status === "PENDING" && row.context?.productName === productName);
+  expect(target).toBeDefined();
+  const denied = await request.post(`${API}/api/v1/approvals/requests/${encodeURIComponent(target!.id)}/decision`, {
+    headers: cashierHeaders,
+    data: { decision: "REJECTED", reason: "Cashier must not review own request" },
+  });
+  expect(denied.status()).toBe(403);
+  await managerPage.getByLabel("Approval status").selectOption("ALL");
+  const card = managerPage.locator("article").filter({ hasText: productName });
+  await expect(card).toContainText("Needs photographic damage evidence");
+  await expect(card.getByRole("region", { name: "Protected action review" })).toBeVisible();
+  await card.getByLabel("Decision note").fill("Provide photos before stock removal");
+  await card.getByRole("button", { name: "Reject", exact: true }).click();
+  await expect(card).toContainText("REJECTED");
+  const rejected = await request.get(`${API}/api/v1/approvals/requests`, { headers: managerContext.headers });
+  expect(rejected.ok()).toBe(true);
+  expect(((await rejected.json()) as { requests: Array<{ id: string; status: string }> }).requests.find((row) => row.id === target!.id)?.status).toBe("REJECTED");
+  const balance = await request.get(`${API}/api/v1/inventory/balances?page=1&pageSize=100`, { headers: ownerReadHeaders });
+  expect(balance.ok()).toBe(true);
+  expect(((await balance.json()) as { items: Array<{ productId: string; qtyOnHand: number }> }).items.find((item) => item.productId === productId)?.qtyOnHand).toBe(10);
   await managerPage.close();
 });
 

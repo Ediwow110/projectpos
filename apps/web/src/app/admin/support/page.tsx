@@ -4,7 +4,7 @@ import { useState, type JSX, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "../../../components/AppShell";
 import { ConfirmDialog } from "../../../components/ConfirmDialog";
-import { PageHeader, Panel, SectionHeader } from "../../../components/premium";
+import { Panel, SectionHeader } from "../../../components/premium";
 import { GhostButton, PrimaryButton, StatusPill } from "../../../components/ui";
 import { apiFetch, ApiError } from "../../../lib/api";
 
@@ -55,11 +55,27 @@ export default function OwnerSupportPage(): JSX.Element {
     finally { setBusy(false); }
   }
 
-  return <AppShell role={me.data?.role} businessName={me.data?.businessName}><main className="mx-auto max-w-[1240px] space-y-5 px-4 pb-12 pt-3 sm:px-6">
-    <PageHeader eyebrow="Owner / Support" title="Support & platform consent" description="Handle guest requests and authorize short-lived, read-only operator diagnostics." />
+  return <AppShell role={me.data?.role} businessName={me.data?.businessName} atlasOwner><main className="mx-auto w-full max-w-none space-y-6 px-4 pb-12 pt-8 sm:px-8 lg:px-[38px]">
+    <header className="space-y-3">
+      <p className="font-data text-[11px] font-medium tracking-[0.08em] text-[#da614c]">OWNER CONTROLS / GUEST SUPPORT</p>
+      <h1 className="font-display text-[30px] font-semibold tracking-tight text-[#202826]">Support & platform consent</h1>
+      <p className="max-w-3xl text-[14px] text-[#748078]">Review verified guest requests and issue revocable, time-limited consent for independent platform diagnostics. Owner consent never grants payment or inventory authority.</p>
+    </header>
     {me.isPending ? <Panel className="p-5">Checking access…</Panel> : !owner ? <Panel className="p-5">Owner access required.</Panel> : <>
+      <section aria-label="Support overview" className="grid gap-3 sm:grid-cols-3">
+        {[
+          ["OPEN GUEST CASES", cases.data ? cases.data.items.filter((item) => item.status === "OPEN").length : "—", "Guest order support"],
+          ["ACTIVE CONSENTS", consents.data ? consents.data.items.filter((item) => !item.revokedAt && Date.parse(item.expiresAt) > Date.now()).length : "—", "Expires automatically"],
+          ["SUPPORT SCOPE", "Read-only", "Owner-authorized diagnostics"],
+        ].map(([label, value, caption]) => <div key={label} className="rounded-xl border border-[#e5e9e3] bg-white p-5">
+          <p className="font-data text-[11px] font-semibold tracking-[0.06em] text-[#748078]">{label}</p>
+          <p className="mt-3 font-display text-[26px] font-semibold text-[#202826]">{value}</p>
+          <p className="mt-2 text-xs text-[#748078]">{caption}</p>
+        </div>)}
+      </section>
       {error && <p role="alert" className="rounded-xl bg-[#fff0f0] p-4 text-sm text-[#a34132]">{error}</p>}
       {message && <p role="status" className="rounded-xl bg-[#eaf7f0] p-4 text-sm text-[#1f8a5b]">{message}</p>}
+      <div id="guest-support" className="scroll-mt-24" />
       <Panel className="p-5"><SectionHeader title="Guest support inbox" description="Case closure does not issue refunds, change stock or cancel orders." />
         {cases.isPending ? <p role="status">Loading cases…</p> : cases.isError ? <p role="alert">Could not load support cases.</p> :
           cases.data?.items.length === 0 ? <p className="mt-4 text-sm">No support cases yet.</p> :
@@ -70,6 +86,7 @@ export default function OwnerSupportPage(): JSX.Element {
             {item.status === "OPEN" && <GhostButton type="button" onClick={() => setSelected({ kind: "case", id: item.id })}>Close case</GhostButton>}
           </article>)}</div>}
       </Panel>
+      <div id="owner-consent" className="scroll-mt-24" />
       <Panel className="p-5"><SectionHeader title="Issue owner consent" description="Requires owner password. Access is limited to aggregate diagnostics and expires within 60 minutes; the operator also requires their own platform key." />
         <form className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_100px_minmax(0,1fr)_auto] md:items-end" onSubmit={(event) => void grant(event)}>
           <label className="text-xs font-semibold">Purpose<input className="field mt-1.5" value={purpose} minLength={10} maxLength={200} required onChange={(event) => setPurpose(event.target.value)} /></label>

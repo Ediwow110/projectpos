@@ -2,6 +2,7 @@
 
 import type { JSX } from "react";
 
+import Link from "next/link";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { NexposLogo } from "../../components/brand/NexposLogo";
@@ -103,19 +104,19 @@ function OrderStatusExperience(): JSX.Element {
   }
 
   return (
-    <main className="min-h-screen bg-[#fcf8f3] px-5 py-7 sm:px-8 sm:py-10">
-      <div className="mx-auto max-w-3xl">
-        <header className="flex items-center justify-between gap-4">
+    <main className="min-h-screen bg-[#f7f8f5] px-5 py-7 sm:px-8 sm:py-10">
+      <div className="mx-auto max-w-[1300px]">
+        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e5e9e3] pb-5">
           <NexposLogo size="md" />
-          <span className="font-data text-[9px] uppercase tracking-[0.12em] text-[#9a8d83]">Secure order status</span>
+          <div className="flex flex-wrap items-center gap-4"><Link href="/order-help" className="text-[13px] font-semibold text-[#53615a] hover:underline">Order help</Link><span className="font-data text-[10px] uppercase tracking-[0.12em] text-[#748078]">Secure order status</span></div>
         </header>
 
         {loading && !status ? (
-          <section className="mt-8 rounded-[16px] border border-[#eee4db] bg-white px-6 py-16 text-center shadow-[0_14px_36px_-24px_rgb(28_20_15/0.22)]">
+          <section className="mt-8 max-w-3xl rounded-[16px] border border-[#eee4db] bg-white px-6 py-16 text-center shadow-[0_14px_36px_-24px_rgb(28_20_15/0.22)]">
             <p role="status" aria-live="polite" className="font-data text-sm text-[#73685f]">Loading secure order status…</p>
           </section>
         ) : error ? (
-          <section className="mt-8 rounded-[16px] border border-[#efc9c9] bg-white p-7 shadow-[0_14px_36px_-24px_rgb(28_20_15/0.22)]">
+          <section className="mt-8 max-w-3xl rounded-[16px] border border-[#efc9c9] bg-white p-7 shadow-[0_14px_36px_-24px_rgb(28_20_15/0.22)]">
             <h1 className="font-display text-2xl font-bold">Status unavailable</h1>
             <p role="alert" className="mt-3 text-sm leading-6 text-[#a13535]">{error}</p>
             {tokenRef.current ? (
@@ -129,11 +130,12 @@ function OrderStatusExperience(): JSX.Element {
             ) : null}
           </section>
         ) : status ? (
-          <section className="mt-8 overflow-hidden rounded-[18px] border border-[#e5d9cf] bg-white shadow-[0_20px_56px_-28px_rgb(28_20_15/0.30)]">
+          <section className="mt-8 max-w-3xl overflow-hidden rounded-[18px] border border-[#e5d9cf] bg-white shadow-[0_20px_56px_-28px_rgb(28_20_15/0.30)]">
             <div className="bg-[#252422] px-6 py-7 text-white sm:px-8">
               <p className="font-data text-[9px] uppercase tracking-[0.13em] text-[#ff8061]">Order {status.id.slice(-8).toUpperCase()}</p>
               <h1 className="font-display mt-3 text-[30px] font-bold tracking-[-0.035em] sm:text-[36px]">{fulfillmentHeadline(status)}</h1>
               <p className="mt-3 max-w-xl text-sm leading-6 text-[#c9beb5]">{fulfillmentCopy(status)}</p>
+              <a href="#order-support" className="mt-5 inline-flex min-h-11 items-center justify-center rounded-lg border border-[#819089] px-5 text-[13px] font-semibold text-white transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">Report an order issue ↓</a>
             </div>
 
             <div className="grid gap-6 px-6 py-6 sm:px-8">
@@ -193,7 +195,7 @@ function OrderStatusExperience(): JSX.Element {
             </div>
           </section>
         ) : null}
-        {status && tokenRef.current ? <div className="mt-5"><GuestSupportForm statusToken={tokenRef.current} /></div> : null}
+        {status && tokenRef.current ? <div id="order-support" className="mt-10 scroll-mt-6 border-t border-[#e5e9e3] pt-8"><GuestSupportForm statusToken={tokenRef.current} orderReference={status.id.slice(-8).toUpperCase()} /></div> : null}
       </div>
     </main>
   );

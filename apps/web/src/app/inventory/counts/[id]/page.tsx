@@ -5,6 +5,7 @@ import Link from "next/link";
 import { use, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "../../../../components/AppShell";
+import { AtlasInventorySafeguards } from "../../../../components/AtlasInventorySafeguards";
 import { ManagerApprovalDialog } from "../../../../components/ManagerApprovalDialog";
 import { MetricCard, PageHeader, Panel, SectionHeader } from "../../../../components/premium";
 import { DangerButton, PrimaryButton, StatusPill } from "../../../../components/ui";
@@ -57,7 +58,14 @@ export default function StockCountDetailPage({ params }: { params: Promise<{ id:
   if (query.isError || !count) return <AppShell><main className="mx-auto max-w-[1240px] p-6"><Panel className="border-[#efb9b9] bg-[#fff0f0] p-6"><p role="alert" className="text-sm font-medium text-[#c43e3e]">{query.error instanceof ApiError ? `${query.error.code}: ${query.error.message}` : "Count could not be loaded."}</p><Link href="/inventory/counts" className="mt-3 inline-block text-sm font-semibold text-[#e44e34]">Back to stock counts</Link></Panel></main></AppShell>;
   const summary = varianceSummary(count.lines);
   const uncounted = count.lines.filter((line) => line.countedQty === null).length;
-  return <AppShell businessName={me.data?.businessName} role={role}><main className="mx-auto max-w-[1240px] space-y-5 px-4 pb-10 pt-3 sm:px-6">
+  return <AppShell businessName={me.data?.businessName} role={role} atlasInventory><main className="mx-auto w-full max-w-none space-y-5 px-4 pb-10 pt-8 sm:px-7">
+    <AtlasInventorySafeguards title="Scan & count" description="Check expected and observed quantities before submitting a stock variance for review." rules={["Frozen expected units protect the original count scope.", "Count lines require the inventory.adjust permission.", "Only authorized posting changes stock after review."]}>
+      <h3 className="font-display text-[22px] font-semibold text-[#202826]">Cycle count {count.countNumber}</h3>
+      <p className="mt-2 text-sm text-[#748078]">{count.name} · {count.lines.length} products · {uncounted} not yet counted</p>
+      <div className="mt-4 space-y-2">{count.lines.slice(0, 4).map((line) => <div key={line.id} className="grid gap-2 rounded-lg bg-[#f7f8f5] p-4 text-sm sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:items-center"><span className="font-semibold text-[#202826]">{line.productNameSnapshot}</span><span>{line.expectedQtySnapshot} expected</span><span>{line.countedQty === null ? "Not counted" : `${line.countedQty} counted`}</span><span className={"rounded-md px-2 py-1 text-center text-xs " + (line.countedQty !== null && line.varianceQty === 0 ? "bg-[#e9f4ec] text-[#267552]" : "bg-[#fcf1df] text-[#9a6e32]")}>{line.countedQty === null ? "Pending" : line.varianceQty === 0 ? "Matched" : "Variance"}</span></div>)}</div>
+      <a href="#count-lines" className="mt-5 inline-flex min-h-11 items-center justify-center rounded-lg bg-[#29332d] px-5 text-sm font-semibold text-white hover:bg-[#35423d]">Review count lines</a>
+    </AtlasInventorySafeguards>
+    <div id="count-lines" className="scroll-mt-24" />
     <PageHeader eyebrow={`Inventory / ${count.countNumber}`} title={count.name} description={`${count.scopeType === "FULL" ? "Full" : "Partial"} count · ${me.data?.activeBranchName ?? "All branches"}`} actions={<><StatusPill tone={countTone(count.status)}>{count.status}</StatusPill><Link href="/inventory/counts" className="inline-flex min-h-10 items-center rounded-[10px] border border-[#e4d9d0] bg-white px-4 text-sm font-semibold text-[#2a241f] hover:border-[#f35d3f]">All counts</Link></>} />
     <section aria-label="Count summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><MetricCard label="Products" value={count.lines.length} icon="#" meta={`${uncounted} uncounted`} /><MetricCard label="Positive variance" value={`+${summary.positive}`} icon="↑" tone="success" meta="Units" /><MetricCard label="Negative variance" value={summary.negative} icon="↓" tone="warning" meta="Units" /><MetricCard label="Net variance" value={summary.net > 0 ? `+${summary.net}` : summary.net} icon="±" tone={summary.net === 0 ? "info" : "warning"} meta={`${summary.products} products changed`} /></section>
     {error ? <Panel className="border-[#efb9b9] bg-[#fff0f0] p-4"><p role="alert" className="text-sm font-medium text-[#c43e3e]">{error}</p>{error.startsWith("COUNT_STALE") ? <p className="mt-1 text-xs text-[#8f3c3c]">Inventory changed after this count started. Refresh the affected products and recount them.</p> : null}</Panel> : null}

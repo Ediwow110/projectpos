@@ -5,6 +5,8 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { ApiError } from "../lib/api";
 import { AppShell } from "./AppShell";
 
+vi.stubGlobal("React", React);
+
 const fixture = vi.hoisted(() => ({ error: new Error("uninitialized") as Error, data: undefined as undefined | { role: string; onboardingRequired: boolean } }));
 vi.mock("next/navigation", () => ({
   usePathname: () => "/team",
@@ -73,6 +75,19 @@ describe("workspace access failures", () => {
     expect(html).toContain('class="sm:hidden"');
     expect(html).toContain('src="/brand/nexpos-logo.svg"');
     expect(html).toContain('src="/brand/nexpos-mark.svg"');
+  });
+
+  it("uses a compact V4 mobile role header with an accessible navigation disclosure", () => {
+    fixture.data = { role: "owner", onboardingRequired: false };
+    fixture.error = new ApiError("NETWORK_TIMEOUT", "Timed out", "", 0);
+    const html = renderToStaticMarkup(<AppShell atlasOwner role="owner"><p>Owner workspace</p></AppShell>);
+    expect(html).toContain('data-ui="atlas-mobile-header"');
+    expect(html).toContain('aria-label="Open workspace menu"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('aria-controls="atlas-mobile-navigation"');
+    expect(html).toContain('id="atlas-mobile-navigation"');
+    expect(html).toContain('class="hidden xl:hidden');
+    expect(html).toMatch(/uppercase[^"]*">owner<\/span>/);
   });
 
   it("uses one redirect when signing out", () => {

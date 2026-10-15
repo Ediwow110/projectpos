@@ -38,7 +38,7 @@ async function skipToMain(page: Page): Promise<void> {
   await expect(page.getByRole("main")).toBeFocused();
 }
 
-test("cashier submits a receipt concern and managers race safely while history survives refresh", async ({ page, request, browser }) => {
+test("cashier submits a receipt concern and managers race safely while history survives refresh", async ({ page, request, browser }, testInfo) => {
   test.setTimeout(180_000);
   const stamp = Date.now();
   const ownerEmail = await registerOperationalBusiness(page, {
@@ -90,9 +90,14 @@ test("cashier submits a receipt concern and managers race safely while history s
   await signOut(page);
   await signIn(page, cashierEmail, cashier.tempPassword);
   await page.goto("/receipts/lookup");
+  await expect(page.getByRole("table")).toHaveCount(0);
+  await page.screenshot({ path: `test-results/atlas-v4-lookup-empty-${testInfo.project.name}.png`, fullPage: false });
   const receiptInput = page.getByLabel("Receipt number");
   const lookupUrl = "**/api/v1/receipts/lookup?*";
   await receiptInput.fill("NO-SUCH-RECEIPT");
+  await expect(page.getByText("Receipt number ready to search")).toBeVisible();
+  await expect(page.getByRole("table")).toHaveCount(0);
+  await page.screenshot({ path: `test-results/atlas-v4-lookup-entered-${testInfo.project.name}.png`, fullPage: false });
   await page.route(lookupUrl, (route) => route.abort());
   await receiptInput.press("Enter");
   await expect(page.getByRole("region", { name: "Receipt lookup result" }).getByRole("alert")).toContainText("Could not reach the store service");
@@ -100,11 +105,12 @@ test("cashier submits a receipt concern and managers race safely while history s
 
   await receiptInput.fill("NO-SUCH-RECEIPT");
   await page.route(lookupUrl, async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await new Promise((resolve) => setTimeout(resolve, 800));
     await route.continue();
   });
   await receiptInput.press("Enter");
-  await expect(page.getByText("Searching receipts in your current access")).toBeVisible();
+  await expect(page.getByText("Looking for receipt NO-SUCH-RECEIPT")).toBeVisible();
+  await page.screenshot({ path: `test-results/atlas-v4-lookup-searching-${testInfo.project.name}.png`, fullPage: false });
   await expect(page.getByText("No matching receipt is available within your current access.")).toBeVisible();
   await page.unroute(lookupUrl);
 
@@ -112,6 +118,7 @@ test("cashier submits a receipt concern and managers race safely while history s
   await receiptInput.press("Enter");
   await expect(page.getByRole("heading", { name: `Receipt ${sale!.receiptNo}` })).toBeVisible();
   await expect(page.getByRole("table")).toContainText(productName);
+  await page.screenshot({ path: `test-results/atlas-v4-lookup-match-${testInfo.project.name}.png`, fullPage: false });
   await expect(page.getByText("not a tax invoice or a BIR-compliant document")).toBeVisible();
 
   const issueLink = page.getByRole("link", { name: "Report an item concern" });
@@ -119,11 +126,13 @@ test("cashier submits a receipt concern and managers race safely while history s
   await expect(issueLink).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(new RegExp(`/customer-concerns/new/${sale!.receiptNo}$`));
-  await expect(page.getByRole("heading", { name: "Customer complaint intake" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: (page.viewportSize()?.width ?? 1440) < 640 ? "Report a product issue" : "Customer complaint intake" })).toBeVisible();
   await expect(page.getByText("RECEIPT VERIFIED")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Verified receipt" })).toContainText(sale!.receiptNo);
   await expect(page.getByRole("group", { name: "Items and quantities" })).toBeVisible();
   await expect(page.getByLabel("Issue reason")).toBeVisible();
   await expect(page.getByLabel("Requested outcome")).toBeVisible();
+  await page.screenshot({ path: `test-results/atlas-v4-complaint-intake-${testInfo.project.name}.png`, fullPage: false });
   const quantityInput = page.getByLabel(`Concern quantity for ${productName}`);
   await tabTo(page, quantityInput);
   await expect(quantityInput).toBeFocused();
@@ -136,6 +145,10 @@ test("cashier submits a receipt concern and managers race safely while history s
   await expect(notes).toBeFocused();
   await page.keyboard.type("Customer reports the item was damaged.");
   const submitConcern = page.getByRole("button", { name: "Submit for review" });
+  if ((page.viewportSize()?.width ?? 1440) < 640) {
+    expect(await submitConcern.evaluate((button) => getComputedStyle(button).position)).toBe("fixed");
+    expect(await submitConcern.evaluate((button) => button.getBoundingClientRect().height)).toBeGreaterThanOrEqual(53);
+  }
   await tabTo(page, submitConcern);
   await expect(submitConcern).toBeFocused();
   const concernIdempotencyKeys: string[] = [];
@@ -164,6 +177,7 @@ test("cashier submits a receipt concern and managers race safely while history s
   await page.unroute("**/api/v1/customer-concerns");
   const submittedHeading = page.getByRole("heading", { name: "Complaint submitted" });
   await expect(submittedHeading).toBeFocused();
+  await page.screenshot({ path: `test-results/atlas-v4-complaint-submitted-${testInfo.project.name}.png`, fullPage: false });
 
   const anonymousCases = await request.get(`${API}/api/v1/customer-concerns`);
   expect(anonymousCases.status()).toBe(401);
@@ -214,6 +228,8 @@ test("cashier submits a receipt concern and managers race safely while history s
   await expect(caseCard).toBeVisible();
   await expect(caseCard).toContainText("PENDING");
   await expect(caseCard).toContainText("Customer reports the item was damaged.");
+  await expect(page.getByRole("region", { name: "Complaint and refund history" })).toContainText(sale!.receiptNo);
+  await page.screenshot({ path: `test-results/atlas-v4-complaint-history-${testInfo.project.name}.png`, fullPage: false });
   await caseCard.getByLabel("Decision note").fill("Reviewed damaged item request.");
   const authorizeCase = caseCard.getByRole("button", { name: "Authorize request" });
   await tabTo(page, authorizeCase);
@@ -226,7 +242,7 @@ test("cashier submits a receipt concern and managers race safely while history s
 
   await page.reload();
   await page.getByLabel("Case status").selectOption("ALL");
-  await expect(page.getByText("APPROVED", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Customer case results" }).getByText("APPROVED", { exact: true })).toBeVisible();
   await expect(page.getByText("Process approved refund")).toBeVisible();
 
   const rejectedReceiptResponse = await request.get(`${API}/api/v1/receipts/lookup?receiptNo=${encodeURIComponent(rejectedSale!.receiptNo)}`, { headers: cashierApiHeaders });
@@ -343,7 +359,7 @@ test("over-threshold concern is non-actionable for managers and requires owner r
   await expect(managerCard).toContainText("This amount requires an owner decision.");
   await expect(managerCard.getByRole("button", { name: "Authorize request" })).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await signOut(page);
   await page.context().clearCookies();
   await page.goto("/login");
   await page.getByLabel("Email").fill(ownerEmail);
@@ -353,7 +369,11 @@ test("over-threshold concern is non-actionable for managers and requires owner r
   const tour = page.getByRole("dialog", { name: "Welcome to NexPOS" });
   if (await tour.isVisible().catch(() => false)) await tour.getByRole("button", { name: "Skip tour" }).click();
   await openInbox(page);
+  await expect(page.getByRole("heading", { name: "Owner escalation required" })).toBeInViewport();
+  await expect(page.getByRole("link", { name: "Review owner request" })).toHaveAttribute("href", "#customer-case-decisions");
   await skipToMain(page);
+  await expect(page.getByRole("heading", { name: "Owner escalation required" })).toBeVisible();
+  await page.screenshot({ path: "test-results/atlas-v4-owner-escalation-desktop.png", fullPage: false });
   const ownerCard = page.locator("section[aria-label='Customer case results']").filter({ hasText: sale!.receiptNo });
   await expect(ownerCard).toContainText("OWNER REVIEW");
   const ownerNote = ownerCard.getByLabel("Decision note");

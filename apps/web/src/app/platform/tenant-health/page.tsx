@@ -3,7 +3,7 @@
 import type { JSX, FormEvent } from "react";
 import Link from "next/link";
 import { useState } from "react";
-import { NexposLogo } from "../../../components/brand/NexposLogo";
+import { AtlasPlatformShell } from "../../../components/AtlasPlatformShell";
 import { apiFetch, ApiError } from "../../../lib/api";
 
 interface Diagnostics {
@@ -39,20 +39,27 @@ export default function PlatformTenantHealthPage(): JSX.Element {
     } finally { setBusy(false); }
   }
 
-  return <main className="min-h-screen bg-[#fcf8f3] px-4 py-8 sm:px-8">
-    <div className="mx-auto max-w-3xl space-y-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <NexposLogo size="md" />
-        <span className="font-data text-xs font-semibold uppercase tracking-widest text-[#ad533f]">Restricted platform operator</span>
-      </header>
-      <section className="rounded-2xl border border-[#e6dcd3] bg-white p-6 shadow-sm sm:p-8">
-        <h1 className="font-display text-2xl font-semibold text-[#2a241f]">Tenant health</h1>
-        <p className="mt-2 text-sm leading-6 text-[#73685f]">Read-only operational counts. Requires independent operator authentication and a time-limited consent issued by the business owner. No customer or payment details are shown.</p>
+  return <AtlasPlatformShell current="health" title="Platform tenant health" description="Platform administrators are not retail owners and must never inherit unscoped customer data.">
+    <section aria-label="Platform access boundaries" className="grid gap-4 sm:grid-cols-3">
+      {[
+        ["TENANT ACCESS", data ? "Verified" : "Restricted", "Per-business consent only"],
+        ["DIAGNOSTICS", data ? "Available" : "Awaiting consent", "No cross-tenant browsing"],
+        ["OPERATOR SCOPE", "Read-only", "Aggregate counters only"],
+      ].map(([label, value, caption]) => <div key={label} className="rounded-xl border border-[#e5e9e3] bg-white px-5 py-4">
+        <p className="font-data text-[11px] font-semibold tracking-[0.08em] text-[#748078]">{label}</p>
+        <p className="mt-3 font-display text-[22px] font-semibold text-[#202826]">{value}</p>
+        <p className="mt-2 text-xs text-[#748078]">{caption}</p>
+      </div>)}
+    </section>
+    <div className="max-w-5xl">
+      <section className="rounded-[13px] border border-[#e5e9e3] bg-white p-5 sm:p-7">
+        <h2 className="font-display text-[23px] font-semibold text-[#202826]">Tenant health</h2>
+        <p className="mt-2 text-sm leading-6 text-[#748078]">Inspect one authorized tenant. Independent operator credentials and unexpired owner consent are required; no customer or payment details are returned.</p>
         <form className="mt-6 grid gap-4" onSubmit={(event) => void inspect(event)}>
           <label className="text-xs font-semibold text-[#655b53]">Business ID<input className="field mt-1.5" required value={businessId} onChange={(event) => setBusinessId(event.target.value)} autoComplete="off" /></label>
           <label className="text-xs font-semibold text-[#655b53]">Operator key<input className="field mt-1.5" required type="password" value={key} onChange={(event) => setKey(event.target.value)} autoComplete="off" /></label>
           <label className="text-xs font-semibold text-[#655b53]">Owner consent token<input className="field mt-1.5" required type="password" value={consent} onChange={(event) => setConsent(event.target.value)} autoComplete="off" /></label>
-          <button type="submit" disabled={busy || !key || !consent || !businessId.trim()} className="min-h-11 rounded-lg bg-[#f35d3f] px-5 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Checking…" : "View authorized diagnostics"}</button>
+          <button type="submit" disabled={busy || !key || !consent || !businessId.trim()} className="min-h-11 rounded-lg bg-[#29332d] px-5 text-sm font-semibold text-white hover:bg-[#35423d] disabled:opacity-50">{busy ? "Checking…" : "View authorized diagnostics"}</button>
         </form>
         {error && <p role="alert" className="mt-5 rounded-xl bg-[#fff0f0] p-4 text-sm text-[#a34132]">{error}</p>}
         {data && <section aria-label="Tenant diagnostics" className="mt-6 border-t border-[#eee4db] pt-5">
@@ -64,14 +71,17 @@ export default function PlatformTenantHealthPage(): JSX.Element {
               ["Active branches", data.activeBranches],
               ["Sales records", data.sales],
               ["Open guest cases", data.openSupportCases],
-            ].map(([label, value]) => <div key={label} className="rounded-xl bg-[#fcf8f3] p-3">
+            ].map(([label, value]) => <div key={label} className="rounded-xl bg-[#f7f8f5] p-3">
               <dt className="text-xs text-[#73685f]">{label}</dt><dd className="font-data mt-2 text-2xl font-bold">{value}</dd>
             </div>)}
           </dl>
           <p className="mt-4 text-xs text-[#73685f]">Read access is audited; this view does not permit changes to tenant resources.</p>
         </section>}
       </section>
-      <Link href="/platform" className="inline-flex min-h-10 items-center text-xs font-semibold text-[#a64a34] underline">Other platform operations</Link>
+      <div className="mt-4 flex flex-wrap gap-5 text-xs">
+        <Link href="/platform/support-access" className="font-semibold text-[#267552] underline">How to obtain owner consent</Link>
+        <Link href="/platform" className="font-semibold text-[#53615a] underline">Other platform operations</Link>
+      </div>
     </div>
-  </main>;
+  </AtlasPlatformShell>;
 }

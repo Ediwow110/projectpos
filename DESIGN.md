@@ -144,3 +144,45 @@ Voice is operational, concise, and specific. Unknown/pending/offline states are 
 - Don't: reintroduce generic blue/navy SaaS chrome.
 - Don't: use random decorative trend strokes, fake metrics, gradients, or color-only status.
 - Don't: expose business financial, customer, employee, or inventory figures before authentication.
+
+## Atlas 2026 V4 operational surfaces
+
+Figma Atlas V4 is an **additional, role-specific operational layout** within NexPOS,
+not permission to replace the existing POS transaction engine or invent example
+transactions. The older cream/coral direction above still applies to routes not
+yet designated as Atlas V4. The source file is
+`xr66O7yTaG0bhMhDI2UI7R` (Owner 95:2, Approvals 97:2, Inventory 98:273,
+Guest/Platform 99:2, Responsive QA 100:2).
+
+- **Tokens:** V4 canvas `#F7F8F5`, white surfaces, primary text `#202826`,
+  dark action `#29332D`, subdued text `#748078`, lines `#E5E9E3`,
+  owner/approvals accent `#DA614C`, inventory/verified accent `#267552`.
+  Heading font is Sora; operational text uses IBM Plex Sans; data/receipts
+  use IBM Plex Mono. Status still needs a text label in addition to color.
+- **Desktop shells:** owner sidebar 239px; approvals sidebar 230px; inventory
+  sidebar 226px; platform sidebar 233px. Major desktop headers are approximately
+  78–80px high; content is fluid rather than a scaled 1440px screenshot.
+- **Atlas mobile shell:** 77px white header, 42px dark square NexPOS mark,
+  visible role badge and a minimum 44px menu disclosure. Navigation,
+  active-branch selection, tour controls and sign-out are reachable from the
+  expanded menu. Escape closes it and returns focus to the disclosure.
+  The mobile concept frames are 100:3 (employee access), 100:34 (approvals),
+  100:64 (receipt complaint), and 100:88 (guest support).
+- **Real workflow states:** employee access uses actual role/branch/register
+  restrictions, not fabricated permission labels. Approvals display scoped
+  queued records, or an explicit empty/error state. Receipt complaints use
+  verified purchases, eligible quantities and idempotent manager review.
+  Guest support uses an authenticated-by-token order-status link; never
+  substitute a typed reference number for verification. Mobile submit/review
+  actions use a reachable, minimum 53px control, without covering content.
+- **Implementation boundaries:** reuse existing server-approved grants,
+  sales/refunds, stock counts, purchase/receiving and guest order status.
+  Separate design-only inventory lot/expiry and platform controls from
+  backend capabilities that actually exist; do not display mock data as live
+  truth or silently add APIs. Approval must not execute a protected action.
+  Never change financial or inventory authority, PayMongo settlement rules,
+  or cross-tenant isolation merely to reproduce a Figma frame.
+- **Acceptance:** verify role-aware access, privacy, keyboard/focus, reduced
+  motion, loading/empty/error/retry states and 390/820/1024/1280/1440px
+  viewport behavior. Operational content may be taller than a fixed Figma
+  example because valid product lines and customer cases cannot be truncated.

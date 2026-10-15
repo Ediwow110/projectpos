@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppShell } from "../../../components/AppShell";
+import { AtlasInventorySafeguards } from "../../../components/AtlasInventorySafeguards";
 import { ConfirmDialog } from "../../../components/ConfirmDialog";
 import { PageHeader, MetricCard, Panel, SectionHeader } from "../../../components/premium";
 import { GhostButton, PrimaryButton, StatusPill } from "../../../components/ui";
@@ -131,7 +132,14 @@ export default function StockRiskPage(): JSX.Element {
     } finally { setBusy(false); }
   }
 
-  return <AppShell role={role} businessName={me.data?.businessName}><main className="mx-auto w-full max-w-[1300px] space-y-5 px-4 pb-10 pt-3 sm:px-6">
+  return <AppShell role={role} businessName={me.data?.businessName} atlasInventory><main className="mx-auto w-full max-w-none space-y-5 px-4 pb-10 pt-8 sm:px-7">
+    <AtlasInventorySafeguards title="Expiry & damage" description="Record damaged or date-sensitive products without changing inventory automatically." alert="Lot-level tracking and automatic quarantine require a separate data-model review." rules={["Reports capture the affected product, quantity, reason and any expiry date.", "Open reports do not automatically quarantine or reserve products.", "Only an authorized disposal can reduce the recorded stock balance."]}>
+      <h3 className="font-display text-[22px] font-semibold text-[#202826]">Reported stock risks</h3>
+      <p className="mt-2 text-sm text-[#748078]">Report an observation below, then review the details and any subsequent disposal.</p>
+      {risks.isPending ? <p role="status" className="mt-4 text-sm">Loading reports…</p> : risks.isError ? <p role="alert" className="mt-4 text-sm text-[#a34132]">Stock reports are not available.</p> : all.length === 0 ? <p className="mt-4 rounded-lg bg-[#f0f3ef] p-4 text-sm">No reports within your current scope.</p> : <div className="mt-4 space-y-2">{all.slice(0, 3).map((risk) => <div key={risk.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[#f7f8f5] p-4 text-sm"><span className="font-semibold text-[#202826]">{productNames.get(risk.productId) ?? "Inventory product"} · {risk.quantity} units</span><span className="text-[#748078]">{risk.kind === "DAMAGE" ? "Damaged" : "Expiry observation"}</span><StatusPill tone={risk.status === "DISPOSED" ? "ok" : "warn"}>{riskLabel(risk, today)}</StatusPill></div>)}</div>}
+      <a href="#stock-risk-workflow" className="mt-5 inline-flex min-h-11 items-center justify-center rounded-lg bg-[#29332d] px-5 text-sm font-semibold text-white hover:bg-[#35423d]">Review stock issues</a>
+    </AtlasInventorySafeguards>
+    <div id="stock-risk-workflow" className="scroll-mt-24" />
     <PageHeader eyebrow="Inventory / Atlas 2026" title="Damage & expiration register"
       description="Record damaged and date-sensitive inventory. Recording an issue does not remove units from saleable stock; disposal is a separate, audited step."
       actions={<Link href="/inventory/counts" className="inline-flex min-h-10 items-center rounded-lg border border-[#e4d9d0] px-3 py-2 text-sm font-semibold">Stock counts</Link>} />

@@ -129,10 +129,10 @@ export default function NewCustomerConcernPage(): JSX.Element {
   const eligibility = receipt.data ? eligibilityMessage(receipt.data.status) : null;
   const canSubmit = Boolean(receipt.data && !eligibility && Object.values(quantities).some((qty) => qty > 0));
 
-  return <AppShell businessName={me.data?.businessName} role={me.data?.role ?? "cashier"}>
-    <main className="mx-auto w-full max-w-[1240px] space-y-5 px-4 pb-10 pt-3 sm:px-6">
+  return <AppShell businessName={me.data?.businessName} role={me.data?.role ?? "cashier"} atlasCashier>
+    <main className={me.data?.role === "cashier" ? "mx-auto w-full max-w-none space-y-6 px-4 pb-32 pt-8 sm:px-8 sm:pb-12 lg:px-[38px]" : "mx-auto w-full max-w-[1240px] space-y-5 px-4 pb-32 pt-3 sm:px-6 sm:pb-10"}>
       <header className="flex flex-wrap items-end justify-between gap-4">
-        <div><p className="font-data text-[10px] font-medium uppercase tracking-[0.16em] text-[#f35d3f]">Customer service / Atlas 2026</p><h1 ref={headingRef} tabIndex={-1} className="font-display mt-1 text-[30px] font-bold leading-tight text-[#17130f] focus:outline-none sm:text-[34px]">Customer complaint intake</h1><p className="mt-2 max-w-3xl text-[13px] leading-5 text-[#73685f]">Verify the original purchase, choose affected quantities, and submit a request for review.</p></div>
+        <div><p className="font-data text-[10px] font-medium uppercase tracking-[0.16em] text-[#da614c]">Customer service / Atlas 2026</p><h1 ref={submitted ? submittedHeadingRef : headingRef} tabIndex={-1} className="font-display mt-1 text-[30px] font-semibold leading-tight text-[#202826] focus:outline-none">{submitted ? 'Complaint submitted' : <><span className="sm:hidden">Report a product issue</span><span className="hidden sm:inline">Customer complaint intake</span></>}</h1><p className="mt-2 max-w-3xl text-[13px] leading-5 text-[#748078]">{submitted ? 'The request is queued for authorized review. No financial or inventory changes have occurred.' : 'Verify the original purchase, choose affected quantities, and submit a request for review.'}</p></div>
         <Link href="/receipts/lookup" className="inline-flex min-h-10 items-center rounded-lg border border-[#dce3dc] bg-white px-4 text-sm font-semibold text-[#202826] hover:border-[#9baa9d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#267552]">Back to receipt lookup</Link>
       </header>
 
@@ -140,18 +140,21 @@ export default function NewCustomerConcernPage(): JSX.Element {
       {message ? <div role="alert"><Panel className="space-y-3 border-[#efc8be] p-6"><p className="text-sm text-[#a34132]">{message}</p><Link href="/receipts/lookup" className="inline-flex min-h-10 items-center rounded-lg border border-[#dce3dc] bg-white px-4 text-sm font-semibold text-[#202826]">Return to receipt lookup</Link></Panel></div> : null}
 
       {receipt.data ? <>
-        <Panel className="!rounded-[12px] border-0 bg-[#e8f4ec] p-5 sm:px-6">
+        {!submitted ? <section role="region" aria-label="Verified receipt"><Panel className="!rounded-[12px] border-0 bg-[#e8f4ec] p-4 sm:p-5 sm:px-6">
           <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#267552]">Receipt verified</p>
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-            <p className="font-display text-base font-semibold text-[#202826]">{receipt.data.receiptNo} <span className="font-sans text-sm font-normal text-[#53615a]">/ {receiptDate(receipt.data.createdAt)} / Total {money(receipt.data.totalMinor)}</span></p>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="font-display text-[22px] font-semibold tracking-tight text-[#202826]">{receipt.data.receiptNo}</p>
+              <p className="mt-1 text-xs leading-5 text-[#53615a]">{receiptDate(receipt.data.createdAt)} · Total {money(receipt.data.totalMinor)}</p>
+            </div>
             <span className="rounded-md bg-white/70 px-2.5 py-1.5 text-[10px] font-semibold uppercase text-[#267552]">{receipt.data.status.replaceAll("_", " ")}</span>
           </div>
           <p className="mt-2 text-xs text-[#53615a]">This is a POS receipt for the recorded sale. It is not a tax invoice or a BIR-compliant document.</p>
-        </Panel>
+        </Panel></section> : null}
 
         {submitted ? <Panel className="mx-auto max-w-[800px] px-6 py-10 text-center sm:px-10">
           <span aria-hidden className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f4ec] text-2xl font-semibold text-[#267552]">✓</span>
-          <h2 ref={submittedHeadingRef} tabIndex={-1} className="mt-5 font-display text-xl font-semibold text-[#202826] focus:outline-none">Complaint submitted</h2>
+          <h2 className="mt-5 font-display text-xl font-semibold text-[#202826]">Request sent to a manager</h2>
           <p role="status" className="mt-2 text-sm leading-6 text-[#53615a]">Your case has been submitted and is {submitted.status === "OWNER_REVIEW" ? "pending OWNER REVIEW" : submitted.status.replaceAll("_", " ").toLowerCase()}. No funds or inventory changed.</p>
           <p className="mt-2 font-data text-xs text-[#707b75]">Case reference {submitted.id}</p>
           <div className="mt-6 flex flex-wrap justify-center gap-2"><Link href="/customer-concerns" className="inline-flex min-h-10 items-center rounded-lg bg-[#202826] px-4 text-sm font-semibold text-white hover:bg-[#35423d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#267552]">View case history</Link><Link href="/receipts/lookup" className="inline-flex min-h-10 items-center rounded-lg border border-[#dce3dc] bg-white px-4 text-sm font-semibold text-[#202826]">Look up another receipt</Link></div>
@@ -178,7 +181,7 @@ export default function NewCustomerConcernPage(): JSX.Element {
               <label htmlFor="concern-note" className="block text-[11px] font-semibold text-[#707b75]">Customer notes <span className="font-normal">(optional)</span><textarea id="concern-note" maxLength={500} value={note} onChange={(event) => setNote(event.target.value)} rows={3} placeholder="Describe the reported issue" className="mt-1 w-full resize-y rounded-lg border border-[#dce3dc] bg-[#fafbf9] p-3 text-sm font-normal text-[#202826] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#267552]" /></label>
               {concern.isError ? <p role="alert" className="text-sm text-[#a34132]">{concern.error instanceof ApiError && concern.error.code === "RETURN_EXCEEDS_RETURNABLE" ? "Some quantity is already in another case or has been refunded. Refresh the receipt and try again." : concern.error instanceof ApiError && concern.error.code === "SALE_NOT_RETURNABLE" ? "This sale is not eligible for an item concern until payment is confirmed. No refund or stock change was made." : "The case could not be submitted. No refund or stock change was made."}</p> : null}
               <p className="text-[11px] leading-5 text-[#748078]">Submitting creates a request for review. It does not issue a refund or change stock.</p>
-              <button ref={submitButtonRef} type="submit" disabled={concern.isPending || !canSubmit} className="inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-[#202826] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#35423d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#267552] disabled:cursor-not-allowed disabled:opacity-50">{concern.isPending ? "Submitting…" : "Submit for review"}</button>
+              <button ref={submitButtonRef} type="submit" disabled={concern.isPending || !canSubmit} className="fixed inset-x-4 bottom-4 z-[70] inline-flex min-h-[53px] items-center justify-center rounded-lg bg-[#202826] px-4 text-sm font-semibold text-white shadow-[0_0_0_12px_white] transition-colors hover:bg-[#35423d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#267552] disabled:cursor-not-allowed disabled:opacity-50 sm:static sm:inset-auto sm:min-h-11 sm:w-full sm:shadow-none">{concern.isPending ? "Submitting…" : "Submit for review"}</button>
             </form>}
           </Panel>
         </div>}

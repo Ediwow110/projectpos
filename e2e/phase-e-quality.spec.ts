@@ -43,14 +43,18 @@ test("Phase E: owner / manager / cashier routes reflow across five viewports", a
     await page.setViewportSize({ width: size.width, height: size.height });
     for (const path of ["/team", "/admin/owner-controls", "/customer-concerns", "/receipts/lookup", "/admin/support"]) {
       await page.goto(path);
-      await expect(page.locator("h1")).toBeVisible();
+      await expect(page.locator("h1:visible")).toHaveCount(1);
       await checkViewport(page, path, size.width);
+      await page.screenshot({ path: `test-results/atlas-v4-phase-e-${path.slice(1).replaceAll("/", "-")}-${size.label}.png`, fullPage: false });
       if (path === "/team") {
         const mobileAccess = page.getByRole("region", { name: "Mobile employee access" });
         if (size.width < 640) {
           await expect(mobileAccess).toBeVisible();
           await expect(page.getByRole("table")).toBeHidden();
           await expect(mobileAccess.getByText("Phase E Cashier")).toBeVisible();
+          await expect(mobileAccess.locator("article").first()).toContainText("Phase E Manager");
+          await expect(page.getByRole("heading", { name: "Employee access" })).toBeVisible();
+          await expect(page.getByRole("region", { name: "Mobile employee permissions" })).toBeVisible();
         } else {
           await expect(mobileAccess).toBeHidden();
           await expect(page.getByRole("table")).toBeVisible();
@@ -61,6 +65,20 @@ test("Phase E: owner / manager / cashier routes reflow across five viewports", a
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/team");
+  const atlasHeader = page.locator('[data-ui="atlas-mobile-header"]');
+  await expect(atlasHeader).toBeVisible();
+  await expect(atlasHeader.getByText("NexPOS")).toBeVisible();
+  await expect(atlasHeader.getByText("owner", { exact: true })).toBeVisible();
+  const atlasMenuButton = atlasHeader.getByRole("button", { name: "Open workspace menu" });
+  await expect(atlasMenuButton).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeHidden();
+  await atlasMenuButton.click();
+  await expect(atlasHeader.getByRole("button", { name: "Close workspace menu" })).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeVisible();
+  await expect(page.locator('[data-ui="shell-mobile-more"]').getByLabel("Active branch")).toBeVisible();
+  await expect(page.locator('[data-ui="shell-mobile-more"]').getByRole("button", { name: "Sign out" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeHidden();
   const permissions = page.getByRole("button", { name: "Permissions", exact: true }).first();
   await expect(permissions).toBeVisible();
   expect(await permissions.evaluate((el) => el.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
@@ -68,6 +86,8 @@ test("Phase E: owner / manager / cashier routes reflow across five viewports", a
   const dialog = page.getByRole("dialog", { name: "Employee permission restrictions" });
   await expect(dialog).toBeVisible();
   await expect(dialog).toHaveAttribute("aria-modal", "true");
+  await expect(dialog.getByText("Allowed", { exact: true }).first()).toBeVisible();
+  await page.screenshot({ path: "test-results/atlas-v4-phase-e-employee-permissions-mobile.png", fullPage: false });
   const close = dialog.getByRole("button", { name: "Close", exact: true });
   expect(await close.evaluate((el) => el.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
   await expect.poll(() => dialog.evaluate((el) => el.contains(document.activeElement))).toBe(true);
@@ -78,6 +98,11 @@ test("Phase E: owner / manager / cashier routes reflow across five viewports", a
   await signIn(page, managerEmail, manager.tempPassword);
   await page.goto("/customer-concerns");
   await expect(page.getByRole("heading", { name: "Manager approvals" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Approval requests", level: 1 })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Mobile approval requests" })).toBeVisible();
+  const reviewEntry = page.getByRole("region", { name: "Mobile approval requests" }).getByRole("link", { name: "Open request review" });
+  await expect(reviewEntry).toHaveAttribute("href", "#manager-approval-details");
+  expect(await reviewEntry.evaluate((el) => el.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
   await checkViewport(page, "/customer-concerns", 390);
   await expect(page.getByLabel("Approval status")).toBeVisible();
   await page.getByLabel("Approval status").selectOption("REJECTED");
@@ -86,7 +111,7 @@ test("Phase E: owner / manager / cashier routes reflow across five viewports", a
   await signIn(page, cashierEmail, cashier.tempPassword);
   for (const path of ["/receipts/lookup", "/customer-concerns"]) {
     await page.goto(path);
-    await expect(page.locator("h1")).toBeVisible();
+    await expect(page.locator("h1:visible")).toHaveCount(1);
     await checkViewport(page, path, 390);
   }
   await page.goto("/receipts/lookup");
@@ -109,7 +134,7 @@ test("Phase E: unauthenticated and reduced-motion states expose no private data"
   expect(page.url()).not.toContain("invalid-token");
 
   await page.goto("/platform/tenant-health");
-  await expect(page.getByRole("heading", { name: "Tenant health" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Platform tenant health", level: 1 })).toBeVisible();
   await checkViewport(page, "/platform/tenant-health", 390);
   const operator = page.getByLabel("Operator key");
   await operator.fill("wrong-key");
@@ -118,6 +143,12 @@ test("Phase E: unauthenticated and reduced-motion states expose no private data"
   await page.getByRole("button", { name: "View authorized diagnostics" }).click();
   await expect(page.getByText("Operator credentials or active owner consent could not be verified.")).toBeVisible();
   await expect(page.getByRole("region", { name: "Tenant diagnostics" })).toHaveCount(0);
+  await page.goto("/order-help");
+  await expect(page.getByRole("heading", { name: "Need help with an order?" })).toBeVisible();
+  await checkViewport(page, "/order-help", 390);
+  await page.goto("/platform/support-access");
+  await expect(page.getByRole("heading", { name: "Time-limited support access" })).toBeVisible();
+  await checkViewport(page, "/platform/support-access", 390);
 
   await page.goto("/login");
   await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
