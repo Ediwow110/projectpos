@@ -17,6 +17,7 @@ import {
 import { branchScopeLabel } from "../lib/workspace-branch";
 import { GuidedTour } from "./GuidedTour";
 import { AtlasOwnerNavigation } from "./AtlasOwnerNavigation";
+import { AtlasManagerNavigation } from "./AtlasManagerNavigation";
 import { AtlasApprovalNavigation } from "./AtlasApprovalNavigation";
 import { AtlasCashierNavigation } from "./AtlasCashierNavigation";
 import { AtlasInventoryNavigation } from "./AtlasInventoryNavigation";
@@ -88,6 +89,7 @@ export function AppShell({
   topbar,
   posMode = false,
   atlasOwner = false,
+  atlasManager = false,
   atlasApprovals = false,
   atlasCashier = false,
   atlasInventory = false,
@@ -99,6 +101,7 @@ export function AppShell({
   topbar?: ReactNode;
   posMode?: boolean;
   atlasOwner?: boolean;
+  atlasManager?: boolean;
   atlasApprovals?: boolean;
   atlasCashier?: boolean;
   atlasInventory?: boolean;
@@ -141,10 +144,11 @@ export function AppShell({
   const name = businessName ?? "NexPOS";
   const currentRole = shellMe.data?.role ?? role ?? "owner";
   const ownerAtlas = atlasOwner && currentRole === "owner";
+  const managerAtlas = atlasManager && currentRole === "manager";
   const approvalAtlas = atlasApprovals && (currentRole === "manager" || currentRole === "owner");
   const cashierAtlas = atlasCashier && currentRole === "cashier";
   const inventoryAtlas = atlasInventory && ["inventory", "manager", "owner"].includes(currentRole);
-  const atlasLayout = ownerAtlas || approvalAtlas || cashierAtlas || inventoryAtlas;
+  const atlasLayout = ownerAtlas || managerAtlas || approvalAtlas || cashierAtlas || inventoryAtlas;
   const activeBranchId = shellMe.data?.activeBranchId ?? null;
   const activeBranchName = shellMe.data?.activeBranchName ?? null;
   const activeBranches = (branchesQuery.data?.items ?? []).filter((branch) => branch.isActive);
@@ -253,7 +257,7 @@ export function AppShell({
 
 
   return (
-    <div data-ui={ownerAtlas ? "atlas-owner-shell" : approvalAtlas ? "atlas-approval-shell" : cashierAtlas ? "atlas-cashier-shell" : inventoryAtlas ? "atlas-inventory-shell" : undefined} className={"relative flex min-h-screen flex-col overflow-x-clip " + (atlasLayout ? "bg-[#f7f8f5]" : "bg-[#fcf8f3]")}>
+    <div data-ui={ownerAtlas ? "atlas-owner-shell" : managerAtlas ? "atlas-manager-shell" : approvalAtlas ? "atlas-approval-shell" : cashierAtlas ? "atlas-cashier-shell" : inventoryAtlas ? "atlas-inventory-shell" : undefined} className={"relative flex min-h-screen flex-col overflow-x-clip " + (atlasLayout ? "bg-[#f7f8f5]" : "bg-[#fcf8f3]")}>
       {!atlasLayout ? <DecorativeBackdrop /> : null}
       <a
         href="#main-content"
@@ -290,7 +294,7 @@ export function AppShell({
         <header
           data-ui="shell-header"
           className={
-            (atlasLayout ? "hidden border-b border-[#e5e9e3] bg-white px-4 backdrop-blur sm:px-6 xl:block " + (ownerAtlas ? "xl:pl-[264px] " : inventoryAtlas ? "xl:pl-[251px] " : "xl:pl-[255px] ") : "border-b border-[#eadfd6] bg-[#fcf8f3]/95 px-4 backdrop-blur sm:px-6 ") +
+            (atlasLayout ? "hidden border-b border-[#e5e9e3] bg-white px-4 backdrop-blur sm:px-6 xl:block " + (ownerAtlas ? "xl:pl-[264px] " : managerAtlas ? "xl:pl-[253px] " : inventoryAtlas ? "xl:pl-[251px] " : "xl:pl-[255px] ") : "border-b border-[#eadfd6] bg-[#fcf8f3]/95 px-4 backdrop-blur sm:px-6 ") +
             mobileHeaderHeight
           }
         >
@@ -304,6 +308,7 @@ export function AppShell({
               </span>
             </Link>
             {ownerAtlas ? <span className="hidden min-w-0 truncate text-[15px] font-medium text-[#202826] xl:block">{activeBranchName ?? name} / Owner workspace</span> : null}
+            {managerAtlas ? <span className="hidden min-w-0 truncate text-[15px] font-medium text-[#202826] xl:block">{activeBranchName ?? name} / Manager workspace</span> : null}
             {approvalAtlas ? <span className="hidden min-w-0 truncate text-[14px] font-medium text-[#202826] xl:block">{currentRole === "owner" ? "Owner" : "Manager"} desk / {activeBranchName ?? name}</span> : null}
 
             <div className={posMode ? "hidden items-center gap-2 lg:flex" : "hidden items-center gap-2 md:flex"}>
@@ -500,7 +505,7 @@ export function AppShell({
 
       <div
         data-ui="shell-body"
-        className={"relative mx-auto grid w-full flex-1 " + (ownerAtlas ? "max-w-none xl:grid-cols-[239px_minmax(0,1fr)]" : approvalAtlas || cashierAtlas ? "max-w-none xl:grid-cols-[230px_minmax(0,1fr)]" : inventoryAtlas ? "max-w-none xl:grid-cols-[226px_minmax(0,1fr)]" : "max-w-[1480px] xl:grid-cols-[220px_minmax(0,1fr)]")}
+        className={"relative mx-auto grid w-full flex-1 " + (ownerAtlas ? "max-w-none xl:grid-cols-[239px_minmax(0,1fr)]" : managerAtlas ? "max-w-none xl:grid-cols-[228px_minmax(0,1fr)]" : approvalAtlas || cashierAtlas ? "max-w-none xl:grid-cols-[230px_minmax(0,1fr)]" : inventoryAtlas ? "max-w-none xl:grid-cols-[226px_minmax(0,1fr)]" : "max-w-[1480px] xl:grid-cols-[220px_minmax(0,1fr)]")}
       >
         <aside
           data-ui="shell-sidebar"
@@ -509,6 +514,8 @@ export function AppShell({
         >
           {ownerAtlas ? (
             <AtlasOwnerNavigation pathname={pathname} onNavigate={beginNavigation} onSignOut={() => void signOut()} signingOut={signingOut} />
+          ) : managerAtlas ? (
+            <AtlasManagerNavigation pathname={pathname} onNavigate={beginNavigation} onSignOut={() => void signOut()} signingOut={signingOut} />
           ) : approvalAtlas ? (
             <AtlasApprovalNavigation role={currentRole} pathname={pathname} onNavigate={beginNavigation} onSignOut={() => void signOut()} signingOut={signingOut} />
           ) : cashierAtlas ? (

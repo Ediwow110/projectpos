@@ -23,6 +23,13 @@
 
 ## Visual contract
 
+### Atlas V4 P4 — role-specific administration
+
+- `/admin` displays the Atlas V4 owner workspace for owners, and a dedicated 228px manager navigation with Atlas V4 styling for managers. The 77px compact mobile role header and keyboard-operable menu remain shared with other Atlas routes.
+- Owner shortcuts may include employee access, business settings, guest-support consent and online ordering. Manager shortcuts are restricted to operations such as approvals, shifts, inventory, procurement, sales and reports; they must never advertise owner-only controls or employee management.
+- Cashier and inventory roles have no privileged administration shortcuts. The UI never grants authority: existing API permissions and tenant restrictions are always authoritative, including per-member denials.
+- Administration cards and manager navigation use real routes and labels only, not sample KPI numbers from Figma. Verify at 390/820/1024/1280/1440px and with role-switching browser tests.
+
 - Project DESIGN.md: DESIGN.md
 - Token ownership model: DESIGN.md records intent; runtime CSS/components are canonical implementation.
 - Runtime design-system/token source: apps/web/src/app/globals.css, apps/web/src/components/ui.tsx, apps/web/src/components/premium.tsx, apps/web/src/components/AppShell.tsx.

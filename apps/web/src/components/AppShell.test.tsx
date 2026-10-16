@@ -90,6 +90,19 @@ describe("workspace access failures", () => {
     expect(html).toMatch(/uppercase[^"]*">owner<\/span>/);
   });
 
+  it("selects Atlas manager navigation only for a manager identity", () => {
+    fixture.data = { role: "manager", onboardingRequired: false };
+    fixture.error = new ApiError("NETWORK_TIMEOUT", "Timed out", "", 0);
+    const manager = renderToStaticMarkup(<AppShell atlasManager role="manager"><p>Manager workspace</p></AppShell>);
+    expect(manager).toContain('data-ui="atlas-manager-shell"');
+    expect(manager).toContain('aria-label="Manager navigation"');
+    expect(manager).not.toContain('aria-label="Owner navigation"');
+
+    fixture.data = { role: "cashier", onboardingRequired: false };
+    const cashier = renderToStaticMarkup(<AppShell atlasManager role="cashier"><p>Cashier workspace</p></AppShell>);
+    expect(cashier).not.toContain('data-ui="atlas-manager-shell"');
+  });
+
   it("uses one redirect when signing out", () => {
     const source = readFileSync(new URL("./AppShell.tsx", import.meta.url), "utf8");
     expect(source).toContain('router.replace("/login");');

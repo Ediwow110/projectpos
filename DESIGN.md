@@ -162,6 +162,12 @@ Guest/Platform 99:2, Responsive QA 100:2).
 - **Desktop shells:** owner sidebar 239px; approvals sidebar 230px; inventory
   sidebar 226px; platform sidebar 233px. Major desktop headers are approximately
   78–80px high; content is fluid rather than a scaled 1440px screenshot.
+- **Manager administration (Atlas P4):** `/admin` uses a 228px manager
+  workspace rail, V4 canvas and accessible task cards for real approvals,
+  sales, inventory, procurement, shifts and reporting. Owners retain their
+  239px control shell and broader account shortcuts. Do not display the sample
+  financial figures in Figma frame 63:62 as live metrics. Manager and
+  non-management roles must not receive owner-only links or grants.
 - **Atlas mobile shell:** 77px white header, 42px dark square NexPOS mark,
   visible role badge and a minimum 44px menu disclosure. Navigation,
   active-branch selection, tour controls and sign-out are reachable from the
