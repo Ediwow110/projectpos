@@ -23,6 +23,8 @@ import { valueFamily, type ValueFamily } from "./pg-value";
 import { ordersFamily } from "./pg-orders";
 import type { DbGiftCard, DbGiftCardTransaction, DbStoreCreditAccount, DbStoreCreditTransaction, DbLoyaltyProgram, DbLoyaltyAccount, DbLoyaltyTransaction, DbSaleGiftCardLoad, DbSaleLoyalty, DbSaleItemLoyaltyAllocation } from "../db.port";
 import type { DbCustomerConcern, DbCustomerConcernCreate, DbManagerApprovalRequest, DbManagerApprovalRequestCreate } from "../db.port";
+import type { DbProductMediaAsset, DbProductMediaChange, DbProductMediaInput } from "../db.port";
+import { productMediaFamily } from "./pg-product-media";
 
 // Phase 12: the PostgreSQL-backed DbPort. Composed from per-family modules
 // over one PgContext; `implements DbPort` makes the compiler enforce that the
@@ -32,6 +34,7 @@ export class PgDbPort implements DbPort {
   private readonly audit: ReturnType<typeof auditFamily>;
   private readonly tenants: ReturnType<typeof tenantsFamily>;
   private readonly catalog: ReturnType<typeof catalogFamily>;
+  private readonly productMedia: ReturnType<typeof productMediaFamily>;
   private readonly inventory: ReturnType<typeof inventoryFamily>;
   private readonly stockExceptions: ReturnType<typeof stockExceptionsFamily>;
   private readonly phaseD: ReturnType<typeof phaseDFamily>;
@@ -53,6 +56,7 @@ export class PgDbPort implements DbPort {
     this.audit = auditFamily(ctx);
     this.tenants = tenantsFamily(ctx);
     this.catalog = catalogFamily(ctx);
+    this.productMedia = productMediaFamily(ctx);
     this.inventory = inventoryFamily(ctx);
     this.stockExceptions = stockExceptionsFamily(ctx);
     this.phaseD = phaseDFamily(ctx);
@@ -204,6 +208,21 @@ export class PgDbPort implements DbPort {
   }
   updateProduct(id: string, businessId: string, patch: Partial<Omit<DbProduct, "id" | "businessId">>): Promise<DbProduct | null> {
     return this.catalog.updateProduct(id, businessId, patch);
+  }
+  getActiveProductMedia(businessId: string, productId: string): Promise<DbProductMediaAsset | null> {
+    return this.productMedia.getActiveProductMedia(businessId, productId);
+  }
+  replaceProductMediaAtomic(businessId: string, productId: string, expectedAssetId: string | null, input: DbProductMediaInput): Promise<DbProductMediaChange & { asset: DbProductMediaAsset }> {
+    return this.productMedia.replaceProductMediaAtomic(businessId, productId, expectedAssetId, input);
+  }
+  detachProductMediaAtomic(businessId: string, productId: string, expectedAssetId: string | null): Promise<DbProductMediaChange> {
+    return this.productMedia.detachProductMediaAtomic(businessId, productId, expectedAssetId);
+  }
+  listProductMediaCleanupCandidates(limit: number): Promise<DbProductMediaAsset[]> {
+    return this.productMedia.listProductMediaCleanupCandidates(limit);
+  }
+  markProductMediaCleanupResult(businessId: string, assetId: string, succeeded: boolean): Promise<void> {
+    return this.productMedia.markProductMediaCleanupResult(businessId, assetId, succeeded);
   }
   createProductFamily(f: Omit<DbProductFamily, "id" | "createdAt" | "updatedAt">): Promise<DbProductFamily> { return this.productModels.createProductFamily(f); }
   listProductFamilies(businessId: string): Promise<DbProductFamily[]> { return this.productModels.listProductFamilies(businessId); }

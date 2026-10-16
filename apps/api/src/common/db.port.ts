@@ -243,6 +243,33 @@ export interface DbProduct {
   imageUrl: string | null;
 }
 
+export const PRODUCT_MEDIA_ACTIVE_QUOTA_BYTES = 200 * 1024 * 1024;
+
+export interface DbProductMediaAsset {
+  id: string;
+  businessId: string;
+  productId: string;
+  actorId: string;
+  storagePath: string;
+  publicUrl: string;
+  contentType: "image/webp";
+  bytes: number;
+  width: number;
+  height: number;
+  state: "ACTIVE" | "SUPERSEDED" | "PENDING_DELETE";
+  cleanupAttempts: number;
+  lastCleanupAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type DbProductMediaInput = Omit<DbProductMediaAsset, "id" | "state" | "cleanupAttempts" | "lastCleanupAt" | "createdAt" | "updatedAt">;
+
+export interface DbProductMediaChange {
+  product: DbProduct;
+  oldAsset: DbProductMediaAsset | null;
+}
+
 export interface DbProductFamily {
   id: string;
   businessId: string;
@@ -1222,6 +1249,11 @@ export interface DbPort {
   listProducts(businessId: string): Promise<DbProduct[]>;
   findProductById(id: string, businessId: string): Promise<DbProduct | null>;
   updateProduct(id: string, businessId: string, patch: Partial<Omit<DbProduct, "id" | "businessId">>): Promise<DbProduct | null>;
+  getActiveProductMedia(businessId: string, productId: string): Promise<DbProductMediaAsset | null>;
+  replaceProductMediaAtomic(businessId: string, productId: string, expectedAssetId: string | null, input: DbProductMediaInput): Promise<DbProductMediaChange & { asset: DbProductMediaAsset }>;
+  detachProductMediaAtomic(businessId: string, productId: string, expectedAssetId: string | null): Promise<DbProductMediaChange>;
+  listProductMediaCleanupCandidates(limit: number): Promise<DbProductMediaAsset[]>;
+  markProductMediaCleanupResult(businessId: string, assetId: string, succeeded: boolean): Promise<void>;
   createProductFamily(f: Omit<DbProductFamily, "id" | "createdAt" | "updatedAt">): Promise<DbProductFamily>;
   listProductFamilies(businessId: string): Promise<DbProductFamily[]>;
   findProductFamilyById(id: string, businessId: string): Promise<DbProductFamily | null>;
