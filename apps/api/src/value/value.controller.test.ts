@@ -2,6 +2,60 @@ import { describe, expect, it, vi } from "vitest";
 import type { Request, Response } from "express";
 import { createMemoryDb } from "../common/memory.db";
 import { ValueController } from "./value.controller";
+import { StoredValueService } from "./stored-value.service";
+
+describe("ValueController read authorization", () => {
+  it("restricts management ledgers by both role and effective permissions without blocking checkout balances", async () => {
+    const db = createMemoryDb();
+    const business = await db.createBusiness({ name: "Value permission QA", currency: "PHP" });
+    const customer = await db.createCustomer({ businessId: business.id, name: "QA buyer",
+      phone: null, email: null, address: null, notes: null, isActive: true });
+    const giftCode = "NXP-GC-QA-TEST-ONLY";
+    const valueService = new StoredValueService(db);
+    const card = await db.createGiftCard({ businessId: business.id,
+      codeHash: valueService.hashGiftCardCode(giftCode), codePrefix: "NXP-GC", codeLast4: "ONLY",
+      status: "ACTIVE", createdBy: "owner", activatedAt: new Date(), suspendedAt: null, version: 1 });
+    const auth = { permissionsForRequest: vi.fn((actor: { effectivePermissions?: string[] }) => actor.effectivePermissions ?? []) };
+    const controller = new ValueController(db, auth as never, {} as never);
+    const request = (role: string, effectivePermissions: string[]) => ({
+      auth: { role, businessId: business.id, userId: role, effectivePermissions },
+      headers: {}, ip: "127.0.0.1",
+    } as unknown as Request);
+    const response = () => ({ status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis() } as unknown as Response);
+    const managementEndpoints = [
+      (req: Request, res: Response) => controller.listGiftCards(req, res),
+      (req: Request, res: Response) => controller.storedValueReport(req, res),
+      (req: Request, res: Response) => controller.giftCardHistory(req, res, card.id),
+      (req: Request, res: Response) => controller.customerValueHistory(req, res, customer.id),
+    ];
+    for (const [role, permissions, allowed] of [
+      ["cashier", [], false],
+      ["inventory", ["gift_card.manage", "stored_value.adjust"], false],
+      ["manager", [], false],
+      ["manager", ["gift_card.manage", "stored_value.adjust"], true],
+      ["owner", ["gift_card.manage", "stored_value.adjust"], true],
+    ] as const) {
+      for (const endpoint of managementEndpoints) {
+        const res = response();
+        await endpoint(request(role, [...permissions]), res);
+        if (allowed) {
+          expect(res.status).not.toHaveBeenCalledWith(403);
+          expect(res.json).toHaveBeenCalled();
+        } else {
+          expect(res.status).toHaveBeenCalledWith(403);
+          expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: "FORBIDDEN" }));
+        }
+      }
+    }
+    const cashierReq = request("cashier", []);
+    const customerBalance = response();
+    await controller.customerValue(cashierReq, customerBalance, customer.id);
+    expect(customerBalance.json).toHaveBeenCalledWith({ customerId: customer.id, storeCreditMinor: 0, loyaltyPoints: 0 });
+    const giftLookup = response();
+    await controller.lookupGiftCard(cashierReq, giftLookup, giftCode);
+    expect(giftLookup.json).toHaveBeenCalledWith(expect.objectContaining({ id: card.id, codeLast4: "ONLY" }));
+  });
+});
 
 describe("ValueController approval fingerprints", () => {
   it("records a manager-applied audit within each authorized value-adjustment transaction", async () => {

@@ -29,6 +29,13 @@ export class ValueController {
 
   private granted(req: Request): string[] { return this.auth.permissionsForRequest(req.auth!); }
 
+  // A cashier can look up a card and customer balances for checkout, but
+  // business-wide liabilities and append-only value ledgers are management data.
+  private canReviewLedger(req: Request, permission: "gift_card.manage" | "stored_value.adjust"): boolean {
+    return (req.auth?.role === "owner" || req.auth?.role === "manager") &&
+      this.granted(req).includes(permission);
+  }
+
   private async authorizeAdjustment(req: Request, valueType: "gift_card" | "store_credit" | "loyalty", targetId: string, amountDelta: number, reason: string, approvalToken?: string): Promise<{ approverId?: string }> {
     const auth = req.auth!;
     const granted = this.granted(req);
@@ -42,12 +49,14 @@ export class ValueController {
 
   @Get("gift-cards")
   async listGiftCards(@Req() req: Request, @Res() res: Response): Promise<void> {
+    if (!this.canReviewLedger(req, "gift_card.manage")) { fail(res, 403, "FORBIDDEN", "Gift card register access denied", req); return; }
     try { const cards = await this.db.listGiftCards(req.auth!.businessId); res.json(await Promise.all(cards.map(async (card) => ({ id: card.id, maskedCode: this.service.maskGiftCard(card), codeLast4: card.codeLast4, status: card.status, balanceMinor: await this.service.giftCardBalance(card.businessId, card.id) })))); }
     catch (error) { const code = error instanceof Error ? error.message : "VALIDATION"; fail(res, statusFor(code), code, "Gift cards unavailable", req); }
   }
 
   @Get("reports/stored-value")
   async storedValueReport(@Req() req: Request, @Res() res: Response): Promise<void> {
+    if (!this.canReviewLedger(req, "stored_value.adjust")) { fail(res, 403, "FORBIDDEN", "Stored-value report access denied", req); return; }
     try {
       const businessId = req.auth!.businessId;
       const cards = await this.db.listGiftCards(businessId);
@@ -72,6 +81,7 @@ export class ValueController {
 
   @Get("gift-cards/:id/history")
   async giftCardHistory(@Req() req: Request, @Res() res: Response, @Param("id") id: string): Promise<void> {
+    if (!this.canReviewLedger(req, "gift_card.manage")) { fail(res, 403, "FORBIDDEN", "Gift-card history access denied", req); return; }
     try { const card = await this.db.findGiftCardById(id, req.auth!.businessId); if (!card) throw new Error("NOT_FOUND"); res.json({ id: card.id, maskedCode: this.service.maskGiftCard(card), status: card.status, transactions: await this.db.listGiftCardTransactions(id, req.auth!.businessId) }); }
     catch (error) { const code = error instanceof Error ? error.message : "NOT_FOUND"; fail(res, statusFor(code), code, "Gift card history unavailable", req); }
   }
@@ -111,6 +121,7 @@ export class ValueController {
 
   @Get("customers/:id/stored-value/history")
   async customerValueHistory(@Req() req: Request, @Res() res: Response, @Param("id") customerId: string): Promise<void> {
+    if (!this.canReviewLedger(req, "stored_value.adjust")) { fail(res, 403, "FORBIDDEN", "Customer value history access denied", req); return; }
     try {
       const businessId = req.auth!.businessId;
       const credit = await this.db.findStoreCreditAccount(customerId, businessId);

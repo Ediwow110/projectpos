@@ -41,6 +41,7 @@ in an image.
 | `NODE_ENV` | no | yes | `production` (secure cookies, https-strict email config) |
 | `DATABASE_URL` | **yes** | yes | Postgres connection string of the production DB |
 | `APPROVAL_QUEUE_ENCRYPTION_KEY` | **yes** | yes | Stable 64-character hex encoding of 32 random bytes, used for encrypted manager grants. Generate once; do not rotate without a grant-expiry/rotation plan. |
+| `GIFT_CARD_CODE_SECRET` | **yes** | yes | At least 32 unpredictable characters, used as the HMAC key for issued gift-card bearer codes. Required at API startup in production. Preserve securely; rotating it without a rekey/migration plan breaks existing bearer-code lookups. |
 | `WEB_URL` | no | yes | Public https origin of the web app (CORS + email links) |
 | `API_PORT` | no | per platform | API listen port (default 3001; platforms often inject `PORT`) |
 | `BREVO_API_KEY` | **yes** | one email transport required | Brevo HTTPS API key; preferred on Railway Free/Hobby because SMTP is blocked there |

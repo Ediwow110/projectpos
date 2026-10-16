@@ -3,6 +3,12 @@ import type { DbGiftCard, DbLoyaltyProgram, DbPort, DbSaleLoyalty, DbStoreCredit
 
 const DEV_GIFT_CARD_SECRET = "phase20-development-only-gift-card-secret";
 
+export function assertProductionGiftCardCodeSecret(env: NodeJS.ProcessEnv): void {
+  if (env["NODE_ENV"] === "production" && (!env["GIFT_CARD_CODE_SECRET"] || env["GIFT_CARD_CODE_SECRET"].length < 32)) {
+    throw new Error("GIFT_CARD_CODE_SECRET_MISSING");
+  }
+}
+
 export interface SafeGiftCard {
   id: string;
   maskedCode: string;

@@ -54,6 +54,10 @@ services:
       # startup in production, and must remain stable across API instances.
       - key: APPROVAL_QUEUE_ENCRYPTION_KEY
         sync: false
+      # HMAC key for the one-time gift-card bearer codes. Required in production,
+      # provision separately for each environment and never commit its value.
+      - key: GIFT_CARD_CODE_SECRET
+        sync: false
       - key: BREVO_API_KEY
         sync: false
       - key: EMAIL_FROM

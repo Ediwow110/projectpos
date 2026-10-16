@@ -1,8 +1,14 @@
 import { createMemoryDb } from "../common/memory.db";
-import { StoredValueService } from "./stored-value.service";
+import { StoredValueService, assertProductionGiftCardCodeSecret } from "./stored-value.service";
 import { describe, expect, it, vi } from "vitest";
 
 describe("StoredValueService", () => {
+  it("requires a separate configured HMAC secret before production API startup", () => {
+    expect(() => assertProductionGiftCardCodeSecret({ NODE_ENV: "production" })).toThrow("GIFT_CARD_CODE_SECRET_MISSING");
+    expect(() => assertProductionGiftCardCodeSecret({ NODE_ENV: "production", GIFT_CARD_CODE_SECRET: "short" })).toThrow("GIFT_CARD_CODE_SECRET_MISSING");
+    expect(() => assertProductionGiftCardCodeSecret({ NODE_ENV: "production", GIFT_CARD_CODE_SECRET: "s".repeat(32) })).not.toThrow();
+    expect(() => assertProductionGiftCardCodeSecret({ NODE_ENV: "development" })).not.toThrow();
+  });
   it("keeps gift-card money and approval audit atomic and rejects mismatched replays", async () => {
     const { db, service, business } = await fixture();
     const issued = await service.issueGiftCard(business.id, "cashier", "issue", "gift-issue");

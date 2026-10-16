@@ -5,6 +5,7 @@ import type { RequestHandler } from "express";
 import cookieParser from "cookie-parser";
 import { AppModule } from "./app.module";
 import { assertProductionApprovalQueueKey } from "./auth/approval-token-crypto";
+import { assertProductionGiftCardCodeSecret } from "./value/stored-value.service";
 import {
   listPayMongoPaymentMethodCapabilitiesFromEnv,
   listPayMongoWebhookDiagnosticsFromEnv,
@@ -13,6 +14,7 @@ import {
 
 async function bootstrap(): Promise<void> {
   assertProductionApprovalQueueKey(process.env);
+  assertProductionGiftCardCodeSecret(process.env);
   // rawBody preserves the exact request bytes so billing webhooks can verify a
   // provider's signature over what was actually sent instead of over
   // re-serialized JSON.

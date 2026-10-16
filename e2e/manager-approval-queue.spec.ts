@@ -401,6 +401,11 @@ test("cashier queues store-credit and loyalty adjustments from the customer ledg
   await page.goto(`/customers/${customer.id}/stored-value`);
   await expect(page.getByRole("heading", { name: `${customerName} value ledger` })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Manual adjustment" })).toBeVisible();
+  await expect(page.getByText("Detailed value history is limited to owner and manager roles. Checkout balances remain available.")).toBeVisible();
+  await expect(page.getByText("Store-credit history", { exact: true })).toHaveCount(0);
+  const { headers: cashierHeaders } = await apiAuthedContext(request, cashierEmail, cashier.tempPassword, page);
+  const deniedLedger = await request.get(`${API}/api/v1/customers/${customer.id}/stored-value/history`, { headers: cashierHeaders });
+  expect(deniedLedger.status()).toBe(403);
 
   const managerPage = await browser.newPage();
   await signIn(managerPage, managerEmail, manager.tempPassword);
