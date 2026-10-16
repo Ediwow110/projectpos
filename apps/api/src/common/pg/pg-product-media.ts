@@ -2,6 +2,7 @@ import type { DbProductMediaAsset, DbProductMediaInput } from "../db.port";
 import { PRODUCT_MEDIA_ACTIVE_QUOTA_BYTES } from "../db.port";
 import { nid, type PgContext } from "./context";
 import { catalogFamily } from "./pg-catalog";
+import { auditFamily } from "./pg-audit";
 
 const ASSET_COLUMNS = '"id", "businessId", "productId", "actorId", "storagePath", "publicUrl", "contentType", "bytes", "width", "height", "state", "cleanupAttempts", "lastCleanupAt", "createdAt", "updatedAt"';
 
@@ -30,7 +31,7 @@ export function productMediaFamily(ctx: PgContext) {
     },
 
     async replaceProductMediaAtomic(
-      businessId: string, productId: string, expectedAssetId: string | null, input: DbProductMediaInput,
+      businessId: string, productId: string, expectedAssetId: string | null, input: DbProductMediaInput, requestId?: string,
     ) {
       assertMediaInput(input, businessId, productId);
       return ctx.withLock(`product-media-quota:${businessId}`, async () => {
@@ -71,6 +72,10 @@ export function productMediaFamily(ctx: PgContext) {
           );
           const updated = await catalogFamily(ctx).findProductById(productId, businessId);
           if (!updated) throw new Error("NOT_FOUND");
+          if (requestId) await auditFamily(ctx).appendAudit({
+            businessId, actorId: input.actorId, action: "product.media.upload",
+            entityType: "Product", entityId: productId, requestId,
+          });
           return { product: updated, asset: result.rows[0] as DbProductMediaAsset, oldAsset };
         } finally {
           if (ctx.owns()) client.release();
@@ -78,7 +83,7 @@ export function productMediaFamily(ctx: PgContext) {
       });
     },
 
-    async detachProductMediaAtomic(businessId: string, productId: string, expectedAssetId: string | null) {
+    async detachProductMediaAtomic(businessId: string, productId: string, expectedAssetId: string | null, actorId?: string, requestId?: string) {
       return ctx.withLock(`product-media-quota:${businessId}`, async () => {
         const client = await ctx.client();
         try {
@@ -103,6 +108,10 @@ export function productMediaFamily(ctx: PgContext) {
           );
           const updated = await catalogFamily(ctx).findProductById(productId, businessId);
           if (!updated) throw new Error("NOT_FOUND");
+          if (actorId && requestId) await auditFamily(ctx).appendAudit({
+            businessId, actorId, action: "product.media.remove",
+            entityType: "Product", entityId: productId, requestId,
+          });
           return { product: updated, oldAsset };
         } finally {
           if (ctx.owns()) client.release();

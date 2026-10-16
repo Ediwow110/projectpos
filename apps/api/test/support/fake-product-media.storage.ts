@@ -28,4 +28,6 @@ export class FakeProductMediaStorage implements ProductMediaStorage {
     const stored = this.blobs.get(path);
     return stored ? Buffer.from(stored) : null;
   }
+
+  paths(): string[] { return [...this.blobs.keys()]; }
 }
