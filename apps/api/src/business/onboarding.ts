@@ -24,15 +24,56 @@ export interface OnboardingState {
 
 export function defaultOnboardingState(): OnboardingState {
   return {
-    currentStep: "taxCurrency",
+    currentStep: "businessDetails",
     steps: {
-      businessDetails: "done",
+      businessDetails: "pending",
       taxCurrency: "pending",
       receiptSetup: "pending",
       products: "pending",
       employees: "pending",
     },
   };
+}
+
+// A progress flag is not evidence that the business was configured.
+// Reconcile legacy flags when loading a saved setup and at the session boundary.
+export function isRequiredSetupConfigured(step: OnboardingStep, settings: Record<string, unknown>): boolean {
+  switch (step) {
+    case "businessDetails":
+      return typeof settings["businessAddress"] === "string" &&
+        settings["businessAddress"].trim().length >= 5 &&
+        typeof settings["businessTimezone"] === "string" &&
+        settings["businessTimezone"].trim().length >= 3;
+    case "taxCurrency":
+      return typeof settings["currency"] === "string" && settings["currency"].length === 3 &&
+        typeof settings["taxName"] === "string" && settings["taxName"].trim().length > 0 &&
+        typeof settings["taxRateBps"] === "number" &&
+        Number.isInteger(settings["taxRateBps"]) &&
+        settings["taxRateBps"] >= 0 && settings["taxRateBps"] <= 10000;
+    case "receiptSetup":
+      return typeof settings["receiptHeader"] === "string" &&
+        settings["receiptHeader"].trim().length > 0;
+    default:
+      return true;
+  }
+}
+
+export function configuredOnboardingState(settings: Record<string, unknown>): OnboardingState {
+  const state = normalizeOnboardingState(settings["onboarding"]);
+  // Existing businesses that finished the legacy wizard must not be
+  // unexpectedly locked out during deployment. Any unfinished setup
+  // still needs the new server-validated configuration.
+  if (settings["onboardingSchemaVersion"] !== 2 &&
+      REQUIRED_STEPS.every((step) => state.steps[step] === "done")) {
+    return state;
+  }
+  const steps = { ...state.steps };
+  for (const step of REQUIRED_STEPS) {
+    if (steps[step] === "done" && !isRequiredSetupConfigured(step, settings)) {
+      steps[step] = "pending";
+    }
+  }
+  return { steps, currentStep: ONBOARDING_ORDER.find((step) => steps[step] === "pending") ?? "complete" };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

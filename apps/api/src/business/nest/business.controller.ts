@@ -73,6 +73,11 @@ export class BusinessController {
     res.json(await this.business.getOnboarding(req.auth!.businessId));
   }
 
+  @Get("onboarding/readiness")
+  async getSaleReadiness(@Req() req: Request, @Res() res: Response): Promise<void> {
+    res.json(await this.business.getSaleReadiness(req.auth!.businessId));
+  }
+
   @Patch("onboarding")
   @UseGuards(CsrfGuard)
   async patchOnboarding(

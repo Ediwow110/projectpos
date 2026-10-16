@@ -45,9 +45,9 @@ describe("phase11 settings gate and audit context", () => {
 
     const svc = new BusinessService(db);
     await expect(svc.getOnboarding(biz.id)).resolves.toEqual({
-      currentStep: "taxCurrency",
+      currentStep: "businessDetails",
       steps: {
-        businessDetails: "done",
+        businessDetails: "pending",
         taxCurrency: "pending",
         receiptSetup: "pending",
         products: "pending",
@@ -71,6 +71,14 @@ describe("phase11 settings gate and audit context", () => {
       ),
     ).rejects.toThrow("FORBIDDEN");
 
+    await db.saveSettings(biz.id, {
+      businessAddress: "123 Test Street, Manila",
+      businessTimezone: "Asia/Manila",
+      currency: "PHP",
+      taxName: "No tax",
+      taxRateBps: 0,
+      onboardingSchemaVersion: 2,
+    });
     await expect(
       svc.patchOnboarding(
         biz.id,
@@ -79,7 +87,21 @@ describe("phase11 settings gate and audit context", () => {
         "r4",
         ["settings.write"],
       ),
-    ).resolves.toMatchObject({ currentStep: "receiptSetup" });
+    ).resolves.toMatchObject({ steps: { taxCurrency: "done", receiptSetup: "pending" } });
+  });
+
+  it("reports real missing products, registers and shifts for an empty business", async () => {
+    const db = createMemoryDb();
+    const biz = await db.createBusiness({ name: "Empty Shop", currency: "PHP" });
+    const svc = new BusinessService(db);
+    await expect(svc.getSaleReadiness(biz.id)).resolves.toMatchObject({
+      businessConfigured: false,
+      hasSellableProduct: false,
+      hasActiveRegister: false,
+      hasOpenShift: false,
+      readyForFirstSale: false,
+      missing: ["business_setup", "sellable_product_or_stock", "active_register", "open_shift"],
+    });
   });
 
   it.each(["businessDetails", "taxCurrency", "receiptSetup"] as const)(

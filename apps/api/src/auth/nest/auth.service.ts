@@ -9,7 +9,7 @@ import { incrementMetric } from "../../common/metrics";
 import { billingEnabled } from "../../billing/entitlements";
 import { buildRegistrationSeed, resolveActiveBusiness, ROLE_SEED } from "../../tenant/seed";
 import { effectivePermissions } from "../member-permissions";
-import { defaultOnboardingState, isOnboardingComplete, type OnboardingState } from "../../business/onboarding";
+import { configuredOnboardingState, isOnboardingComplete } from "../../business/onboarding";
 import type { DbPort } from "../../common/db.port";
 import {
   NOOP_TRANSACTIONAL_EMAIL,
@@ -173,7 +173,7 @@ export class AuthService {
       }
     }
     const settings = await this.db.getSettings(businessId);
-    const onboarding = (settings["onboarding"] as OnboardingState | undefined) ?? defaultOnboardingState();
+    const onboarding = configuredOnboardingState(settings);
     const rec = buildSessionRecord({ userId: user.id, businessId, ip: meta.ip, userAgent: meta.userAgent });
     await this.db.createSession({
       userId: rec.userId,

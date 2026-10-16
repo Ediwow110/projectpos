@@ -59,6 +59,15 @@ export const onboardingPatchSchema = z.object({
 
 export const businessSettingsSchema = z.object({
   currency: z.string().length(3).optional(),
+  businessAddress: z.string().trim().min(5).max(240).optional(),
+  businessPhone: z.string().trim().max(40).optional(),
+  businessTimezone: z.string().trim().min(3).max(80).refine(
+    (value) => {
+      try { new Intl.DateTimeFormat("en-US", { timeZone: value }); return true; }
+      catch { return false; }
+    },
+    "VALIDATION",
+  ).optional(),
   taxName: z.string().max(80).optional(),
   taxRateBps: z.number().int().min(0).max(10000).optional(),
   receiptHeader: z.string().max(200).optional(),

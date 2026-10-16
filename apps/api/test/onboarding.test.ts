@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyOnboardingPatch,
+  configuredOnboardingState,
   defaultOnboardingState,
   isOnboardingComplete,
   mergeSettings,
@@ -8,11 +9,12 @@ import {
 } from "../src/business/onboarding";
 
 describe("onboarding wizard", () => {
-  it("starts with businessDetails done", () => {
-    expect(defaultOnboardingState().steps.businessDetails).toBe("done");
+  it("starts with businessDetails pending until the owner saves an operating profile", () => {
+    expect(defaultOnboardingState().steps.businessDetails).toBe("pending");
   });
   it("advances current step on done", () => {
-    const next = applyOnboardingPatch(defaultOnboardingState(), {
+    const profileDone = applyOnboardingPatch(defaultOnboardingState(), { step: "businessDetails", state: "done" });
+    const next = applyOnboardingPatch(profileDone, {
       step: "taxCurrency",
       state: "done",
     });
@@ -30,7 +32,7 @@ describe("onboarding wizard", () => {
   });
   it("completes when required done and optional resolved", () => {
     let s = defaultOnboardingState();
-    for (const step of ["taxCurrency", "receiptSetup"] as const) {
+    for (const step of ["businessDetails", "taxCurrency", "receiptSetup"] as const) {
       s = applyOnboardingPatch(s, { step, state: "done" });
     }
     s = applyOnboardingPatch(s, { step: "products", state: "skipped" });
@@ -54,10 +56,10 @@ describe("onboarding wizard", () => {
   });
   it("keeps setup required when optional products resolve before currency and receipt", () => {
     let state = applyOnboardingPatch(defaultOnboardingState(), { step: "products", state: "skipped" });
-    expect(state.currentStep).toBe("taxCurrency");
+    expect(state.currentStep).toBe("businessDetails");
     expect(isOnboardingComplete(state)).toBe(false);
     state = applyOnboardingPatch(state, { step: "taxCurrency", state: "done" });
-    expect(state.currentStep).toBe("receiptSetup");
+    expect(state.currentStep).toBe("businessDetails");
     expect(isOnboardingComplete(state)).toBe(false);
   });
   it("merges settings without dropping existing keys", () => {
@@ -65,5 +67,38 @@ describe("onboarding wizard", () => {
       currency: "PHP",
       taxName: "VAT",
     });
+  });
+  it("reopens a completed setup step when required stored data is missing", () => {
+    const state = {
+      onboardingSchemaVersion: 2,
+      onboarding: {
+        currentStep: "complete",
+        steps: {
+          businessDetails: "done",
+          taxCurrency: "done",
+          receiptSetup: "done",
+          products: "skipped",
+          employees: "skipped",
+        },
+      },
+      currency: "PHP",
+      businessAddress: "123 Market Street",
+      businessTimezone: "Asia/Manila",
+      taxName: "No tax",
+      taxRateBps: 0,
+    };
+    const result = configuredOnboardingState(state);
+    expect(result.steps.receiptSetup).toBe("pending");
+    expect(result.currentStep).toBe("receiptSetup");
+    expect(isOnboardingComplete(result)).toBe(false);
+    expect(configuredOnboardingState({ ...state, receiptHeader: "Sample Store" }).currentStep).toBe("complete");
+  });
+  it("preserves access for already-completed legacy accounts during rollout", () => {
+    const original = defaultOnboardingState();
+    for (const step of ["businessDetails", "taxCurrency", "receiptSetup"] as const) {
+      original.steps[step] = "done";
+    }
+    expect(configuredOnboardingState({ onboarding: original }).currentStep).toBe("products");
+    expect(isOnboardingComplete(configuredOnboardingState({ onboarding: original }))).toBe(true);
   });
 });

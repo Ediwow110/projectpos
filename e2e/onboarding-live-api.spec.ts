@@ -48,13 +48,20 @@ test("real browser, web app, and API preserve onboarding gates and progress", as
   expect(bypass.status).toBe(400);
   expect(bypass.body.code).toBe("ONBOARDING_REQUIRED_STEP");
 
-  await expect(page.getByRole("button", { name: "Mark step complete" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save & continue" })).toBeVisible();
   await onboarding.completeCurrentStep();
-  await expect(page.getByText("Receipt setup", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Currency & tax", exact: true })).toBeVisible();
+  await onboarding.completeCurrentStep();
+  await expect(page.getByRole("heading", { name: "Receipt setup", exact: true })).toBeVisible();
   await onboarding.completeCurrentStep();
 
-  await expect(page.getByText("First products", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "First products", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "← Back to dashboard" })).toBeVisible();
+  await page.getByRole("button", { name: /Currency & tax Done/ }).click();
+  await expect(page.getByRole("heading", { name: "Currency & tax", exact: true })).toBeVisible();
+  await expect(page.getByLabel(/Tax rate/)).toHaveValue("0");
+  await page.getByRole("button", { name: "Save & continue" }).click();
+  await expect(page.getByRole("heading", { name: "First products", exact: true })).toBeVisible();
   await page.getByRole("link", { name: "← Back to dashboard" }).click();
   await new DashboardPage(page).expectEmptyState();
 
@@ -87,12 +94,13 @@ test("new owner can add a product and record opening stock through the real inve
   await page.getByRole("button", { name: "Create business" }).click();
 
   await expect(page).toHaveURL(/\/onboarding$/);
-  await expect(page.getByRole("heading", { name: "Currency & tax" })).toBeVisible();
-  for (const nextStep of ["Receipt setup", "First products"]) {
-    await page.getByRole("button", { name: "Mark step complete" }).click();
+  await expect(page.getByRole("heading", { name: "Business details" })).toBeVisible();
+  const setup = new OnboardingPage(page);
+  for (const nextStep of ["Currency & tax", "Receipt setup", "First products"]) {
+    await setup.completeCurrentStep();
     await expect(page.getByRole("heading", { name: nextStep })).toBeVisible();
   }
-  await expect(page.getByRole("button", { name: "Mark step complete" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Verify saved products & continue" })).toBeEnabled();
   await page.getByRole("link", { name: "Open products →" }).click();
   await expect(page).toHaveURL(/\/products$/);
   await page.getByRole("button", { name: "Skip tour", exact: true }).click();

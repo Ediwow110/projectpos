@@ -91,6 +91,7 @@ export async function buildRegistrationSeed(input: RegistrationInput): Promise<R
     allPermissions: ALL_PERMISSIONS,
     defaultSettings: [
       { key: "currency", value: "PHP" },
+      { key: "onboardingSchemaVersion", value: 2 },
       // FR-PAY-01: methods are data; every new business starts with the
       // plan's initial methods and can reconfigure them.
       { key: "paymentMethods", value: DEFAULT_PAYMENT_METHODS },
@@ -100,9 +101,9 @@ export async function buildRegistrationSeed(input: RegistrationInput): Promise<R
       { key: "deliveryFlatFeeMinor", value: 0 },
     ],
     onboarding: {
-      currentStep: "taxCurrency",
+      currentStep: "businessDetails",
       steps: {
-        businessDetails: "done",
+        businessDetails: "pending",
         taxCurrency: "pending",
         receiptSetup: "pending",
         products: "pending",

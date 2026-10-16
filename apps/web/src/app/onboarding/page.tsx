@@ -21,17 +21,17 @@ const STEP_META: Record<Step, { title: string; description: string; note: string
   businessDetails: {
     title: "Business details",
     description: "Confirm the identity and operating context of this business.",
-    note: "The onboarding API currently records completion state for this step.",
+    note: "Save your operating address and timezone before continuing.",
   },
   taxCurrency: {
     title: "Currency & tax",
     description: "Confirm that pricing and tax defaults have been configured for how the business operates.",
-    note: "This screen does not pretend to persist currency/tax fields the current onboarding API does not accept.",
+    note: "Choose an explicit tax name and rate, including zero when applicable. These settings affect sales.",
   },
   receiptSetup: {
     title: "Receipt setup",
     description: "Confirm that receipt behavior is ready before the first live shift.",
-    note: "Receipt customization stays in its existing product surfaces; onboarding records the step state only.",
+    note: "Choose the text printed on receipts and preview it before opening your store.",
   },
   products: {
     title: "First products",
@@ -48,6 +48,20 @@ const STEP_META: Record<Step, { title: string; description: string; note: string
 interface OnboardingState {
   currentStep: string;
   steps: Record<Step, "done" | "skipped" | "pending">;
+}
+
+interface BusinessDetails {
+  name: string;
+  settings: Record<string, unknown>;
+}
+
+interface SaleReadiness {
+  businessConfigured: boolean;
+  hasSellableProduct: boolean;
+  hasActiveRegister: boolean;
+  hasOpenShift: boolean;
+  hasStaff: boolean;
+  readyForFirstSale: boolean;
 }
 
 async function loadOnboarding(): Promise<OnboardingState> {
@@ -68,14 +82,38 @@ export default function OnboardingPage(): JSX.Element {
   const queryClient = useQueryClient();
   const [error, setError] = useState("");
   const [savingStep, setSavingStep] = useState<Step | null>(null);
+  const [editingStep, setEditingStep] = useState<Step | null>(null);
+  const [businessAddress, setBusinessAddress] = useState("");
+  const [businessPhone, setBusinessPhone] = useState("");
+  const [businessTimezone, setBusinessTimezone] = useState("Asia/Manila");
+  const [currency, setCurrency] = useState("PHP");
+  const [taxName, setTaxName] = useState("");
+  const [taxRatePercent, setTaxRatePercent] = useState("");
+  const [receiptHeader, setReceiptHeader] = useState("");
+  const [receiptFooter, setReceiptFooter] = useState("");
   const query = useQuery({ queryKey: ["onboarding"], queryFn: loadOnboarding, retry: false });
+  const business = useQuery({ queryKey: ["onboarding-business"], queryFn: () => apiFetch<BusinessDetails>("/api/v1/business"), retry: false });
   const unauthorized = query.error instanceof ApiError && (query.error.status === 401 || query.error.status === 403);
   const requiredDone = query.data !== undefined && REQUIRED.every((step) => query.data.steps[step] === "done");
-  const optionalResolved = query.data !== undefined && OPTIONAL.every((step) => query.data.steps[step] !== "pending");
+  const readiness = useQuery({
+    queryKey: ["onboarding-sale-readiness"],
+    queryFn: () => apiFetch<SaleReadiness>("/api/v1/onboarding/readiness"),
+    enabled: requiredDone,
+    retry: false,
+  });
 
   useEffect(() => {
-    if (requiredDone && optionalResolved) router.push("/");
-  }, [optionalResolved, requiredDone, router]);
+    if (!business.data) return;
+    const s = business.data.settings;
+    setBusinessAddress(typeof s["businessAddress"] === "string" ? s["businessAddress"] : "");
+    setBusinessPhone(typeof s["businessPhone"] === "string" ? s["businessPhone"] : "");
+    setBusinessTimezone(typeof s["businessTimezone"] === "string" ? s["businessTimezone"] : "Asia/Manila");
+    setCurrency(typeof s["currency"] === "string" ? s["currency"] : "PHP");
+    setTaxName(typeof s["taxName"] === "string" ? s["taxName"] : "");
+    setTaxRatePercent(typeof s["taxRateBps"] === "number" ? String(s["taxRateBps"] / 100) : "");
+    setReceiptHeader(typeof s["receiptHeader"] === "string" ? s["receiptHeader"] : "");
+    setReceiptFooter(typeof s["receiptFooter"] === "string" ? s["receiptFooter"] : "");
+  }, [business.data]);
 
   useEffect(() => {
     if (unauthorized) router.replace("/login");
@@ -87,26 +125,59 @@ export default function OnboardingPage(): JSX.Element {
     setSavingStep(step);
     try {
       const csrf = await apiFetch<{ csrfToken: string }>("/api/v1/auth/csrf");
-      await apiFetch("/api/v1/onboarding", {
+      if (state === "done" && REQUIRED.includes(step)) {
+        let payload: Record<string, string | number>;
+        if (step === "businessDetails") {
+          if (businessAddress.trim().length < 5 || businessTimezone.trim().length < 3) {
+            throw new Error("Enter a valid business address and timezone.");
+          }
+          payload = { businessAddress: businessAddress.trim(), businessPhone: businessPhone.trim(), businessTimezone };
+        } else if (step === "taxCurrency") {
+          const rate = Number(taxRatePercent);
+          const bps = Math.round(rate * 100);
+          if (taxRatePercent.trim() === "" || !Number.isFinite(rate) ||
+              Math.abs(rate * 100 - bps) > 0.000001 || rate < 0 || rate > 100 || !taxName.trim()) {
+            throw new Error("Select a tax name and an explicit rate from 0 to 100%.");
+          }
+          payload = { currency, taxName: taxName.trim(), taxRateBps: bps };
+        } else {
+          if (!receiptHeader.trim()) throw new Error("Enter a receipt header to continue.");
+          payload = { receiptHeader: receiptHeader.trim(), receiptFooter: receiptFooter.trim() };
+        }
+        await apiFetch("/api/v1/business/settings", {
+          csrfToken: csrf.csrfToken,
+          init: { method: "PATCH", body: JSON.stringify(payload) },
+        });
+      }
+      const saved = await apiFetch<OnboardingState>("/api/v1/onboarding", {
         csrfToken: csrf.csrfToken,
         init: { method: "PATCH", body: JSON.stringify({ step, state }) },
       });
       await query.refetch();
+      await business.refetch();
+      await readiness.refetch();
+      setEditingStep(null);
       await queryClient.invalidateQueries({ queryKey: ["me"] });
+      if (editingStep === null &&
+          REQUIRED.every((required) => saved.steps[required] === "done") &&
+          OPTIONAL.every((optional) => saved.steps[optional] !== "pending")) {
+        router.push("/");
+      }
     } catch (err) {
-      setError(err instanceof ApiError ? err.code + ": " + err.message : "Update failed");
+      setError(err instanceof ApiError ? err.code + ": " + err.message :
+        err instanceof Error ? err.message : "Update failed");
     } finally {
       setSavingStep(null);
     }
   }
 
-  if (query.isLoading) {
+  if (query.isLoading || business.isLoading) {
     return <main className="grid min-h-screen place-items-center bg-[#fcf8f3] text-sm text-[#73685f]">Loading setup…</main>;
   }
   if (unauthorized) {
     return <main role="status" className="grid min-h-screen place-items-center bg-[#fcf8f3] text-sm text-[#73685f]">Returning to sign in…</main>;
   }
-  if (query.isError || !query.data) {
+  if (query.isError || !query.data || business.isError || !business.data) {
     return (
       <main className="grid min-h-screen place-items-center bg-[#fcf8f3] p-6 text-center">
         <div>
@@ -118,10 +189,12 @@ export default function OnboardingPage(): JSX.Element {
   }
 
   const steps = query.data!.steps;
-  const current =
+  const progressStep =
     (ORDER.find((step) => step === query.data!.currentStep) ??
       ORDER.find((step) => steps[step] === "pending") ??
       ORDER[ORDER.length - 1]) as Step;
+  const current = editingStep ?? progressStep;
+  const editingCompletedStep = editingStep === current && steps[current] === "done";
   const currentIndex = ORDER.indexOf(current);
   const currentMeta = STEP_META[current];
 
@@ -135,7 +208,7 @@ export default function OnboardingPage(): JSX.Element {
         <NexposLogo variant="light" size="md" />
         <div className="ml-auto flex items-center gap-3">
           <span className="font-data text-[9px] text-[#7a6f66]">SETUP {String(currentIndex + 1).padStart(2, "0")} / 05</span>
-          <StatusPill tone="ok">● Saved</StatusPill>
+          <StatusPill tone="info">● Setup progress</StatusPill>
         </div>
       </header>
 
@@ -162,12 +235,14 @@ export default function OnboardingPage(): JSX.Element {
                   >
                     {String(index + 1).padStart(2, "0")}
                   </span>
-                  <div>
+                  <button type="button" className="min-h-11 flex-1 text-left disabled:cursor-default"
+                    disabled={state !== "done" || savingStep !== null}
+                    onClick={() => setEditingStep(step)}>
                     <p className={"text-[11px] " + (active ? "font-semibold text-[#17130f]" : "font-medium text-[#51483f]")}>{STEP_META[step].title}</p>
                     <p className={"font-data mt-1 text-[8px] " + (state === "done" ? "text-[#1f8a5b]" : active ? "text-[#e44e34]" : state === "skipped" ? "text-[#b56d0c]" : "text-[#9a8d83]")}>
-                      {state === "done" ? "Done" : state === "skipped" ? "Skipped" : active ? "Current" : "Next"}
+                      {state === "done" ? "Done · Select to review" : state === "skipped" ? "Skipped" : active ? "Current" : "Next"}
                     </p>
-                  </div>
+                  </button>
                 </li>
               );
             })}
@@ -185,11 +260,65 @@ export default function OnboardingPage(): JSX.Element {
           </p>
           <h2 className="font-display mt-5 max-w-3xl text-[30px] font-bold text-[#17130f]">{currentMeta.title}</h2>
           <p className="mt-3 max-w-3xl text-[13px] leading-5 text-[#73685f]">{currentMeta.description}</p>
+          {editingCompletedStep ? <button type="button" className="mt-3 text-xs font-semibold text-[#e44e34]"
+            onClick={() => setEditingStep(null)}>← Return to current setup</button> : null}
 
           <div className="mt-8 grid gap-4 xl:grid-cols-[minmax(0,1fr)_250px]">
             <div className="rounded-2xl border border-[#eee4db] bg-[#fcf8f3] p-5 sm:p-7">
               <h3 className="font-display text-base font-semibold">Step status</h3>
               <p className="mt-2 text-[11px] leading-5 text-[#73685f]">{currentMeta.note}</p>
+
+              {current === "businessDetails" && (steps[current] === "pending" || editingCompletedStep) ? (
+                <div className="mt-5 grid gap-4">
+                  <p className="text-sm font-semibold">Business: {business.data.name}</p>
+                  <label className="text-xs font-medium">Operating address
+                    <textarea className="field mt-2 block w-full" value={businessAddress} maxLength={240}
+                      onChange={(e) => setBusinessAddress(e.target.value)} placeholder="Street, city, province" />
+                  </label>
+                  <label className="text-xs font-medium">Business phone (optional)
+                    <input className="field mt-2 block w-full" value={businessPhone} maxLength={40} onChange={(e) => setBusinessPhone(e.target.value)} />
+                  </label>
+                  <label className="text-xs font-medium">Operating timezone
+                    <select className="field mt-2 block w-full" value={businessTimezone} onChange={(e) => setBusinessTimezone(e.target.value)}>
+                      <option value="Asia/Manila">Philippines (Asia/Manila)</option>
+                      <option value="Asia/Singapore">Singapore (Asia/Singapore)</option>
+                      <option value="UTC">UTC</option>
+                    </select>
+                  </label>
+                </div>
+              ) : null}
+              {current === "taxCurrency" && (steps[current] === "pending" || editingCompletedStep) ? (
+                <div className="mt-5 grid gap-4">
+                  <label className="text-xs font-medium">Currency
+                    <select className="field mt-2 block w-full" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+                      <option value="PHP">Philippine peso (PHP)</option>
+                    </select>
+                  </label>
+                  <label className="text-xs font-medium">Tax name (e.g. VAT, non-VAT, no tax)
+                    <input className="field mt-2 block w-full" maxLength={80} value={taxName} onChange={(e) => setTaxName(e.target.value)} placeholder="Choose the correct classification for your business" />
+                  </label>
+                  <label className="text-xs font-medium">Tax rate (%) — enter 0 explicitly if applicable
+                    <input className="field mt-2 block w-full" type="number" min="0" max="100" step="0.01" value={taxRatePercent} onChange={(e) => setTaxRatePercent(e.target.value)} />
+                  </label>
+                  <p className="text-xs text-[#73685f]">Confirm your applicable tax treatment with your accountant. NexPOS will not assume a tax rate for you.</p>
+                </div>
+              ) : null}
+              {current === "receiptSetup" && (steps[current] === "pending" || editingCompletedStep) ? (
+                <div className="mt-5 grid gap-4">
+                  <label className="text-xs font-medium">Receipt header
+                    <input className="field mt-2 block w-full" value={receiptHeader} maxLength={200} onChange={(e) => setReceiptHeader(e.target.value)} placeholder={business.data.name} />
+                  </label>
+                  <label className="text-xs font-medium">Receipt footer (optional)
+                    <textarea className="field mt-2 block w-full" value={receiptFooter} maxLength={200} onChange={(e) => setReceiptFooter(e.target.value)} />
+                  </label>
+                  <div className="rounded-lg border border-dashed bg-white p-4 text-center text-xs">
+                    <p className="font-semibold">{receiptHeader || business.data.name}</p>
+                    <p className="mt-1">{businessAddress}</p>
+                    <p className="mt-2">Sample receipt — amounts and identifiers are calculated by the server at sale time.</p>
+                    <p className="mt-2">{receiptFooter}</p>
+                  </div>
+                </div>
+              ) : null}
 
               <div className="mt-6 rounded-xl bg-white p-4">
                 <div className="flex items-center justify-between gap-4">
@@ -207,18 +336,26 @@ export default function OnboardingPage(): JSX.Element {
                   <Link href="/products" className="mt-3 inline-flex text-[11px] font-semibold text-[#e44e34]">Open products →</Link>
                 </div>
               ) : null}
+              {current === "employees" ? (
+                <div className="mt-4 rounded-xl bg-white p-4">
+                  <p className="text-xs font-semibold">Owner-only stores can skip employee setup.</p>
+                  <Link href="/team" className="mt-2 inline-block text-xs font-semibold text-[#e44e34]">Open team management →</Link>
+                </div>
+              ) : null}
 
-              {steps[current] === "pending" ? (
+              {steps[current] === "pending" || editingCompletedStep ? (
                 <div className="mt-6 flex flex-wrap gap-2">
-                  <PrimaryButton
+                  {(REQUIRED.includes(current) || SKIPPABLE.includes(current)) ? <PrimaryButton
                     type="button"
                     onClick={() => void patchStep(current, "done")}
-                    disabled={savingStep !== null}
+                    disabled={savingStep !== null || business.isFetching}
                     aria-busy={savingStep !== null}
                   >
-                    {savingStep !== null ? "Saving step…" : "Mark step complete"}
-                  </PrimaryButton>
-                  {SKIPPABLE.includes(current) ? (
+                    {savingStep !== null ? "Saving configuration…" :
+                      REQUIRED.includes(current) ? "Save & continue" :
+                      current === "products" ? "Verify saved products & continue" : "Verify added employees & continue"}
+                  </PrimaryButton> : null}
+                  {SKIPPABLE.includes(current) && !editingCompletedStep ? (
                     <GhostButton
                       type="button"
                       onClick={() => void patchStep(current, "skipped")}
@@ -242,12 +379,26 @@ export default function OnboardingPage(): JSX.Element {
             </div>
           </div>
 
+          {requiredDone ? (
+            <div className="mt-6 rounded-2xl border border-[#eee4db] bg-[#fcf8f3] p-5" aria-label="First sale readiness">
+              <h3 className="text-sm font-semibold text-[#17130f]">Before your first sale</h3>
+              <p className="mt-2 text-xs text-[#73685f]">Business setup and operational readiness are separate. These checks come from the server; stock and checkout rules are validated again when you sell.</p>
+              {readiness.data ? (
+                <ul className="mt-3 space-y-2 text-xs">
+                  <li>{readiness.data.hasSellableProduct ? "✓" : "○"} <Link className="underline" href="/products">At least one sellable product with available stock (if tracked)</Link></li>
+                  <li>{readiness.data.hasActiveRegister ? "✓" : "○"} <Link className="underline" href="/registers">Active register</Link></li>
+                  <li>{readiness.data.hasOpenShift ? "✓" : "○"} <Link className="underline" href="/shifts">Open shift</Link></li>
+                </ul>
+              ) : <p className="mt-3 text-xs" role="status">{readiness.isError ? "Could not load sale readiness; retry after refresh." : "Checking sale readiness…"}</p>}
+            </div>
+          ) : null}
+
           {error ? <p role="alert" className="mt-5 rounded-xl bg-[#fff0f0] px-3 py-2 text-sm font-medium text-[#c43e3e]">{error}</p> : null}
 
           <div className="mt-8 flex items-center justify-between gap-3 border-t border-[#eee6de] pt-5">
             {requiredDone
               ? <Link href="/" className="text-[11px] font-semibold text-[#73685f] hover:text-[#d94a30]">← Back to dashboard</Link>
-              : <p className="text-[11px] font-medium text-[#73685f]">Complete required setup to open the dashboard.</p>}
+              : <p className="text-[11px] font-medium text-[#73685f]">Save your required business, tax and receipt settings to open the dashboard.</p>}
             <p className="font-data text-[9px] text-[#9a8d83]">Progress is saved by the onboarding endpoint</p>
           </div>
         </Panel>

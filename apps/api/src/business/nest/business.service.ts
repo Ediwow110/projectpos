@@ -2,9 +2,10 @@ import { Inject, Injectable } from "@nestjs/common";
 import { randomBytes } from "node:crypto";
 import {
   applyOnboardingPatch,
-  defaultOnboardingState,
+  configuredOnboardingState,
+  isOnboardingComplete,
+  isRequiredSetupConfigured,
   mergeSettings,
-  normalizeOnboardingState,
   type OnboardingState,
 } from "../onboarding";
 import type { DbPort } from "../../common/db.port";
@@ -94,8 +95,60 @@ export class BusinessService {
 
   async getOnboarding(businessId: string): Promise<OnboardingState> {
     const settings = await this.db.getSettings(businessId);
-    const stored = settings["onboarding"];
-    return stored === undefined ? defaultOnboardingState() : normalizeOnboardingState(stored);
+    return configuredOnboardingState(settings);
+  }
+
+  async getSaleReadiness(businessId: string): Promise<{
+    businessConfigured: boolean;
+    hasSellableProduct: boolean;
+    hasActiveRegister: boolean;
+    hasOpenShift: boolean;
+    hasStaff: boolean;
+    readyForFirstSale: boolean;
+    missing: string[];
+  }> {
+    const [settings, products, registers, balances, memberships] = await Promise.all([
+      this.db.getSettings(businessId),
+      this.db.listProducts(businessId),
+      this.db.listRegisters(businessId),
+      this.db.listBalances(businessId),
+      this.db.listMembershipsByBusiness(businessId),
+    ]);
+    const activeRegisters = registers.filter((register) => register.isActive);
+    const businessConfigured = isOnboardingComplete(configuredOnboardingState(settings));
+    const hasActiveRegister = activeRegisters.length > 0;
+    const hasSellableProduct = products.some((product) =>
+      product.isActive && product.priceMinor > 0 && (
+        !product.trackInventory || balances.some((balance) =>
+          balance.productId === product.id && balance.qtyOnHand > 0)
+      ));
+    const openRegisterIds = new Set((await Promise.all(
+      activeRegisters.map((register) => this.db.findOpenShiftByRegister(businessId, register.id)),
+    )).filter((shift) => shift !== null).map((shift) => shift.registerId));
+    const hasOpenShift = openRegisterIds.size > 0;
+    const hasStaff = memberships.some((member) => member.role !== "owner" && !member.deactivatedAt);
+    const hasStockAtAnOpenRegister = activeRegisters.some((register) =>
+      openRegisterIds.has(register.id) && products.some((product) =>
+        product.isActive && product.priceMinor > 0 && (
+          !product.trackInventory || balances.some((balance) =>
+            balance.productId === product.id && balance.qtyOnHand > 0 &&
+            (balance.branchId ?? null) === (register.branchId ?? null))
+        )));
+    const missing: string[] = [];
+    if (!businessConfigured) missing.push("business_setup");
+    if (!hasSellableProduct) missing.push("sellable_product_or_stock");
+    if (!hasActiveRegister) missing.push("active_register");
+    if (!hasOpenShift) missing.push("open_shift");
+    if (hasSellableProduct && hasOpenShift && !hasStockAtAnOpenRegister) missing.push("stock_at_open_register");
+    return {
+      businessConfigured,
+      hasSellableProduct,
+      hasActiveRegister,
+      hasOpenShift,
+      hasStaff,
+      readyForFirstSale: missing.length === 0,
+      missing,
+    };
   }
 
   async patchOnboarding(
@@ -107,9 +160,21 @@ export class BusinessService {
   ): Promise<OnboardingState> {
     if (!granted.includes("settings.write")) throw new Error("FORBIDDEN");
     return this.db.withLock(`business-settings:${businessId}`, async () => {
-    const current = await this.getOnboarding(businessId);
-    const next = applyOnboardingPatch(current, patch);
     const settings = await this.db.getSettings(businessId);
+    const current = configuredOnboardingState(settings);
+    if (patch.state === "done" && !isRequiredSetupConfigured(patch.step, settings)) {
+      throw new Error("ONBOARDING_CONFIGURATION_REQUIRED");
+    }
+    if (patch.state === "done" && patch.step === "products" &&
+        !(await this.db.listProducts(businessId)).some((product) => product.isActive)) {
+      throw new Error("ONBOARDING_CONFIGURATION_REQUIRED");
+    }
+    if (patch.state === "done" && patch.step === "employees" &&
+        !(await this.db.listMembershipsByBusiness(businessId)).some(
+          (member) => member.role !== "owner" && !member.deactivatedAt)) {
+      throw new Error("ONBOARDING_CONFIGURATION_REQUIRED");
+    }
+    const next = applyOnboardingPatch(current, patch);
     await this.db.saveSettings(businessId, { ...settings, onboarding: next });
     await this.db.appendAudit({
       businessId,

@@ -25,6 +25,11 @@ test("incomplete owners stay in setup across dashboard deep links and browser hi
       },
     }),
   }));
+  await context.route("**/api/v1/business", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ name: "QA Workspace", settings: { currency: "PHP" } }),
+  }));
   await context.route("**/api/v1/dashboard/overview**", (route) => {
     dashboardOverviewRequests += 1;
     const emptyKpi = { value: 0, previous: 0, deltaMinor: 0, deltaPct: 0 };
@@ -137,6 +142,10 @@ test("stale completed profile cannot keep the dashboard after setup becomes requ
       },
     }),
   }));
+  await page.route("**/api/v1/business", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ name: "QA Workspace", settings: { currency: "PHP", receiptHeader: "QA Workspace" } }),
+  }));
   await page.route("**/api/v1/branches", (route) => route.fulfill({
     status: 200, contentType: "application/json", body: JSON.stringify({ items: [] }),
   }));
@@ -176,6 +185,10 @@ test("owners can open the dashboard after required setup while optional steps re
         products: "pending", employees: "pending",
       },
     }),
+  }));
+  await page.route("**/api/v1/business", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ name: "QA Workspace", settings: { currency: "PHP", receiptHeader: "QA Workspace" } }),
   }));
   await page.route("**/api/v1/branches", (route) => route.fulfill({
     status: 200, contentType: "application/json", body: JSON.stringify({ items: [] }),

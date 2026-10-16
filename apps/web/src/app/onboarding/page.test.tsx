@@ -38,7 +38,10 @@ describe("onboarding navigation", () => {
     const html = renderToStaticMarkup(<OnboardingPage />);
 
     expect(html).not.toContain('href="/"');
-    expect(html).toContain("Complete required setup to open the dashboard.");
+    expect(html).toContain("Save your required business, tax and receipt settings to open the dashboard.");
+    expect(html).toContain("Save &amp; continue");
+    expect(html).toContain("Receipt header");
+    expect(html).not.toContain("Mark step complete");
   });
 
   it("lets owners go to the dashboard when only optional setup steps remain", () => {

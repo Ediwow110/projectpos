@@ -32,6 +32,17 @@ afterAll(async () => {
 });
 
 describe("onboarding HTTP contract", () => {
+  it("refuses marking required steps done without actual saved settings", async () => {
+    for (const step of ["businessDetails", "taxCurrency", "receiptSetup"]) {
+      const attempted = await request(app.getHttpServer())
+        .patch("/api/v1/onboarding")
+        .set("Cookie", cookie)
+        .set("X-CSRF-Token", csrf)
+        .send({ step, state: "done" });
+      expect(attempted.status).toBe(400);
+      expect(attempted.body.code).toBe("ONBOARDING_CONFIGURATION_REQUIRED");
+    }
+  });
   it.each(["businessDetails", "taxCurrency", "receiptSetup"] as const)(
     "rejects a direct API attempt to skip required step %s without changing saved progress",
     async (step) => {
@@ -70,6 +81,24 @@ describe("onboarding HTTP contract", () => {
   });
 
   it("persists valid required-step progress and blocks workspace API access while setup remains incomplete", async () => {
+    const businessProfile = await request(app.getHttpServer())
+      .patch("/api/v1/business/settings")
+      .set("Cookie", cookie)
+      .set("X-CSRF-Token", csrf)
+      .send({ businessAddress: "125 Main Street, Manila", businessTimezone: "Asia/Manila" });
+    expect(businessProfile.status).toBe(200);
+    const profile = await request(app.getHttpServer())
+      .patch("/api/v1/onboarding")
+      .set("Cookie", cookie)
+      .set("X-CSRF-Token", csrf)
+      .send({ step: "businessDetails", state: "done" });
+    expect(profile.status).toBe(200);
+    const tax = await request(app.getHttpServer())
+      .patch("/api/v1/business/settings")
+      .set("Cookie", cookie)
+      .set("X-CSRF-Token", csrf)
+      .send({ currency: "PHP", taxName: "No tax", taxRateBps: 0 });
+    expect(tax.status).toBe(200);
     const saved = await request(app.getHttpServer())
       .patch("/api/v1/onboarding")
       .set("Cookie", cookie)
@@ -118,6 +147,12 @@ describe("onboarding HTTP contract", () => {
   });
 
   it("opens workspace APIs when required steps are complete, even with optional steps pending", async () => {
+    const receiptSettings = await request(app.getHttpServer())
+      .patch("/api/v1/business/settings")
+      .set("Cookie", cookie)
+      .set("X-CSRF-Token", csrf)
+      .send({ receiptHeader: "Onboarding Contract Store" });
+    expect(receiptSettings.status).toBe(200);
     const saved = await request(app.getHttpServer())
       .patch("/api/v1/onboarding")
       .set("Cookie", cookie)
@@ -142,5 +177,16 @@ describe("onboarding HTTP contract", () => {
       .send({ step: "products", state: "skipped" });
     expect(skipped.status).toBe(200);
     expect(skipped.body.steps.products).toBe("skipped");
+  });
+  it("will not mark product or employee setup done without real records", async () => {
+    for (const step of ["products", "employees"]) {
+      const res = await request(app.getHttpServer())
+        .patch("/api/v1/onboarding")
+        .set("Cookie", cookie)
+        .set("X-CSRF-Token", csrf)
+        .send({ step, state: "done" });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("ONBOARDING_CONFIGURATION_REQUIRED");
+    }
   });
 });

@@ -1,12 +1,12 @@
 import { CanActivate, ExecutionContext, Inject, Injectable } from "@nestjs/common";
 import { isSessionExpired, isSessionRevoked } from "@pos/auth";
 import { hashToken } from "../auth/sessions";
-import { defaultOnboardingState, isOnboardingComplete, type OnboardingState } from "../business/onboarding";
+import { configuredOnboardingState, isOnboardingComplete } from "../business/onboarding";
 import type { DbPort } from "./db.port";
 import { assignedBranches, assignedRegisters, effectivePermissions } from "../auth/member-permissions";
 import { permitsAssignedBranchRequest } from "../auth/branch-access-policy";
 
-const SETUP_SETTINGS = new Set(["currency", "taxName", "taxRateBps", "receiptHeader", "receiptFooter"]);
+const SETUP_SETTINGS = new Set(["businessAddress", "businessPhone", "businessTimezone", "currency", "taxName", "taxRateBps", "receiptHeader", "receiptFooter"]);
 
 function isSetupSettingsPatch(body: unknown): boolean {
   return typeof body === "object" && body !== null && !Array.isArray(body) &&
@@ -15,7 +15,7 @@ function isSetupSettingsPatch(body: unknown): boolean {
 
 function isSetupRoute(method: string, path: string, body: unknown): boolean {
   if (method === "GET") {
-    return ["/api/v1/me", "/api/v1/health", "/api/v1/business", "/api/v1/onboarding", "/api/v1/auth/sessions"].includes(path);
+    return ["/api/v1/me", "/api/v1/health", "/api/v1/business", "/api/v1/onboarding", "/api/v1/onboarding/readiness", "/api/v1/auth/sessions"].includes(path);
   }
   if (method === "PATCH") {
     return path === "/api/v1/onboarding" ||
@@ -144,7 +144,7 @@ export class SessionGuard implements CanActivate {
   ): Promise<boolean> {
     if (isSetupRoute(req.method, req.path, req.body)) return true;
     const settings = sessionSettings ?? await this.db.getSettings(req.auth.businessId);
-    const onboarding = (settings["onboarding"] as OnboardingState | undefined) ?? defaultOnboardingState();
+    const onboarding = configuredOnboardingState(settings);
     if (isOnboardingComplete(onboarding)) return true;
     req.authError = "ONBOARDING_REQUIRED";
     return false;

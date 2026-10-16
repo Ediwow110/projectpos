@@ -271,7 +271,17 @@ export async function createTestApp(options: { paymongo?: PayMongoPort; humanVer
               const onboarding = normalizeOnboardingState(settings["onboarding"]);
               for (const step of REQUIRED_STEPS) onboarding.steps[step] = "done";
               onboarding.currentStep = "products";
-              await d.saveSettings(result.business.id, { ...settings, onboarding });
+              // Contract fixtures represent genuinely configured businesses,
+              // rather than bypassing the new server-side setup checks.
+              await d.saveSettings(result.business.id, {
+                ...settings,
+                onboarding,
+                businessAddress: "123 Fixture Street, Manila",
+                businessTimezone: "Asia/Manila",
+                taxName: "No tax",
+                taxRateBps: 0,
+                receiptHeader: input.businessName,
+              });
               return result;
             };
           }
