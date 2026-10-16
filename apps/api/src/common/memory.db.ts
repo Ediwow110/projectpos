@@ -2,6 +2,7 @@ import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategor
 
 import type { DbStockException } from "./db.port";
 import type { DbGuestSupportCase, DbPlatformConsent } from "./db.port";
+import { PRODUCT_MEDIA_ACTIVE_QUOTA_BYTES, type DbProductMediaAsset } from "./db.port";
 
 let n = 0;
 const nid = (p: string): string => `${p}_${Date.now().toString(36)}_${(n += 1)}`;
@@ -15,6 +16,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const settings = new Map<string, Record<string, unknown>>();
   const categories = new Map<string, DbCategory>();
   const products = new Map<string, DbProduct>();
+  const productMedia = new Map<string, DbProductMediaAsset>();
   const productFamilies = new Map<string, DbProductFamily>();
   const productOptions = new Map<string, DbProductOption>();
   const productOptionValues = new Map<string, DbProductOptionValue>();
@@ -133,6 +135,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       if (transactionDepth > 0) return fn(memoryDb);
       transactionDepth += 1;
       const snapshot = {
+        products: new Map(products), productMedia: new Map(productMedia),
         purchaseOrders: new Map(purchaseOrders), purchaseOrderLines: new Map(purchaseOrderLines),
         purchaseReceipts: new Map(purchaseReceipts), purchaseReceiptLines: new Map(purchaseReceiptLines),
         supplierReturns: new Map(supplierReturns), supplierReturnLines: new Map(supplierReturnLines),
@@ -152,6 +155,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       } catch (error) {
         const restore = <T>(target: Map<string, T>, source: Map<string, T>): void => { target.clear(); for (const [id, row] of source) target.set(id, row); };
         restore(purchaseOrders, snapshot.purchaseOrders); restore(purchaseOrderLines, snapshot.purchaseOrderLines);
+        restore(products, snapshot.products); restore(productMedia, snapshot.productMedia);
         restore(purchaseReceipts, snapshot.purchaseReceipts); restore(purchaseReceiptLines, snapshot.purchaseReceiptLines);
         restore(supplierReturns, snapshot.supplierReturns); restore(supplierReturnLines, snapshot.supplierReturnLines);
         restore(movements, snapshot.movements); restore(balances, snapshot.balances); restore(stockExceptions, snapshot.stockExceptions); restore(guestSupportCases, snapshot.guestSupportCases); restore(platformConsents, snapshot.platformConsents); restore(idempotency, snapshot.idempotency);
@@ -429,6 +433,70 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       const next = { ...p, ...patch };
       products.set(id, next);
       return next;
+    },
+    async getActiveProductMedia(businessId, productId) {
+      return [...productMedia.values()].find((asset) =>
+        asset.businessId === businessId && asset.productId === productId && asset.state === "ACTIVE") ?? null;
+    },
+    async replaceProductMediaAtomic(businessId, productId, expectedAssetId, input) {
+      return withLock(`product-media-quota:${businessId}`, () => memoryDb.withTransaction(async () => {
+        const current = products.get(productId);
+        if (!current || current.businessId !== businessId) throw new Error("NOT_FOUND");
+        if (input.businessId !== businessId || input.productId !== productId ||
+          input.contentType !== "image/webp" || !Number.isSafeInteger(input.bytes) ||
+          input.bytes <= 0 || input.bytes > 1024 * 1024 ||
+          !Number.isInteger(input.width) || input.width < 1 || input.width > 1600 ||
+          !Number.isInteger(input.height) || input.height < 1 || input.height > 1600 ||
+          !input.storagePath.startsWith(`businesses/${businessId}/products/${productId}/`) ||
+          !input.storagePath.endsWith(".webp") ||
+          [...productMedia.values()].some((asset) => asset.storagePath === input.storagePath)) {
+          throw new Error("PRODUCT_MEDIA_INVALID");
+        }
+        const oldAsset = await memoryDb.getActiveProductMedia(businessId, productId);
+        if ((oldAsset?.id ?? null) !== expectedAssetId) throw new Error("PRODUCT_MEDIA_CONFLICT");
+        const total = [...productMedia.values()].filter((asset) =>
+          asset.businessId === businessId && asset.state === "ACTIVE")
+          .reduce((sum, asset) => sum + asset.bytes, 0);
+        if (total - (oldAsset?.bytes ?? 0) + input.bytes > PRODUCT_MEDIA_ACTIVE_QUOTA_BYTES) {
+          throw new Error("PRODUCT_MEDIA_QUOTA");
+        }
+        const now = new Date();
+        if (oldAsset) productMedia.set(oldAsset.id, { ...oldAsset, state: "SUPERSEDED", updatedAt: now });
+        const asset: DbProductMediaAsset = {
+          ...input, id: nid("media"), state: "ACTIVE", cleanupAttempts: 0,
+          lastCleanupAt: null, createdAt: now, updatedAt: now,
+        };
+        productMedia.set(asset.id, asset);
+        const product = { ...current, imageUrl: input.publicUrl };
+        products.set(productId, product);
+        return { product, asset, oldAsset };
+      }));
+    },
+    async detachProductMediaAtomic(businessId, productId, expectedAssetId) {
+      return withLock(`product-media-quota:${businessId}`, () => memoryDb.withTransaction(async () => {
+        const current = products.get(productId);
+        if (!current || current.businessId !== businessId) throw new Error("NOT_FOUND");
+        const oldAsset = await memoryDb.getActiveProductMedia(businessId, productId);
+        if ((oldAsset?.id ?? null) !== expectedAssetId) throw new Error("PRODUCT_MEDIA_CONFLICT");
+        if (oldAsset) productMedia.set(oldAsset.id, {
+          ...oldAsset, state: "PENDING_DELETE", updatedAt: new Date(),
+        });
+        const product = { ...current, imageUrl: null };
+        products.set(productId, product);
+        return { product, oldAsset };
+      }));
+    },
+    async listProductMediaCleanupCandidates(limit) {
+      return [...productMedia.values()].filter((asset) => asset.state !== "ACTIVE")
+        .sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime())
+        .slice(0, Math.max(0, Math.min(100, limit)));
+    },
+    async markProductMediaCleanupResult(businessId, assetId, succeeded) {
+      const asset = productMedia.get(assetId);
+      if (!asset || asset.businessId !== businessId || asset.state === "ACTIVE") return;
+      if (succeeded) productMedia.delete(assetId);
+      else productMedia.set(assetId, { ...asset, cleanupAttempts: asset.cleanupAttempts + 1,
+        lastCleanupAt: new Date(), updatedAt: new Date() });
     },
     async createProductFamily(f) {
       const now = new Date(); const row = { ...f, id: nid("pfam"), createdAt: now, updatedAt: now };
