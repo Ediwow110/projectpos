@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Panel } from "../../components/premium";
-import { NexposLogo } from "../../components/brand/NexposLogo";
+import { AtlasEntryBrand } from "../../components/AtlasEntryBrand";
 import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { ApiError, apiFetch } from "../../lib/api";
 
@@ -178,14 +178,14 @@ export default function OnboardingPage(): JSX.Element {
   }
 
   if (query.isLoading || business.isLoading) {
-    return <main className="grid min-h-screen place-items-center bg-[#fcf8f3] text-sm text-[#73685f]">Loading setup…</main>;
+    return <main role="status" className="atlas-entry grid min-h-screen place-items-center text-sm text-[#748078]">Loading setup…</main>;
   }
   if (unauthorized) {
-    return <main role="status" className="grid min-h-screen place-items-center bg-[#fcf8f3] text-sm text-[#73685f]">Returning to sign in…</main>;
+    return <main role="status" className="atlas-entry grid min-h-screen place-items-center text-sm text-[#748078]">Returning to sign in…</main>;
   }
   if (query.isError || !query.data || business.isError || !business.data) {
     return (
-      <main className="grid min-h-screen place-items-center bg-[#fcf8f3] p-6 text-center">
+      <main className="atlas-entry grid min-h-screen place-items-center p-6 text-center">
         <div>
           <p role="alert" className="text-sm text-[#c43e3e]">Could not load setup progress.</p>
           <button type="button" onClick={() => void query.refetch()} className="mt-4 text-sm font-semibold text-[#d94a30]">Try again</button>
@@ -205,38 +205,36 @@ export default function OnboardingPage(): JSX.Element {
   const currentMeta = STEP_META[current];
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#fcf8f3] p-4 sm:p-8">
-      <div aria-hidden className="pointer-events-none absolute -left-40 bottom-[-10rem] h-[28rem] w-[28rem] rounded-full bg-[#ffd7c7]/45" />
-      <div aria-hidden className="pointer-events-none absolute -right-32 -top-40 h-[35rem] w-[35rem] rounded-full bg-[#ffd9c8]/55" />
-      <div aria-hidden className="pointer-events-none absolute right-[-5rem] top-32 h-[22rem] w-[22rem] rounded-full bg-[#ff8061]/20" />
+    <main data-ui="atlas-v4-onboarding" className="atlas-entry min-h-screen p-4 sm:p-6 lg:p-8">
 
-      <header className="relative z-10 mx-auto flex max-w-[1360px] items-center rounded-2xl border border-white/80 bg-white px-5 py-4 shadow-[0_4px_14px_-6px_rgb(28_20_15/0.08)]">
-        <NexposLogo variant="light" size="md" />
+      <header className="mx-auto flex min-h-[77px] max-w-[1360px] flex-wrap items-center gap-3 rounded-xl border border-[#e5e9e3] bg-white px-5 py-3">
+        <AtlasEntryBrand compact />
         <div className="ml-auto flex items-center gap-3">
-          <span className="font-data text-[9px] text-[#7a6f66]">SETUP {String(currentIndex + 1).padStart(2, "0")} / 05</span>
-          <StatusPill tone="info">● Setup progress</StatusPill>
+          <span className="font-data text-[11px] text-[#748078]">STEP {String(currentIndex + 1).padStart(2, "0")} / 05</span>
+          <span role="status" className="rounded-md bg-[#e8f4ec] px-3 py-1.5 text-[11px] font-semibold text-[#267552]">Setup progress</span>
         </div>
       </header>
 
-      <div className="relative z-10 mx-auto mt-6 grid max-w-[1360px] gap-5 lg:grid-cols-[250px_minmax(0,1fr)]">
-        <aside className="rounded-[18px] border border-white/80 bg-white p-6 shadow-[0_4px_14px_-6px_rgb(28_20_15/0.08)]">
-          <h1 className="font-display text-[19px] font-semibold">Set up your business</h1>
-          <p className="mt-2 text-[10px] leading-4 text-[#776b62]">A few decisions now keep every shift consistent later.</p>
+      <div className="mx-auto mt-6 grid max-w-[1360px] gap-5 lg:grid-cols-[239px_minmax(0,1fr)]">
+        <aside className="atlas-panel p-5 sm:p-6">
+          <p className="atlas-eyebrow">BUSINESS WORKSPACE</p>
+          <h1 className="font-display mt-4 text-[21px] font-semibold text-[#202826]">Set up your business</h1>
+          <p className="mt-3 text-[13px] leading-5 text-[#748078]">Configure the essentials. We verify each saved step before you continue.</p>
 
-          <ol className="mt-8 space-y-5">
+          <ol className="mt-8 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
             {ORDER.map((step, index) => {
               const state = steps[step];
               const active = step === current;
               return (
-                <li key={step} className="flex items-center gap-3">
+                <li key={step} className={"flex items-center gap-3 rounded-lg p-2.5 " + (active ? "bg-[#fff0eb]" : "bg-white")}>
                   <span
                     className={
-                      "font-data grid h-9 w-9 shrink-0 place-items-center rounded-full text-[9px] " +
+                      "font-data grid h-9 w-9 shrink-0 place-items-center rounded-[9px] text-[11px] " +
                       (state === "done" || active
-                        ? "bg-[#f35d3f] text-white"
+                        ? "bg-[#da614c] text-white"
                         : state === "skipped"
                           ? "bg-[#fff4df] text-[#b56d0c]"
-                          : "bg-[#f4f0ea] text-[#8a7f76]")
+                          : "bg-[#f7f8f5] text-[#748078]")
                     }
                   >
                     {String(index + 1).padStart(2, "0")}
@@ -244,8 +242,8 @@ export default function OnboardingPage(): JSX.Element {
                   <button type="button" className="min-h-11 flex-1 text-left disabled:cursor-default"
                     disabled={state !== "done" || savingStep !== null}
                     onClick={() => setEditingStep(step)}>
-                    <p className={"text-[11px] " + (active ? "font-semibold text-[#17130f]" : "font-medium text-[#51483f]")}>{STEP_META[step].title}</p>
-                    <p className={"font-data mt-1 text-[8px] " + (state === "done" ? "text-[#1f8a5b]" : active ? "text-[#e44e34]" : state === "skipped" ? "text-[#b56d0c]" : "text-[#9a8d83]")}>
+                    <p className={"text-[13px] " + (active ? "font-semibold text-[#202826]" : "font-medium text-[#526159]")}>{STEP_META[step].title}</p>
+                    <p className={"font-data mt-1 text-[10px] " + (state === "done" ? "text-[#267552]" : active ? "text-[#da614c]" : state === "skipped" ? "text-[#9a6e32]" : "text-[#748078]")}>
                       {state === "done" ? "Done · Select to review" : state === "skipped" ? "Skipped" : active ? "Current" : "Next"}
                     </p>
                   </button>
@@ -254,25 +252,25 @@ export default function OnboardingPage(): JSX.Element {
             })}
           </ol>
 
-          <div className="mt-10 rounded-[14px] bg-[#1b1714] p-4 text-white">
-            <p className="text-[11px] font-semibold">Setup stays honest</p>
-            <p className="mt-2 text-[9px] leading-4 text-[#b9aaa0]">This flow only claims persistence for actions supported by the current APIs.</p>
+          <div className="mt-8 rounded-xl border border-[#e5e9e3] bg-[#fbfcfa] p-4">
+            <p className="text-[13px] font-semibold text-[#202826]">Verified setup progress</p>
+            <p className="mt-2 text-[12px] leading-5 text-[#748078]">Completion requires saved configuration. Optional steps can be skipped without creating records.</p>
           </div>
         </aside>
 
-        <Panel className="min-h-[660px] p-6 sm:p-10">
-          <p className="font-data text-[9px] font-medium uppercase tracking-[0.14em] text-[#f35d3f]">
+        <Panel className="atlas-panel min-h-[660px] min-w-0 p-5 sm:p-8 lg:p-10">
+          <p className="atlas-eyebrow">
             Step {String(currentIndex + 1).padStart(2, "0")} · {currentMeta.title}
           </p>
-          <h2 className="font-display mt-5 max-w-3xl text-[30px] font-bold text-[#17130f]">{currentMeta.title}</h2>
-          <p className="mt-3 max-w-3xl text-[13px] leading-5 text-[#73685f]">{currentMeta.description}</p>
+          <h2 className="font-display mt-5 max-w-3xl text-[30px] font-semibold text-[#202826]">{currentMeta.title}</h2>
+          <p className="mt-3 max-w-3xl text-[14px] leading-6 text-[#748078]">{currentMeta.description}</p>
           {editingCompletedStep ? <button type="button" className="mt-3 text-xs font-semibold text-[#e44e34]"
             onClick={() => setEditingStep(null)}>← Return to current setup</button> : null}
 
-          <div className="mt-8 grid gap-4 xl:grid-cols-[minmax(0,1fr)_250px]">
-            <div className="rounded-2xl border border-[#eee4db] bg-[#fcf8f3] p-5 sm:p-7">
-              <h3 className="font-display text-base font-semibold">Step status</h3>
-              <p className="mt-2 text-[11px] leading-5 text-[#73685f]">{currentMeta.note}</p>
+          <div className="mt-8 grid gap-4 xl:grid-cols-[minmax(0,1fr)_220px]">
+            <div className="rounded-xl border border-[#e5e9e3] bg-[#fbfcfa] p-5 sm:p-7">
+              <h3 className="font-display text-lg font-semibold text-[#202826]">Configuration</h3>
+              <p className="mt-2 text-[13px] leading-5 text-[#748078]">{currentMeta.note}</p>
 
               {current === "businessDetails" && (steps[current] === "pending" || editingCompletedStep) ? (
                 <div className="mt-5 grid gap-4">
@@ -360,6 +358,7 @@ export default function OnboardingPage(): JSX.Element {
               {steps[current] === "pending" || editingCompletedStep ? (
                 <div className="mt-6 flex flex-wrap gap-2">
                   {(REQUIRED.includes(current) || SKIPPABLE.includes(current)) ? <PrimaryButton
+                    className="atlas-step-action"
                     type="button"
                     onClick={() => void patchStep(current, "done")}
                     disabled={savingStep !== null || business.isFetching}
@@ -384,17 +383,17 @@ export default function OnboardingPage(): JSX.Element {
               )}
             </div>
 
-            <div className="rounded-2xl bg-[#1b1714] p-5 text-white">
-              <div className="grid h-10 w-10 place-items-center rounded-xl bg-[#4a2118] font-data text-[#ff8a6b]">◆</div>
-              <h3 className="mt-5 text-[12px] font-semibold">Configured for consistency</h3>
-              <p className="mt-3 text-[10px] leading-5 text-[#b9aaa0]">
+            <div className="rounded-xl border border-[#e5e9e3] bg-white p-5 text-[#202826]">
+              <div className="grid h-10 w-10 place-items-center rounded-lg bg-[#29332d] font-data text-white">N</div>
+              <h3 className="mt-5 text-[15px] font-semibold">Configured for consistency</h3>
+              <p className="mt-3 text-[12px] leading-5 text-[#748078]">
                 Completed setup state is server-backed. Unsupported settings are not simulated or silently stored only in the browser.
               </p>
             </div>
           </div>
 
           {requiredDone ? (
-            <div className="mt-6 rounded-2xl border border-[#eee4db] bg-[#fcf8f3] p-5" aria-label="First sale readiness">
+            <div className="mt-6 rounded-xl border border-[#e5e9e3] bg-[#fbfcfa] p-5" aria-label="First sale readiness">
               <h3 className="text-sm font-semibold text-[#17130f]">Before your first sale</h3>
               <p className="mt-2 text-xs text-[#73685f]">Business setup and operational readiness are separate. These checks come from the server; stock and checkout rules are validated again when you sell.</p>
               {readiness.data ? (

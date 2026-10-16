@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { ApiError, apiFetch } from "../../lib/api";
-import { NexposLogo } from "../../components/brand/NexposLogo";
+import { AtlasEntryBrand } from "../../components/AtlasEntryBrand";
 import { loginWithReadiness } from "../../lib/login-flow";
 import { isTransientReadinessError } from "../../lib/login-readiness";
 import { persistActiveSyncScope } from "../../lib/sync-store";
@@ -81,52 +81,51 @@ export default function LoginPage(): JSX.Element {
   }
 
   return (
-    <main className="min-h-screen bg-[#fcf8f3] lg:grid lg:grid-cols-[1.08fr_.92fr]">
-      <section className="relative overflow-hidden bg-[#161411] px-6 py-8 text-white sm:px-10 lg:min-h-screen lg:px-14 lg:py-12">
-        <span aria-hidden className="absolute inset-y-0 left-0 w-2.5 bg-[#f35d3f]" />
+    <main data-ui="atlas-v4-login" className="atlas-entry min-h-screen lg:grid lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1fr)]">
+      <section className="relative overflow-hidden border-b border-[#e5e9e3] bg-white px-6 py-7 text-[#202826] sm:px-10 lg:min-h-screen lg:border-b-0 lg:border-r lg:px-14 lg:py-10">
 
         <div className="relative z-10 flex items-center gap-4">
-          <NexposLogo variant="dark" size="lg" withWordmark />
+          <AtlasEntryBrand />
         </div>
 
-        <div className="animate-auth-copy relative z-10 mx-auto mt-16 max-w-[650px] lg:mt-28">
-          <p className="font-data text-[10px] font-medium uppercase tracking-[0.14em] text-[#ff8061]">
+        <div className="animate-auth-copy relative z-10 mx-auto mt-12 max-w-[650px] lg:mt-24">
+          <p className="atlas-eyebrow">
             Private by default · Ready for every shift
           </p>
-          <h1 className="font-display mt-5 text-[38px] font-bold leading-[1.12] tracking-[-0.035em] sm:text-[44px]">
+          <h1 className="font-display mt-5 text-[38px] font-semibold leading-[1.12] tracking-[-0.035em] sm:text-[44px]">
             Run the business.
             <span className="block">Keep the business private.</span>
           </h1>
-          <p className="mt-6 max-w-[600px] text-[15px] leading-6 text-[#a79e94] sm:text-[16px]">
+          <p className="mt-6 max-w-[600px] text-[15px] leading-7 text-[#748078] sm:text-[16px]">
             Your operational data stays behind secure sign-in. The landing experience shows the product — never your sales, cash, customer, or inventory figures.
           </p>
 
-          <div className="mt-10 grid gap-3 rounded-xl border border-[#3a332d] bg-[#1e1b18] p-4 sm:grid-cols-3">
+          <div className="mt-9 grid gap-3 rounded-xl border border-[#e5e9e3] bg-[#fbfcfa] p-4 sm:grid-cols-3">
             {FEATURES.map(([title, description], index) => (
               <div key={title} className="min-w-0 p-1">
-                <p className="font-data text-[9px] font-medium tracking-[0.08em] text-[#ff8061]">0{index + 1}</p>
+                <p className="font-data text-[11px] font-medium tracking-[0.08em] text-[#da614c]">0{index + 1}</p>
                 <p className="mt-3 text-[12px] font-semibold">{title}</p>
-                <p className="mt-2 text-[10px] leading-4 text-[#a79e94]">{description}</p>
+                <p className="mt-2 text-[12px] leading-5 text-[#748078]">{description}</p>
               </div>
             ))}
           </div>
 
-          <section className="mt-8 overflow-hidden rounded-[14px] border border-[#3a332d] bg-[#1e1b18] shadow-[0_18px_42px_-14px_rgb(0_0_0/0.34)]">
-            <div className="flex items-center justify-between gap-4 bg-[#28231f] px-5 py-4">
+          <section className="mt-7 overflow-hidden rounded-xl border border-[#e5e9e3] bg-white">
+            <div className="flex items-center justify-between gap-4 bg-[#fbfcfa] px-5 py-4">
               <p className="font-data text-[10px] font-medium tracking-[0.12em]">PROTECTED WORKSPACE</p>
-              <span className="rounded-full bg-[#eaf7f0] px-3 py-1.5 font-data text-[8px] font-medium text-[#1f8a5b]">● SECURE</span>
+              <span className="rounded-md bg-[#e8f4ec] px-3 py-1.5 font-data text-[10px] font-medium text-[#267552]">SECURE</span>
             </div>
-            <div className="divide-y divide-[#302b27] px-5">
+            <div className="divide-y divide-[#e5e9e3] px-5">
               {PRIVACY_ROWS.map(([label, description, state], index) => (
                 <div key={label} className="grid grid-cols-[32px_minmax(0,1fr)_auto] items-center gap-3 py-4">
-                  <span aria-hidden className={"grid h-7 w-7 place-items-center rounded-[7px] font-data text-[10px] " + (index === 0 ? "bg-[#4a2118] text-[#ff8061]" : "bg-[#28231f] text-[#a79e94]")}>
+                  <span aria-hidden className={"grid h-7 w-7 place-items-center rounded-[7px] font-data text-[10px] " + (index === 0 ? "bg-[#fff0eb] text-[#da614c]" : "bg-[#f7f8f5] text-[#748078]")}>
                     {index === 0 ? "◆" : index === 1 ? "◇" : "•"}
                   </span>
                   <div>
                     <p className="text-[12px] font-semibold">{label}</p>
-                    <p className="mt-1 text-[10px] text-[#a79e94]">{description}</p>
+                    <p className="mt-1 text-[11px] text-[#748078]">{description}</p>
                   </div>
-                  <span className="font-data text-[9px] font-medium text-[#ff8061]">{state}</span>
+                  <span className="font-data text-[10px] font-medium text-[#267552]">{state}</span>
                 </div>
               ))}
             </div>
@@ -135,12 +134,11 @@ export default function LoginPage(): JSX.Element {
 
       </section>
 
-      <section className="relative grid min-h-[720px] place-items-center overflow-hidden p-5 sm:p-10 lg:min-h-screen">
-        <div aria-hidden className="pointer-events-none absolute left-1/2 top-1/2 h-[720px] w-[430px] -translate-x-1/2 -translate-y-1/2 rounded-[28px] bg-[#f7f1ea]" />
+      <section className="relative grid min-h-[620px] place-items-center p-5 sm:p-10 lg:min-h-screen">
 
-        <div className="animate-auth-card relative z-10 w-full max-w-[536px] rounded-[14px] border border-[#eee4db] bg-white p-6 shadow-[0_18px_48px_-14px_rgb(22_18_14/0.14)] sm:p-8">
-          <p className="font-data text-[9px] font-medium uppercase tracking-[0.14em] text-[#e44e34]">Secure business access</p>
-          <h2 className="font-display mt-5 text-[30px] font-bold text-[#17130f]">Welcome back</h2>
+        <div className="animate-auth-card atlas-panel relative z-10 w-full max-w-[536px] p-6 sm:p-9">
+          <p className="atlas-eyebrow">SECURE BUSINESS ACCESS</p>
+          <h2 className="font-display mt-5 text-[30px] font-semibold text-[#202826]">Welcome back</h2>
           <p className="mt-2 text-sm text-[#73685f]">Sign in to open your secure workspace.</p>
 
           {verifiedNotice ? (
@@ -149,7 +147,7 @@ export default function LoginPage(): JSX.Element {
             </div>
           ) : null}
 
-          <div className="mt-6 flex items-center gap-3 rounded-lg bg-[#fff0ea] p-3">
+          <div className="mt-6 flex items-center gap-3 rounded-lg border border-[#e5e9e3] bg-[#fbfcfa] p-3">
             <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#f35d3f] font-data text-xs text-white">◆</div>
             <div>
               <p className="text-[12px] font-semibold text-[#2a241f]">Private workspace</p>
@@ -208,7 +206,7 @@ export default function LoginPage(): JSX.Element {
               type="submit"
               disabled={submitting}
               aria-busy={submitting}
-              className="auth-interactive min-h-[52px] w-full rounded-[9px] bg-[#f35d3f] px-4 text-[13px] font-semibold text-white shadow-[0_8px_20px_-8px_rgb(243_93_63/0.55)] hover:bg-[#d94a30] disabled:cursor-not-allowed disabled:opacity-65"
+              className="auth-interactive atlas-primary w-full px-4 text-[13px] disabled:cursor-not-allowed disabled:opacity-65"
             >
               {submitState === "connecting" ? "Connecting…" : submitLabel}
             </button>
@@ -227,7 +225,7 @@ export default function LoginPage(): JSX.Element {
           </form>
 
           <div className="mt-6 border-t border-[#eee4db] pt-5">
-            <div className="rounded-lg bg-[#f7f1ea] p-4">
+            <div className="rounded-lg border border-[#e5e9e3] bg-[#fbfcfa] p-4">
               <p className="text-[11px] font-semibold text-[#2a241f]">Your session stays business-scoped</p>
               <p className="mt-2 text-[10px] text-[#73685f]">Secure sign-in · device visibility · role-based access</p>
             </div>
