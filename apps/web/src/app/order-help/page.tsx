@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { NexposLogo } from "../../components/brand/NexposLogo";
 
 const paths = [
   { title: "Find an existing order", body: "Use the secure order status link sent to your email.", href: "/order-status" },
@@ -11,8 +10,11 @@ const paths = [
 export default function OrderHelpPage() {
   return <div data-ui="atlas-guest-help" className="min-h-screen bg-[#f7f8f5] text-[#202826]">
     <header className="border-b border-[#e5e9e3] bg-white">
-      <div className="mx-auto flex min-h-[81px] max-w-[1440px] flex-wrap items-center justify-between gap-3 px-5 py-3 sm:px-10">
-        <NexposLogo size="md" />
+      <div className="mx-auto flex min-h-[77px] max-w-[1440px] flex-wrap items-center justify-between gap-3 px-5 py-3 sm:px-10">
+        <Link href="/order" aria-label="NexPOS storefront" className="inline-flex items-center gap-2.5 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#da614c]">
+          <span aria-hidden className="grid h-[42px] w-[42px] shrink-0 place-items-center rounded-[10px] bg-[#29332d] font-display text-[24px] font-semibold text-white">N</span>
+          <span className="font-display text-[21px] font-semibold tracking-tight text-[#202826]">NexPOS</span>
+        </Link>
         <nav aria-label="Order help navigation" className="flex flex-wrap items-center gap-4 text-[13px]">
           <Link href="/order" className="hover:underline">Shop</Link>
           <Link href="/order-status" className="text-[#748078] hover:text-[#202826] hover:underline">Track order</Link>

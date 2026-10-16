@@ -133,7 +133,7 @@ function OrderStatusExperience(): JSX.Element {
           <section className="mt-8 max-w-3xl overflow-hidden rounded-[18px] border border-[#e5d9cf] bg-white shadow-[0_20px_56px_-28px_rgb(28_20_15/0.30)]">
             <div className="bg-[#252422] px-6 py-7 text-white sm:px-8">
               <p className="font-data text-[9px] uppercase tracking-[0.13em] text-[#ff8061]">Order {status.id.slice(-8).toUpperCase()}</p>
-              <h1 className="font-display mt-3 text-[30px] font-bold tracking-[-0.035em] sm:text-[36px]">{fulfillmentHeadline(status)}</h1>
+              <h1 id="order-status-summary" tabIndex={-1} className="font-display mt-3 scroll-mt-6 text-[30px] font-bold tracking-[-0.035em] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:text-[36px]">{fulfillmentHeadline(status)}</h1>
               <p className="mt-3 max-w-xl text-sm leading-6 text-[#c9beb5]">{fulfillmentCopy(status)}</p>
               <a href="#order-support" className="mt-5 inline-flex min-h-11 items-center justify-center rounded-lg border border-[#819089] px-5 text-[13px] font-semibold text-white transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">Report an order issue ↓</a>
             </div>

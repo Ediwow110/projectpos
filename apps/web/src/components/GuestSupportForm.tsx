@@ -20,6 +20,14 @@ export function GuestSupportForm({ statusToken, orderReference }: { statusToken:
     if (submitted) confirmationRef.current?.focus();
   }, [submitted]);
 
+  function returnToOrderStatus(): void {
+    const heading = document.getElementById("order-status-summary");
+    if (!heading) return;
+    heading.focus({ preventScroll: true });
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    heading.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
+  }
+
   async function refreshHistory(): Promise<void> {
     const result = await apiFetch<{ items: GuestCase[] }>("/api/v1/public/support/history", {
       init: { method: "POST", body: JSON.stringify({ statusToken }) },
@@ -63,7 +71,7 @@ export function GuestSupportForm({ statusToken, orderReference }: { statusToken:
       <p className="mt-3 break-all font-data text-sm text-[#202826]">Reference: {submitted}</p>
       <span className="mt-5 inline-block rounded-md bg-[#fcf1df] px-4 py-2 font-data text-[11px] font-semibold text-[#9a6e32]">AWAITING REVIEW</span>
       <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-        <button type="button" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} className="inline-flex min-h-11 items-center justify-center rounded-lg bg-[#29332d] px-5 text-sm font-semibold text-white hover:bg-[#35423d] motion-reduce:scroll-auto">Back to order tracking</button>
+        <button type="button" onClick={returnToOrderStatus} className="inline-flex min-h-11 items-center justify-center rounded-lg bg-[#29332d] px-5 text-sm font-semibold text-white hover:bg-[#35423d] motion-reduce:scroll-auto">Back to order status</button>
         <button type="button" className="min-h-11 rounded-lg border border-[#e5e9e3] px-5 text-sm font-semibold text-[#202826] hover:bg-[#f7f8f5]" onClick={() => setSubmitted(null)}>Submit another issue</button>
       </div>
     </div> : <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(230px,0.48fr)]">
@@ -91,7 +99,7 @@ export function GuestSupportForm({ statusToken, orderReference }: { statusToken:
               onChange={(event) => { setDescription(event.target.value); idempotencyKey.current = null; }} />
           </label>
           {error && <p role="alert" className="text-sm text-[#a34132]">{error}</p>}
-          <div className="flex justify-end"><button type="submit" disabled={busy || description.trim().length < 10} className="fixed inset-x-4 bottom-4 z-[70] min-h-[53px] rounded-lg bg-[#29332d] px-5 text-[13px] font-semibold text-white shadow-[0_0_0_12px_white] hover:bg-[#35423d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#da614c] disabled:opacity-50 sm:static sm:inset-auto sm:min-h-11 sm:shadow-none">{busy ? "Sending…" : "Send support request"}</button></div>
+          <div className="flex justify-end"><button type="submit" disabled={busy || description.trim().length < 10} className="fixed inset-x-4 bottom-4 z-[70] min-h-[53px] rounded-lg bg-[#29332d] px-5 text-[13px] font-semibold text-white shadow-[0_0_0_12px_white] hover:bg-[#35423d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#da614c] disabled:opacity-50 sm:static sm:inset-auto sm:min-h-11 sm:shadow-none">{busy ? "Sending…" : "Submit support request"}</button></div>
         </div>
       </form>
       <aside aria-label="Support privacy" className="rounded-[13px] border border-[#e5e9e3] bg-white p-5 sm:p-6">
