@@ -35,7 +35,8 @@ describe("POS payment workspace", () => {
     expect(html).toContain("QR Ph");
     expect(html).toContain('aria-expanded="false"');
     expect(html).toContain("Other payment methods");
-    expect(html).not.toContain('>GCash<');
+    expect(html).toContain('id="additional-payment-methods" hidden=""');
+    expect(html).toContain('>GCash<');
   });
   it("keeps the cashier's add-to-cart order in the checkout sale summary", () => {
     const html = renderToStaticMarkup(

@@ -121,7 +121,7 @@ export default function PosPage(): JSX.Element {
               {scopedRegisters.map((register) => <option key={register.id} value={register.id}>{register.name}</option>)}
             </select>
           </label>
-          <p className="hidden max-w-[180px] truncate text-xs text-[#71807a] lg:block">{meQuery.data?.businessName || "NexPOS"}</p>
+          <p className="hidden max-w-[180px] truncate text-xs text-[#53615a] lg:block">{meQuery.data?.businessName || "NexPOS"}</p>
         </div>
         <main
           className="grid min-w-0 bg-[#f7f8f5] xl:min-h-[calc(100vh-80px)] xl:grid-cols-[minmax(0,1fr)_456px]"

@@ -84,9 +84,9 @@ export function PosPaymentWorkspace({
       className="m-auto w-[min(94vw,540px)] max-h-[calc(100dvh-24px)] overflow-y-auto rounded-[14px] border border-[#e5e9e3] bg-white p-0 text-[#202826] shadow-[0_24px_80px_rgba(20,30,25,0.22)] backdrop:bg-[#202826]/40"
       data-ui="payment-workspace">
       <div className="px-5 pt-6 sm:px-7">
-        <p className="font-data text-[10px] uppercase tracking-widest text-[#da614c]">Workflow step</p>
+        <p className="font-data text-[10px] uppercase tracking-widest text-[#b04a39]">Workflow step</p>
         <h2 className="font-display mt-4 text-[21px] font-semibold">Choose a payment method</h2>
-        <p className="mt-2 text-xs leading-5 text-[#71807a]">Cash is local. Card and QR Ph use hosted payment when configured.</p>
+        <p className="mt-2 text-xs leading-5 text-[#53615a]">Cash is local. Card and QR Ph use hosted payment when configured.</p>
         <p className="mt-4 border-b border-[#e5e9e3] pb-4 font-data text-[12px] text-[#53615a]">Total due <strong className="ml-2 font-display text-[18px] text-[#202826]">₱{money(due)}</strong> · {count} unit{count === 1 ? "" : "s"}</p>
         <fieldset className="mt-5 space-y-2.5">
           <legend className="sr-only">Payment methods</legend>
@@ -97,10 +97,10 @@ export function PosPaymentWorkspace({
         {additionalMethods.length > 0 ? <>
           <button type="button" aria-expanded={showAdditionalMethods} aria-controls="additional-payment-methods" onClick={() => setShowAdditionalMethods((open) => !open)}
             className="mt-3 min-h-11 w-full rounded-[8px] border border-[#e5e9e3] text-xs font-medium text-[#53615a] hover:bg-[#eff2ed]">{showAdditionalMethods ? "Fewer payment methods" : "Other payment methods"} {showAdditionalMethods ? "−" : "+"}</button>
-          {showAdditionalMethods ? <div id="additional-payment-methods" className="mt-2 max-h-36 space-y-2 overflow-y-auto pb-1">
+          <div id="additional-payment-methods" hidden={!showAdditionalMethods} className="mt-2 max-h-36 space-y-2 overflow-y-auto pb-1">
             {additionalMethods.map((method) => <button key={method.key} type="button" onClick={() => onMethodChange(method.key)} disabled={!methodAvailable(method.key)} title={title(method.key)} aria-pressed={effectiveMethod === method.key}
               className={"flex min-h-11 w-full items-center justify-between rounded-[8px] border px-3 text-left text-xs disabled:opacity-40 " + (effectiveMethod === method.key ? "border-[#267552] bg-[#eaf7f0] font-semibold text-[#202826]" : "border-[#e5e9e3] bg-[#f7f8f5] text-[#53615a]")}>{method.label}{effectiveMethod === method.key ? <span aria-hidden>✓</span> : null}</button>)}
-          </div> : null}
+          </div>
         </> : null}
         {offline ? <p className="mt-3 text-xs text-[#946c31]">Offline sales accept cash only.</p> : null}
         {giftCardLoadMinor > 0 ? <p className="mt-3 text-xs text-[#a34132]">Includes gift-card load ₱{money(giftCardLoadMinor)} · external tender only.</p> : null}
@@ -118,7 +118,7 @@ export function PosPaymentWorkspace({
         </label> : null}
         <div className="mt-5 border-t border-[#e5e9e3] pt-3">
           <h3 className="text-[12px] font-semibold text-[#202826]">Sale summary</h3>
-          <p className="font-data mt-1 text-[10px] uppercase text-[#748078]">{registerSelected ? "Register selected" : "No register selected"} · {now || "Current"}</p>
+          <p className="font-data mt-1 text-[10px] uppercase text-[#53615a]">{registerSelected ? "Register selected" : "No register selected"} · {now || "Current"}</p>
           <ul className="mt-2 max-h-24 overflow-y-auto text-[12px] text-[#53615a]">{cart.map((item) => <li key={item.productId} className="flex justify-between gap-3 py-1"><span className="min-w-0 truncate">{item.qty} × {item.name}</span><span className="shrink-0 font-data">₱{money(Math.max(0, item.qty * item.priceMinor - item.lineDiscountMinor))}</span></li>)}</ul>
         </div>
       </div>

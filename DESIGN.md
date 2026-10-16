@@ -165,6 +165,13 @@ Voice is operational, concise, and specific. Unknown/pending/offline states are 
 - On smaller screens the cashier retains the accessible V4 mobile header
   and navigation, with a light cart tray/drawer and a keyboard-accessible
   payment method modal. Test 390 / 820 / 1024 / 1280 / 1440px.
+- **P5 accessibility refinement:** Keep Figma's coral `#DA614C` as a
+  decorative accent where appropriate, but use darkened `#B84F3C` for
+  normal-sized white-on-coral POS action labels (at least 4.5:1 contrast).
+  Use `#53615A` instead of lighter `#71807A` / `#748078` for small text
+  on white or `#F7F8F5` POS surfaces. Payment workflow labels on white
+  use `#B04A39` rather than light coral. Contrast is measured from browser
+  computed styles, not accepted solely from design-token names.
 
 Figma Atlas V4 is an **additional, role-specific operational layout** within NexPOS,
 not permission to replace the existing POS transaction engine or invent example

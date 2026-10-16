@@ -97,13 +97,13 @@ export function PosProductCatalog({
     <section aria-label="Products" data-ui="atlas-pos-products" className="flex min-h-0 min-w-0 flex-col bg-[#f7f8f5] px-4 pb-8 pt-7 sm:px-7 xl:px-[34px]">
       <header className="mb-5">
         <h2 className="font-display text-[25px] font-semibold text-[#202826]">Products</h2>
-        <p className="mt-1 text-[13px] text-[#71807a]">Choose a quantity before adding to this sale.</p>
+        <p className="mt-1 text-[13px] text-[#53615a]">Choose a quantity before adding to this sale.</p>
       </header>
       <form onSubmit={(event) => { event.preventDefault(); onSearch(); }} className="flex gap-2">
         <label htmlFor="pos-search" className="sr-only">Search product, SKU or scan barcode</label>
         <input id="pos-search" autoFocus value={query} onChange={(e) => onQueryChange(e.target.value)}
           placeholder="Search product, SKU or scan barcode…"
-          className="h-[54px] min-w-0 flex-1 rounded-[9px] border border-[#e5e9e3] bg-white px-4 text-sm text-[#202826] placeholder:text-[#71807a] focus-visible:outline-2 focus-visible:outline-[#267552]" />
+          className="h-[54px] min-w-0 flex-1 rounded-[9px] border border-[#e5e9e3] bg-white px-4 text-sm text-[#202826] placeholder:text-[#53615a] focus-visible:outline-2 focus-visible:outline-[#267552]" />
         <button type="submit" className="min-h-11 rounded-[9px] bg-[#202826] px-4 text-xs font-semibold text-white">Search</button>
       </form>
       <label className="mt-3 inline-flex items-center gap-3 text-xs text-[#53615a] md:hidden">
@@ -121,8 +121,8 @@ export function PosProductCatalog({
         <button type="button" onClick={onAssignCustomer} disabled={saleLocked} className="ml-auto min-h-[35px] shrink-0 rounded-[7px] bg-[#eff2ed] px-3 text-xs text-[#202826] xl:hidden">Customer</button>
       </div>
       {offline ? <p role="status" className="mt-3 rounded-lg bg-[#fff4df] px-3 py-2 text-xs text-[#946c31]">Offline catalog{catalogAt ? ` as of ${catalogAt}` : " (never synced)"}</p> : null}
-      {loading ? <p role="status" className="mt-4 text-sm text-[#71807a]">Loading products…</p> : null}
-      {!offline && !loading && products.length === 0 ? <p className="mt-4 rounded-xl border border-[#e5e9e3] bg-white p-6 text-center text-sm text-[#71807a]">No products found.</p> : null}
+      {loading ? <p role="status" className="mt-4 text-sm text-[#53615a]">Loading products…</p> : null}
+      {!offline && !loading && products.length === 0 ? <p className="mt-4 rounded-xl border border-[#e5e9e3] bg-white p-6 text-center text-sm text-[#53615a]">No products found.</p> : null}
       <ul className="mt-4 grid min-w-0 content-start grid-cols-2 gap-3 sm:grid-cols-3 xl:gap-4">
         {products.map((product) => <li key={product.id} className="min-w-0">
           <button type="button" disabled={saleLocked} aria-label={`${product.name} ₱${money(product.priceMinor)}`} aria-description="Choose quantity before adding to the sale" onClick={() => selectProduct(product)}
@@ -134,7 +134,7 @@ export function PosProductCatalog({
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block break-words text-[13px] font-medium text-[#202826]">{product.name}</span>
-                <span className="mt-2 block truncate text-[11px] text-[#71807a]">{product.sku ? `SKU ${product.sku}` : "Choose pieces"}</span>
+                <span className="mt-2 block truncate text-[11px] text-[#53615a]">{product.sku ? `SKU ${product.sku}` : "Choose pieces"}</span>
               </span>
             </span>
             <span className="mt-auto flex items-center justify-between border-t border-[#e4e9e3] pt-2.5">
@@ -155,7 +155,7 @@ export function PosProductCatalog({
             <button type="button" aria-label="Increase pieces" onClick={() => setQuantity((q) => String(Math.min(9999, (Number(q) || 0) + 1)))} className="grid size-12 place-items-center rounded-lg bg-[#eff2ed] text-xl">+</button>
           </div>
           <p aria-live="polite" className="text-sm text-[#53615a]">Line total: ₱{money(selectedProduct.priceMinor * (Number.isSafeInteger(Number(quantity)) && Number(quantity) > 0 && Number(quantity) <= 9999 ? Number(quantity) : 0))}</p>
-          <div className="flex gap-3"><button type="button" onClick={() => setSelectedProduct(null)} className="min-h-12 flex-1 rounded-lg bg-[#eff2ed] text-sm font-semibold">Cancel</button><button type="submit" className="min-h-12 flex-1 rounded-lg bg-[#da614c] text-sm font-semibold text-white">Add to sale</button></div>
+          <div className="flex gap-3"><button type="button" onClick={() => setSelectedProduct(null)} className="min-h-12 flex-1 rounded-lg bg-[#eff2ed] text-sm font-semibold">Cancel</button><button type="submit" className="min-h-12 flex-1 rounded-lg bg-[#b84f3c] text-sm font-semibold text-white">Add to sale</button></div>
         </form> : null}
       </dialog>
     </section>

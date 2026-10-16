@@ -54,6 +54,9 @@ No global toast provider is currently canonical. Status, warnings, errors, payme
 
 ### P5 — POS keyboard and touch interaction
 
+- **Contrast (P5 refinement):** normal-sized description text and white-on-coral actions in the Atlas cashier views must achieve WCAG's 4.5:1 contrast minimum. Browser tests measure computed foreground/background; the V4 color intent remains intact through an accessible darker action coral and darker neutral copy.
+- The payment method disclosure must always reference an existing controlled element via `aria-controls` even when the extra tenders are hidden; Escape must dismiss the modal and restore focus to the opening Pay control without initiating a sale.
+
 - Atlas V4 `/pos` now uses the 78px dark cashier rail, light product cards, white desktop sale panel and light payment chooser from Figma 66:3 / 66:964. The three primary tenders stay visible, while extra configured methods are available under an accessible disclosure; disabled methods stay disabled. The browser verifies layout widths, colors and pointer targets.
 - Owner catalog `imageUrl` is propagated into newly added cart entries as optional display-only state for product thumbnails. Sale creation/payment requests contain product ID, quantity and discounts but never image URLs. If a saved or held cart lacks a photo, a legible initials fallback remains available. Figma's sample product photos and example stock counts must never be fabricated in real business data.
 

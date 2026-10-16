@@ -86,7 +86,7 @@ export function PosCartPanel({
       </header>
       {!canSell ? <p role="alert" className="mt-3 rounded-lg bg-[#fff0eb] p-3 text-xs text-[#a34132]">Your role cannot complete sales.</p> : null}
       <ul className="min-h-0 flex-1 divide-y divide-[#e5e9e3] overflow-y-auto py-1">
-        {cart.length === 0 ? <li className="py-10 text-center text-sm text-[#71807a]">Cart is empty. Tap products to add.</li> : null}
+        {cart.length === 0 ? <li className="py-10 text-center text-sm text-[#53615a]">Cart is empty. Tap products to add.</li> : null}
         {cart.map((entry) => {
           const gross = entry.qty * entry.priceMinor;
           const net = Math.max(0, gross - entry.lineDiscountMinor);
@@ -97,7 +97,7 @@ export function PosCartPanel({
             </span>
             <div className="min-w-0 flex-1">
               <p className="break-words text-[13px] font-medium text-[#202826]">{entry.name}</p>
-              <p className="font-data mt-1 text-[10px] text-[#748078]">Qty {entry.qty} × ₱{money(entry.priceMinor)}</p>
+              <p className="font-data mt-1 text-[10px] text-[#53615a]">Qty {entry.qty} × ₱{money(entry.priceMinor)}</p>
               {entry.lineDiscountMinor > 0 ? <p className="mt-1 text-[10px] text-[#b04a39]">Line discount −₱{money(entry.lineDiscountMinor)}</p> : null}
               <div className="mt-2 flex items-center gap-2">
                 <div className="flex items-center rounded-[7px] bg-[#eff2ed]">
@@ -128,21 +128,21 @@ export function PosCartPanel({
           <button type="button" onClick={onAssignCustomer} disabled={saleLocked} className="min-h-9 rounded-lg border border-[#e5e9e3] px-3 disabled:opacity-40">Add customer</button>
           <button type="button" onClick={onOpenGiftCardLoad} disabled={offline || saleLocked} className="min-h-9 rounded-lg border border-[#e5e9e3] px-3 disabled:opacity-40">Load card</button>
         </div>
-        <div className="space-y-3 border-t border-[#e5e9e3] pt-5 text-xs text-[#71807a]">
+        <div className="space-y-3 border-t border-[#e5e9e3] pt-5 text-xs text-[#53615a]">
           <div className="flex justify-between"><span>Subtotal</span><strong className="font-data text-[#202826]">₱{money(subtotalMinor)}</strong></div>
           <div className="flex justify-between"><span>Discount</span><span className="font-data text-[#202826]">−₱{money(discountMinor)}</span></div>
           {giftCardLoadMinor > 0 ? <div className="flex justify-between"><span>Gift-card load</span><span className="font-data text-[#202826]">₱{money(giftCardLoadMinor)}</span></div> : null}
           <div className="flex justify-between"><span>Register</span><span className="font-data max-w-44 truncate text-[#202826]">{selectedRegisterName}</span></div>
         </div>
-        <div className="flex items-end justify-between gap-3 py-3"><span className="font-data text-[11px] uppercase text-[#71807a]">Total due</span><strong className="font-display text-[28px] font-semibold text-[#202826]">₱{money(due)}</strong></div>
+        <div className="flex items-end justify-between gap-3 py-3"><span className="font-data text-[11px] uppercase text-[#53615a]">Total due</span><strong className="font-display text-[28px] font-semibold text-[#202826]">₱{money(due)}</strong></div>
         <button type="button" disabled={!canPay} onClick={onOpenPayment} aria-label={`Pay ₱${money(due)} (F5)`}
-          className="min-h-[56px] w-full rounded-[8px] bg-[#da614c] px-4 text-[13px] font-semibold text-white hover:bg-[#c3503c] disabled:opacity-40">Proceed to payment →</button>
+          className="min-h-[56px] w-full rounded-[8px] bg-[#b84f3c] px-4 text-[13px] font-semibold text-white hover:bg-[#a94431] disabled:opacity-40">Proceed to payment →</button>
         <div className="grid grid-cols-4 gap-2">
           {[{ key: "cash", label: "Cash (F6)" }, { key: "card", label: "Card (F7)" }, { key: "gcash", label: "GCash (F8)" }, { key: "more", label: "More" }].map((method) => <button key={method.key} type="button" onClick={() => onSelectShortcut(method.key)} disabled={!canPay || (offline && method.key !== "cash") || (method.key !== "more" && !methodAvailable(method.key))}
             className={"min-h-11 rounded-lg border px-1 text-[10px] disabled:opacity-35 " + (method.key === effectiveMethod ? "border-[#da614c] bg-[#fff0eb] text-[#a34132]" : "border-[#e5e9e3] bg-white text-[#53615a]")}>{method.label}</button>)}
         </div>
-        <button type="button" disabled={cart.length === 0 || reconcileId !== null || saleLocked} onClick={onResetSale} className="min-h-10 w-full rounded-lg border border-[#e5e9e3] text-xs text-[#748078] disabled:opacity-40">Reset current sale</button>
-        <p className="text-[10px] leading-4 text-[#748078]">Totals are server-validated. Unknown payments require reconciliation, not a blind retry.</p>
+        <button type="button" disabled={cart.length === 0 || reconcileId !== null || saleLocked} onClick={onResetSale} className="min-h-10 w-full rounded-lg border border-[#e5e9e3] text-xs text-[#53615a] disabled:opacity-40">Reset current sale</button>
+        <p className="text-[10px] leading-4 text-[#53615a]">Totals are server-validated. Unknown payments require reconciliation, not a blind retry.</p>
       </div>
     </aside>
   );
