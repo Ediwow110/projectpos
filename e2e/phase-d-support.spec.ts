@@ -72,11 +72,11 @@ test("Phase D guest support → owner inbox → consented, revocable read-only o
   await page.getByLabel("What do you need help with?").selectOption("FULFILLMENT");
   await page.getByLabel("Describe the issue").fill("My pickup time has not been confirmed.");
   if (testInfo.project.name === "mobile") {
-    const sendButton = page.getByRole("button", { name: "Send support request" });
+    const sendButton = page.getByRole("button", { name: "Submit support request" });
     expect(await sendButton.evaluate((button) => getComputedStyle(button).position)).toBe("fixed");
     expect(await sendButton.evaluate((button) => button.getBoundingClientRect().height)).toBeGreaterThanOrEqual(53);
   }
-  await page.getByRole("button", { name: "Send support request" }).click();
+  await page.getByRole("button", { name: "Submit support request" }).click();
   await expect(page.getByText("Support request received")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Support request received" })).toBeFocused();
   await expect(page.getByText("AWAITING REVIEW")).toBeVisible();
