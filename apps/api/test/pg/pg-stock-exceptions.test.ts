@@ -12,6 +12,33 @@ describe("Phase C stock issues PostgreSQL persistence", () => {
         brand: null, unit: "pc", priceMinor: 200, costMinor: 120,
         taxRateBps: null, reorderLevel: 1, trackInventory: true, isActive: true, imageUrl: null,
       });
+      const otherBranch = await db.createBranch({
+        businessId: foreign.id, name: "Foreign risk branch", type: "store", isActive: true,
+      });
+      const invariantClient = await ctx.client();
+      try {
+        const insert = `INSERT INTO "StockException"
+          ("id","businessId","productId","branchId","kind","quantity","expiresOn","reason","reportKey","reportedBy")
+          VALUES ($1,$2,$3,$4,'DAMAGE',1,$5,'Integrity probe',$6,'tester')`;
+        await expect(invariantClient.query(insert, [
+          "risk-cross-tenant-product", foreign.id, product.id, null, null, "cross-product",
+        ])).rejects.toMatchObject({ code: "23503" });
+        await expect(invariantClient.query(insert, [
+          "risk-cross-tenant-branch", tenant.id, product.id, otherBranch.id, null, "cross-branch",
+        ])).rejects.toMatchObject({ code: "23503" });
+        await expect(invariantClient.query(insert, [
+          "risk-invalid-calendar-date", tenant.id, product.id, null, "2027-02-30", "invalid-date",
+        ])).rejects.toMatchObject({ code: "23514" });
+        const checks = await invariantClient.query(
+          `SELECT conname, convalidated FROM pg_constraint
+           WHERE conrelid='"StockException"'::regclass
+           AND conname IN ('StockException_tenant_product_fkey',
+                           'StockException_tenant_branch_fkey',
+                           'StockException_expiresOn_calendar_date')`,
+        );
+        expect(checks.rows).toHaveLength(3);
+        expect(checks.rows.every((row: { convalidated: boolean }) => row.convalidated)).toBe(true);
+      } finally { if (ctx.owns()) invariantClient.release(); }
       await expect(db.createStockException({
         businessId: foreign.id, productId: product.id, branchId: null,
         kind: "DAMAGE", quantity: 1, expiresOn: null, reason: "Invalid tenant reference",

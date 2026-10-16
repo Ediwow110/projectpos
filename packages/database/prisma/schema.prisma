@@ -100,6 +100,7 @@ model Business {
   corrections ShiftCorrection[]
   receiptShares ReceiptShare[]
   receiptDeliveries ReceiptDelivery[]
+  receiptCounters ReceiptCounter[]
   suppliers Supplier[]
   productSuppliers ProductSupplier[]
   purchaseOrders PurchaseOrder[]
@@ -277,6 +278,8 @@ model Product {
   variantOptionValues ProductVariantOptionValue[]
   bundle             ProductBundle? @relation("BundleProduct")
   bundleComponents   BundleComponent[] @relation("BundleComponentProduct")
+  stockExceptions    StockException[]
+  @@unique([businessId, id])
   @@index([businessId, isActive])
   @@index([businessId, categoryId])
   @@index([businessId, familyId, isActive])
@@ -418,6 +421,8 @@ model StockException {
   disposedBy String?
   disposedAt DateTime?
   movementId String?
+  product    Product @relation(fields: [businessId, productId], references: [businessId, id], onDelete: Restrict, map: "StockException_tenant_product_fkey")
+  branch     Branch? @relation(fields: [businessId, branchId], references: [businessId, id], onDelete: Restrict, map: "StockException_tenant_branch_fkey")
   @@unique([businessId, reportKey])
   @@index([businessId, branchId, status, createdAt])
   @@index([businessId, productId])
@@ -434,8 +439,10 @@ model GuestSupportCase {
   createdAt      DateTime @default(now())
   closedAt       DateTime?
   closedBy       String?
+  order          Order @relation(fields: [businessId, orderId], references: [businessId, id], onDelete: Restrict, map: "GuestSupportCase_tenant_order_fkey")
   @@unique([businessId, idempotencyKey])
   @@index([businessId, status, createdAt])
+  @@index([businessId, orderId, createdAt])
 }
 
 model PlatformOwnerConsent {
@@ -663,8 +670,6 @@ model Register {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   business   Business @relation(fields: [businessId], references: [id])
-  storeCreditAccount StoreCreditAccount?
-  loyaltyAccount LoyaltyAccount?
   shifts     Shift[]
   @@unique([businessId, name])
   @@index([businessId])
@@ -733,6 +738,8 @@ model Customer {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   business   Business @relation(fields: [businessId], references: [id])
+  storeCreditAccounts StoreCreditAccount[]
+  loyaltyAccounts LoyaltyAccount[]
   @@unique([businessId, phone])
   @@index([businessId, isActive])
   @@index([businessId, name])
@@ -851,6 +858,8 @@ model Order {
   reservations            InventoryReservation[]
   fulfillments            Fulfillment[]
   accessTokens            OrderAccessToken[]
+  guestSupportCases        GuestSupportCase[]
+  @@unique([businessId, id])
   @@index([businessId, createdAt, id])
   @@index([businessId, status, createdAt])
   @@index([businessId, branchId, createdAt])
@@ -1032,6 +1041,8 @@ model Branch {
   purchaseOrders PurchaseOrder[]
   inventoryCounts InventoryCount[]
   activeSessions Session[] @relation("SessionActiveBranch")
+  stockExceptions StockException[]
+  @@unique([businessId, id])
   @@unique([businessId, name])
   @@index([businessId])
 }
@@ -1266,8 +1277,6 @@ model ReceiptDelivery {
   sentAt         DateTime?
   createdAt      DateTime @default(now())
   business       Business @relation(fields: [businessId], references: [id])
-  storeCreditAccount StoreCreditAccount?
-  loyaltyAccount LoyaltyAccount?
   sale           Sale     @relation(fields: [saleId], references: [id])
 
   @@unique([businessId, idempotencyKey])

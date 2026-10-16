@@ -17,6 +17,21 @@ describe("Phase D guest support and owner consent PostgreSQL persistence", () =>
         status: "SUBMITTED", version: 1, checkoutAt: now, submittedAt: now, confirmedAt: null,
         completedAt: null, cancelledAt: null, actorId: "public", requestId: "pg-d", createdAt: now, updatedAt: now,
       });
+      // Bypass the service's tenant guard: the database must reject this too.
+      const invariantClient = await ctx.client();
+      try {
+        await expect(invariantClient.query(
+          `INSERT INTO "GuestSupportCase"
+           ("id","businessId","orderId","category","description","idempotencyKey")
+           VALUES ($1,$2,$3,'ORDER','Invalid tenant case',$4)`,
+          ["case-cross-tenant", other.id, order.id, "case-fk-test"],
+        )).rejects.toMatchObject({ code: "23503" });
+        const fk = await invariantClient.query(
+          `SELECT convalidated FROM pg_constraint
+           WHERE conrelid='"GuestSupportCase"'::regclass AND conname='GuestSupportCase_tenant_order_fkey'`,
+        );
+        expect(fk.rows).toEqual([{ convalidated: true }]);
+      } finally { if (ctx.owns()) invariantClient.release(); }
       await expect(db.createGuestSupportCase({
         businessId: other.id, orderId: order.id, category: "ORDER",
         description: "Cross-tenant order attempt", status: "OPEN",
