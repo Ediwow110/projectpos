@@ -84,10 +84,30 @@ describe("Phase D guest support and owner-consented diagnostics", () => {
       expect(businessId).toBe(f.business.id);
       return 17;
     };
+    f.db.listGuestSupportCases = async () => { throw new Error("UNEXPECTED_CASE_DETAILS_SCAN"); };
+    f.db.countOpenGuestSupportCases = async (businessId) => {
+      expect(businessId).toBe(f.business.id);
+      return 9;
+    };
     expect(await f.consent.diagnostics(f.business.id, issued.token, "count")).toMatchObject({
-      businessId: f.business.id,
-      sales: 17,
+      businessId: f.business.id, sales: 17, openSupportCases: 9,
     });
+  });
+
+  it("counts only open cases for the consented tenant", async () => {
+    const f = await fixture();
+    const a = await f.cases.submit({
+      statusToken: f.token1, category: "ORDER", description: "Help with my first order",
+    }, "count-one", "create-one");
+    await f.cases.submit({
+      statusToken: f.token2, category: "ORDER", description: "Help with my second order",
+    }, "count-two", "create-two");
+    await f.cases.close(f.business.id, "owner", a.caseId, "close-one");
+    expect(await f.db.countOpenGuestSupportCases(f.business.id)).toBe(1);
+    expect(await f.db.countOpenGuestSupportCases(f.otherBusiness.id)).toBe(0);
+    f.db.listGuestSupportCases = async () => { throw new Error("UNEXPECTED_CASE_DETAILS_SCAN"); };
+    const issued = await f.consent.issue(f.business.id, "owner", "Investigate guest support queue", 10, "issue");
+    expect((await f.consent.diagnostics(f.business.id, issued.token, "read")).openSupportCases).toBe(1);
   });
 
   it("requires exact tenant consent; expiry and revocation fail closed", async () => {

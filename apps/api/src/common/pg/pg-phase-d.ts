@@ -36,6 +36,13 @@ export function phaseDFamily(ctx: PgContext) {
         return r.rows as DbGuestSupportCase[];
       } finally { if (ctx.owns()) c.release(); }
     },
+    async countOpenGuestSupportCases(businessId: string): Promise<number> {
+      const c = await ctx.client();
+      try {
+        const r = await c.query('SELECT count(*)::int AS "count" FROM "GuestSupportCase" WHERE "businessId"=$1 AND "status"=\'OPEN\'', [businessId]);
+        return (r.rows[0] as { count: number }).count;
+      } finally { if (ctx.owns()) c.release(); }
+    },
     async listGuestSupportCasesForOrder(businessId: string, orderId: string): Promise<DbGuestSupportCase[]> {
       const c = await ctx.client();
       try {

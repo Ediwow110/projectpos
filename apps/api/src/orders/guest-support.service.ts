@@ -135,7 +135,7 @@ export class PlatformConsentService {
       const members = await this.db.listMembershipsByBusiness(businessId);
       const branches = await this.db.listBranchesByBusiness(businessId);
       const sales = await this.db.countSalesByBusiness(businessId);
-      const cases = await this.db.listGuestSupportCases(businessId);
+      const openSupportCases = await this.db.countOpenGuestSupportCases(businessId);
       await this.db.appendAudit({
         businessId, actorId: "platform", action: "platform_support.diagnostics_viewed", requestId,
         entityType: "PlatformOwnerConsent", entityId: row.id,
@@ -146,7 +146,7 @@ export class PlatformConsentService {
         activeStaff: members.filter((member) => !member.deactivatedAt).length,
         activeBranches: branches.filter((branch) => branch.isActive).length,
         sales,
-        openSupportCases: cases.filter((entry) => entry.status === "OPEN").length,
+        openSupportCases,
       };
     });
   }

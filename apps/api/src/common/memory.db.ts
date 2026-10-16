@@ -533,6 +533,13 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     async listGuestSupportCases(businessId) {
       return [...guestSupportCases.values()].filter((row) => row.businessId === businessId);
     },
+    async countOpenGuestSupportCases(businessId) {
+      let count = 0;
+      for (const row of guestSupportCases.values()) {
+        if (row.businessId === businessId && row.status === "OPEN") count++;
+      }
+      return count;
+    },
     async listGuestSupportCasesForOrder(businessId, orderId) {
       return [...guestSupportCases.values()]
         .filter((row) => row.businessId === businessId && row.orderId === orderId)

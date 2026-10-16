@@ -1260,6 +1260,7 @@ export interface DbPort {
   findGuestSupportCaseById(id: string, businessId: string): Promise<DbGuestSupportCase | null>;
   findGuestSupportCaseByKey(businessId: string, key: string): Promise<DbGuestSupportCase | null>;
   listGuestSupportCases(businessId: string): Promise<DbGuestSupportCase[]>;
+  countOpenGuestSupportCases(businessId: string): Promise<number>;
   listGuestSupportCasesForOrder(businessId: string, orderId: string): Promise<DbGuestSupportCase[]>;
   closeGuestSupportCase(id: string, businessId: string, actorId: string): Promise<DbGuestSupportCase | null>;
   createPlatformConsent(row: Omit<DbPlatformConsent, "id" | "createdAt">): Promise<DbPlatformConsent>;

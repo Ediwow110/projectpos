@@ -258,6 +258,7 @@ export class PgDbPort implements DbPort {
   findGuestSupportCaseById(id: string, businessId: string): Promise<DbGuestSupportCase | null> { return this.phaseD.findGuestSupportCaseById(id, businessId); }
   findGuestSupportCaseByKey(businessId: string, key: string): Promise<DbGuestSupportCase | null> { return this.phaseD.findGuestSupportCaseByKey(businessId, key); }
   listGuestSupportCases(businessId: string): Promise<DbGuestSupportCase[]> { return this.phaseD.listGuestSupportCases(businessId); }
+  countOpenGuestSupportCases(businessId: string): Promise<number> { return this.phaseD.countOpenGuestSupportCases(businessId); }
   listGuestSupportCasesForOrder(businessId: string, orderId: string): Promise<DbGuestSupportCase[]> { return this.phaseD.listGuestSupportCasesForOrder(businessId, orderId); }
   closeGuestSupportCase(id: string, businessId: string, actorId: string): Promise<DbGuestSupportCase | null> { return this.phaseD.closeGuestSupportCase(id, businessId, actorId); }
   createPlatformConsent(input: Omit<DbPlatformConsent, "id" | "createdAt">): Promise<DbPlatformConsent> { return this.phaseD.createPlatformConsent(input); }
