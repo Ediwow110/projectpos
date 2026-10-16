@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { AppShell } from "../../../components/AppShell";
 import { NexposLogo } from "../../../components/brand/NexposLogo";
+import { ReceiptItemLines } from "../../../components/ReceiptItemLines";
 import { ReceiptDeliveryDialog, type ReceiptDeliveryRow } from "../../../components/ReceiptDeliveryDialog";
 import { ReceiptPrinterDialog, type ReceiptPrinterOption } from "../../../components/ReceiptPrinterDialog";
 import { PageHeader, Panel } from "../../../components/premium";
@@ -205,7 +206,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ saleId: stri
         {printSuccess ? <p role="status" className="print:hidden rounded-xl bg-[#edf8f1] px-4 py-3 text-[12px] font-medium text-[#31744c]">{printSuccess}</p> : null}
 
         {receipt ? (
-          <article data-ui="printable-receipt" aria-label="Receipt" className="mx-auto w-full max-w-[430px] overflow-hidden rounded-[18px] border border-[#eadfd6] bg-white shadow-[0_18px_48px_-20px_rgb(22_18_14/0.22)] print:max-w-[80mm] print:rounded-none print:border-0 print:shadow-none">
+          <article data-ui="printable-receipt" aria-label="Receipt" className="mx-auto w-full max-w-[690px] overflow-hidden rounded-[14px] border border-[#e4e9e3] bg-white shadow-[0_18px_48px_-20px_rgb(22_18_14/0.12)] print:max-w-[80mm] print:rounded-none print:border-0 print:shadow-none">
             <header className="border-b border-dashed border-[#d8ccc2] px-6 py-6 text-center">
               <NexposLogo variant="light" size="md" className="mx-auto" />
               <p className="font-data mt-1 text-[8px] uppercase tracking-[0.16em] text-[#9a8d83]">Retail operations receipt</p>
@@ -216,12 +217,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ saleId: stri
 
             <div className="px-6 py-5">
               <div className="space-y-3">
-                {receipt.items.map((item, index) => (
-                  <div key={`${item.name}-${index}`} className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 text-[12px]">
-                    <div><p className="font-semibold text-[#2a241f]">{item.name}</p><p className="font-data mt-1 text-[10px] text-[#9a8d83]">{item.qty} × ₱{money(item.priceMinor)}</p></div>
-                    <p className="font-data font-semibold text-[#2a241f]">₱{money(item.lineTotalMinor)}</p>
-                  </div>
-                ))}
+                <ReceiptItemLines items={receipt.items} />
                 {receipt.giftCardLoads.map((load, index) => (
                   <div key={`gift-card-load-${index}`} className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 text-[12px]">
                     <div><p className="font-semibold text-[#2a241f]">{load.kind === "NEW" ? "Gift card load" : "Gift card reload"}</p><p className="font-data mt-1 text-[10px] text-[#9a8d83]">{load.maskedCode ?? "Stored-value load"}</p></div>
