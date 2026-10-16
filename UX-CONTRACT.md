@@ -52,6 +52,13 @@ No global toast provider is currently canonical. Status, warnings, errors, payme
 
 ## Component behavior
 
+### P5 — POS keyboard and touch interaction
+
+- The sale page has exactly one visible level-one heading, **New sale**, and a main landmark. Product selection opens the native modal quantity dialog with focus on the pieces field; cancelling via Escape does not insert a cart line.
+- The quantity picker announces the line total as quantities change. Product ordering, recorded discounts, cash change and payment unknown recovery remain governed by the existing sale/payment contracts.
+- The responsive cart uses an accessible modal dialog. When opened it focuses **Close cart**, traps Tab and Shift+Tab within the drawer, supports Escape dismissal and restores focus to the opener when dismissed. Its close and quantity stepper controls have at least 44 × 44 CSS px targets.
+- These keyboard and geometry requirements must pass at 390, 820, 1024, 1280 and 1440px. Functional accessibility is distinct from pixel parity with Atlas V4; the original charcoal POS workspace still needs a separate V4 visual migration before visual acceptance can pass.
+
 | Component | Default | Hover | Focus | Active | Disabled | Busy | Error |
 |---|---|---|---|---|---|---|---|
 | Button | labeled action | stronger contrast | coral focus ring | pressed by browser | readable, no action | geometry preserved | nearby inline error |

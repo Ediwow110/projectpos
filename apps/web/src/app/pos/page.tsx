@@ -131,6 +131,10 @@ export default function PosPage(): JSX.Element {
       }
     >
       <div className="px-3 pb-[124px] text-[#17130f] sm:px-5 lg:pb-5 lg:max-xl:px-10 xl:px-3">
+        <div className="mx-auto mb-3 flex w-full max-w-[1212px] items-center justify-between gap-3 xl:ml-0 xl:mr-auto">
+          <h1 className="font-display text-xl font-semibold tracking-tight text-[#202826]">New sale</h1>
+          <p className="hidden font-data text-[10px] text-[#748078] sm:block">{selectedRegisterName || "Select a register"}</p>
+        </div>
         <main
           className={
             "mx-auto grid max-w-[1212px] overflow-hidden rounded-[20px] bg-[#191816] text-white shadow-[0_14px_34px_-12px_rgb(26_18_13/0.20)] xl:ml-0 xl:mr-auto " +

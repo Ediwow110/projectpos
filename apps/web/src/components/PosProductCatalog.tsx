@@ -257,7 +257,7 @@ export function PosProductCatalog({
               />
               <button type="button" onClick={() => setQuantity((value) => String(Math.min(9999, (Number(value) || 0) + 1)))} aria-label="Increase pieces" className="grid h-12 w-12 place-items-center rounded-xl border border-white/20 text-xl">+</button>
             </div>
-            <p className="text-sm text-white/70">Line total: ₱{money(selectedProduct.priceMinor * (Number.isSafeInteger(Number(quantity)) && Number(quantity) > 0 && Number(quantity) <= 9999 ? Number(quantity) : 0))}</p>
+            <p aria-live="polite" className="text-sm text-white/70">Line total: ₱{money(selectedProduct.priceMinor * (Number.isSafeInteger(Number(quantity)) && Number(quantity) > 0 && Number(quantity) <= 9999 ? Number(quantity) : 0))}</p>
             <div className="flex gap-3">
               <button type="button" onClick={() => setSelectedProduct(null)} className="min-h-12 flex-1 rounded-xl border border-white/20 text-sm font-semibold">Cancel</button>
               <button type="submit" className="min-h-12 flex-1 rounded-xl bg-[#f35d3f] text-sm font-semibold text-white hover:bg-[#d94a30]">Add to sale</button>
