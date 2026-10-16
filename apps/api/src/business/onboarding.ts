@@ -51,8 +51,11 @@ export function isRequiredSetupConfigured(step: OnboardingStep, settings: Record
         Number.isInteger(settings["taxRateBps"]) &&
         settings["taxRateBps"] >= 0 && settings["taxRateBps"] <= 10000;
     case "receiptSetup":
-      return typeof settings["receiptHeader"] === "string" &&
-        settings["receiptHeader"].trim().length > 0;
+      // The standard merchant-name receipt is available to every plan.
+      // Custom headers are a separately entitled optional enhancement.
+      return settings["standardReceiptConfirmed"] === true ||
+        (typeof settings["receiptHeader"] === "string" &&
+          settings["receiptHeader"].trim().length > 0);
     default:
       return true;
   }

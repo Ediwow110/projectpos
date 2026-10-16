@@ -61,7 +61,7 @@ export async function registerOperationalBusiness(
     for (const [step, settings] of [
       ["businessDetails", { businessAddress: "123 Test Street, Manila", businessTimezone: "Asia/Manila" }],
       ["taxCurrency", { currency: "PHP", taxName: "No tax", taxRateBps: 0 }],
-      ["receiptSetup", { receiptHeader: "Test receipt" }],
+      ["receiptSetup", { standardReceiptConfirmed: true }],
     ] as const) {
       const configured = await fetch("/api/v1/business/settings", {
         method: "PATCH", credentials: "include",

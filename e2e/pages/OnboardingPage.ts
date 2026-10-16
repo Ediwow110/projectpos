@@ -24,7 +24,7 @@ export class OnboardingPage {
       await this.page.getByLabel("Tax name (e.g. VAT, non-VAT, no tax)").fill("No tax");
       await this.page.getByLabel(/Tax rate/).fill("0");
     } else if (currentStep === "Receipt setup") {
-      await this.page.getByLabel("Receipt header").fill("NexPOS Test Shop");
+      await expect(this.page.getByText(/Standard receipt included/)).toBeVisible();
     } else {
       throw new Error(`Unexpected required onboarding step: ${currentStep}`);
     }

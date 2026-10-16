@@ -151,7 +151,7 @@ describe("onboarding HTTP contract", () => {
       .patch("/api/v1/business/settings")
       .set("Cookie", cookie)
       .set("X-CSRF-Token", csrf)
-      .send({ receiptHeader: "Onboarding Contract Store" });
+      .send({ standardReceiptConfirmed: true });
     expect(receiptSettings.status).toBe(200);
     const saved = await request(app.getHttpServer())
       .patch("/api/v1/onboarding")

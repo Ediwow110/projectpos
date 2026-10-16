@@ -104,6 +104,31 @@ describe("phase11 settings gate and audit context", () => {
     });
   });
 
+  it("allows a Free-plan owner to confirm a standard receipt without granting paid customization", async () => {
+    const db = createMemoryDb();
+    const biz = await db.createBusiness({ name: "Free Shop", currency: "PHP" });
+    const free = await db.findPlanByKey("free");
+    expect(free).toBeTruthy();
+    await db.upsertSubscription({
+      businessId: biz.id, planId: free!.id, status: "active",
+      trialEndsAt: null, currentPeriodEnd: new Date("2030-01-01T00:00:00.000Z"),
+    });
+    const svc = new BusinessService(db);
+    const settings = await svc.patchSettings(
+      biz.id, "owner", { standardReceiptConfirmed: true }, "standard-free", ["settings.write"],
+    );
+    expect(settings["standardReceiptConfirmed"]).toBe(true);
+    const next = await svc.patchOnboarding(
+      biz.id, "owner", { step: "receiptSetup", state: "done" }, "receipt-free", ["settings.write"],
+    );
+    expect(next.steps.receiptSetup).toBe("done");
+    const readiness = await svc.getSaleReadiness(biz.id);
+    expect(readiness.canCustomizeReceipt).toBe(false);
+    await expect(svc.patchSettings(
+      biz.id, "owner", { receiptHeader: "Premium Only" }, "custom-denied", ["settings.write"],
+    )).rejects.toThrow("PLAN_LIMIT");
+  });
+
   it.each(["businessDetails", "taxCurrency", "receiptSetup"] as const)(
     "rejects direct attempts to skip required onboarding step %s",
     async (step) => {

@@ -61,6 +61,7 @@ interface SaleReadiness {
   hasActiveRegister: boolean;
   hasOpenShift: boolean;
   hasStaff: boolean;
+  canCustomizeReceipt: boolean;
   readyForFirstSale: boolean;
 }
 
@@ -98,7 +99,6 @@ export default function OnboardingPage(): JSX.Element {
   const readiness = useQuery({
     queryKey: ["onboarding-sale-readiness"],
     queryFn: () => apiFetch<SaleReadiness>("/api/v1/onboarding/readiness"),
-    enabled: requiredDone,
     retry: false,
   });
 
@@ -126,7 +126,7 @@ export default function OnboardingPage(): JSX.Element {
     try {
       const csrf = await apiFetch<{ csrfToken: string }>("/api/v1/auth/csrf");
       if (state === "done" && REQUIRED.includes(step)) {
-        let payload: Record<string, string | number>;
+        let payload: Record<string, string | number | boolean>;
         if (step === "businessDetails") {
           if (businessAddress.trim().length < 5 || businessTimezone.trim().length < 3) {
             throw new Error("Enter a valid business address and timezone.");
@@ -141,8 +141,14 @@ export default function OnboardingPage(): JSX.Element {
           }
           payload = { currency, taxName: taxName.trim(), taxRateBps: bps };
         } else {
-          if (!receiptHeader.trim()) throw new Error("Enter a receipt header to continue.");
-          payload = { receiptHeader: receiptHeader.trim(), receiptFooter: receiptFooter.trim() };
+          payload = { standardReceiptConfirmed: true };
+          if (readiness.data?.canCustomizeReceipt) {
+            payload = {
+              ...payload,
+              receiptHeader: receiptHeader.trim(),
+              receiptFooter: receiptFooter.trim(),
+            };
+          }
         }
         await apiFetch("/api/v1/business/settings", {
           csrfToken: csrf.csrfToken,
@@ -305,17 +311,25 @@ export default function OnboardingPage(): JSX.Element {
               ) : null}
               {current === "receiptSetup" && (steps[current] === "pending" || editingCompletedStep) ? (
                 <div className="mt-5 grid gap-4">
-                  <label className="text-xs font-medium">Receipt header
-                    <input className="field mt-2 block w-full" value={receiptHeader} maxLength={200} onChange={(e) => setReceiptHeader(e.target.value)} placeholder={business.data.name} />
-                  </label>
-                  <label className="text-xs font-medium">Receipt footer (optional)
-                    <textarea className="field mt-2 block w-full" value={receiptFooter} maxLength={200} onChange={(e) => setReceiptFooter(e.target.value)} />
-                  </label>
+                  <p className="text-xs text-[#73685f]">Standard receipt included: your registered business name, server-generated receipt number and transaction totals. Confirm it to complete setup; an upgraded plan is not required.</p>
+                  {readiness.data?.canCustomizeReceipt ? (
+                    <>
+                      <label className="text-xs font-medium">Receipt header (optional customization)
+                        <input className="field mt-2 block w-full" value={receiptHeader} maxLength={200} onChange={(e) => setReceiptHeader(e.target.value)} placeholder={business.data.name} />
+                      </label>
+                      <label className="text-xs font-medium">Receipt footer (optional customization)
+                        <textarea className="field mt-2 block w-full" value={receiptFooter} maxLength={200} onChange={(e) => setReceiptFooter(e.target.value)} />
+                      </label>
+                    </>
+                  ) : null}
+                  {readiness.data && !readiness.data.canCustomizeReceipt ? (
+                    <p className="text-xs text-[#73685f]">Optional custom header and footer are available on plans with receipt customization. Standard receipts remain available on Free.</p>
+                  ) : null}
                   <div className="rounded-lg border border-dashed bg-white p-4 text-center text-xs">
-                    <p className="font-semibold">{receiptHeader || business.data.name}</p>
-                    <p className="mt-1">{businessAddress}</p>
-                    <p className="mt-2">Sample receipt — amounts and identifiers are calculated by the server at sale time.</p>
-                    <p className="mt-2">{receiptFooter}</p>
+                    <p className="font-semibold">{business.data.name}</p>
+                    {readiness.data?.canCustomizeReceipt && receiptHeader ? <p className="mt-1">{receiptHeader}</p> : null}
+                    <p className="mt-2">Illustrative preview — receipt number, monetary amounts and tax are calculated at sale time. This is not a regulatory compliance certification.</p>
+                    {readiness.data?.canCustomizeReceipt && receiptFooter ? <p className="mt-2">{receiptFooter}</p> : null}
                   </div>
                 </div>
               ) : null}

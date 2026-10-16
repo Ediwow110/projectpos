@@ -195,6 +195,20 @@ describe("phase10 print jobs", () => {
     const text = Buffer.from(job.payload, "base64").toString("ascii");
     expect(text).toContain("Salamat Shop");
     expect(text).toContain("Salamat ulit kayo");
+
+    const free = await db.findPlanByKey("free");
+    expect(free).toBeTruthy();
+    await db.upsertSubscription({
+      businessId: business.id, planId: free!.id, status: "active",
+      trialEndsAt: null, currentPeriodEnd: new Date("2030-01-01T00:00:00.000Z"),
+    });
+    const standard = await service.queueJob(business.id, "u1", "r3", {
+      printerId: printer.id, receiptNo: done.sale.receiptNo,
+    }, "owner");
+    const standardText = Buffer.from(standard.payload, "base64").toString("ascii");
+    expect(standardText).toContain("Custom Shop");
+    expect(standardText).not.toContain("Salamat Shop");
+    expect(standardText).not.toContain("Salamat ulit kayo");
   });
 
   it("rejects a receipt queued to a printer assigned to another branch but allows an unassigned printer", async () => {

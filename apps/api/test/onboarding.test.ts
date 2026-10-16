@@ -91,7 +91,7 @@ describe("onboarding wizard", () => {
     expect(result.steps.receiptSetup).toBe("pending");
     expect(result.currentStep).toBe("receiptSetup");
     expect(isOnboardingComplete(result)).toBe(false);
-    expect(configuredOnboardingState({ ...state, receiptHeader: "Sample Store" }).currentStep).toBe("complete");
+    expect(configuredOnboardingState({ ...state, standardReceiptConfirmed: true }).currentStep).toBe("complete");
   });
   it("preserves access for already-completed legacy accounts during rollout", () => {
     const original = defaultOnboardingState();

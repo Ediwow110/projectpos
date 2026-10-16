@@ -40,7 +40,7 @@ describe("onboarding navigation", () => {
     expect(html).not.toContain('href="/"');
     expect(html).toContain("Save your required business, tax and receipt settings to open the dashboard.");
     expect(html).toContain("Save &amp; continue");
-    expect(html).toContain("Receipt header");
+    expect(html).toContain("Standard receipt included");
     expect(html).not.toContain("Mark step complete");
   });
 

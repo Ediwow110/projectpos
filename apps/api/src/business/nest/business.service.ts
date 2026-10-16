@@ -104,6 +104,7 @@ export class BusinessService {
     hasActiveRegister: boolean;
     hasOpenShift: boolean;
     hasStaff: boolean;
+    canCustomizeReceipt: boolean;
     readyForFirstSale: boolean;
     missing: string[];
   }> {
@@ -127,6 +128,7 @@ export class BusinessService {
     )).filter((shift) => shift !== null).map((shift) => shift.registerId));
     const hasOpenShift = openRegisterIds.size > 0;
     const hasStaff = memberships.some((member) => member.role !== "owner" && !member.deactivatedAt);
+    const canCustomizeReceipt = await new BillingService(this.db).checkFeature(businessId, "receipt_customization");
     const hasStockAtAnOpenRegister = activeRegisters.some((register) =>
       openRegisterIds.has(register.id) && products.some((product) =>
         product.isActive && product.priceMinor > 0 && (
@@ -146,6 +148,7 @@ export class BusinessService {
       hasActiveRegister,
       hasOpenShift,
       hasStaff,
+      canCustomizeReceipt,
       readyForFirstSale: missing.length === 0,
       missing,
     };
