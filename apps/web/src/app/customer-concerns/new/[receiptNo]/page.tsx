@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AppShell } from "../../../../components/AppShell";
 import { Panel } from "../../../../components/premium";
+import { AtlasQuantityStepper } from "../../../../components/AtlasQuantityStepper";
 import { ApiError, apiFetch } from "../../../../lib/api";
 import { formatMoneyMinor } from "../../../../lib/money";
 
@@ -165,9 +166,9 @@ export default function NewCustomerConcernPage(): JSX.Element {
             <fieldset aria-label="Items and quantities" className="mt-4 space-y-2 border-t border-[#e5e9e3] pt-3">
               {receipt.data.items.map((item) => {
                 const qty = quantities[item.id] ?? 0;
-                return <div key={item.id} className={`grid gap-3 rounded-lg p-3 sm:grid-cols-[minmax(0,1fr)_112px] sm:items-center ${qty > 0 ? "bg-[#f3f8f4]" : "bg-[#fafbf9]"}`}>
+                return <div key={item.id} className={`grid gap-3 rounded-lg p-3 sm:grid-cols-[minmax(0,1fr)_180px] sm:items-center ${qty > 0 ? "bg-[#f3f8f4]" : "bg-[#fafbf9]"}`}>
                   <div className="min-w-0"><p className="text-sm font-semibold text-[#202826]">{item.name}</p><p className="mt-1 text-xs text-[#748078]">{item.qty} purchased · {money(item.priceMinor)}/piece</p></div>
-                  <label className="text-[10px] font-semibold uppercase tracking-[0.05em] text-[#707b75]">Quantity affected<input aria-label={`Concern quantity for ${item.name}`} type="number" min={0} max={item.qty} step={1} value={qty} onChange={(event) => setQuantities((current) => ({ ...current, [item.id]: Math.max(0, Math.min(item.qty, Number(event.target.value) || 0)) }))} className="mt-1 min-h-10 w-full rounded-lg border border-[#dce3dc] bg-white px-3 text-sm font-normal text-[#202826] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#267552]" /></label>
+                  <AtlasQuantityStepper itemName={item.name} value={qty} max={item.qty} onChange={(next) => setQuantities((current) => ({ ...current, [item.id]: next }))} />
                 </div>;
               })}
             </fieldset>

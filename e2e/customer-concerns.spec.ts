@@ -133,13 +133,26 @@ test("cashier submits a receipt concern and managers race safely while history s
   await expect(page.getByLabel("Issue reason")).toBeVisible();
   await expect(page.getByLabel("Requested outcome")).toBeVisible();
   await page.screenshot({ path: `test-results/atlas-v4-complaint-intake-${testInfo.project.name}.png`, fullPage: false });
-  const quantityInput = page.getByLabel(`Concern quantity for ${productName}`);
-  await tabTo(page, quantityInput);
-  await expect(quantityInput).toBeFocused();
-  await page.keyboard.press("Control+A");
-  await page.keyboard.type("1");
-  await page.keyboard.press("Tab"); // Issue reason, default DAMAGED
-  await page.keyboard.press("Tab"); // Requested outcome, default REFUND
+  const increaseQuantity = page.getByRole("button", { name: `Increase affected quantity for ${productName}` });
+  const decreaseQuantity = page.getByRole("button", { name: `Decrease affected quantity for ${productName}` });
+  const affectedQuantity = page.getByRole("status", { name: `Affected quantity for ${productName}` });
+  const originalViewport = page.viewportSize()!;
+  // Atlas V4 acceptance covers the whole specified viewport spectrum.
+  for (const width of [390, 820, 1024, 1280, 1440]) {
+    await page.setViewportSize({ width, height: originalViewport.height });
+    await expect(increaseQuantity).toBeVisible();
+    expect(await increaseQuantity.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
+    expect(await decreaseQuantity.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth))
+      .toBeLessThanOrEqual(width + 2);
+  }
+  await page.setViewportSize(originalViewport);
+  await expect(decreaseQuantity).toBeDisabled();
+  await tabTo(page, increaseQuantity);
+  await expect(increaseQuantity).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(affectedQuantity).toHaveText("1");
+  await expect(decreaseQuantity).toBeEnabled();
   const notes = page.getByLabel("Notes");
   await tabTo(page, notes);
   await expect(notes).toBeFocused();
