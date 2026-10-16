@@ -11,6 +11,7 @@ import {
   API,
   apiAuthedContext,
   clickPosPay,
+  confirmPosQuantity,
   expectOnePosCartItem,
   registerOperationalBusiness,
   seedProduct,
@@ -54,6 +55,7 @@ test("offline cash sale syncs on reconnect", async ({ page, context, request }) 
   await page.goto("/pos");
   await page.getByLabel("Search product, SKU or scan barcode").fill("Offline Cola");
   await page.getByRole("button", { name: /Offline Cola ₱25\.00/ }).click();
+  await confirmPosQuantity(page);
   await expectOnePosCartItem(page);
 
   // Outage: API origin unreachable.
@@ -107,6 +109,7 @@ test("oversell conflict lands in review and resolves", async ({ page, context, r
   await page.goto("/pos");
   await page.getByLabel("Search product, SKU or scan barcode").fill("Last Unit");
   await page.getByRole("button", { name: /Last Unit ₱10\.00/ }).click();
+  await confirmPosQuantity(page);
 
   await context.setOffline(true);
   await expect(page.getByText("Offline — cash only, sales will queue.", { exact: true })).toBeVisible({ timeout: 30000 });
@@ -162,6 +165,7 @@ test("offline queue stays private to its account across logout and re-login", as
   await page.goto("/pos");
   await page.getByLabel("Search product, SKU or scan barcode").fill("Private Queue Cola");
   await page.getByRole("button", { name: /Private Queue Cola ₱25\.00/ }).click();
+  await confirmPosQuantity(page);
   await context.setOffline(true);
   await expect(page.getByText("Offline — cash only, sales will queue.", { exact: true })).toBeVisible({ timeout: 30_000 });
   await openPayment(page, "25.00");

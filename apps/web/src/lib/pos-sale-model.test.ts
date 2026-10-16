@@ -94,6 +94,15 @@ describe("POS sale model", () => {
     expect(filterOfflineCatalog([coffee, tea], "cf", "c1")).toEqual([coffee]);
   });
 
+  it("adds the selected number of pieces in one operation without changing cart order", () => {
+    const coffee = { id: "p1", name: "Coffee", sku: "CF-1", categoryId: "c1", priceMinor: 2500, isActive: true };
+    const tea = { id: "p2", name: "Tea", sku: "TE-1", categoryId: "c2", priceMinor: 1500, isActive: true };
+    const first = addProductToCart([], coffee, 5);
+    expect(first[0].qty).toBe(5);
+    const updated = addProductToCart(addProductToCart(first, tea), coffee, 3);
+    expect(updated.map((entry) => [entry.productId, entry.qty])).toEqual([["p1", 8], ["p2", 1]]);
+  });
+
   it("applies fixed line and order discounts in minor units and caps them to the sale value", () => {
     const cart = [
       { productId: "p1", name: "Coffee", priceMinor: 2500, qty: 2, lineDiscountMinor: 0 },

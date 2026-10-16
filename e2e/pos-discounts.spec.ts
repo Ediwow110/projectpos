@@ -4,6 +4,7 @@ import {
   API,
   apiAuthedContext,
   clickPosPay,
+  confirmPosQuantity,
   expectOnePosCartItem,
   posCartRegion,
   registerOperationalBusiness,
@@ -76,6 +77,7 @@ test("seller applies line and order discounts at the non-override thresholds and
   await selectPosRegister(page, "Discount Counter");
   await page.getByLabel("Search product, SKU or scan barcode").fill(productName);
   await page.getByRole("button", { name: `${productName} ₱25.00` }).click();
+  await confirmPosQuantity(page);
   await expectOnePosCartItem(page);
 
   const discountDialog = await openDiscounts(page);
@@ -158,6 +160,7 @@ test("cashier completes an over-threshold discount after one-use owner approval"
   await selectPosRegister(page, "Auth Counter");
   await page.getByLabel("Search product, SKU or scan barcode").fill(productName);
   await page.getByRole("button", { name: `${productName} ₱25.00` }).click();
+  await confirmPosQuantity(page);
   await expectOnePosCartItem(page);
 
   const discountDialog = await openDiscounts(page);

@@ -19,6 +19,15 @@ export async function clickPosPay(page: Page, amount: string): Promise<void> {
   await cart.getByRole("button", { name: new RegExp("Pay ₱" + amount.replace(".", "\\.")) }).click();
 }
 
+/** Confirm the quantity picker shown by a product tile before adding it to the cart. */
+export async function confirmPosQuantity(page: Page, pieces = 1): Promise<void> {
+  const dialog = page.getByRole("dialog", { name: "Choose pieces" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("spinbutton", { name: "Pieces" }).fill(String(pieces));
+  await dialog.getByRole("button", { name: "Add to sale" }).click();
+  await expect(dialog).toBeHidden();
+}
+
 export async function expectOnePosCartItem(page: Page): Promise<void> {
   const width = page.viewportSize()?.width ?? 1440;
   if (width < 1280) {

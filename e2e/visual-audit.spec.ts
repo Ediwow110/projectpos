@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { API, apiAuthedContext, registerOperationalBusiness, seedProduct } from "./helpers";
+import { API, apiAuthedContext, confirmPosQuantity, registerOperationalBusiness, seedProduct } from "./helpers";
 
 const OUT = join(".superpowers", "sdd", "2026-09-25-premium-ui-implementation", "visual-audit");
 
@@ -64,6 +64,7 @@ test("capture Figma-sized POS surfaces", async ({ page, request }, testInfo) => 
   await expect(page.getByLabel("Search product, SKU or scan barcode")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("button", { name: /Iced Latte ₱145\.00/ })).toBeVisible({ timeout: 30_000 });
   await page.getByRole("button", { name: /Iced Latte ₱145\.00/ }).click();
+  await confirmPosQuantity(page);
   await settle(page);
   await page.screenshot({
     path: join(

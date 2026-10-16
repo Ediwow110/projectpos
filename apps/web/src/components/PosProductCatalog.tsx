@@ -1,7 +1,9 @@
-import React, { type ReactNode } from "react";
+import React, { useEffect, useRef, useState, type ReactNode } from "react";
+import Image from "next/image";
 
 import { minorToMajorFixed } from "../lib/money";
 import type { PosProduct } from "../lib/pos-sale-model";
+import { validProductImageUrl } from "../lib/product-image";
 import { productInitials, productTileClass } from "../lib/pos-view";
 
 interface RegisterOption {
@@ -33,7 +35,7 @@ interface PosProductCatalogProps {
   onQueryChange: (query: string) => void;
   onSearch: () => void;
   onCategoryChange: (categoryId: string) => void;
-  onAddProduct: (product: PosProduct) => void;
+  onAddProduct: (product: PosProduct, quantity: number) => void;
   onAssignCustomer: () => void;
 }
 
@@ -61,6 +63,34 @@ export function PosProductCatalog({
   onAddProduct,
   onAssignCustomer,
 }: PosProductCatalogProps) {
+  const [selectedProduct, setSelectedProduct] = useState<PosProduct | null>(null);
+  const [quantity, setQuantity] = useState("1");
+  const quantityDialog = useRef<HTMLDialogElement>(null);
+  const quantityInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const dialog = quantityDialog.current;
+    if (!dialog) return;
+    if (selectedProduct && !dialog.open) {
+      dialog.showModal();
+      quantityInput.current?.focus();
+    }
+    if (!selectedProduct && dialog.open) dialog.close();
+  }, [selectedProduct]);
+
+  function selectProduct(product: PosProduct): void {
+    setQuantity("1");
+    setSelectedProduct(product);
+  }
+
+  function confirmProduct(event: React.FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    const pieces = Number(quantity);
+    if (!selectedProduct || !Number.isSafeInteger(pieces) || pieces < 1 || pieces > 9999) return;
+    onAddProduct(selectedProduct, pieces);
+    setSelectedProduct(null);
+  }
+
   return (
     <section aria-label="Products" className="min-w-0 p-4 lg:max-xl:flex lg:max-xl:h-full lg:max-xl:flex-col lg:max-xl:px-7 lg:max-xl:pb-7 lg:max-xl:pt-6 xl:relative xl:flex xl:h-[866px] xl:flex-col xl:p-[18px] xl:pr-0">
       <label className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-[10px] font-semibold text-white/70 md:hidden">
@@ -166,7 +196,8 @@ export function PosProductCatalog({
             <li key={product.id} style={{ animation: `rise 0.35s ${Math.min(index * 0.02, 0.25)}s both` }}>
               <button
                 type="button"
-                onClick={() => onAddProduct(product)}
+                onClick={() => selectProduct(product)}
+                aria-description="Choose quantity before adding to the sale"
                 disabled={saleLocked}
                 className={
                   "card-hover relative w-full rounded-xl border bg-[#252422] p-3 text-left disabled:cursor-not-allowed disabled:opacity-55 lg:max-xl:h-[220px] lg:max-xl:p-[13px] xl:h-[152px] xl:p-[11px] " +
@@ -176,12 +207,15 @@ export function PosProductCatalog({
                 <span
                   data-ui="product-visual"
                   className={
-                    "font-display flex h-16 items-center rounded-[9px] px-[14px] text-2xl font-extrabold text-white/95 lg:max-xl:absolute lg:max-xl:left-[13px] lg:max-xl:top-[13px] lg:max-xl:h-[100px] lg:max-xl:w-[252px] lg:max-xl:px-4 xl:absolute xl:left-[11px] xl:top-[11px] xl:h-[62px] xl:w-[152px] xl:text-[20px] " +
+                    "font-display relative flex h-16 items-center overflow-hidden rounded-[9px] px-[14px] text-2xl font-extrabold text-white/95 lg:max-xl:absolute lg:max-xl:left-[13px] lg:max-xl:top-[13px] lg:max-xl:h-[100px] lg:max-xl:w-[252px] lg:max-xl:px-4 xl:absolute xl:left-[11px] xl:top-[11px] xl:h-[62px] xl:w-[152px] xl:text-[20px] " +
                     (selected ? "bg-[#4a2118]" : productTileClass(product.name))
                   }
                   aria-hidden
                 >
                   {productInitials(product.name)}
+                  {product.imageUrl && validProductImageUrl(product.imageUrl) ? (
+                    <Image unoptimized src={product.imageUrl} alt="" fill sizes="(min-width: 1280px) 152px, (min-width: 1024px) 252px, 50vw" className="object-cover" />
+                  ) : null}
                 </span>
                 <span className="mt-2.5 block truncate text-[13.5px] font-semibold lg:max-xl:absolute lg:max-xl:left-[13px] lg:max-xl:top-[131px] lg:max-xl:mt-0 lg:max-xl:max-w-[252px] lg:max-xl:text-[12px] xl:absolute xl:left-[11px] xl:top-[83px] xl:mt-0 xl:max-w-[120px] xl:text-[10px]">{product.name}</span>
                 <span className="money absolute bottom-3 left-3 block text-[13px] font-bold text-white/85 lg:max-xl:left-[13px] lg:max-xl:top-[185px] lg:max-xl:bottom-auto lg:max-xl:text-[11px] xl:left-[11px] xl:top-[125px] xl:bottom-auto xl:text-[10px]">₱{money(product.priceMinor)}</span>
@@ -191,6 +225,46 @@ export function PosProductCatalog({
           );
         })}
       </ul>
+
+      <dialog
+        ref={quantityDialog}
+        onCancel={(event) => { event.preventDefault(); setSelectedProduct(null); }}
+        onClose={() => setSelectedProduct(null)}
+        aria-labelledby="pos-quantity-title"
+        className="m-auto w-[min(92vw,390px)] rounded-2xl border border-[#3b3732] bg-[#252422] p-0 text-white shadow-2xl backdrop:bg-black/65"
+      >
+        {selectedProduct ? (
+          <form onSubmit={confirmProduct} className="space-y-5 p-6">
+            <div>
+              <h2 id="pos-quantity-title" className="font-display text-xl font-semibold">Choose pieces</h2>
+              <p className="mt-2 text-sm text-white/75">{selectedProduct.name}</p>
+              <p className="mt-1 text-xs text-white/55">₱{money(selectedProduct.priceMinor)} per piece</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={() => setQuantity((value) => String(Math.max(1, (Number(value) || 1) - 1)))} aria-label="Decrease pieces" className="grid h-12 w-12 place-items-center rounded-xl border border-white/20 text-xl">−</button>
+              <input
+                ref={quantityInput}
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={9999}
+                step={1}
+                required
+                aria-label="Pieces"
+                value={quantity}
+                onChange={(event) => setQuantity(event.target.value)}
+                className="h-12 min-w-0 flex-1 rounded-xl border border-white/20 bg-[#171614] text-center font-data text-lg text-white focus-visible:outline-2 focus-visible:outline-[#ff9a82]"
+              />
+              <button type="button" onClick={() => setQuantity((value) => String(Math.min(9999, (Number(value) || 0) + 1)))} aria-label="Increase pieces" className="grid h-12 w-12 place-items-center rounded-xl border border-white/20 text-xl">+</button>
+            </div>
+            <p className="text-sm text-white/70">Line total: ₱{money(selectedProduct.priceMinor * (Number.isSafeInteger(Number(quantity)) && Number(quantity) > 0 && Number(quantity) <= 9999 ? Number(quantity) : 0))}</p>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setSelectedProduct(null)} className="min-h-12 flex-1 rounded-xl border border-white/20 text-sm font-semibold">Cancel</button>
+              <button type="submit" className="min-h-12 flex-1 rounded-xl bg-[#f35d3f] text-sm font-semibold text-white hover:bg-[#d94a30]">Add to sale</button>
+            </div>
+          </form>
+        ) : null}
+      </dialog>
 
       <div className="hidden xl:absolute xl:bottom-[18px] xl:left-[18px] xl:right-[18px] xl:flex xl:items-center xl:gap-2 xl:rounded-xl xl:border xl:border-white/10 xl:bg-[#252422] xl:p-3">
         <span className="mr-auto text-[11px] font-semibold text-white/70">⚡ Quick actions</span>

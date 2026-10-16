@@ -66,6 +66,12 @@ No global toast provider is currently canonical. Status, warnings, errors, payme
 
 ## Flow ledger
 
+### POS product selection and catalog images
+
+- Selecting a product tile opens a quantity dialog before adding anything to the active sale. The cashier selects a whole number of pieces from 1 to 9,999, sees the extended price, and can cancel without changing the cart. The barcode-scanning shortcut continues to add one piece without opening the picker.
+- The current sale preserves item insertion order. Each line allows quantity adjustments and a separate, labeled Remove action on desktop and responsive cart drawers; held/resumed locked sales do not permit cart edits.
+- Catalog editors may set or clear an optional HTTP(S) product image URL (maximum 500 characters) using the existing catalog API. POS tiles display that image when supplied and otherwise retain their initials background. Images do not change receipt, tax, discount, inventory, or payment calculations.
+
 | Operation | Trigger | Pending | Success destination | Success feedback | Failure recovery | Focus outcome | Source ref |
 |---|---|---|---|---|---|---|---|
 | Complete sale | POS Pay | processing state, duplicate action disabled | receipt/current POS | completed + receipt link | unknown remains PAYMENT_UNKNOWN; no blind retry | payment context remains available | Phase 4 spec |

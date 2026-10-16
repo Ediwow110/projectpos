@@ -122,12 +122,12 @@ export function usePosPageController() {
     setStatus("This resumed sale is locked to its saved cart. Pay it or Hold it again before making changes.");
   }
 
-  function addToCart(p: PosProduct): void {
+  function addToCart(p: PosProduct, quantity = 1): void {
     if (resumedSaleLocked) {
       lockedSaleMessage();
       return;
     }
-    setCart((prev) => addProductToCart(prev, p));
+    setCart((prev) => addProductToCart(prev, p, quantity));
   }
 
   async function searchOrScan(): Promise<void> {

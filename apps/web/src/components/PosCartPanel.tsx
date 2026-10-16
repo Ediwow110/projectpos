@@ -122,10 +122,11 @@ export function PosCartPanel({
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[9px] font-semibold text-white">{entry.name}</p>
                 <div className="mt-2 flex items-center gap-2 font-data text-[8px] text-[#aaa096]">
-                  <span>Qty {entry.qty}</span>
+                  <span>Qty {entry.qty} × ₱{money(entry.priceMinor)}</span>
                   {entry.lineDiscountMinor > 0 ? <span className="text-[#ff9a82]">−₱{money(entry.lineDiscountMinor)}</span> : null}
                   <button type="button" onClick={() => onSetQty(entry.productId, -1)} disabled={saleLocked} aria-label={"Decrease " + entry.name} className="grid h-5 w-5 place-items-center rounded bg-white/[0.06] text-[11px] hover:bg-white/10 disabled:opacity-35">−</button>
                   <button type="button" onClick={() => onSetQty(entry.productId, 1)} disabled={saleLocked} aria-label={"Increase " + entry.name} className="grid h-5 w-5 place-items-center rounded bg-white/[0.06] text-[11px] hover:bg-white/10 disabled:opacity-35">+</button>
+                  <button type="button" onClick={() => onSetQty(entry.productId, -entry.qty)} disabled={saleLocked} aria-label={"Remove " + entry.name} className="rounded px-1.5 py-1 text-[9px] font-semibold text-[#ff9a82] hover:bg-white/10 disabled:opacity-35">Remove</button>
                 </div>
               </div>
               <span className="money shrink-0 text-right text-[9px] font-medium text-white">

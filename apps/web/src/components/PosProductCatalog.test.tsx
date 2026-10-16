@@ -13,7 +13,7 @@ describe("POS product catalog", () => {
         query="co"
         activeCategoryId="c1"
         categories={[{ id: "c1", name: "Drinks", isActive: true }]}
-        products={[{ id: "p1", name: "Coffee", sku: "CF", categoryId: "c1", priceMinor: 2500, isActive: true }]}
+        products={[{ id: "p1", name: "Coffee", sku: "CF", categoryId: "c1", priceMinor: 2500, isActive: true, imageUrl: "https://images.example.com/coffee.jpg" }]}
         selectedProductIds={new Set(["p1"])}
         loading={false}
         offline={false}
@@ -35,5 +35,7 @@ describe("POS product catalog", () => {
     expect(html).toContain("Drinks");
     expect(html).toContain("bg-[#4a2118]");
     expect(html).toContain('data-ui="product-add"');
+    expect(html).toContain("https://images.example.com/coffee.jpg");
+    expect(html).toContain('aria-description="Choose quantity before adding to the sale"');
   });
 });

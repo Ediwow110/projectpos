@@ -7,6 +7,7 @@ export interface PosProduct {
   productType?: "STANDARD" | "BUNDLE";
   priceMinor: number;
   isActive: boolean;
+  imageUrl?: string | null;
 }
 
 export interface PosCartEntry {
@@ -129,14 +130,17 @@ export function buildOfflineSalePayload(
   };
 }
 
-export function addProductToCart(cart: PosCartEntry[], product: PosProduct): PosCartEntry[] {
+export function addProductToCart(cart: PosCartEntry[], product: PosProduct, quantity = 1): PosCartEntry[] {
+  if (!Number.isSafeInteger(quantity) || quantity < 1) {
+    throw new RangeError("Product quantity must be a positive integer.");
+  }
   const existing = cart.find((entry) => entry.productId === product.id);
   if (existing) {
-    return cart.map((entry) => entry.productId === product.id ? { ...entry, qty: entry.qty + 1 } : entry);
+    return cart.map((entry) => entry.productId === product.id ? { ...entry, qty: entry.qty + quantity } : entry);
   }
   return [
     ...cart,
-    { productId: product.id, name: product.name, priceMinor: product.priceMinor, qty: 1, lineDiscountMinor: 0 },
+    { productId: product.id, name: product.name, priceMinor: product.priceMinor, qty: quantity, lineDiscountMinor: 0 },
   ];
 }
 

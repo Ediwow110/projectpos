@@ -12,6 +12,7 @@ import {
   API,
   apiAuthedContext,
   clickPosPay,
+  confirmPosQuantity,
   expectOnePosCartItem,
   registerOperationalBusiness,
   seedProduct,
@@ -59,6 +60,7 @@ test("critical path: register to reconciled close", async ({ page, request }) =>
   }
   await page.getByLabel("Search product, SKU or scan barcode").fill("E2E Coke");
   await page.getByRole("button", { name: /E2E Coke ₱25\.00/ }).click();
+  await confirmPosQuantity(page);
   await expectOnePosCartItem(page);
   await clickPosPay(page, "25.00");
   await expect(page.getByRole("dialog", { name: "Payment" })).toBeVisible();

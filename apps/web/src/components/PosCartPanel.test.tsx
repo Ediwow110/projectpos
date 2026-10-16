@@ -48,6 +48,8 @@ describe("POS current-sale panel", () => {
     expect(html).toContain("Pay ₱42.00");
     expect(html).toContain('aria-label="Decrease Coffee"');
     expect(html).toContain('aria-label="Increase Coffee"');
+    expect(html).toContain('aria-label="Remove Coffee"');
+    expect(html).toContain("Qty 2 × ₱25.00");
   });
 
   it("keeps unresolved payment and receipt recovery links visible in the rail", () => {

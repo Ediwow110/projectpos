@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import {
   apiAuthedContext,
   clickPosPay,
+  confirmPosQuantity,
   posCartRegion,
   registerOperationalBusiness,
   seedProduct,
@@ -63,7 +64,9 @@ for (const viewport of VIEWPORTS) {
     await page.goto("/pos");
     // Non-alphabetical add order exercises cart ordering alongside layout.
     await page.getByRole("button", { name: new RegExp(`Responsive B ${stamp}.*₱20\\.00`) }).click();
+    await confirmPosQuantity(page);
     await page.getByRole("button", { name: new RegExp(`Responsive A ${stamp}.*₱10\\.00`) }).click();
+    await confirmPosQuantity(page);
     await expect(page.getByRole("heading", { name: "Cart (2)" })).toBeVisible();
 
     // Quantity controls: native clicks, previously intercepted by the products pane.

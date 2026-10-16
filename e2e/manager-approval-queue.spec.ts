@@ -3,6 +3,7 @@ import {
   API,
   apiAuthedContext,
   clickPosPay,
+  confirmPosQuantity,
   createCounterWithOpenShift,
   createStaffMember,
   expectOnePosCartItem,
@@ -226,6 +227,7 @@ test("cashier discount request appears in manager inbox and resumes only after a
   await page.getByLabel(width < 768 ? "Mobile register" : "Register", { exact: true }).selectOption({ label: registerName });
   await page.getByLabel("Search product, SKU or scan barcode").fill(productName);
   await page.getByRole("button", { name: `${productName} ₱25.00` }).click();
+  await confirmPosQuantity(page);
   await expectOnePosCartItem(page);
   if (width < 1280) {
     await posCartRegion(page).getByRole("button", { name: "View cart", exact: true }).click();

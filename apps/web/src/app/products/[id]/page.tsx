@@ -13,6 +13,7 @@ import { GhostButton, PrimaryButton, StatusPill } from "../../../components/ui";
 import { ApiError, apiFetch } from "../../../lib/api";
 import { canEditCatalog, canSeeCost } from "../../../lib/catalog";
 import { formatMoneyMinor, minorToMajorFixed } from "../../../lib/money";
+import { validProductImageUrl } from "../../../lib/product-image";
 
 interface ProductDetail {
   id: string;
@@ -28,6 +29,7 @@ interface ProductDetail {
   trackInventory: boolean;
   isActive: boolean;
   categoryId: string | null;
+  imageUrl: string | null;
 }
 
 interface Category {
@@ -66,6 +68,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   const [name, setName] = useState("");
   const [sku, setSku] = useState("");
   const [barcode, setBarcode] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
   const [brand, setBrand] = useState("");
   const [unit, setUnit] = useState("pc");
   const [price, setPrice] = useState("");
@@ -89,6 +92,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     setName(product.name);
     setSku(product.sku ?? "");
     setBarcode(product.barcode ?? "");
+    setImageUrl(product.imageUrl ?? "");
     setBrand(product.brand ?? "");
     setUnit(product.unit);
     setPrice(minorToMajorFixed(product.priceMinor));
@@ -120,6 +124,10 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
       setError("VALIDATION: Check price, cost, and reorder level values.");
       return;
     }
+    if (!validProductImageUrl(imageUrl)) {
+      setError("VALIDATION: Image must be a valid HTTP(S) URL of 500 characters or fewer.");
+      return;
+    }
     setBusy(true);
     try {
       await mutate(`/api/v1/products/${id}`, {
@@ -128,6 +136,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
           name: name.trim(),
           sku: sku.trim() || null,
           barcode: barcode.trim() || null,
+          imageUrl: imageUrl.trim() || null,
           brand: brand.trim() || null,
           unit: unit.trim() || "pc",
           priceMinor,
@@ -226,7 +235,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
         footer={<div className="flex justify-end gap-2"><GhostButton type="button" onClick={() => setEditOpen(false)} disabled={busy}>Cancel</GhostButton><PrimaryButton type="submit" form="product-edit-form" disabled={busy || !name.trim()}>{busy ? "Saving…" : "Save changes"}</PrimaryButton></div>}
       >
         <form id="product-edit-form" noValidate onSubmit={(event) => void saveProduct(event)} className="space-y-5">
-          <section><SectionHeader title="Identity" /><div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="text-[11px] font-semibold text-[#655b53] sm:col-span-2">Name<input autoFocus value={name} onChange={(event) => setName(event.target.value)} required maxLength={160} className="field mt-1.5" /></label><label className="text-[11px] font-semibold text-[#655b53]">SKU<input value={sku} onChange={(event) => setSku(event.target.value)} maxLength={64} className="field mt-1.5" /></label><label className="text-[11px] font-semibold text-[#655b53]">Barcode<input value={barcode} onChange={(event) => setBarcode(event.target.value)} maxLength={64} className="field mt-1.5" /></label><label className="text-[11px] font-semibold text-[#655b53]">Brand<input value={brand} onChange={(event) => setBrand(event.target.value)} maxLength={80} className="field mt-1.5" /></label><label className="text-[11px] font-semibold text-[#655b53]">Category<select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className="field mt-1.5"><option value="">Uncategorized</option>{(categoriesQuery.data?.items ?? []).filter((category) => category.isActive || category.id === product?.categoryId).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label></div></section>
+          <section><SectionHeader title="Identity" /><div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="text-[11px] font-semibold text-[#655b53] sm:col-span-2">Name<input autoFocus value={name} onChange={(event) => setName(event.target.value)} required maxLength={160} className="field mt-1.5" /></label><label className="text-[11px] font-semibold text-[#655b53]">SKU<input value={sku} onChange={(event) => setSku(event.target.value)} maxLength={64} className="field mt-1.5" /></label><label className="text-[11px] font-semibold text-[#655b53]">Barcode<input value={barcode} onChange={(event) => setBarcode(event.target.value)} maxLength={64} className="field mt-1.5" /></label><label className="text-[11px] font-semibold text-[#655b53]">Brand<input value={brand} onChange={(event) => setBrand(event.target.value)} maxLength={80} className="field mt-1.5" /></label><label className="text-[11px] font-semibold text-[#655b53]">Category<select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className="field mt-1.5"><option value="">Uncategorized</option>{(categoriesQuery.data?.items ?? []).filter((category) => category.isActive || category.id === product?.categoryId).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><label className="text-[11px] font-semibold text-[#655b53] sm:col-span-2">Product image URL (optional)<input type="url" value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} maxLength={500} placeholder="https://images.example.com/product.jpg" className="field mt-1.5" /><span className="mt-1 block font-normal text-[#8b8077]">Use a publicly accessible HTTP(S) image link. Clear it to remove the image from POS.</span></label></div></section>
           <section className="border-t border-[#eadfd6] pt-5"><SectionHeader title="Pricing and inventory" /><div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="text-[11px] font-semibold text-[#655b53]">Selling price (PHP)<input value={price} onChange={(event) => setPrice(event.target.value)} inputMode="decimal" className="field mt-1.5" /></label>{showCost ? <label className="text-[11px] font-semibold text-[#655b53]">Cost (PHP)<input value={cost} onChange={(event) => setCost(event.target.value)} inputMode="decimal" className="field mt-1.5" /></label> : null}<label className="text-[11px] font-semibold text-[#655b53]">Unit<input value={unit} onChange={(event) => setUnit(event.target.value)} maxLength={16} className="field mt-1.5" /></label><label className="text-[11px] font-semibold text-[#655b53]">Reorder level<input type="number" min={0} step={1} value={reorderLevel} onChange={(event) => setReorderLevel(event.target.value)} className="field mt-1.5" /></label><label className="flex min-h-[50px] items-center gap-3 rounded-[10px] border border-[#e4d9d0] bg-white px-4 text-[12px] font-semibold text-[#655b53] sm:col-span-2"><input type="checkbox" checked={trackInventory} onChange={(event) => setTrackInventory(event.target.checked)} className="h-4 w-4 accent-[#f35d3f]" />Track inventory for this product</label></div></section>
           {error ? <p role="alert" className="rounded-xl bg-[#fff0f0] px-3 py-2.5 text-[12px] font-medium text-[#c43e3e]">{error}</p> : null}
         </form>

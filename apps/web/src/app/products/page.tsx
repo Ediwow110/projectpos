@@ -13,6 +13,7 @@ import { ApiError, apiFetch } from "../../lib/api";
 import { buildProductSearch, canEditCatalog, canSeeCost } from "../../lib/catalog";
 import { parseProductCsv, productRowsToCsv } from "../../lib/catalog-io";
 import { formatMoneyMinor } from "../../lib/money";
+import { validProductImageUrl } from "../../lib/product-image";
 import { createCatalogProductRequest, importCatalogProductsRequest } from "../../lib/products-api";
 import { useProductsPageState } from "./use-products-page-state";
 
@@ -55,7 +56,7 @@ export default function ProductsPage(): JSX.Element {
     q, setQ, active, setActive, page, setPage,
     createOpen, setCreateOpen, createError, setCreateError,
     createSuccess, setCreateSuccess, saving, setSaving,
-    name, setName, sku, setSku, barcode, setBarcode, categoryId, setCategoryId,
+    name, setName, sku, setSku, barcode, setBarcode, imageUrl, setImageUrl, categoryId, setCategoryId,
     price, setPrice, cost, setCost, unit, setUnit,
     reorderLevel, setReorderLevel, trackInventory, setTrackInventory,
     importOpen, setImportOpen, importText, setImportText,
@@ -114,6 +115,10 @@ export default function ProductsPage(): JSX.Element {
       setCreateError("VALIDATION: Reorder level must be a whole number of 0 or more.");
       return;
     }
+    if (!validProductImageUrl(imageUrl)) {
+      setCreateError("VALIDATION: Image must be a valid HTTP(S) URL of 500 characters or fewer.");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -121,6 +126,7 @@ export default function ProductsPage(): JSX.Element {
         name: name.trim(),
         ...(sku.trim() ? { sku: sku.trim() } : {}),
         ...(barcode.trim() ? { barcode: barcode.trim() } : {}),
+        ...(imageUrl.trim() ? { imageUrl: imageUrl.trim() } : {}),
         ...(categoryId ? { categoryId } : {}),
         unit: unit.trim() || "pc",
         priceMinor,
@@ -131,6 +137,7 @@ export default function ProductsPage(): JSX.Element {
       setName("");
       setSku("");
       setBarcode("");
+      setImageUrl("");
       setCategoryId("");
       setPrice("");
       setCost("");
@@ -374,6 +381,11 @@ export default function ProductsPage(): JSX.Element {
               <label className="text-[11px] font-semibold text-[#655b53]">
                 Barcode
                 <input value={barcode} onChange={(event) => setBarcode(event.target.value)} maxLength={64} placeholder="Optional" className="field mt-1.5" />
+              </label>
+              <label className="text-[11px] font-semibold text-[#655b53] sm:col-span-2">
+                Product image URL (optional)
+                <input type="url" value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} maxLength={500} placeholder="https://images.example.com/product.jpg" className="field mt-1.5" />
+                <span className="mt-1 block font-normal text-[#8b8077]">Use a publicly accessible HTTP(S) image link. It appears on POS product tiles.</span>
               </label>
               <label className="text-[11px] font-semibold text-[#655b53]">
                 Category

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { apiAuthedContext, registerOperationalBusiness, seedProduct } from "./helpers";
+import { apiAuthedContext, confirmPosQuantity, registerOperationalBusiness, seedProduct } from "./helpers";
 
 test("POS shell and responsive geometry match the current navigation contract", async ({ page, request }, testInfo) => {
   test.setTimeout(120_000);
@@ -78,6 +78,7 @@ test("POS shell and responsive geometry match the current navigation contract", 
   }
 
   await product.click();
+  await confirmPosQuantity(page);
   if (desktop) {
     await page.getByRole("button", { name: /Pay ₱145\.00/ }).click();
   } else if (tablet) {
