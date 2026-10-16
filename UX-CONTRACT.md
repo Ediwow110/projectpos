@@ -43,6 +43,12 @@
 
 No global toast provider is currently canonical. Status, warnings, errors, payment uncertainty, and sync outcomes remain visible inline near the owning workflow.
 
+## Atlas V4 managed product media
+
+- Only owners can upload, crop, replace or remove product photos via the session/CSRF/tenant-scoped media API. Other roles have no media controls.
+- The browser never receives a Supabase secret. Invalid images are rejected and existing photos survive failed replacements.
+- When the feature is disabled, the UI clearly explains why; new products save before optional photo attachment.
+
 ## Component behavior
 
 | Component | Default | Hover | Focus | Active | Disabled | Busy | Error |

@@ -145,6 +145,12 @@ Voice is operational, concise, and specific. Unknown/pending/offline states are 
 - Don't: use random decorative trend strokes, fake metrics, gradients, or color-only status.
 - Don't: expose business financial, customer, employee, or inventory figures before authentication.
 
+## Atlas V4 owner product media
+
+- Product photo upload/crop/replace/remove is restricted to signed-in owners, and disabled until secure storage is provisioned.
+- Public-read, server-write-only Supabase product photos use business-scoped immutable keys with 200 MiB active quota.
+- No sample Figma assets should be added to the real catalog; existing POS/payment calculations stay authoritative.
+
 ## Atlas 2026 V4 operational surfaces
 
 Figma Atlas V4 is an **additional, role-specific operational layout** within NexPOS,
