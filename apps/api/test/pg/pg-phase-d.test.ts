@@ -37,6 +37,8 @@ describe("Phase D guest support and owner consent PostgreSQL persistence", () =>
 
       const consents = new PlatformConsentService(db);
       const issued = await consents.issue(business.id, "owner", "Investigate support incident", 15, "r4");
+      expect((await db.findPlatformConsentById(issued.id, business.id))?.id).toBe(issued.id);
+      expect(await db.findPlatformConsentById(issued.id, other.id)).toBeNull();
       expect((await consents.list(business.id)).map((row) => row.id)).toContain(issued.id);
       expect(await consents.diagnostics(business.id, issued.token, "r5")).toMatchObject({
         businessId: business.id, openSupportCases: 0,

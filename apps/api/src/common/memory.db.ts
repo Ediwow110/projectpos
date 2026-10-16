@@ -555,6 +555,10 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       const row: DbPlatformConsent = { ...input, id: nid("consent"), createdAt: new Date() };
       platformConsents.set(row.id, row); return row;
     },
+    async findPlatformConsentById(id, businessId) {
+      const row = platformConsents.get(id);
+      return row?.businessId === businessId ? row : null;
+    },
     async findPlatformConsentByHash(businessId, hash) {
       return [...platformConsents.values()].find((row) => row.businessId === businessId && row.tokenHash === hash) ?? null;
     },

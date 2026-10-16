@@ -104,7 +104,7 @@ export class PlatformConsentService {
 
   async revoke(businessId: string, ownerId: string, id: string, requestId: string): Promise<void> {
     await this.db.withLock(`platform-consent:${businessId}:${id}`, async () => {
-      const previous = (await this.db.listPlatformConsents(businessId)).find((item) => item.id === id);
+      const previous = await this.db.findPlatformConsentById(id, businessId);
       if (!previous) throw new Error("NOT_FOUND");
       if (previous.revokedAt) return;
       const row = await this.db.revokePlatformConsent(id, businessId);

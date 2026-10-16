@@ -1264,6 +1264,7 @@ export interface DbPort {
   listGuestSupportCasesForOrder(businessId: string, orderId: string): Promise<DbGuestSupportCase[]>;
   closeGuestSupportCase(id: string, businessId: string, actorId: string): Promise<DbGuestSupportCase | null>;
   createPlatformConsent(row: Omit<DbPlatformConsent, "id" | "createdAt">): Promise<DbPlatformConsent>;
+  findPlatformConsentById(id: string, businessId: string): Promise<DbPlatformConsent | null>;
   findPlatformConsentByHash(businessId: string, tokenHash: string): Promise<DbPlatformConsent | null>;
   listPlatformConsents(businessId: string): Promise<DbPlatformConsent[]>;
   revokePlatformConsent(id: string, businessId: string): Promise<DbPlatformConsent | null>;

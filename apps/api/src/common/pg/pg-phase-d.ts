@@ -66,6 +66,13 @@ export function phaseDFamily(ctx: PgContext) {
         return r.rows[0] as DbPlatformConsent;
       } finally { if (ctx.owns()) c.release(); }
     },
+    async findPlatformConsentById(id: string, businessId: string): Promise<DbPlatformConsent | null> {
+      const c = await ctx.client();
+      try {
+        const r = await c.query(`SELECT ${CONSENT} FROM "PlatformOwnerConsent" WHERE "id"=$1 AND "businessId"=$2`, [id, businessId]);
+        return (r.rows[0] as DbPlatformConsent | undefined) ?? null;
+      } finally { if (ctx.owns()) c.release(); }
+    },
     async findPlatformConsentByHash(businessId: string, tokenHash: string): Promise<DbPlatformConsent | null> {
       const c = await ctx.client();
       try {

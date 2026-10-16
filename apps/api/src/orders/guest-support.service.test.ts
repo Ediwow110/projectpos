@@ -110,6 +110,19 @@ describe("Phase D guest support and owner-consented diagnostics", () => {
     expect((await f.consent.diagnostics(f.business.id, issued.token, "read")).openSupportCases).toBe(1);
   });
 
+  it("revokes consent by tenant-scoped ID without scanning other consents", async () => {
+    const f = await fixture();
+    const issued = await f.consent.issue(f.business.id, "owner", "Investigate pending guest refunds", 15, "issue");
+    f.db.listPlatformConsents = async () => { throw new Error("UNEXPECTED_TENANT_CONSENT_SCAN"); };
+    await expect(f.consent.revoke(f.otherBusiness.id, "owner", issued.id, "cross"))
+      .rejects.toThrow("NOT_FOUND");
+    await f.consent.revoke(f.business.id, "owner", issued.id, "revoke");
+    await f.consent.revoke(f.business.id, "owner", issued.id, "replay");
+    await expect(f.consent.diagnostics(f.business.id, issued.token, "after"))
+      .rejects.toThrow("FORBIDDEN");
+    expect((await f.db.listAudit()).filter((entry) => entry.action === "platform_support.consent_revoked")).toHaveLength(1);
+  });
+
   it("requires exact tenant consent; expiry and revocation fail closed", async () => {
     const f = await fixture();
     await expect(f.consent.issue(f.business.id, "owner", "too short", 10, "bad")).rejects.toThrow("VALIDATION");
