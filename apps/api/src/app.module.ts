@@ -18,6 +18,11 @@ import { normalizeOnboardingState, REQUIRED_STEPS } from "./business/onboarding"
 import { BusinessService } from "./business/nest/business.service";
 import { CatalogController } from "./catalog/nest/catalog.controller";
 import { ProductMediaController } from "./catalog/media/product-media.controller";
+import { ProductImageController, ProductMediaOwnerGuard } from "./catalog/media/product-image.controller";
+import { productMediaConfigFromEnv } from "./catalog/media/product-media-config";
+import { SupabaseMediaStorage, type ProductMediaStorage } from "./catalog/media/product-media.storage";
+import { ProductMediaService } from "./catalog/media/product-media.service";
+import { ProductMediaCleanup } from "./catalog/media/product-media-cleanup";
 import { ProductModelController } from "./catalog/nest/product-model.controller";
 import { InventoryController } from "./inventory/nest/inventory.controller";
 import { InventoryCountController } from "./inventory/nest/inventory-count.controller";
@@ -120,8 +125,15 @@ function runtimeDatabaseUrl(): string | undefined {
   return url;
 }
 
+const PRODUCT_MEDIA_STORAGE_PORT = "ProductMediaStorage";
+
+function createMediaStorageFromEnv(): ProductMediaStorage | null {
+  const config = productMediaConfigFromEnv(process.env);
+  return config.enabled ? new SupabaseMediaStorage(config) : null;
+}
+
 @Module({
-    controllers: [HealthController, AuthController, ApprovalController, ManagerApprovalQueueController, TenantController, BusinessController, ProductModelController, CatalogController, ProductMediaController, InventoryController, InventoryCountController, StockExceptionController, SalesController, PaymentsController, ReceiptsController, CustomerConcernsController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, PlatformDiagnosticsController, OwnerSupportController, GuestSupportPublicController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, ProcurementController, ValueController, MetricsController, OrderController, PublicOrderController],
+    controllers: [HealthController, AuthController, ApprovalController, ManagerApprovalQueueController, TenantController, BusinessController, ProductModelController, CatalogController, ProductMediaController, ProductImageController, InventoryController, InventoryCountController, StockExceptionController, SalesController, PaymentsController, ReceiptsController, CustomerConcernsController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, PlatformDiagnosticsController, OwnerSupportController, GuestSupportPublicController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, ProcurementController, ValueController, MetricsController, OrderController, PublicOrderController],
   providers: [
     StockExceptionService,
     GuestSupportService,
@@ -149,6 +161,21 @@ function runtimeDatabaseUrl(): string | undefined {
     TenantService,
     BusinessService,
     CatalogService,
+    ProductMediaOwnerGuard,
+    {
+      provide: PRODUCT_MEDIA_STORAGE_PORT,
+      useFactory: createMediaStorageFromEnv,
+    },
+    {
+      provide: ProductMediaService,
+      useFactory: (db: DbPort, storage: ProductMediaStorage | null) => new ProductMediaService(db, storage),
+      inject: ["DbPort", PRODUCT_MEDIA_STORAGE_PORT],
+    },
+    {
+      provide: ProductMediaCleanup,
+      useFactory: (db: DbPort, storage: ProductMediaStorage | null) => new ProductMediaCleanup(db, storage),
+      inject: ["DbPort", PRODUCT_MEDIA_STORAGE_PORT],
+    },
     ProductModelService,
     InventoryService,
     {
@@ -243,7 +270,7 @@ export class AppModule implements NestModule {
   }
 }
 
-export async function createTestApp(options: { paymongo?: PayMongoPort; humanVerification?: HumanVerificationPort; email?: TransactionalEmailPort; completedOnboardingFixture?: boolean } = {}): Promise<INestApplication> {
+export async function createTestApp(options: { paymongo?: PayMongoPort; humanVerification?: HumanVerificationPort; email?: TransactionalEmailPort; completedOnboardingFixture?: boolean; productMediaStorage?: ProductMediaStorage | null } = {}): Promise<INestApplication> {
   // Same store contract as boot: memory unless DATABASE_URL opts into
   // PostgreSQL (used by the load cohorts and any pg-backed contract run).
   const databaseUrl = runtimeDatabaseUrl();
@@ -251,12 +278,24 @@ export async function createTestApp(options: { paymongo?: PayMongoPort; humanVer
     ? new PgDbPort(new PgContext(databaseUrl))
     : createMemoryDb();
   const moduleRef = await Test.createTestingModule({
-  controllers: [HealthController, AuthController, ApprovalController, ManagerApprovalQueueController, TenantController, BusinessController, ProductModelController, CatalogController, InventoryController, InventoryCountController, StockExceptionController, SalesController, PaymentsController, ReceiptsController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, PlatformDiagnosticsController, OwnerSupportController, GuestSupportPublicController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, ProcurementController, ValueController, MetricsController, OrderController, PublicOrderController],
+  controllers: [HealthController, AuthController, ApprovalController, ManagerApprovalQueueController, TenantController, BusinessController, ProductModelController, CatalogController, ProductMediaController, ProductImageController, InventoryController, InventoryCountController, StockExceptionController, SalesController, PaymentsController, ReceiptsController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, PlatformDiagnosticsController, OwnerSupportController, GuestSupportPublicController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, ProcurementController, ValueController, MetricsController, OrderController, PublicOrderController],
   providers: [
       StockExceptionService,
       GuestSupportService,
       PlatformConsentService,
       { provide: "DbPort", useValue: db },
+      ProductMediaOwnerGuard,
+      { provide: PRODUCT_MEDIA_STORAGE_PORT, useValue: options.productMediaStorage === undefined ? createMediaStorageFromEnv() : options.productMediaStorage },
+      {
+        provide: ProductMediaService,
+        useFactory: (d: DbPort, storage: ProductMediaStorage | null) => new ProductMediaService(d, storage),
+        inject: ["DbPort", PRODUCT_MEDIA_STORAGE_PORT],
+      },
+      {
+        provide: ProductMediaCleanup,
+        useFactory: (d: DbPort, storage: ProductMediaStorage | null) => new ProductMediaCleanup(d, storage),
+        inject: ["DbPort", PRODUCT_MEDIA_STORAGE_PORT],
+      },
       { provide: PAYMONGO_PORT, useValue: options.paymongo ?? createPayMongoFromEnv({}) },
       { provide: HUMAN_VERIFICATION_PORT, useValue: options.humanVerification ?? DISABLED_HUMAN_VERIFICATION },
       { provide: TRANSACTIONAL_EMAIL_PORT, useValue: options.email ?? NOOP_TRANSACTIONAL_EMAIL },
