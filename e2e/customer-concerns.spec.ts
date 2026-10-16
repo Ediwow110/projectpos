@@ -348,10 +348,18 @@ test("over-threshold concern is non-actionable for managers and requires owner r
   const intakeLink = page.getByRole("link", { name: "Report an item concern" });
   await tabTo(page, intakeLink);
   await page.keyboard.press("Enter");
-  const quantityInput = page.getByLabel(`Concern quantity for ${productName}`);
-  await tabTo(page, quantityInput);
-  await page.keyboard.press("Control+A");
-  await page.keyboard.type("1");
+  // Atlas V4 uses keyboard-accessible stepper buttons, not a free-text
+  // quantity input. Exercise the real control through the tab order.
+  const increaseQuantity = page.getByRole("button", { name: `Increase affected quantity for ${productName}` });
+  const decreaseQuantity = page.getByRole("button", { name: `Decrease affected quantity for ${productName}` });
+  const affectedQuantity = page.getByRole("status", { name: `Affected quantity for ${productName}` });
+  await expect(affectedQuantity).toHaveText("0");
+  await expect(decreaseQuantity).toBeDisabled();
+  await tabTo(page, increaseQuantity);
+  await expect(increaseQuantity).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(affectedQuantity).toHaveText("1");
+  await expect(decreaseQuantity).toBeEnabled();
   const outcomeInput = page.getByLabel("Requested outcome");
   await tabTo(page, outcomeInput);
   await page.keyboard.press("ArrowDown");
