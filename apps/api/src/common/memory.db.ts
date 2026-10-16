@@ -438,7 +438,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       return [...productMedia.values()].find((asset) =>
         asset.businessId === businessId && asset.productId === productId && asset.state === "ACTIVE") ?? null;
     },
-    async replaceProductMediaAtomic(businessId, productId, expectedAssetId, input) {
+    async replaceProductMediaAtomic(businessId, productId, expectedAssetId, input, requestId) {
       return withLock(`product-media-quota:${businessId}`, () => memoryDb.withTransaction(async () => {
         const current = products.get(productId);
         if (!current || current.businessId !== businessId) throw new Error("NOT_FOUND");
@@ -469,10 +469,14 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
         productMedia.set(asset.id, asset);
         const product = { ...current, imageUrl: input.publicUrl };
         products.set(productId, product);
+        if (requestId) await memoryDb.appendAudit({
+          businessId, actorId: input.actorId, action: "product.media.upload",
+          entityType: "Product", entityId: productId, requestId,
+        });
         return { product, asset, oldAsset };
       }));
     },
-    async detachProductMediaAtomic(businessId, productId, expectedAssetId) {
+    async detachProductMediaAtomic(businessId, productId, expectedAssetId, actorId, requestId) {
       return withLock(`product-media-quota:${businessId}`, () => memoryDb.withTransaction(async () => {
         const current = products.get(productId);
         if (!current || current.businessId !== businessId) throw new Error("NOT_FOUND");
@@ -483,6 +487,10 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
         });
         const product = { ...current, imageUrl: null };
         products.set(productId, product);
+        if (actorId && requestId) await memoryDb.appendAudit({
+          businessId, actorId, action: "product.media.remove",
+          entityType: "Product", entityId: productId, requestId,
+        });
         return { product, oldAsset };
       }));
     },

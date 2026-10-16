@@ -218,8 +218,24 @@ export class CatalogService {
     patch: ProductPatch,
   ): Promise<DbProduct> {
     withScope(businessId, {});
+    if (patch.imageUrl !== undefined) {
+      // Serialize legacy URL edits with managed photo replacements in every API instance.
+      return this.db.withLock(`product-media-quota:${businessId}`, () =>
+        this.updateProductInternal(businessId, actorId, requestId, id, patch));
+    }
+    return this.updateProductInternal(businessId, actorId, requestId, id, patch);
+  }
+
+  private async updateProductInternal(
+    businessId: string, actorId: string, requestId: string, id: string, patch: ProductPatch,
+  ): Promise<DbProduct> {
     const current = await this.db.findProductById(id, businessId);
     if (!current) throw new Error("NOT_FOUND");
+    if (patch.imageUrl !== undefined) {
+      const managed = await this.db.getActiveProductMedia(businessId, id);
+      const proposed = patch.imageUrl?.trim() || null;
+      if (managed && proposed !== managed.publicUrl) throw new Error("PRODUCT_MEDIA_MANAGED");
+    }
     const sku = patch.sku !== undefined ? normalizeSku(patch.sku) : undefined;
     const barcode = patch.barcode !== undefined ? normalizeBarcode(patch.barcode) : undefined;
     if (patch.categoryId !== undefined && patch.categoryId !== null) {

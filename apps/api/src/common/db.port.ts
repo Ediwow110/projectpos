@@ -1250,8 +1250,8 @@ export interface DbPort {
   findProductById(id: string, businessId: string): Promise<DbProduct | null>;
   updateProduct(id: string, businessId: string, patch: Partial<Omit<DbProduct, "id" | "businessId">>): Promise<DbProduct | null>;
   getActiveProductMedia(businessId: string, productId: string): Promise<DbProductMediaAsset | null>;
-  replaceProductMediaAtomic(businessId: string, productId: string, expectedAssetId: string | null, input: DbProductMediaInput): Promise<DbProductMediaChange & { asset: DbProductMediaAsset }>;
-  detachProductMediaAtomic(businessId: string, productId: string, expectedAssetId: string | null): Promise<DbProductMediaChange>;
+  replaceProductMediaAtomic(businessId: string, productId: string, expectedAssetId: string | null, input: DbProductMediaInput, requestId?: string): Promise<DbProductMediaChange & { asset: DbProductMediaAsset }>;
+  detachProductMediaAtomic(businessId: string, productId: string, expectedAssetId: string | null, actorId?: string, requestId?: string): Promise<DbProductMediaChange>;
   listProductMediaCleanupCandidates(limit: number): Promise<DbProductMediaAsset[]>;
   markProductMediaCleanupResult(businessId: string, assetId: string, succeeded: boolean): Promise<void>;
   createProductFamily(f: Omit<DbProductFamily, "id" | "createdAt" | "updatedAt">): Promise<DbProductFamily>;

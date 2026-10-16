@@ -212,11 +212,11 @@ export class PgDbPort implements DbPort {
   getActiveProductMedia(businessId: string, productId: string): Promise<DbProductMediaAsset | null> {
     return this.productMedia.getActiveProductMedia(businessId, productId);
   }
-  replaceProductMediaAtomic(businessId: string, productId: string, expectedAssetId: string | null, input: DbProductMediaInput): Promise<DbProductMediaChange & { asset: DbProductMediaAsset }> {
-    return this.productMedia.replaceProductMediaAtomic(businessId, productId, expectedAssetId, input);
+  replaceProductMediaAtomic(businessId: string, productId: string, expectedAssetId: string | null, input: DbProductMediaInput, requestId?: string): Promise<DbProductMediaChange & { asset: DbProductMediaAsset }> {
+    return this.productMedia.replaceProductMediaAtomic(businessId, productId, expectedAssetId, input, requestId);
   }
-  detachProductMediaAtomic(businessId: string, productId: string, expectedAssetId: string | null): Promise<DbProductMediaChange> {
-    return this.productMedia.detachProductMediaAtomic(businessId, productId, expectedAssetId);
+  detachProductMediaAtomic(businessId: string, productId: string, expectedAssetId: string | null, actorId?: string, requestId?: string): Promise<DbProductMediaChange> {
+    return this.productMedia.detachProductMediaAtomic(businessId, productId, expectedAssetId, actorId, requestId);
   }
   listProductMediaCleanupCandidates(limit: number): Promise<DbProductMediaAsset[]> {
     return this.productMedia.listProductMediaCleanupCandidates(limit);
