@@ -523,6 +523,10 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       const row: DbGuestSupportCase = { ...input, id: nid("gsc"), createdAt: new Date() };
       guestSupportCases.set(row.id, row); return row;
     },
+    async findGuestSupportCaseById(id, businessId) {
+      const row = guestSupportCases.get(id);
+      return row?.businessId === businessId ? row : null;
+    },
     async findGuestSupportCaseByKey(businessId, key) {
       return [...guestSupportCases.values()].find((row) => row.businessId === businessId && row.idempotencyKey === key) ?? null;
     },

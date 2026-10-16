@@ -255,6 +255,7 @@ export class PgDbPort implements DbPort {
   listStockExceptions(businessId: string): Promise<DbStockException[]> { return this.stockExceptions.listStockExceptions(businessId); }
   disposeStockException(id: string, businessId: string, actorId: string, movementId: string): Promise<DbStockException | null> { return this.stockExceptions.disposeStockException(id, businessId, actorId, movementId); }
   createGuestSupportCase(input: Omit<DbGuestSupportCase, "id" | "createdAt">): Promise<DbGuestSupportCase> { return this.phaseD.createGuestSupportCase(input); }
+  findGuestSupportCaseById(id: string, businessId: string): Promise<DbGuestSupportCase | null> { return this.phaseD.findGuestSupportCaseById(id, businessId); }
   findGuestSupportCaseByKey(businessId: string, key: string): Promise<DbGuestSupportCase | null> { return this.phaseD.findGuestSupportCaseByKey(businessId, key); }
   listGuestSupportCases(businessId: string): Promise<DbGuestSupportCase[]> { return this.phaseD.listGuestSupportCases(businessId); }
   listGuestSupportCasesForOrder(businessId: string, orderId: string): Promise<DbGuestSupportCase[]> { return this.phaseD.listGuestSupportCasesForOrder(businessId, orderId); }

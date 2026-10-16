@@ -1257,6 +1257,7 @@ export interface DbPort {
   listStockExceptions(businessId: string): Promise<DbStockException[]>;
   disposeStockException(id: string, businessId: string, actorId: string, movementId: string): Promise<DbStockException | null>;
   createGuestSupportCase(row: Omit<DbGuestSupportCase, "id" | "createdAt">): Promise<DbGuestSupportCase>;
+  findGuestSupportCaseById(id: string, businessId: string): Promise<DbGuestSupportCase | null>;
   findGuestSupportCaseByKey(businessId: string, key: string): Promise<DbGuestSupportCase | null>;
   listGuestSupportCases(businessId: string): Promise<DbGuestSupportCase[]>;
   listGuestSupportCasesForOrder(businessId: string, orderId: string): Promise<DbGuestSupportCase[]>;

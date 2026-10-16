@@ -27,6 +27,8 @@ describe("Phase D guest support and owner consent PostgreSQL persistence", () =>
       expect((await svc.guestHistory(token)).map((row) => row.caseId)).toEqual([first.caseId]);
       expect((await db.listGuestSupportCasesForOrder(business.id, order.id)).map((row) => row.id)).toEqual([first.caseId]);
       expect(await db.listGuestSupportCasesForOrder(other.id, order.id)).toEqual([]);
+      expect((await db.findGuestSupportCaseById(first.caseId, business.id))?.id).toBe(first.caseId);
+      expect(await db.findGuestSupportCaseById(first.caseId, other.id)).toBeNull();
       await svc.close(business.id, "owner", first.caseId, "r3");
       expect((await svc.listForBusiness(business.id))[0]?.status).toBe("CLOSED");
 

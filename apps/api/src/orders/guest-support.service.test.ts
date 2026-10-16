@@ -63,6 +63,19 @@ describe("Phase D guest support and owner-consented diagnostics", () => {
     await expect(f.cases.guestHistory("invalid")).rejects.toThrow("FORBIDDEN");
   });
 
+  it("closes a case by tenant-scoped ID without scanning the entire business history", async () => {
+    const f = await fixture();
+    const created = await f.cases.submit({
+      statusToken: f.token1, category: "ORDER", description: "I need help with this pickup order",
+    }, "case-lookup", "open");
+    f.db.listGuestSupportCases = async () => { throw new Error("UNEXPECTED_TENANT_SCAN"); };
+    await expect(f.cases.close(f.otherBusiness.id, "owner", created.caseId, "cross"))
+      .rejects.toThrow("NOT_FOUND");
+    expect((await f.cases.close(f.business.id, "owner", created.caseId, "close")).status).toBe("CLOSED");
+    expect((await f.cases.close(f.business.id, "owner", created.caseId, "retry")).status).toBe("CLOSED");
+    expect((await f.db.listAudit()).filter((row) => row.action === "guest_support.closed")).toHaveLength(1);
+  });
+
   it("counts tenant sales without materializing full sales records for diagnostics", async () => {
     const f = await fixture();
     const issued = await f.consent.issue(f.business.id, "owner", "Investigate sales totals", 10, "issue-count");

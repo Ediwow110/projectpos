@@ -15,6 +15,13 @@ export function phaseDFamily(ctx: PgContext) {
         return r.rows[0] as DbGuestSupportCase;
       } finally { if (ctx.owns()) c.release(); }
     },
+    async findGuestSupportCaseById(id: string, businessId: string): Promise<DbGuestSupportCase | null> {
+      const c = await ctx.client();
+      try {
+        const r = await c.query(`SELECT ${CASE} FROM "GuestSupportCase" WHERE "id"=$1 AND "businessId"=$2`, [id, businessId]);
+        return (r.rows[0] as DbGuestSupportCase | undefined) ?? null;
+      } finally { if (ctx.owns()) c.release(); }
+    },
     async findGuestSupportCaseByKey(businessId: string, key: string): Promise<DbGuestSupportCase | null> {
       const c = await ctx.client();
       try {

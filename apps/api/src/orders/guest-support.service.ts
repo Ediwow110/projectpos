@@ -57,7 +57,7 @@ export class GuestSupportService {
   async close(businessId: string, actorId: string, id: string, requestId: string): Promise<DbGuestSupportCase> {
     return this.db.withLock(`guest-support-close:${businessId}:${id}`, async () =>
       this.db.withTransaction(async (tx) => {
-        const prior = (await tx.listGuestSupportCases(businessId)).find((row) => row.id === id);
+        const prior = await tx.findGuestSupportCaseById(id, businessId);
         if (!prior) throw new Error("NOT_FOUND");
         if (prior.status === "CLOSED") return prior;
         const row = await tx.closeGuestSupportCase(id, businessId, actorId);
