@@ -92,6 +92,13 @@ describe("owner-only product media HTTP contract", () => {
       .attach("image", Buffer.from("<svg><script>alert(1)</script></svg>"), { filename: "script.svg", contentType: "image/svg+xml" });
     expect(invalid.status).toBe(415);
 
+    const oversized = await request(app.getHttpServer()).post(path).set("Cookie", cookie)
+      .set("X-CSRF-Token", csrf).set("Origin", origin)
+      .attach("image", Buffer.alloc(3 * 1024 * 1024 + 1), "too-large.png");
+    expect(oversized.status).toBe(413);
+    expect(oversized.body.code).toBe("PAYLOAD_TOO_LARGE");
+    expect(fake.paths()).toHaveLength(1);
+
     const missingCsrf = await request(app.getHttpServer()).delete(path)
       .set("Cookie", cookie).set("Origin", origin).send({ expectedAssetId: version });
     expect(missingCsrf.status).toBe(403);

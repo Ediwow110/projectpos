@@ -147,6 +147,12 @@ Voice is operational, concise, and specific. Unknown/pending/offline states are 
 
 ## Atlas 2026 V4 operational surfaces
 
+### Atlas V4 owner product media
+
+- The product detail page implements owner-only image upload, replacement, square crop/zoom preview and confirmed removal (Figma Atlas owner product editor `63:239`). The controls are feature-gated, use real catalog images or initials fallback, and are hidden from cashiers/other roles.
+- Product media uses public-read/server-write-only Supabase Storage, an immutable tenant/product key per image, and 200 MiB active-image quota per business. Never embed Figma's example products/assets into the business catalog. The backend app's own session/CSRF/tenant authorization remains the authority; public object URLs are only for displaying photos.
+- A separate staging rollout must provision the bucket and secret, apply migration `0040_product_media`, run isolated cross-tenant/upload tests and only then set `PRODUCT_MEDIA_ENABLED=1`. This code is not a production rollout approval.
+
 ### Atlas V4 cashier sale workspace
 
 - The active `/pos` route now opts into the light Atlas cashier treatment

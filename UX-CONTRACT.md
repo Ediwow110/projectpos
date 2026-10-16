@@ -52,6 +52,15 @@ No global toast provider is currently canonical. Status, warnings, errors, payme
 
 ## Component behavior
 
+### Atlas V4 managed product images (feature-gated)
+
+- A logged-in **owner** may upload, crop/zoom-preview, replace or remove a product image in the Product Detail page when `GET /api/v1/product-media/capabilities` reports enabled. Other roles see no media-management controls.
+- Newly created products are saved first; their success message links to the new product editor, where optional image upload is separate. A failed upload must **not** delete a successfully created product.
+- The browser sends multipart FormData to the NexPOS API with the existing session and CSRF token. It never calls Supabase with a secret, and it must not set a multipart Content-Type manually.
+- Uploads are limited to JPEG, PNG or WebP source files up to 3 MiB. The server decodes, re-encodes as stripped-down WebP <=1 MiB and up to 1600px, stores via server-only Supabase Storage, and updates the business-scoped media registry with optimistic version checks. Existing photo URLs are preserved on conflicts/errors.
+- `Product.imageUrl` remains usable for existing products, but a managed active image must not be silently overridden by the legacy URL-edit field. Removing/replacing a photo uses the dedicated owner-only media API. No image bytes or object paths travel with sales, payment or receipt payloads.
+- **Disabled by default:** when storage isn't provisioned, the owner sees clear unavailable copy and can still use the existing public image URL field; fake upload buttons must never imply it is operational.
+
 ### P5 — POS keyboard and touch interaction
 
 - **Contrast (P5 refinement):** normal-sized description text and white-on-coral actions in the Atlas cashier views must achieve WCAG's 4.5:1 contrast minimum. Browser tests measure computed foreground/background; the V4 color intent remains intact through an accessible darker action coral and darker neutral copy.
