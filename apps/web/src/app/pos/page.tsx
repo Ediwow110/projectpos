@@ -109,46 +109,25 @@ export default function PosPage(): JSX.Element {
       role={role}
       offline={offline}
       posMode
-      topbar={
-        <label className="inline-flex items-center gap-1 font-data text-[8px] text-[#746960]">
-          <span>REG</span>
-          <select
-            aria-label="Register"
-            value={registerId}
-            onChange={(e) => setSaleRegister(e.target.value)}
-            disabled={resumedSaleLocked}
-            className="max-w-28 bg-transparent font-data text-[8px] font-medium text-[#746960] outline-none"
-          >
-            <option value="">—</option>
-            {scopedRegisters.map((register) => (
-                <option key={register.id} value={register.id}>{register.name}</option>
-              ))}
-          </select>
-          <span aria-hidden>·</span>
-          <span>{now}</span>
-          <span className="sr-only">Selected register: {selectedRegisterName}</span>
-        </label>
-      }
+      atlasPos
     >
-      <div className="px-3 pb-[124px] text-[#17130f] sm:px-5 lg:pb-5 lg:max-xl:px-10 xl:px-3">
-        <div className="mx-auto mb-3 flex w-full max-w-[1212px] items-center justify-between gap-3 xl:ml-0 xl:mr-auto">
-          <h1 className="font-display text-xl font-semibold tracking-tight text-[#202826]">New sale</h1>
-          <p className="hidden font-data text-[10px] text-[#748078] sm:block">{selectedRegisterName || "Select a register"}</p>
+      <div className="min-w-0 pb-[124px] text-[#202826] lg:pb-5 xl:pb-0">
+        <div className="flex min-h-[80px] w-full flex-wrap items-center justify-between gap-3 border-b border-[#e5e9e3] bg-white px-4 py-3 sm:px-7 xl:px-[34px]">
+          <h1 className="font-display text-[24px] font-semibold tracking-tight text-[#202826]">New sale</h1>
+          <label className="hidden items-center gap-2 font-data text-xs font-medium text-[#267552] sm:inline-flex">
+            <span>REGISTER</span>
+            <select aria-label="Register" value={registerId} disabled={resumedSaleLocked} onChange={(e) => setSaleRegister(e.target.value)} className="max-w-[180px] rounded-lg border border-[#e5e9e3] bg-white px-2 py-2 text-xs font-medium text-[#202826]">
+              <option value="">Select register</option>
+              {scopedRegisters.map((register) => <option key={register.id} value={register.id}>{register.name}</option>)}
+            </select>
+          </label>
+          <p className="hidden max-w-[180px] truncate text-xs text-[#71807a] lg:block">{meQuery.data?.businessName || "NexPOS"}</p>
         </div>
         <main
-          className={
-            "mx-auto grid max-w-[1212px] overflow-hidden rounded-[20px] bg-[#191816] text-white shadow-[0_14px_34px_-12px_rgb(26_18_13/0.20)] xl:ml-0 xl:mr-auto " +
-            // Fluid products track: at 1280-1440px viewports the workspace
-            // sidebar leaves less than 760+452px for this grid. Fixed tracks
-            // overflowed and main's overflow-hidden clipped cart actions
-            // (native clicks intercepted). The products pane absorbs the
-            // shrink (cards reflow via auto-fill); the 452px cart column keeps
-            // its pixel-positioned interior intact at every xl width.
-            "lg:max-xl:h-[1090px] lg:max-xl:min-h-[1090px] xl:min-h-[866px] xl:grid-cols-[minmax(0,1fr)_452px] xl:gap-0 " +
-            (showPay ? "xl:hidden" : "")
-          }
+          className="grid min-w-0 bg-[#f7f8f5] xl:min-h-[calc(100vh-80px)] xl:grid-cols-[minmax(0,1fr)_456px]"
         >
         <PosProductCatalog
+          atlasV4
           registerId={registerId}
           registers={scopedRegisters}
           query={q}
@@ -169,6 +148,7 @@ export default function PosPage(): JSX.Element {
           onAssignCustomer={openCustomerAssignment}
         />
         <PosCartPanel
+          atlasV4
           cart={cart}
           count={count}
           subtotalMinor={discountSummary.grossMinor}
@@ -206,6 +186,7 @@ export default function PosPage(): JSX.Element {
         </main>
 
         <PosResponsiveCart
+          atlasV4
           cart={cart}
           count={count}
           due={due}
@@ -324,6 +305,7 @@ export default function PosPage(): JSX.Element {
 
         {showPay ? (
           <PosPaymentWorkspace
+            atlasV4
             count={count}
             due={due}
             giftCardLoadMinor={giftCardLoadMinor}

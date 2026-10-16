@@ -5,6 +5,23 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { PosProductCatalog } from "./PosProductCatalog";
 
 describe("POS product catalog", () => {
+  it("uses Atlas V4 light product cards and a labeled Set qty affordance", () => {
+    const html = renderToStaticMarkup(<PosProductCatalog atlasV4
+      registerId="" registers={[]} query="" activeCategoryId="" categories={[]}
+      products={[{ id: "p1", name: "Oat milk", sku: "MILK", categoryId: null, priceMinor: 13500, isActive: true }]}
+      selectedProductIds={new Set()} loading={false} offline={false} saleLocked={false}
+      catalogAt={null} connectivityBanner={null}
+      onRegisterChange={() => undefined} onQueryChange={() => undefined}
+      onSearch={() => undefined} onCategoryChange={() => undefined}
+      onAddProduct={() => undefined} onAssignCustomer={() => undefined}
+    />);
+    expect(html).toContain('data-ui="atlas-pos-products"');
+    expect(html).toContain('bg-[#f7f8f5]');
+    expect(html).toContain("Set qty");
+    expect(html).toContain("Oat milk");
+    expect(html).toContain('aria-label="Oat milk ₱135.00"');
+    expect(html).toContain('aria-labelledby="pos-quantity-title"');
+  });
   it("renders register selection, category tabs, products, and selected state", () => {
     const html = renderToStaticMarkup(
       <PosProductCatalog

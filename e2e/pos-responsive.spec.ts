@@ -9,10 +9,7 @@ import {
   seedProduct,
 } from "./helpers";
 
-// Regression coverage for the POS two-pane overlap: the xl two-pane grid
-// used fixed 760px + 452px tracks, so at 1280-1440px viewports (with the
-// workspace sidebar) the cart column overflowed and cart actions were
-// clipped or intercepted by the products pane. Native pointer clicks only.
+// Native-click regression on the Atlas V4 two-pane grid and 78px sale rail.
 const VIEWPORTS = [
   { width: 1280, height: 800 },
   { width: 1366, height: 768 },
@@ -21,9 +18,7 @@ const VIEWPORTS = [
 
 async function expectCartActionReachable(page: Page): Promise<void> {
   const geometry = await page.evaluate(() => {
-    const pay = [...document.querySelectorAll("button")].find((button) =>
-      /^▣ Pay ₱/.test(button.textContent ?? ""),
-    );
+    const pay = document.querySelector<HTMLButtonElement>('[data-ui="atlas-pos-cart"] button[aria-label^="Pay ₱"]');
     if (!pay) return { found: false, right: 0, viewport: window.innerWidth, hit: "missing" };
     const rect = pay.getBoundingClientRect();
     const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);

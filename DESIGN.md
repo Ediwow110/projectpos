@@ -147,6 +147,25 @@ Voice is operational, concise, and specific. Unknown/pending/offline states are 
 
 ## Atlas 2026 V4 operational surfaces
 
+### Atlas V4 cashier sale workspace
+
+- The active `/pos` route now opts into the light Atlas cashier treatment
+  (Figma 66:3): 78px dark `#252E2B` sale rail at desktop widths, coral
+  NexPOS mark, light `#F7F8F5` product surface, white editable current-sale
+  panel and `#DA614C` payment CTA. The payment-method chooser uses the
+  light modal treatment from Figma 66:964; disabled tender methods remain
+  disabled if the server/provider has not enabled them.
+- Product imagery must come from the owner's real catalog `imageUrl` data;
+  use accessible name/initials fallbacks when missing. Never ship Figma's
+  example photos, product names, inventory quantities or demo monetary
+  values as actual business data. The UI must never fake stock availability.
+- Existing POS sale creation, hold/resume, discounts, manager approvals,
+  PayMongo webhook settlement, offline handling, cart order and receipt
+  totals remain authoritative and separate from visual presentation.
+- On smaller screens the cashier retains the accessible V4 mobile header
+  and navigation, with a light cart tray/drawer and a keyboard-accessible
+  payment method modal. Test 390 / 820 / 1024 / 1280 / 1440px.
+
 Figma Atlas V4 is an **additional, role-specific operational layout** within NexPOS,
 not permission to replace the existing POS transaction engine or invent example
 transactions. The older cream/coral direction above still applies to routes not

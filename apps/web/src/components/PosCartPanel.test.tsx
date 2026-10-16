@@ -7,6 +7,21 @@ import { PosCartPanel } from "./PosCartPanel";
 const noop = () => undefined;
 
 describe("POS current-sale panel", () => {
+  it("renders the Atlas V4 white cart with server-approved actions", () => {
+    const html = renderToStaticMarkup(<PosCartPanel atlasV4 cart={[{productId:"a",name:"Oat milk",priceMinor:13500,qty:2,lineDiscountMinor:500}]}
+      count={2} subtotalMinor={27000} discountMinor={500} due={26500} selectedRegisterName="Main till"
+      canSell canPay offline={false} saleLocked={false} heldCount={0} effectiveMethod="cash"
+      status="" statusTone="neutral" receiptId={null} reconcileId={null} reconcileSaleId={null}
+      methodAvailable={() => true} onHold={noop} onOpenHeldSales={noop} onOpenDiscounts={noop}
+      onClearCart={noop} onResetSale={noop} onSetQty={noop} onAssignCustomer={noop}
+      onOpenPayment={noop} onSelectShortcut={noop} />);
+    expect(html).toContain('data-ui="atlas-pos-cart"');
+    expect(html).toContain('bg-white');
+    expect(html).toContain('aria-label="Pay ₱265.00 (F5)"');
+    expect(html).toContain('aria-label="Remove Oat milk"');
+    expect(html).toContain("Proceed to payment");
+    expect(html).toContain("−₱5.00");
+  });
   it("renders the desktop cart rail with totals, payment action, and quantity controls", () => {
     const html = renderToStaticMarkup(
       <PosCartPanel

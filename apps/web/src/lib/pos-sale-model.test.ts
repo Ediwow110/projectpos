@@ -15,6 +15,13 @@ import {
 } from "./pos-sale-model";
 
 describe("POS sale model", () => {
+  it("carries owner product photos only as cart display state, not sale or payment payload data", () => {
+    const cart = addProductToCart([], { id: "photo", name: "Milk", sku: "M", categoryId: null, priceMinor: 13500, isActive: true, imageUrl: "https://images.example.com/milk.jpg" }, 2);
+    expect(cart[0].imageUrl).toBe("https://images.example.com/milk.jpg");
+    const draft = buildDraftSaleInput(cart, "reg1", "", "");
+    expect(draft.lines).toEqual([{ productId: "photo", qty: 2, lineDiscountMinor: 0 }]);
+    expect(JSON.stringify(draft)).not.toContain("images.example.com");
+  });
   it("restores held-sale items in their saved cashier order", () => {
     expect(heldSaleToCart({
       items: [

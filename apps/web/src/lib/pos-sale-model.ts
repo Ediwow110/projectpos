@@ -16,6 +16,7 @@ export interface PosCartEntry {
   priceMinor: number;
   qty: number;
   lineDiscountMinor: number;
+  imageUrl?: string | null;
 }
 
 export interface PosHeldSaleItem {
@@ -140,7 +141,9 @@ export function addProductToCart(cart: PosCartEntry[], product: PosProduct, quan
   }
   return [
     ...cart,
-    { productId: product.id, name: product.name, priceMinor: product.priceMinor, qty: quantity, lineDiscountMinor: 0 },
+    { productId: product.id, name: product.name, priceMinor: product.priceMinor, qty: quantity, lineDiscountMinor: 0,
+      ...(product.imageUrl ? { imageUrl: product.imageUrl } : {}),
+    },
   ];
 }
 

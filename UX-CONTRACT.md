@@ -35,7 +35,7 @@
 - Runtime design-system/token source: apps/web/src/app/globals.css, apps/web/src/components/ui.tsx, apps/web/src/components/premium.tsx, apps/web/src/components/AppShell.tsx.
 - Mapping/export/adapters: direct CSS/Tailwind token mapping; no generated export step.
 - Token drift gate: visual QA against Figma plus tests/typecheck/build; old navy/blue shell colors are disallowed in migrated shell code.
-- Supported themes: light management shell; dark POS operational workspace.
+- Supported themes: light management shell; light Atlas V4 POS sale workspace; legacy dark POS components remain available only as non-Atlas fallbacks.
 - Design-context owner/review policy: system-level visual changes update DESIGN.md and runtime tokens/components together.
 
 ## Canonical UI Map
@@ -53,6 +53,9 @@ No global toast provider is currently canonical. Status, warnings, errors, payme
 ## Component behavior
 
 ### P5 — POS keyboard and touch interaction
+
+- Atlas V4 `/pos` now uses the 78px dark cashier rail, light product cards, white desktop sale panel and light payment chooser from Figma 66:3 / 66:964. The three primary tenders stay visible, while extra configured methods are available under an accessible disclosure; disabled methods stay disabled. The browser verifies layout widths, colors and pointer targets.
+- Owner catalog `imageUrl` is propagated into newly added cart entries as optional display-only state for product thumbnails. Sale creation/payment requests contain product ID, quantity and discounts but never image URLs. If a saved or held cart lacks a photo, a legible initials fallback remains available. Figma's sample product photos and example stock counts must never be fabricated in real business data.
 
 - The sale page has exactly one visible level-one heading, **New sale**, and a main landmark. Product selection opens the native modal quantity dialog with focus on the pieces field; cancelling via Escape does not insert a cart line.
 - The quantity picker announces the line total as quantities change. Product ordering, recorded discounts, cash change and payment unknown recovery remain governed by the existing sale/payment contracts.

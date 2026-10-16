@@ -71,7 +71,12 @@ describe("premium POS shell", () => {
   it("keeps the xl two-pane grid fluid so the cart column never overflows", () => {
     const posSource = readFileSync(resolve(process.cwd(), "src/app/pos/page.tsx"), "utf8");
 
-    expect(posSource).toContain("xl:grid-cols-[minmax(0,1fr)_452px]");
+    expect(posSource).toContain("xl:grid-cols-[minmax(0,1fr)_456px]");
+    expect(posSource).not.toContain('(showPay ? "xl:hidden"');
+    expect(posSource).toContain("atlasPos");
+    expect(posSource).toContain("atlasV4");
+    expect(posSource).toContain("bg-[#f7f8f5]");
+    expect(readFileSync(resolve(process.cwd(), "src/components/AtlasPosRail.tsx"), "utf8")).toContain("bg-[#252e2b]");
     expect(posSource).not.toContain("xl:grid-cols-[760px_452px]");
   });
 
