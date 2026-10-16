@@ -53,4 +53,16 @@ test("canceled hosted-checkout return stays pending and never reports payment su
   const persisted = await request.get(`${API}/api/v1/sales/${draft.id}`, { headers });
   expect(persisted.ok()).toBe(true);
   expect((await persisted.json() as { status: string }).status).toBe(draft.status);
+
+  // A provider "success" URL can be opened directly or replayed. It is not
+  // signed settlement evidence and must not finalize the local sale.
+  await page.goto(`/sales/${draft.id}?paymongo=success`);
+  await expect(page.getByRole("heading", { name: "Waiting for PayMongo payment" })).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("the redirect does not confirm payment");
+  await expect(page.getByRole("region", { name: "Sale summary" })
+    .getByText("PENDING_PAYMENT", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "View receipt" })).toHaveCount(0);
+  const afterRedirect = await request.get(`${API}/api/v1/sales/${draft.id}`, { headers });
+  expect(afterRedirect.ok()).toBe(true);
+  expect((await afterRedirect.json() as { status: string }).status).toBe(draft.status);
 });
