@@ -25,6 +25,20 @@ async function fixture() {
 }
 
 describe("Phase D guest support and owner-consented diagnostics", () => {
+  it("does not insert support cases referencing another business or missing orders", async () => {
+    const f = await fixture();
+    const input = {
+      businessId: f.otherBusiness.id, orderId: f.first.id,
+      category: "ORDER" as const, description: "Incorrect order association",
+      status: "OPEN" as const, idempotencyKey: "invalid-parent",
+      closedAt: null, closedBy: null,
+    };
+    await expect(f.db.createGuestSupportCase(input)).rejects.toThrow("NOT_FOUND");
+    await expect(f.db.createGuestSupportCase({ ...input, businessId: f.business.id, orderId: "missing-order" }))
+      .rejects.toThrow("NOT_FOUND");
+    expect(await f.db.listGuestSupportCases(f.otherBusiness.id)).toEqual([]);
+  });
+
   it("links one case to a verified status token and hides unrelated order history", async () => {
     const f = await fixture();
     const input = { statusToken: f.token1, category: "PAYMENT" as const, description: "Payment was still pending after return" };

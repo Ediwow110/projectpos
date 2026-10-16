@@ -496,6 +496,8 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       return [...balances.values()].filter((b) => b.businessId === businessId);
     },
     async createStockException(input) {
+      const product = products.get(input.productId);
+      if (!product || product.businessId !== input.businessId) throw new Error("NOT_FOUND");
       const row: DbStockException = { ...input, id: nid("risk"), createdAt: new Date() };
       if ([...stockExceptions.values()].some((value) => value.businessId === input.businessId && value.reportKey === input.reportKey)) throw new Error("CONFLICT");
       stockExceptions.set(row.id, row);
@@ -519,6 +521,8 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       return next;
     },
     async createGuestSupportCase(input) {
+      const order = orders.get(input.orderId);
+      if (!order || order.businessId !== input.businessId) throw new Error("NOT_FOUND");
       if ([...guestSupportCases.values()].some((row) => row.businessId === input.businessId && row.idempotencyKey === input.idempotencyKey)) throw new Error("CONFLICT");
       const row: DbGuestSupportCase = { ...input, id: nid("gsc"), createdAt: new Date() };
       guestSupportCases.set(row.id, row); return row;

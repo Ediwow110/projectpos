@@ -17,6 +17,11 @@ describe("Phase D guest support and owner consent PostgreSQL persistence", () =>
         status: "SUBMITTED", version: 1, checkoutAt: now, submittedAt: now, confirmedAt: null,
         completedAt: null, cancelledAt: null, actorId: "public", requestId: "pg-d", createdAt: now, updatedAt: now,
       });
+      await expect(db.createGuestSupportCase({
+        businessId: other.id, orderId: order.id, category: "ORDER",
+        description: "Cross-tenant order attempt", status: "OPEN",
+        idempotencyKey: "invalid-parent", closedAt: null, closedBy: null,
+      })).rejects.toThrow("NOT_FOUND");
       const token = (await new OrderAccessService(db).mintStatusToken(business.id, order.id)).token;
       const svc = new GuestSupportService(db);
       const input = { statusToken: token, category: "ORDER" as const, description: "Please check pickup availability" };

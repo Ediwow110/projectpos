@@ -10,8 +10,10 @@ export function phaseDFamily(ctx: PgContext) {
       const c = await ctx.client();
       try {
         const r = await c.query(`INSERT INTO "GuestSupportCase" ("id","businessId","orderId","category","description","status","idempotencyKey","closedAt","closedBy")
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING ${CASE}`,
+          SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9 FROM "Order"
+          WHERE "Order"."id"=$3 AND "Order"."businessId"=$2 RETURNING ${CASE}`,
         [nid("gsc"), input.businessId, input.orderId, input.category, input.description, input.status, input.idempotencyKey, input.closedAt, input.closedBy]);
+        if (!r.rows[0]) throw new Error("NOT_FOUND");
         return r.rows[0] as DbGuestSupportCase;
       } finally { if (ctx.owns()) c.release(); }
     },

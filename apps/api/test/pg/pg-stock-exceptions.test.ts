@@ -12,6 +12,12 @@ describe("Phase C stock issues PostgreSQL persistence", () => {
         brand: null, unit: "pc", priceMinor: 200, costMinor: 120,
         taxRateBps: null, reorderLevel: 1, trackInventory: true, isActive: true, imageUrl: null,
       });
+      await expect(db.createStockException({
+        businessId: foreign.id, productId: product.id, branchId: null,
+        kind: "DAMAGE", quantity: 1, expiresOn: null, reason: "Invalid tenant reference",
+        status: "OPEN", reportKey: "invalid-parent", reportedBy: "owner",
+        disposedBy: null, disposedAt: null, movementId: null,
+      })).rejects.toThrow("NOT_FOUND");
       await db.upsertBalance({ businessId: tenant.id, productId: product.id, branchId: null, qtyOnHand: 10 });
       const svc = new StockExceptionService(db);
       const details = {

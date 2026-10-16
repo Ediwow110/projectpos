@@ -11,10 +11,12 @@ export function stockExceptionsFamily(ctx: PgContext) {
         const id = nid("risk");
         const r = await c.query(
           `INSERT INTO "StockException" ("id","businessId","productId","branchId","kind","quantity","expiresOn","reason","status","reportKey","reportedBy","disposedBy","disposedAt","movementId")
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING ${FIELDS}`,
+           SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
+           FROM "Product" WHERE "id"=$3 AND "businessId"=$2 RETURNING ${FIELDS}`,
           [id, input.businessId, input.productId, input.branchId, input.kind, input.quantity, input.expiresOn,
             input.reason, input.status, input.reportKey, input.reportedBy, input.disposedBy, input.disposedAt, input.movementId],
         );
+        if (!r.rows[0]) throw new Error("NOT_FOUND");
         return r.rows[0] as DbStockException;
       } finally { if (ctx.owns()) c.release(); }
     },
