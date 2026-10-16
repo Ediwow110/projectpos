@@ -257,6 +257,7 @@ export class PgDbPort implements DbPort {
   createGuestSupportCase(input: Omit<DbGuestSupportCase, "id" | "createdAt">): Promise<DbGuestSupportCase> { return this.phaseD.createGuestSupportCase(input); }
   findGuestSupportCaseByKey(businessId: string, key: string): Promise<DbGuestSupportCase | null> { return this.phaseD.findGuestSupportCaseByKey(businessId, key); }
   listGuestSupportCases(businessId: string): Promise<DbGuestSupportCase[]> { return this.phaseD.listGuestSupportCases(businessId); }
+  listGuestSupportCasesForOrder(businessId: string, orderId: string): Promise<DbGuestSupportCase[]> { return this.phaseD.listGuestSupportCasesForOrder(businessId, orderId); }
   closeGuestSupportCase(id: string, businessId: string, actorId: string): Promise<DbGuestSupportCase | null> { return this.phaseD.closeGuestSupportCase(id, businessId, actorId); }
   createPlatformConsent(input: Omit<DbPlatformConsent, "id" | "createdAt">): Promise<DbPlatformConsent> { return this.phaseD.createPlatformConsent(input); }
   findPlatformConsentByHash(businessId: string, tokenHash: string): Promise<DbPlatformConsent | null> { return this.phaseD.findPlatformConsentByHash(businessId, tokenHash); }
@@ -576,6 +577,9 @@ export class PgDbPort implements DbPort {
   }
   listSalesByBusiness(businessId: string): Promise<DbSale[]> {
     return this.sales.listSalesByBusiness(businessId);
+  }
+  countSalesByBusiness(businessId: string): Promise<number> {
+    return this.sales.countSalesByBusiness(businessId);
   }
   listSalesPage(businessId: string, afterId: string | null, limit: number): Promise<DbSale[]> {
     return this.sales.listSalesPage(businessId, afterId, limit);

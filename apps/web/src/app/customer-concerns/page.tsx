@@ -187,7 +187,7 @@ export default function CustomerConcernsPage(): JSX.Element {
         <p className="hidden font-data text-[11px] tracking-[0.05em] text-[#da614c] sm:block">APPROVAL OPERATIONS / ATLAS 2026</p>
         <h1 className="font-display text-[25px] font-semibold text-[#202826] sm:text-[29px]"><span className="sm:hidden">Approval requests</span><span className="hidden sm:inline">{role === "owner" ? "Approval inbox" : "Manager approval inbox"}</span></h1>
         <p className="hidden text-[13px] text-[#748078] sm:block">Requests and review actions are limited by your permissions and branch access.</p>
-      </header>{role === "owner" && !cases.isPending && !cases.isError ? <AtlasOwnerEscalation rows={rows} /> : null}<AtlasApprovalInbox rows={approvalRequests.data?.requests ?? []} loading={approvalRequests.isPending} failed={approvalRequests.isError} onRetry={() => void approvalRequests.refetch()} /></> : null}
+      </header>{role === "owner" && !cases.isPending && !cases.isError ? <AtlasOwnerEscalation rows={rows} /> : null}<AtlasApprovalInbox rows={filteredApprovalRequests} loading={approvalRequests.isPending} failed={approvalRequests.isError} onRetry={() => void approvalRequests.refetch()} /></> : null}
       {!approver ? <PageHeader eyebrow="Sales / Customer cases" title={canReviewCases ? "Customer case inbox" : "Customer case history"}
         description={canReviewCases ? "Review product concerns and record an authorized decision. Approval records authorization only; it does not execute a refund or exchange." : "Track submitted product concerns and manager decisions."} /> : null}
       {approver ? <div id="manager-approval-details" className="scroll-mt-24" /> : null}

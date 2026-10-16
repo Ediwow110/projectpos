@@ -529,6 +529,11 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     async listGuestSupportCases(businessId) {
       return [...guestSupportCases.values()].filter((row) => row.businessId === businessId);
     },
+    async listGuestSupportCasesForOrder(businessId, orderId) {
+      return [...guestSupportCases.values()]
+        .filter((row) => row.businessId === businessId && row.orderId === orderId)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id));
+    },
     async closeGuestSupportCase(id, businessId, actorId) {
       const row = guestSupportCases.get(id);
       if (!row || row.businessId !== businessId || row.status !== "OPEN") return null;
@@ -619,6 +624,11 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     },
     async listSalesByBusiness(businessId) {
       return [...sales.values()].filter((s) => s.businessId === businessId);
+    },
+    async countSalesByBusiness(businessId) {
+      let count = 0;
+      for (const row of sales.values()) if (row.businessId === businessId) count++;
+      return count;
     },
     async listSalesPage(businessId, afterId, limit) {
       const rows = [...sales.values()]

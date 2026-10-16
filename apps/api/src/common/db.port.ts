@@ -1259,6 +1259,7 @@ export interface DbPort {
   createGuestSupportCase(row: Omit<DbGuestSupportCase, "id" | "createdAt">): Promise<DbGuestSupportCase>;
   findGuestSupportCaseByKey(businessId: string, key: string): Promise<DbGuestSupportCase | null>;
   listGuestSupportCases(businessId: string): Promise<DbGuestSupportCase[]>;
+  listGuestSupportCasesForOrder(businessId: string, orderId: string): Promise<DbGuestSupportCase[]>;
   closeGuestSupportCase(id: string, businessId: string, actorId: string): Promise<DbGuestSupportCase | null>;
   createPlatformConsent(row: Omit<DbPlatformConsent, "id" | "createdAt">): Promise<DbPlatformConsent>;
   findPlatformConsentByHash(businessId: string, tokenHash: string): Promise<DbPlatformConsent | null>;
@@ -1277,6 +1278,7 @@ export interface DbPort {
   findSaleById(id: string, businessId: string): Promise<DbSale | null>;
   findSaleByReceiptNo(receiptNo: string, businessId: string): Promise<DbSale | null>;
   listSalesByBusiness(businessId: string): Promise<DbSale[]>;
+  countSalesByBusiness(businessId: string): Promise<number>;
   listSalesPage(businessId: string, afterId: string | null, limit: number): Promise<DbSale[]>;
   updateSale(id: string, businessId: string, patch: Partial<Omit<DbSale, "id" | "businessId">>): Promise<DbSale | null>;
   createOrder(o: Omit<DbOrder, "id">): Promise<DbOrder>;

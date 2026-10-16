@@ -123,6 +123,19 @@ export function salesFamily(ctx: PgContext) {
       }
     },
 
+    async countSalesByBusiness(businessId: string): Promise<number> {
+      const c = await ctx.client();
+      try {
+        const r = await c.query<{ count: string }>(
+          'SELECT COUNT(*)::text AS "count" FROM "Sale" WHERE "businessId" = $1',
+          [businessId],
+        );
+        return Number(r.rows[0]?.count ?? 0);
+      } finally {
+        if (ctx.owns()) c.release();
+      }
+    },
+
     async listSalesPage(businessId: string, afterId: string | null, limit: number): Promise<DbSale[]> {
       const c = await ctx.client();
       try {

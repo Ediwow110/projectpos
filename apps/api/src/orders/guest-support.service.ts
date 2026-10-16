@@ -46,8 +46,7 @@ export class GuestSupportService {
 
   async guestHistory(statusToken: string): Promise<Array<{ caseId: string; category: string; status: string; createdAt: Date }>> {
     const order = await this.access.resolveStatusToken(statusToken);
-    return (await this.db.listGuestSupportCases(order.businessId))
-      .filter((row) => row.orderId === order.id)
+    return (await this.db.listGuestSupportCasesForOrder(order.businessId, order.id))
       .map((row) => ({ caseId: row.id, category: row.category, status: row.status, createdAt: row.createdAt }));
   }
 
@@ -135,7 +134,7 @@ export class PlatformConsentService {
       // on that client (pg@9 disallows overlapping client.query calls).
       const members = await this.db.listMembershipsByBusiness(businessId);
       const branches = await this.db.listBranchesByBusiness(businessId);
-      const sales = await this.db.listSalesByBusiness(businessId);
+      const sales = await this.db.countSalesByBusiness(businessId);
       const cases = await this.db.listGuestSupportCases(businessId);
       await this.db.appendAudit({
         businessId, actorId: "platform", action: "platform_support.diagnostics_viewed", requestId,
@@ -146,7 +145,7 @@ export class PlatformConsentService {
         businessId, businessName: business.name, consentExpiresAt: row.expiresAt,
         activeStaff: members.filter((member) => !member.deactivatedAt).length,
         activeBranches: branches.filter((branch) => branch.isActive).length,
-        sales: sales.length,
+        sales,
         openSupportCases: cases.filter((entry) => entry.status === "OPEN").length,
       };
     });

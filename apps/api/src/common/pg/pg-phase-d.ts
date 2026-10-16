@@ -29,6 +29,13 @@ export function phaseDFamily(ctx: PgContext) {
         return r.rows as DbGuestSupportCase[];
       } finally { if (ctx.owns()) c.release(); }
     },
+    async listGuestSupportCasesForOrder(businessId: string, orderId: string): Promise<DbGuestSupportCase[]> {
+      const c = await ctx.client();
+      try {
+        const r = await c.query(`SELECT ${CASE} FROM "GuestSupportCase" WHERE "businessId"=$1 AND "orderId"=$2 ORDER BY "createdAt" DESC,"id" DESC`, [businessId, orderId]);
+        return r.rows as DbGuestSupportCase[];
+      } finally { if (ctx.owns()) c.release(); }
+    },
     async closeGuestSupportCase(id: string, businessId: string, actorId: string): Promise<DbGuestSupportCase | null> {
       const c = await ctx.client();
       try {

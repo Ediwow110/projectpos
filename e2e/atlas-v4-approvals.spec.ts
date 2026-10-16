@@ -77,3 +77,58 @@ test("Atlas V4 manager inbox uses authorized requests and responsive navigation"
   await expect(page.getByRole("heading", { name: "Manager approvals", exact: true })).toBeVisible();
   await expect(page).toHaveURL(/#manager-approval-details$/);
 });
+
+test("Atlas V4 approval queue links follow the active request filters", async ({ page, request }, testInfo) => {
+  test.setTimeout(180_000);
+  const password = "correct-horse-12";
+  const email = await registerOperationalBusiness(page, {
+    ownerName: "Atlas Filter Owner",
+    email: "atlas-filter-owner@example.test",
+    password,
+    businessName: "Atlas Filter QA",
+  });
+  const owner = await apiAuthedContext(request, email, password, page);
+  const managerEmail = `atlas-filter-manager-${testInfo.project.name}-${Date.now()}@example.test`;
+  const manager = await createStaffMember(request, owner.headers, {
+    name: "Atlas Filter Manager",
+    email: managerEmail,
+    role: "manager",
+  });
+  await signIn(page, managerEmail, manager.tempPassword);
+
+  const requestRow = (id: string, status: string) => ({
+    id,
+    requesterId: "qa-requester",
+    branchId: null,
+    registerId: null,
+    kind: "discount",
+    requesterName: "QA Cashier",
+    branchName: null,
+    registerName: null,
+    permission: "sale.discount",
+    action: { kind: "discount", lines: [], orderDiscountMinor: 0 },
+    context: null,
+    status,
+    decisionReason: null,
+    createdAt: new Date().toISOString(),
+  });
+  await page.route("**/api/v1/approvals/requests", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      requests: [requestRow("qa-pending", "PENDING"), requestRow("qa-approved", "APPROVED")],
+    }),
+  }));
+
+  await page.goto("/customer-concerns");
+  const pendingLink = page.locator('a[href="#manager-approval-qa-pending"]');
+  await expect(pendingLink).toHaveCount(2); // Mobile card and desktop queue are both in the DOM.
+  await expect(page.locator("#manager-approval-qa-pending")).toHaveCount(1);
+  await page.getByLabel("Approval status").selectOption("APPROVED");
+  await expect(pendingLink).toHaveCount(0);
+  await expect(page.locator("#manager-approval-qa-pending")).toHaveCount(0);
+  await expect(page.locator("#manager-approval-qa-approved")).toHaveCount(1);
+  await page.getByLabel("Approval status").selectOption("PENDING");
+  await expect(pendingLink).toHaveCount(2);
+  await expect(page.locator("#manager-approval-qa-pending")).toHaveCount(1);
+});

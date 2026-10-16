@@ -49,6 +49,34 @@ describe("Phase D guest support and owner-consented diagnostics", () => {
     expect((await f.db.listAudit()).filter((entry) => entry.action === "guest_support.closed")).toHaveLength(1);
   });
 
+  it("reads guest history by verified order rather than scanning all tenant cases", async () => {
+    const f = await fixture();
+    const first = await f.cases.submit({
+      statusToken: f.token1, category: "ORDER", description: "Missing product in my pickup order",
+    }, "case-for-first-order", "r1");
+    await f.cases.submit({
+      statusToken: f.token2, category: "OTHER", description: "Questions about my second order",
+    }, "case-for-second-order", "r2");
+    f.db.listGuestSupportCases = async () => { throw new Error("UNEXPECTED_TENANT_SCAN"); };
+    expect((await f.cases.guestHistory(f.token1)).map((row) => row.caseId)).toEqual([first.caseId]);
+    expect(await f.db.listGuestSupportCasesForOrder(f.otherBusiness.id, f.first.id)).toEqual([]);
+    await expect(f.cases.guestHistory("invalid")).rejects.toThrow("FORBIDDEN");
+  });
+
+  it("counts tenant sales without materializing full sales records for diagnostics", async () => {
+    const f = await fixture();
+    const issued = await f.consent.issue(f.business.id, "owner", "Investigate sales totals", 10, "issue-count");
+    f.db.listSalesByBusiness = async () => { throw new Error("UNEXPECTED_FULL_SALES_SCAN"); };
+    f.db.countSalesByBusiness = async (businessId) => {
+      expect(businessId).toBe(f.business.id);
+      return 17;
+    };
+    expect(await f.consent.diagnostics(f.business.id, issued.token, "count")).toMatchObject({
+      businessId: f.business.id,
+      sales: 17,
+    });
+  });
+
   it("requires exact tenant consent; expiry and revocation fail closed", async () => {
     const f = await fixture();
     await expect(f.consent.issue(f.business.id, "owner", "too short", 10, "bad")).rejects.toThrow("VALIDATION");
