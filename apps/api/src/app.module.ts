@@ -17,6 +17,7 @@ import { BusinessController } from "./business/nest/business.controller";
 import { normalizeOnboardingState, REQUIRED_STEPS } from "./business/onboarding";
 import { BusinessService } from "./business/nest/business.service";
 import { CatalogController } from "./catalog/nest/catalog.controller";
+import { ProductMediaController } from "./catalog/media/product-media.controller";
 import { ProductModelController } from "./catalog/nest/product-model.controller";
 import { InventoryController } from "./inventory/nest/inventory.controller";
 import { InventoryCountController } from "./inventory/nest/inventory-count.controller";
@@ -120,7 +121,7 @@ function runtimeDatabaseUrl(): string | undefined {
 }
 
 @Module({
-    controllers: [HealthController, AuthController, ApprovalController, ManagerApprovalQueueController, TenantController, BusinessController, ProductModelController, CatalogController, InventoryController, InventoryCountController, StockExceptionController, SalesController, PaymentsController, ReceiptsController, CustomerConcernsController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, PlatformDiagnosticsController, OwnerSupportController, GuestSupportPublicController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, ProcurementController, ValueController, MetricsController, OrderController, PublicOrderController],
+    controllers: [HealthController, AuthController, ApprovalController, ManagerApprovalQueueController, TenantController, BusinessController, ProductModelController, CatalogController, ProductMediaController, InventoryController, InventoryCountController, StockExceptionController, SalesController, PaymentsController, ReceiptsController, CustomerConcernsController, ShiftController, CustomerController, ExpenseController, RefundController, ReportingController, BranchController, TransferController, SyncController, DeviceController, PlatformController, PlatformDiagnosticsController, OwnerSupportController, GuestSupportPublicController, BillingController, ExportController, PrintController, DisplayController, ApiTokenController, MembershipController, ReceiptShareController, PayMongoController, ProcurementController, ValueController, MetricsController, OrderController, PublicOrderController],
   providers: [
     StockExceptionService,
     GuestSupportService,
