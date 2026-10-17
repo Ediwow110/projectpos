@@ -53,4 +53,28 @@ describe("PayMongo paid-event parser", () => {
       `evt_sha256_${createHash("sha256").update(raw).digest("hex")}`,
     );
   });
+
+  it("rejects a signed paid event declaring a non-PHP currency", () => {
+    const event = {
+      data: {
+        id: "evt_wrong_currency",
+        type: "checkout_session.payment.paid",
+        data: {
+          id: "cs_wrong_currency",
+          attributes: {
+            reference_number: "sale_currency",
+            metadata: { businessId: "biz_currency", saleId: "sale_currency", method: "card" },
+            payments: [{
+              attributes: { status: "paid", amount: 2500, currency: "USD", source: { type: "card" } },
+            }],
+          },
+        },
+      },
+    };
+    expect(() => parsePayMongoPaidEvent(event, JSON.stringify(event))).toThrow("PAYMENT_PROVIDER_INVALID_RESPONSE");
+    event.data.data.attributes.payments[0]!.attributes.currency = "PHP";
+    expect(parsePayMongoPaidEvent(event, JSON.stringify(event))).toMatchObject({
+      amountMinor: 2500, sourceType: "card",
+    });
+  });
 });

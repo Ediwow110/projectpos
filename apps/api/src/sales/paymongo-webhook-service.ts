@@ -135,17 +135,25 @@ export class SalesPayMongoWebhookService {
         status: "processing",
       });
       if (!claimed) return { handled: true, deduplicated: true };
+      let confirmedOrderId: string | null;
       try {
-        const confirmedOrderId = await this.settlePaid(event, requestId);
+        confirmedOrderId = await this.settlePaid(event, requestId);
         await this.db.updateWebhookEventStatus(claimed.id, "processed");
-        if (confirmedOrderId && this.notifications) {
-          await this.notifications.sendEvent(event.businessId, confirmedOrderId, "CONFIRMED");
-        }
-        return { handled: true };
       } catch (error) {
         await this.db.deleteWebhookEvent(claimed.id);
         throw error;
       }
+      // Settlement and processed-event status are already durable. Customer
+      // notifications must not undo the webhook claim or request provider
+      // redelivery for a sale that has been charged and completed.
+      if (confirmedOrderId && this.notifications) {
+        try {
+          await this.notifications.sendEvent(event.businessId, confirmedOrderId, "CONFIRMED");
+        } catch {
+          incrementMetric("pos_order_notification_failures_total");
+        }
+      }
+      return { handled: true };
     });
   }
 }

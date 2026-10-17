@@ -66,8 +66,10 @@ export function parsePayMongoPaidEvent(payload: unknown, rawBody: string): PayMo
   const source = paidAttrs ? asRecord(paidAttrs["source"]) : null;
   const sourceType = source?.["type"];
   const amount = paidAttrs?.["amount"];
+  const currency = paidAttrs?.["currency"];
   if (
     typeof amount !== "number" || !Number.isInteger(amount) || amount <= 0 ||
+    (currency !== undefined && (typeof currency !== "string" || currency.toUpperCase() !== "PHP")) ||
     (sourceType !== "card" && sourceType !== "gcash" && sourceType !== "paymaya" && sourceType !== "qrph")
   ) {
     throw new Error("PAYMENT_PROVIDER_INVALID_RESPONSE");
