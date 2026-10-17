@@ -185,8 +185,9 @@ function createMediaStorageFromEnv(): ProductMediaStorage | null {
     InventoryService,
     {
       provide: SalesService,
-      useFactory: (d: DbPort, paymongo: PayMongoPort, email: TransactionalEmailPort) => new SalesService(d, paymongo, email),
-      inject: ["DbPort", PAYMONGO_PORT, TRANSACTIONAL_EMAIL_PORT],
+      useFactory: (d: DbPort, paymongo: PayMongoPort, email: TransactionalEmailPort,
+        outbox: OrderNotificationOutboxStore | null) => new SalesService(d, paymongo, email, outbox),
+      inject: ["DbPort", PAYMONGO_PORT, TRANSACTIONAL_EMAIL_PORT, "OrderNotificationOutbox"],
     },
     ShiftService,
     CustomerService,

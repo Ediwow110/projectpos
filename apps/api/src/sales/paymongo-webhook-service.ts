@@ -105,6 +105,10 @@ export class SalesPayMongoWebhookService {
         entityId: payment.id,
         requestId,
       });
+      if (shouldNotify && this.notifications?.hasOutbox()) {
+        await this.notifications.enqueueEvent(event.businessId, linkedOrder!.id, "CONFIRMED",
+          "paymongo-paid:" + event.eventId);
+      }
       return {
         confirmedOrderId: shouldNotify ? linkedOrder!.id : null,
         newlySettled: true,
@@ -157,7 +161,7 @@ export class SalesPayMongoWebhookService {
     // Run external notification AFTER the event lock's DB transaction has
     // committed. A failure to send must never reverse payment, remove the
     // processed event or ask PayMongo to deliver this payment event again.
-    if (result.settlement?.confirmedOrderId && this.notifications) {
+    if (result.settlement?.confirmedOrderId && this.notifications && !this.notifications.hasOutbox()) {
       try {
         await this.notifications.sendEvent(event.businessId, result.settlement.confirmedOrderId, "CONFIRMED");
       } catch {

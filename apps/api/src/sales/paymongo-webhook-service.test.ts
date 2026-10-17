@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createMemoryDb } from "../common/memory.db";
 import { renderMetrics } from "../common/metrics";
 import { OrderNotificationService } from "../orders/order-notification-service";
+import { createMemoryOrderNotificationOutbox } from "../orders/order-notification-outbox";
 import { OrderSaleService } from "../orders/order-sale-service";
 import { ReservationService } from "../orders/reservation-service";
 import type {
@@ -52,7 +53,14 @@ describe("phase22 PayMongo settlement with Order reservations", () => {
     });
     await new ReservationService(db).holdSubmittedOrder(business.id, order.id, "webhook-hold", now);
     const sale = await new OrderSaleService(db).createSaleFromSubmittedOrder(business.id, "staff", "webhook-sale", order.id);
-    const sales = new SalesService(db, new FakePayMongo());
+    const outbox = createMemoryOrderNotificationOutbox();
+    let outboundOrderUpdates = 0;
+    const sales = new SalesService(db, new FakePayMongo(), {
+      async sendPasswordReset() {},
+      async sendEmailVerification() {},
+      async sendReceiptShare() {},
+      async sendOrderUpdate() { outboundOrderUpdates++; },
+    }, outbox);
     const checkout = await sales.startPayMongoCheckout(
       business.id, "staff", "checkout", sale.id, "gcash", "checkout-key", "https://nexpos.example",
     );
@@ -84,11 +92,20 @@ describe("phase22 PayMongo settlement with Order reservations", () => {
     ]);
     expect((await db.findBalance(product.id, business.id, branch.id))?.qtyOnHand).toBe(0);
     expect((await db.listMovements(product.id, business.id, branch.id)).filter((row) => row.type === "sale")).toHaveLength(1);
+    expect(await outbox.listForTests()).toEqual([
+      expect.objectContaining({
+        businessId: business.id, orderId: order.id, event: "CONFIRMED",
+        status: "PENDING", attempts: 0,
+      }),
+    ]);
+    expect(outboundOrderUpdates).toBe(0);
 
     expect(await sales.handlePayMongoWebhook(raw, "valid", payload, "webhook-2"))
       .toEqual({ handled: true, deduplicated: true });
     expect(await db.listFulfillmentsByOrder(order.id, business.id)).toHaveLength(1);
     expect((await db.listMovements(product.id, business.id, branch.id)).filter((row) => row.type === "sale")).toHaveLength(1);
+    expect(await outbox.listForTests()).toHaveLength(1);
+    expect(outboundOrderUpdates).toBe(0);
   });
 
   it("keeps completed payment and webhook claim durable when post-settlement order notification fails", async () => {

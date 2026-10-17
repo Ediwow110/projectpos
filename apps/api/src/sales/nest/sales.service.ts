@@ -21,6 +21,7 @@ import type { AppliedManagerApproval } from "../../auth/nest/manager-approval-po
 import { SalesPayMongoWebhookService } from "../paymongo-webhook-service";
 import { OrderSaleService } from "../../orders/order-sale-service";
 import { OrderNotificationService } from "../../orders/order-notification-service";
+import type { OrderNotificationOutboxStore } from "../../orders/order-notification-outbox";
 import { SalesPaymentProviderService } from "../payment-provider-service";
 import { SalesPaymentReconciliationService } from "../payment-reconciliation-service";
 import { SalesReceiptService } from "../receipt-service";
@@ -51,6 +52,7 @@ export class SalesService {
     @Inject("DbPort") private readonly db: DbPort,
     private readonly paymongo: PayMongoPort = new DisabledPayMongo(),
     private readonly email: TransactionalEmailPort = NOOP_TRANSACTIONAL_EMAIL,
+    private readonly notificationOutbox: OrderNotificationOutboxStore | null = null,
   ) {
     // Same-DbPort instance (not Nest DI) to avoid a Sales<->Shift DI cycle.
     this.shifts = new ShiftService(db);
@@ -58,7 +60,7 @@ export class SalesService {
     this.drafts = new SalesDraftService(db, this.stock);
     this.completion = new SalesCompletionService(db, this.stock, this.shifts);
     this.lifecycle = new SalesLifecycleService(db);
-    this.orderNotifications = new OrderNotificationService(db, email);
+    this.orderNotifications = new OrderNotificationService(db, email, notificationOutbox);
     this.paymongoWebhooks = new SalesPayMongoWebhookService(db, paymongo, this.stock, this.orderNotifications);
     this.orderSales = new OrderSaleService(db);
     this.receipts = new SalesReceiptService(db, email);
