@@ -194,10 +194,11 @@ export function ManagerApprovalDialog({
   return (
     <Modal
       open={open}
+      variant="atlasFlow"
       title={title}
       description={description}
       onClose={() => !busy && onClose()}
-      footer={<div className="flex flex-wrap justify-end gap-2"><GhostButton type="button" onClick={onClose} disabled={busy || queueBusy}>Cancel</GhostButton>{queueEnabled && ["discount", "shift_close", "refund", "sale_void", "inventory_movement", "inventory_count", "value_adjustment"].includes(action.kind) && (!["discount", "shift_close", "refund", "sale_void"].includes(action.kind) || Boolean(registerId)) && !queueRequestId && <GhostButton type="button" onClick={() => void requestManagerReview()} disabled={busy || queueBusy}>{queueBusy ? "Sending…" : "Send to manager inbox"}</GhostButton>}<PrimaryButton type="submit" form="manager-approval-form" disabled={busy || queueBusy}>{busy ? "Verifying…" : "Approve & continue"}</PrimaryButton></div>}
+      footer={<div className="flex flex-wrap justify-end gap-2"><GhostButton type="button" onClick={onClose} disabled={busy || queueBusy}>Cancel</GhostButton>{queueEnabled && ["discount", "shift_close", "refund", "sale_void", "inventory_movement", "inventory_count", "value_adjustment"].includes(action.kind) && (!["discount", "shift_close", "refund", "sale_void"].includes(action.kind) || Boolean(registerId)) && !queueRequestId && <GhostButton type="button" onClick={() => void requestManagerReview()} disabled={busy || queueBusy}>{queueBusy ? "Sending…" : "Send to manager inbox"}</GhostButton>}<PrimaryButton type="submit" form="manager-approval-form" className="!bg-[#202826] !shadow-none hover:!bg-[#36443c]" disabled={busy || queueBusy}>{busy ? "Verifying…" : "Approve & continue"}</PrimaryButton></div>}
     >
       <form id="manager-approval-form" noValidate onSubmit={(event) => void submit(event)} className="space-y-4">
         <div className="rounded-xl border border-[#f0e2d7] bg-[#fff8f3] p-4 text-[11px] leading-5 text-[#6d6057]">
@@ -206,7 +207,7 @@ export function ManagerApprovalDialog({
         {summary ? <div className="rounded-xl bg-[#f7f1ea] p-3 text-[12px] text-[#4e453e]">{summary}</div> : null}
         {queueStatus ? <p role="status" className="rounded-xl border border-[#dce7df] bg-[#f3f8f4] px-3 py-2.5 text-[12px] leading-5 text-[#42604d]">{queueStatus}</p> : null}
         {queueError ? <p role="alert" className="rounded-xl border border-[#efb9b9] bg-[#fff0f0] px-3 py-2.5 text-[12px] font-medium text-[#a34132]">{queueError}</p> : null}
-        <label className="block text-[11px] font-semibold text-[#655b53]">Manager email<input autoFocus type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} disabled={busy} className="field mt-1.5" placeholder="manager@example.com" /></label>
+        <label className="block text-[11px] font-semibold text-[#655b53]">Manager email<input autoFocus type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} disabled={busy} className="field mt-1.5 !border-[#e4e9e3] !bg-[#eff2ed]" placeholder="manager@example.com" /></label>
         {mode === "pin" ? (
           <label className="block text-[11px] font-semibold text-[#655b53]">Approval PIN<input type="password" inputMode="numeric" autoComplete="off" maxLength={6} value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 6))} disabled={busy} className="field font-data mt-1.5 tracking-[0.35em]" placeholder="••••••" /></label>
         ) : (

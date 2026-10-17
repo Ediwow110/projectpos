@@ -100,6 +100,11 @@ test("inventory: cashier stock adjustment requires manager approval and writes t
   // The cashier role has no inventory.adjust permission, so the write is held
   // until an owner or manager authorizes this exact movement.
   await expect(approvalDialog(page)).toBeVisible();
+  await expect(approvalDialog(page)).toHaveAttribute("data-ui", "atlas-flow-modal");
+  await expect(approvalDialog(page)).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  if ((page.viewportSize()?.width ?? 0) >= 600) {
+    expect((await approvalDialog(page).boundingBox())?.width).toBeCloseTo(535, 0);
+  }
   // The reason is part of the fingerprint the manager authorizes, so it must be
   // visible; the summary must name the product rather than echo its internal id.
   await expect(approvalDialog(page)).toContainText("broken during stock count");

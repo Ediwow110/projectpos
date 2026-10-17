@@ -56,6 +56,7 @@ export function PosManagerApprovalDialog({
   return (
     <Modal
       open
+      variant="atlasFlow"
       title="Manager approval"
       description={`This ${action === "pay" ? "payment" : "hold"} includes ₱${money(discountMinor)} in discounts above the cashier threshold.`}
       onClose={() => !busy && onClose()}
