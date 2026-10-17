@@ -111,6 +111,20 @@ describe("H5 durable order notification outbox", () => {
     expect(await store.claimDue(new Date(200), 10, 10_000)).toHaveLength(0);
   });
 
+  it("retires a newly emailed link if cancellation wins while the provider is sending", async () => {
+    const { db, business, order } = await fixture();
+    const store = createMemoryOrderNotificationOutbox();
+    const service = new OrderNotificationService(db, emailSender(async () => {
+      await store.cancelOrder(business.id, order.id, new Date(1));
+    }), store);
+    await store.enqueue({
+      businessId: business.id, orderId: order.id, event: "CONFIRMED", dedupeKey: "accept-cancel",
+    }, new Date(0));
+    const worker = new OrderNotificationOutboxWorker(db, store, service);
+    expect(await worker.runOnce(new Date(0))).toEqual({ claimed: 1, sent: 0, retried: 0, dead: 0 });
+    expect(await db.listActiveOrderAccessTokens(order.id, business.id, "STATUS", new Date())).toEqual([]);
+  });
+
   it("uses PostgreSQL skip-locked claims and lease-checked acknowledgments", async () => {
     const statements: { sql: string; params: unknown[] }[] = [];
     const ctx = {

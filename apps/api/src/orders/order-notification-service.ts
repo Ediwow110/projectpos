@@ -2,11 +2,24 @@ import type { DbPort } from "../common/db.port";
 import { incrementMetric } from "../common/metrics";
 import type { TransactionalEmailPort } from "../email/email.service";
 import { OrderAccessService } from "./order-access-service";
+import type { OrderNotificationOutboxStore } from "./order-notification-outbox";
 
 export class OrderNotificationService {
   private readonly access: OrderAccessService;
-  constructor(private readonly db: DbPort, private readonly email: TransactionalEmailPort) {
+  constructor(private readonly db: DbPort, private readonly email: TransactionalEmailPort,
+    private readonly outbox: OrderNotificationOutboxStore | null = null) {
     this.access = new OrderAccessService(db);
+  }
+
+  hasOutbox(): boolean {
+    return this.outbox !== null;
+  }
+
+  // Must be called INSIDE the same DbPort transaction as the state transition.
+  // The PostgreSQL outbox shares PgContext's transaction-local client.
+  async enqueueEvent(businessId: string, orderId: string, event: string, dedupeKey: string): Promise<void> {
+    if (!this.outbox) throw new Error("OUTBOX_DISABLED");
+    await this.outbox.enqueue({ businessId, orderId, event, dedupeKey });
   }
 
   async sendExistingToken(
@@ -86,6 +99,7 @@ export class OrderNotificationService {
   }
 
   async revoke(businessId: string, orderId: string): Promise<number> {
+    if (this.outbox) await this.outbox.cancelOrder(businessId, orderId, new Date());
     return this.access.revokeAll(businessId, orderId, "STATUS");
   }
 }

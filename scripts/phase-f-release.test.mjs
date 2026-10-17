@@ -47,6 +47,17 @@ test("new tenant tables have RLS enabled", () => {
   }
 });
 
+test("H5 notification outbox migration is tenant-scoped and remains opt-in", () => {
+  const sql = read("packages/database/prisma/migrations/0049_order_notification_outbox/migration.sql");
+  const env = read(".env.example");
+  assert.match(sql, /FOREIGN KEY \("businessId", "orderId"\) REFERENCES "Order" \("businessId", "id"\)/);
+  assert.match(sql, /CREATE UNIQUE INDEX "OrderNotificationOutbox_business_dedupe_key"/);
+  assert.match(sql, /FORCE ROW LEVEL SECURITY|ENABLE ROW LEVEL SECURITY/);
+  assert.doesNotMatch(sql, /"email"|"token"|"tokenHash"|"providerError"/);
+  assert.match(env, /^ORDER_NOTIFICATION_OUTBOX_ENABLED=false$/m);
+  assert.doesNotMatch(read("docker/api.Dockerfile"), /ORDER_NOTIFICATION_OUTBOX_ENABLED=true/);
+});
+
 test("production startup fails before listening when approval key is absent", () => {
   const result = spawnSync(process.execPath, ["--import", "tsx", "src/main.ts"], {
     cwd: join(root, "apps/api"),

@@ -171,11 +171,16 @@ export class OrderService {
             businessId, actorId, action: "order.accept", entityType: "Order",
             entityId: order.id, requestId,
           });
+          if (this.notifications?.hasOutbox?.()) {
+            await this.notifications.enqueueEvent(businessId, order.id, "CONFIRMED",
+              "order-accept:" + order.id + ":" + confirmed.version);
+          }
           return { order: confirmed, notify: true };
         });
       }),
     );
-    if (result.notify && this.notifications) await this.notifications.sendEvent(businessId, orderId, "CONFIRMED");
+    if (result.notify && this.notifications && !this.notifications.hasOutbox?.())
+      await this.notifications.sendEvent(businessId, orderId, "CONFIRMED");
     if (result.notify) recordOrderLifecycle("WEB", "CONFIRMED");
     return result.order;
   }
@@ -810,6 +815,10 @@ export class OrderService {
         await tx.claimIdempotency({
           businessId, key: idempotencyKey, commandType: "order.public.submit", fingerprint, resultId: order.id,
         });
+        if (this.notifications?.hasOutbox?.()) {
+          await this.notifications.enqueueEvent(businessId, order.id, "SUBMITTED",
+            "order-submit:" + order.id + ":" + submitted.version);
+        }
         recordOrderLifecycle("WEB", "SUBMITTED");
         return { order: submitted, statusToken: minted.token, replayed: false };
       }),

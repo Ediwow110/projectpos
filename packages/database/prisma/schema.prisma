@@ -128,6 +128,7 @@ model Business {
   fulfillments Fulfillment[]
   fulfillmentLines FulfillmentLine[]
   orderAccessTokens OrderAccessToken[]
+  orderNotificationOutbox OrderNotificationOutbox[]
   activeSessions Session[] @relation("SessionActiveBusiness")
 }
 
@@ -858,6 +859,7 @@ model Order {
   reservations            InventoryReservation[]
   fulfillments            Fulfillment[]
   accessTokens            OrderAccessToken[]
+  notificationOutbox      OrderNotificationOutbox[]
   guestSupportCases        GuestSupportCase[]
   @@unique([businessId, id])
   @@index([businessId, createdAt, id])
@@ -968,6 +970,27 @@ model OrderAccessToken {
   business  Business  @relation(fields: [businessId], references: [id])
   order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
   @@index([businessId, orderId, kind, revokedAt, expiresAt])
+}
+
+model OrderNotificationOutbox {
+  id             String   @id
+  businessId     String
+  orderId        String
+  event          String
+  dedupeKey      String
+  status         String   @default("PENDING")
+  attempts       Int      @default(0)
+  nextAttemptAt  DateTime @default(now())
+  leaseId        String?
+  lockedUntil    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  business       Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  order          Order    @relation(fields: [businessId, orderId], references: [businessId, id], onDelete: Cascade)
+  @@unique([businessId, dedupeKey])
+  @@index([businessId, orderId, status])
+  @@index([nextAttemptAt, createdAt, id])
+  @@index([lockedUntil])
 }
 
 model RefundItem {

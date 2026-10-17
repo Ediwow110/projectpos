@@ -93,6 +93,11 @@ import { GuestSupportPublicController, OwnerSupportController, PlatformDiagnosti
 import { GuestSupportService, PlatformConsentService } from "./orders/guest-support.service";
 import { OrderService } from "./orders/order-service";
 import { OrderNotificationService } from "./orders/order-notification-service";
+import {
+  PgOrderNotificationOutbox,
+  OrderNotificationOutboxWorker,
+  type OrderNotificationOutboxStore,
+} from "./orders/order-notification-outbox";
 import { OrderExpiryService } from "./orders/order-expiry-service";
 import { FirstPartyOriginGuard } from "./common/first-party-origin.guard";
 import { SessionGuard } from "./common/session.guard";
@@ -208,9 +213,32 @@ function createMediaStorageFromEnv(): ProductMediaStorage | null {
     },
     FirstPartyOriginGuard,
     {
+      provide: "OrderNotificationOutbox",
+      useFactory: async (ctx: PgContext | null): Promise<OrderNotificationOutboxStore | null> => {
+        if (process.env["ORDER_NOTIFICATION_OUTBOX_ENABLED"] !== "true") return null;
+        if (!ctx) throw new Error("OUTBOX_REQUIRES_POSTGRES");
+        const store = new PgOrderNotificationOutbox(ctx);
+        // Fail closed before accepting traffic if rollout is enabled without its migration.
+        await store.assertReady();
+        return store;
+      },
+      inject: ["PgContext"],
+    },
+    {
       provide: "OrderNotificationService",
-      useFactory: (d: DbPort, email: TransactionalEmailPort) => new OrderNotificationService(d, email),
-      inject: ["DbPort", TRANSACTIONAL_EMAIL_PORT],
+      useFactory: (d: DbPort, email: TransactionalEmailPort, outbox: OrderNotificationOutboxStore | null) =>
+        new OrderNotificationService(d, email, outbox),
+      inject: ["DbPort", TRANSACTIONAL_EMAIL_PORT, "OrderNotificationOutbox"],
+    },
+    {
+      provide: "OrderNotificationOutboxWorker",
+      useFactory: (d: DbPort, notification: OrderNotificationService, outbox: OrderNotificationOutboxStore | null) => {
+        if (!outbox) return null;
+        const worker = new OrderNotificationOutboxWorker(d, outbox, notification);
+        worker.start();
+        return worker;
+      },
+      inject: ["DbPort", "OrderNotificationService", "OrderNotificationOutbox"],
     },
     {
       provide: "OrderExpiryService",
@@ -257,7 +285,10 @@ function createMediaStorageFromEnv(): ProductMediaStorage | null {
   ],
 })
 export class AppModule implements NestModule {
-  constructor(@Optional() @Inject("PgContext") private readonly pg: PgContext | null) {}
+  constructor(
+    @Optional() @Inject("PgContext") private readonly pg: PgContext | null,
+    @Optional() @Inject("OrderNotificationOutboxWorker") private readonly outboxWorker: OrderNotificationOutboxWorker | null,
+  ) {}
 
   configure(consumer: MiddlewareConsumer): void {
     consumer.apply(RequestIdMiddleware, SecurityHeadersMiddleware, MetricsMiddleware).forRoutes("*");
@@ -266,6 +297,7 @@ export class AppModule implements NestModule {
   // Hosting platforms stop instances with SIGTERM; ending the pool lets
   // in-flight transactions commit before the process exits.
   async beforeApplicationShutdown(): Promise<void> {
+    this.outboxWorker?.stop();
     await this.pg?.close();
   }
 }

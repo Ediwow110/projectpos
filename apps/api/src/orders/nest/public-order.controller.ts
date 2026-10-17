@@ -150,7 +150,7 @@ export class PublicOrderController {
       const { captchaToken: _captcha, ...submitInput } = parsed.data;
       void _captcha;
       const submitted = await this.orders.submitPublicOrder(access.businessId, id, submitInput, key, rid(req));
-      if (!submitted.replayed) {
+      if (!submitted.replayed && !this.notifications.hasOutbox()) {
         await this.notifications.sendExistingToken(access.businessId, id, "SUBMITTED", submitted.statusToken);
       }
       let checkoutUrl: string | undefined;

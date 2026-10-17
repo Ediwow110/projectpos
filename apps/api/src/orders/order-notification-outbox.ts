@@ -260,6 +260,8 @@ export class OrderNotificationOutboxWorker {
 
   private async deliver(job: OrderOutboxJob, now: Date): Promise<"SENT" | "RETRY" | "DEAD" | "STALE"> {
     let permanent = false;
+    let mintedId: string | null = null;
+    const wallStart = Date.now();
     try {
       const order = await this.db.findOrderById(job.orderId, job.businessId);
       if (!order?.email) {
@@ -267,16 +269,35 @@ export class OrderNotificationOutboxWorker {
       } else {
         const access = new OrderAccessService(this.db);
         const minted = await access.mintStatusToken(job.businessId, job.orderId);
+        mintedId = minted.row.id;
         const accepted = await this.notifications.sendExistingToken(job.businessId, job.orderId, job.event, minted.token);
         if (accepted) {
-          return await this.store.markSent(job.id, job.leaseId!, now) ? "SENT" : "STALE";
+          // The caller's clock is fixed for deterministic tests; account for
+          // elapsed real delivery time so an expired lease cannot be ACKed.
+          const acknowledged = await this.store.markSent(
+            job.id, job.leaseId!, new Date(now.getTime() + Math.max(0, Date.now() - wallStart)),
+          );
+          if (acknowledged) {
+            mintedId = null;
+            return "SENT";
+          }
+          // Cancellation or lease takeover won the race. The link emailed
+          // by a stale worker must no longer grant access.
+          await this.db.revokeOrderAccessToken(mintedId, job.businessId, new Date());
+          return "STALE";
         }
-        // Never leave an undelivered replacement token active. Existing
-        // customer links remain valid through all retry attempts.
-        await this.db.revokeOrderAccessToken(minted.row.id, job.businessId, new Date());
       }
     } catch {
       // Provider/database errors are intentionally not persisted in the job.
+    }
+    if (mintedId) {
+      try {
+        // Failed and exception paths must not retain an undelivered bearer token.
+        await this.db.revokeOrderAccessToken(mintedId, job.businessId, new Date());
+      } catch {
+        // A follow-up repair/monitor must detect orphaned tokens on database failure.
+        incrementMetric("pos_order_notification_outbox_token_cleanup_failures_total");
+      }
     }
     const outcome = await this.store.markFailed(job.id, job.leaseId!, now, this.maxAttempts, permanent);
     return outcome === "RETRY" ? "RETRY" : outcome;
