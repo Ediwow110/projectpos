@@ -35,3 +35,54 @@ For a real drill, export `DATABASE_URL` only in the shell environment and use an
 > Container stopped and removed (`docker stop pos-db-phase8; docker rm pos-db-phase8`).
 
 (The drill database held schema only, so absolute row counts are N/A. The next drill with production-like seed data must record pre/post row counts.)
+
+## H5 encrypted backup: isolated Windows PostgreSQL 17 verification
+
+**Scope:** Verify an already-created H5 Windows DPAPI CurrentUser archive
+*offline*. This does **not** fetch, create, or replace a current H5 backup.
+Do not mistake a passing old-archive restore for a current-schema recovery gate.
+
+Use `scripts/h5-verify-encrypted-restore.ps1` with the encrypted archive and
+its matching `.manifest.json` saved outside the repository:
+
+```powershell
+$archive = Join-Path $env:USERPROFILE 'Documents\NexPOS\H5-Backups\<timestamped-file>.pgdump.dpapi'
+./scripts/h5-verify-encrypted-restore.ps1 -EncryptedArchivePath $archive -ExpectedProjectId '<H5-project-id>'
+```
+
+Safety contract:
+
+- Requires the **same Windows user** that encrypted the dump, an unchanged
+  archive and matching SHA-256 manifest, plus an existing local
+  `postgres:17-alpine` Docker image. It fails closed on mismatch.
+- Decrypts only locally and temporarily under the signed-in user's TEMP
+  directory. That plaintext file is removed in a `finally` block. Do not
+  share, sync, attach, or commit any plaintext dump. Never leave an interrupted
+  drill's plaintext file in TEMP; inspect and securely handle temporary files.
+- Creates a uniquely named **throwaway container with `--network none`**,
+  publishes **no ports**, and mounts **no host business data**. Only that
+  container's fresh `public` schema is dropped before restoring.
+- Imports with `pg_restore --no-owner --no-privileges --exit-on-error`. Dummy
+  Supabase compatibility roles exist *only in the network-disabled container*.
+  The restore is of the dump's `public` scope, **not** Supabase managed
+  schemas, Storage object bytes, or provider-managed identities/settings.
+- Verifies PostgreSQL **major version 17** and compares actual restored
+  migration/business/sale/public-table counts with the manifest. Logs
+  counts and archive hash, never data rows or credentials. The container
+  is stopped and removed by the `finally` block.
+- Rejected tampered archives must **never** reach the decryption/restore step.
+  Before using this against any other backup, review its provenance and
+  source project. Never run a restore against H5 or production remotely.
+
+**Current-schema release gate:** After obtaining a newly authorized
+`pg_dump -Fc` of the actual H5 staging `public` schema through an approved,
+secret-safe access channel, encrypt and hash it into a new archive + manifest.
+Run the offline verification against that new archive. Confirm the number and
+names of applied migrations, public tables, constraints, row counts, source
+timestamps and offsite encrypted-copy restore. A successful restore of an
+older snapshot proves **only that older snapshot**.
+
+If the H5 connection secret is unavailable to the authorized execution
+environment, **stop**. Do not fake a fresh backup using local migrations,
+Supabase metadata APIs or a schema-only export. Do not paste a database URL
+into a chat or commit it to the repository.
