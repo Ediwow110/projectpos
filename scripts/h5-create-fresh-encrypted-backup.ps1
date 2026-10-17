@@ -27,6 +27,18 @@ function Assert-DockerExit([string]$action) {
   if ($LASTEXITCODE -ne 0) { throw "H5 backup aborted at '$action' (Docker exit $LASTEXITCODE)" }
 }
 
+function Assert-BackupDestinationOutsideRepo([string]$destination) {
+  # Do not anchor this check to the caller's working directory: operators
+  # launch the backup from C:\Users\<name>, and their backup lives under
+  # Documents in that same home directory.
+  $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..")).TrimEnd('\')
+  $resolved = (Resolve-Path -LiteralPath $destination).ProviderPath.TrimEnd('\')
+  if ($resolved.Equals($repoRoot, [StringComparison]::OrdinalIgnoreCase) -or
+      $resolved.StartsWith($repoRoot + "\", [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Backup destination inside the source repository is forbidden"
+  }
+}
+
 function Assert-ArchiveSource([string]$databaseUrl, [string]$project) {
   $uri = $null
   if (-not [uri]::TryCreate($databaseUrl, [UriKind]::Absolute, [ref]$uri) -or
@@ -86,9 +98,7 @@ try {
     throw "Backup destination must already exist; refusing to create a new destination"
   }
   $dest = (Resolve-Path -LiteralPath $OutputDirectory).ProviderPath
-  if ($dest.StartsWith((Resolve-Path ".").ProviderPath + "\", [StringComparison]::OrdinalIgnoreCase)) {
-    throw "Backup destination inside the source repository is forbidden"
-  }
+  Assert-BackupDestinationOutsideRepo $dest
   docker image inspect postgres:17-alpine --format '{{.Id}}' | Out-Null
   Assert-DockerExit "check installed PostgreSQL 17 image"
   $name = "NexPOS-H5-public-" + (Get-Date -Format "yyyyMMdd-HHmmss") + "-" + [guid]::NewGuid().ToString("N").Substring(0, 8)
