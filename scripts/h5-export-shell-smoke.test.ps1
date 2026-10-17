@@ -33,12 +33,12 @@ try {
 CREATE TABLE public._migrations (name text PRIMARY KEY);
 CREATE TABLE public."Business" (id text PRIMARY KEY);
 CREATE TABLE public."Sale" (id text PRIMARY KEY);
-INSERT INTO public._migrations(name) VALUES ('0040_product_media'), ('0048_h4r9_tenant_integrity');
+INSERT INTO public._migrations(name) VALUES ('0040_product_media'), ('0048_h4r9_tenant_integrity'), ('0049_order_notification_outbox');
 '@
   [IO.File]::WriteAllText((Join-Path $temp "setup.sql"), $schema, (New-Object Text.UTF8Encoding($false)))
   $query = @'
 SELECT (SELECT count(*) FROM public._migrations), (SELECT count(*) FROM public."Business"), (SELECT count(*) FROM public."Sale"), (SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname = 'public');
-SELECT name FROM public._migrations WHERE name IN ('0040_product_media','0048_h4r9_tenant_integrity') ORDER BY name;
+SELECT name FROM public._migrations WHERE name IN ('0040_product_media','0048_h4r9_tenant_integrity','0049_order_notification_outbox') ORDER BY name;
 SELECT current_setting('server_version_num');
 '@
   [IO.File]::WriteAllText((Join-Path $temp "source-counts.sql"), $query, (New-Object Text.UTF8Encoding($false)))
@@ -67,10 +67,11 @@ SELECT current_setting('server_version_num');
 
   $results = @((docker exec -e "PGOPTIONS=-c default_transaction_read_only=on" $container sh /tmp/h5-meta.sh | Out-String).Trim() -split '\r?\n')
   Assert-Docker "execute production metadata wrapper"
-  if ($results.Count -ne 4 -or $results[0] -ne "2|0|0|3" -or
+  if ($results.Count -ne 5 -or $results[0] -ne "3|0|0|3" -or
       $results[1] -ne "0040_product_media" -or
       $results[2] -ne "0048_h4r9_tenant_integrity" -or
-      [int]$results[3] -lt 170000 -or [int]$results[3] -ge 180000) {
+      $results[3] -ne "0049_order_notification_outbox" -or
+      [int]$results[4] -lt 170000 -or [int]$results[4] -ge 180000) {
     throw "Quoted pipe separator or metadata results are incorrect"
   }
   docker exec -e "PGOPTIONS=-c default_transaction_read_only=on" $container sh /tmp/h5-dump.sh | Out-Null
@@ -86,7 +87,7 @@ SELECT current_setting('server_version_num');
   Write-Output "MODE=DISPOSABLE_NO_NETWORK_PG17"
   Write-Output "METADATA_WRAPPER=PASS"
   Write-Output "DUMP_WRAPPER=PASS"
-  Write-Output "SOURCE_COUNTS=2|0|0|3"
+  Write-Output "SOURCE_COUNTS=3|0|0|3"
   Write-Output "REAL_H5_DATABASE=NOT_TOUCHED"
 }
 finally {

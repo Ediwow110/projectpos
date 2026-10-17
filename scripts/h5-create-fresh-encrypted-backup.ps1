@@ -5,8 +5,8 @@
 param(
   [switch]$Execute,
   [string]$ExpectedProjectId = "yslpoerviixlbeicbptp",
-  [int]$ExpectedMigrationCount = 42,
-  [int]$ExpectedPublicTables = 93,
+  [int]$ExpectedMigrationCount = 43,
+  [int]$ExpectedPublicTables = 94,
   [string]$OutputDirectory = ""
 )
 
@@ -79,7 +79,7 @@ try {
   }
   # A release candidate must update this reviewed gate instead of overriding
   # its numbers at invocation time and accepting an arbitrarily old schema.
-  if ($ExpectedMigrationCount -ne 42 -or $ExpectedPublicTables -ne 93) {
+  if ($ExpectedMigrationCount -ne 43 -or $ExpectedPublicTables -ne 94) {
     throw "Unexpected schema gate override. Review and update the H5 release baseline before exporting"
   }
   if (-not (Test-Path -LiteralPath $OutputDirectory -PathType Container)) {
@@ -109,9 +109,9 @@ try {
   Assert-DockerExit "start short-lived PostgreSQL client"
   $running = $true
 
-  $requiredNames = @("0040_product_media", "0048_h4r9_tenant_integrity")
+  $requiredNames = @("0040_product_media", "0048_h4r9_tenant_integrity", "0049_order_notification_outbox")
   $sql = 'SELECT (SELECT count(*) FROM public._migrations), (SELECT count(*) FROM public."Business"), (SELECT count(*) FROM public."Sale"), (SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname = ''public'');' +
-    "`nSELECT name FROM public._migrations WHERE name IN ('0040_product_media','0048_h4r9_tenant_integrity') ORDER BY name;" +
+    "`nSELECT name FROM public._migrations WHERE name IN ('0040_product_media','0048_h4r9_tenant_integrity','0049_order_notification_outbox') ORDER BY name;" +
     "`nSELECT current_setting('server_version_num');"
   [IO.File]::WriteAllText($sqlFile, $sql, (New-Object Text.UTF8Encoding($false)))
   docker cp $sqlFile "$($container):/tmp/h5-source-counts.sql" | Out-Null
@@ -143,11 +143,11 @@ exec pg_dump -d "$H5_DATABASE_URL" --schema=public --format=custom --no-owner --
   $preLines = @((docker exec $container sh /tmp/h5-meta.sh | Out-String).Trim() -split '\r?\n')
   Assert-DockerExit "read authorized H5 metadata"
   $pre = $preLines[0]
-  if ($preLines.Count -ne 4 -or
-      $preLines[1] -ne $requiredNames[0] -or $preLines[2] -ne $requiredNames[1]) {
+  if ($preLines.Count -ne ($requiredNames.Count + 2) -or
+      (($preLines[1..$requiredNames.Count] -join '|') -ne ($requiredNames -join '|'))) {
     throw "Current H5 source is missing a required release migration"
   }
-  $serverVersion = $preLines[3]
+  $serverVersion = $preLines[$requiredNames.Count + 1]
   if ($serverVersion -notmatch '^\d+$' -or [int]$serverVersion -lt 170000 -or [int]$serverVersion -ge 180000) {
     throw "H5 PostgreSQL server major is not 17; stop and review before exporting"
   }
