@@ -27,7 +27,29 @@ describe("PostgreSQL onboarding guard", () => {
 
       state.steps.taxCurrency = "done";
       state.steps.receiptSetup = "done";
-      await db.saveSettings(business.id, { onboarding: state });
+      await db.saveSettings(business.id, { onboarding: state, onboardingSchemaVersion: 2 });
+      req.authError = undefined;
+      // Tax and receipt flags cannot bypass a still-pending business profile.
+      expect(await guard.canActivate(context)).toBe(false);
+      expect(req.authError).toBe("ONBOARDING_REQUIRED");
+
+      state.steps.businessDetails = "done";
+      await db.saveSettings(business.id, { onboarding: state, onboardingSchemaVersion: 2 });
+      req.authError = undefined;
+      // Completed flags alone are insufficient without persisted settings.
+      expect(await guard.canActivate(context)).toBe(false);
+      expect(req.authError).toBe("ONBOARDING_REQUIRED");
+
+      await db.saveSettings(business.id, {
+        onboarding: state,
+        onboardingSchemaVersion: 2,
+        businessAddress: "123 Test Street, Manila",
+        businessTimezone: "Asia/Manila",
+        currency: business.currency,
+        taxName: "No tax",
+        taxRateBps: 0,
+        standardReceiptConfirmed: true,
+      });
       req.authError = undefined;
       expect(await guard.canActivate(context)).toBe(true);
       expect(req.authError).toBeUndefined();
