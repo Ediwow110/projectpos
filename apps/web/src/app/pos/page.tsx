@@ -1,6 +1,6 @@
 "use client";
 
-import type { JSX } from "react";
+import { useState, type JSX } from "react";
 import { applyCartDiscounts, posDiscountSummary } from "../../lib/pos-sale-model";
 import { ConnectivityBanner } from "../../lib/sync-ui";
 import { AppShell } from "../../components/AppShell";
@@ -10,6 +10,7 @@ import { PosDiscountDialog } from "../../components/PosDiscountDialog";
 import { PosHeldSalesDialog } from "../../components/PosHeldSalesDialog";
 import { ManagerApprovalDialog } from "../../components/ManagerApprovalDialog";
 import { PosPaymentWorkspace } from "../../components/PosPaymentWorkspace";
+import { PosPaymentMethodChooser } from "../../components/PosPaymentMethodChooser";
 import { PosProductCatalog } from "../../components/PosProductCatalog";
 import { PosResponsiveCart } from "../../components/PosResponsiveCart";
 import { GiftCardLoadDialog } from "../../components/GiftCardLoadDialog";
@@ -17,6 +18,7 @@ import { GiftCardLoadResultDialog } from "../../components/GiftCardLoadResultDia
 import { usePosPageController } from "./use-pos-page-controller";
 
 export default function PosPage(): JSX.Element {
+  const [paymentChooserOpen, setPaymentChooserOpen] = useState(false);
   const {
     activeCategoryId,
     addToCart,
@@ -102,6 +104,15 @@ export default function PosPage(): JSX.Element {
     statusView,
     store,
   } = usePosPageController();
+
+  function openPaymentFlow(): void {
+    setStatus("");
+    if (window.matchMedia("(min-width: 1280px)").matches) {
+      setPaymentChooserOpen(true);
+    } else {
+      setShowPay(true);
+    }
+  }
 
   return (
     <AppShell
@@ -190,7 +201,7 @@ export default function PosPage(): JSX.Element {
           onResetSale={() => { setCart([]); setOrderDiscountMinor(0); setGiftCardLoad(null); setStatus(''); setReceiptId(null); }}
           onSetQty={setQty}
           onAssignCustomer={openCustomerAssignment}
-          onOpenPayment={() => { setStatus(''); setShowPay(true); }}
+          onOpenPayment={openPaymentFlow}
           giftCardLoadMinor={giftCardLoadMinor}
           onOpenGiftCardLoad={openGiftCardLoad}
           onSelectShortcut={(key) => {
@@ -236,8 +247,7 @@ export default function PosPage(): JSX.Element {
           onSetQty={setQty}
           onOpenPayment={() => {
             setShowTabletCart(false);
-            setStatus("");
-            setShowPay(true);
+            openPaymentFlow();
           }}
           onOpenGiftCardLoad={openGiftCardLoad}
         />
@@ -318,6 +328,17 @@ export default function PosPage(): JSX.Element {
           />
         ) : null}
 
+        {paymentChooserOpen && !showPay ? (
+          <PosPaymentMethodChooser
+            effectiveMethod={effectiveMethod}
+            offline={offline}
+            methodAvailable={methodAvailable}
+            onMethodChange={setMethod}
+            onContinue={() => { setPaymentChooserOpen(false); setShowPay(true); }}
+            onMoreMethods={() => { setPaymentChooserOpen(false); setShowPay(true); }}
+            onClose={() => setPaymentChooserOpen(false)}
+          />
+        ) : null}
         {showPay ? (
           <PosPaymentWorkspace
             count={count}
