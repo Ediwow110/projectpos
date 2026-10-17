@@ -171,6 +171,8 @@ test("void: manager approval voids an unsettled sale once and a second attempt i
 
   await page.getByRole("button", { name: "Void sale" }).first().click();
   const voidDialog = page.getByRole("dialog", { name: "Void sale" });
+  await expect(voidDialog).toHaveAttribute("data-ui", "atlas-flow-modal");
+  await expect(voidDialog.getByText("Audit: exact reason recorded; manager authorization is enforced when required.")).toBeVisible();
   await voidDialog.getByLabel("Reason").fill("customer walked away");
   await voidDialog.getByRole("button", { name: "Void sale" }).click();
 

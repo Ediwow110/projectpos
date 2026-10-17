@@ -141,7 +141,7 @@ export async function queueOfflinePosSale(
 export type CompletePosSaleResult =
   | { kind: "redirect"; checkoutUrl: string }
   | { kind: "unknown"; saleId: string; paymentId: string | null }
-  | { kind: "completed"; saleId: string; giftCardCodes?: string[] };
+  | { kind: "completed"; saleId: string; receiptNo?: string; giftCardCodes?: string[] };
 
 export async function completePosSale(
   input: SaleIdentityInput & {
@@ -197,9 +197,13 @@ export async function completePosSale(
     },
   });
   const sale = saleFromCompleteResponse(response);
-  if (sale.status === "PAYMENT_UNKNOWN") {
+  if (sale.status !== "COMPLETED") {
     return { kind: "unknown", saleId: sale.id, paymentId: sale.payments[0]?.id ?? null };
   }
   const giftCardCodes = response.giftCardCodes ?? sale.giftCardCodes ?? [];
-  return giftCardCodes.length > 0 ? { kind: "completed", saleId: sale.id, giftCardCodes } : { kind: "completed", saleId: sale.id };
+  return {
+    kind: "completed", saleId: sale.id,
+    ...(sale.receiptNo ? { receiptNo: sale.receiptNo } : {}),
+    ...(giftCardCodes.length > 0 ? { giftCardCodes } : {}),
+  };
 }

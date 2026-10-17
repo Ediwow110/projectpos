@@ -11,6 +11,7 @@ import { PosHeldSalesDialog } from "../../components/PosHeldSalesDialog";
 import { ManagerApprovalDialog } from "../../components/ManagerApprovalDialog";
 import { PosPaymentWorkspace } from "../../components/PosPaymentWorkspace";
 import { PosPaymentMethodChooser } from "../../components/PosPaymentMethodChooser";
+import { PosSaleConfirmedDialog } from "../../components/PosSaleConfirmedDialog";
 import { PosProductCatalog } from "../../components/PosProductCatalog";
 import { PosResponsiveCart } from "../../components/PosResponsiveCart";
 import { GiftCardLoadDialog } from "../../components/GiftCardLoadDialog";
@@ -59,6 +60,7 @@ export default function PosPage(): JSX.Element {
     paymentTiles,
     q,
     receiptId,
+    confirmedSale,
     received,
     reconcileId,
     reconcileSaleId,
@@ -76,6 +78,7 @@ export default function PosPage(): JSX.Element {
     setCart,
     setCustomerId,
     setReceiptId,
+    setConfirmedSale,
     setCustomerQ,
     setGiftCardLoad,
     setGiftCardResult,
@@ -223,7 +226,7 @@ export default function PosPage(): JSX.Element {
           onOpenHeldSales={openHeldSales}
           onOpenDiscounts={openDiscounts}
           onClearCart={() => { setCart([]); setOrderDiscountMinor(0); setGiftCardLoad(null); }}
-          onResetSale={() => { setCart([]); setOrderDiscountMinor(0); setGiftCardLoad(null); setStatus(''); setReceiptId(null); }}
+          onResetSale={() => { setCart([]); setOrderDiscountMinor(0); setGiftCardLoad(null); setStatus(''); setReceiptId(null); setConfirmedSale(null); }}
           onSetQty={setQty}
           onAssignCustomer={openCustomerAssignment}
           onOpenPayment={openPaymentFlow}
@@ -390,6 +393,9 @@ export default function PosPage(): JSX.Element {
         ) : null}
         {showGiftCardLoad ? <GiftCardLoadDialog onClose={() => setShowGiftCardLoad(false)} onSave={(load) => { setGiftCardLoad(load); setShowGiftCardLoad(false); setMethod("cash"); setStatus("Gift-card load added. It will be funded only after payment completes."); }} /> : null}
         {giftCardResult ? <GiftCardLoadResultDialog code={giftCardResult.code} amountMinor={giftCardResult.amountMinor} onClose={() => setGiftCardResult(null)} /> : null}
+        {confirmedSale && !giftCardResult ? (
+          <PosSaleConfirmedDialog sale={confirmedSale} onClose={() => setConfirmedSale(null)} />
+        ) : null}
       </div>
     </AppShell>
   );

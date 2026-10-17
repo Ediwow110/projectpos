@@ -17,6 +17,11 @@ export async function clickPosPay(page: Page, amount: string): Promise<void> {
     return;
   }
   await cart.getByRole("button", { name: new RegExp("Pay ₱" + amount.replace(".", "\\.")) }).click();
+  // Atlas V4 desktops deliberately show method selection before the detailed
+  // payment workspace. Do not bypass this user-facing step in E2E checkout.
+  const chooser = page.getByRole("dialog", { name: "Payment" });
+  await expect(chooser).toHaveAttribute("data-ui", "atlas-v4-payment-chooser");
+  await chooser.getByRole("button", { name: "Continue" }).click();
 }
 
 export async function expectOnePosCartItem(page: Page): Promise<void> {
@@ -281,6 +286,10 @@ export async function completePosSale(
   await expect(page.getByRole("dialog", { name: "Payment" })).toBeVisible();
   await page.getByRole("button", { name: "Complete Payment" }).click();
   await expectPosStatus(page, "Sale completed.");
+  const confirmation = page.getByRole("dialog", { name: "Payment complete" });
+  await expect(confirmation).toBeVisible();
+  await confirmation.getByRole("button", { name: "OK", exact: true }).click();
+  await expect(confirmation).toBeHidden();
 
   const sales = await request.get(`${API}/api/v1/sales?limit=20`, { headers });
   expect(sales.ok()).toBe(true);

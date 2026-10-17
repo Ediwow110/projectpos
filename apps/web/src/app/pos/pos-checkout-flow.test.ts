@@ -23,6 +23,7 @@ function input(overrides: Partial<PosCheckoutInput> = {}): PosCheckoutInput {
 function effects() {
   const statuses: string[] = [];
   const receipts: Array<string | null> = [];
+  const confirmations: Array<{ saleId: string; receiptNo?: string; amountMinor: number } | null> = [];
   const reconciles: Array<string | null> = [];
   const reconciliationSales: Array<string | null> = [];
   const giftCards: Array<{ code: string; amountMinor: number }> = [];
@@ -32,6 +33,7 @@ function effects() {
   const values: PosCheckoutEffects = {
     setStatus: (status) => { statuses.push(status); },
     setReceiptId: (id) => { receipts.push(id); },
+    setConfirmedSale: (value) => { confirmations.push(value); },
     setReconcileId: (id) => { reconciles.push(id); },
     setReconcileSaleId: (id) => { reconciliationSales.push(id); },
     setCart: (next) => { carts.push(next); },
@@ -44,7 +46,7 @@ function effects() {
     setPaying: (value) => { flags.push(value); },
     requireManagerApproval: (action, retrying) => { approvals.push([action, retrying]); },
   };
-  return { values, statuses, receipts, reconciles, reconciliationSales, giftCards, approvals, carts, flags };
+  return { values, statuses, receipts, confirmations, reconciles, reconciliationSales, giftCards, approvals, carts, flags };
 }
 
 describe("POS checkout flow", () => {
@@ -59,6 +61,7 @@ describe("POS checkout flow", () => {
     expect(queued).toBe(false);
     expect(state.statuses.at(-1)).toBe("Reconnect before completing a discounted sale. Discount authorization must be checked by the server.");
     expect(state.receipts).toEqual([null]);
+    expect(state.confirmations).toEqual([null]);
     expect(state.reconciles).toEqual([null]);
     expect(state.reconciliationSales).toEqual([null]);
   });
@@ -99,6 +102,7 @@ describe("POS checkout flow", () => {
     expect(redirects).toEqual(["https://checkout.example/123"]);
     expect(state.statuses.at(-1)).toBe("Redirecting to PayMongo secure checkout…");
     expect(state.receipts).toEqual([null]);
+    expect(state.confirmations).toEqual([null]);
     expect(state.carts).toEqual([]);
     expect(state.flags).toEqual([true, false]);
   });
@@ -110,9 +114,20 @@ describe("POS checkout flow", () => {
     });
     expect(result).toBe(true);
     expect(state.reconciles).toEqual([null, "pay-2"]);
+    expect(state.confirmations).toEqual([null]);
     expect(state.reconciliationSales).toEqual([null, "sale-2"]);
     expect(state.statuses.at(-1)).toContain("Do not retry blindly");
     expect(state.carts).toEqual([]);
+  });
+
+  it("announces the confirmed sale only after an authoritative completed response", async () => {
+    const state = effects();
+    const result = await runPosCheckout(input(), state.values, {
+      complete: async () => ({ kind: "completed", saleId: "sale-verified", receiptNo: "2026-000123" }),
+    });
+    expect(result).toBe(true);
+    expect(state.confirmations).toEqual([null, { saleId: "sale-verified", receiptNo: "2026-000123", amountMinor: 5000 }]);
+    expect(state.receipts).toEqual([null, "sale-verified"]);
   });
 
   it("reveals a one-time code only after completed NEW gift-card load", async () => {
@@ -125,6 +140,7 @@ describe("POS checkout flow", () => {
     expect(result).toBe(true);
     expect(state.giftCards).toEqual([{ code: "SECRET", amountMinor: 1000 }]);
     expect(state.receipts).toEqual([null, "sale-3"]);
+    expect(state.confirmations).toEqual([null, { saleId: "sale-3", amountMinor: 5000 }]);
     expect(state.carts).toEqual([[]]);
     expect(state.statuses.at(-1)).toBe("Sale completed.");
   });

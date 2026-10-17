@@ -26,6 +26,7 @@ export interface PosCheckoutInput {
 export interface PosCheckoutEffects {
   setStatus: (message: string) => void;
   setReceiptId: (id: string | null) => void;
+  setConfirmedSale: (sale: { saleId: string; receiptNo?: string; amountMinor: number } | null) => void;
   setReconcileId: (id: string | null) => void;
   setReconcileSaleId: (id: string | null) => void;
   setCart: (cart: PosCartEntry[]) => void;
@@ -48,6 +49,7 @@ interface CheckoutDependencies {
 function clearPaymentResult(effects: PosCheckoutEffects): void {
   effects.setStatus("");
   effects.setReceiptId(null);
+  effects.setConfirmedSale(null);
   effects.setReconcileId(null);
   effects.setReconcileSaleId(null);
 }
@@ -159,6 +161,7 @@ export async function runPosCheckout(
     effects.setShowPay(false);
     effects.setReconcileSaleId(null);
     effects.setReceiptId(result.saleId);
+    effects.setConfirmedSale({ saleId: result.saleId, ...(result.receiptNo ? { receiptNo: result.receiptNo } : {}), amountMinor: state.due });
     if (result.giftCardCodes?.[0] && state.giftCardLoad?.kind === "NEW") {
       effects.setGiftCardResult({ code: result.giftCardCodes[0], amountMinor: state.giftCardLoad.amountMinor });
     }

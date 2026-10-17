@@ -46,6 +46,7 @@ export function usePosPageController() {
   const [internalInstrumentId, setInternalInstrumentId] = useState("");
   const [status, setStatus] = useState("");
   const [receiptId, setReceiptId] = useState<string | null>(null);
+  const [confirmedSale, setConfirmedSale] = useState<{ saleId: string; receiptNo?: string; amountMinor: number } | null>(null);
   const [reconcileId, setReconcileId] = useState<string | null>(null);
   const [reconcileSaleId, setReconcileSaleId] = useState<string | null>(null);
   const [registerId, setRegisterId] = useState("");
@@ -318,7 +319,7 @@ export function usePosPageController() {
       method, internalInstrumentId, offline, identityLoading: meQuery.isLoading,
       store, activeDraft, giftCardLoad, methodAvailable,
     }, {
-      setStatus, setReceiptId, setReconcileId, setReconcileSaleId,
+      setStatus, setReceiptId, setConfirmedSale, setReconcileId, setReconcileSaleId,
       setCart, setActiveDraft, setOrderDiscountMinor, setReceived,
       setShowPay, setGiftCardLoad, setGiftCardResult, setPaying,
       requireManagerApproval,
@@ -342,7 +343,7 @@ export function usePosPageController() {
     : (searchQuery.data?.items ?? []);
   const count = cart.reduce((n, c) => n + c.qty, 0);
   const statusView = paymentPresentation(status);
-  const canPay = canPresentPayAction(cart.length, canSell) && due > 0 && reconcileId === null && !(offline && resumedSaleLocked);
+  const canPay = canPresentPayAction(cart.length, canSell) && due > 0 && reconcileId === null && reconcileSaleId === null && !(offline && resumedSaleLocked);
   const selectedRegisterName =
     scopedRegisters.find((register) => register.id === registerId)?.name ?? "—";
 
@@ -387,6 +388,8 @@ export function usePosPageController() {
     paymentTiles,
     q,
     receiptId,
+    confirmedSale,
+    setConfirmedSale,
     received,
     reconcileId,
     reconcileSaleId,
