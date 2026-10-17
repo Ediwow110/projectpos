@@ -186,6 +186,26 @@ describe("H5 durable order notification outbox", () => {
     expect(statements[3]!.sql).toContain('"businessId"=$1 AND "orderId"=$2');
   });
 
+  it("fails closed if the table exists without a recorded, tenant-safe migration", async () => {
+    const checks = {
+      tablePresent: true, migrationApplied: true, rlsEnabled: true,
+      tenantConstraintPresent: true, dedupeIndexPresent: true,
+    };
+    const client = {
+      query: async () => ({ rows: [{ ...checks }] }),
+      release: () => {},
+    };
+    const pg = new PgOrderNotificationOutbox({ client: async () => client, owns: () => true } as never);
+    await expect(pg.assertReady()).resolves.toBeUndefined();
+    for (const key of Object.keys(checks) as (keyof typeof checks)[]) {
+      const original = checks[key];
+      checks[key] = false;
+      client.query = async () => ({ rows: [{ ...checks }] });
+      await expect(pg.assertReady()).rejects.toThrow("OUTBOX_MIGRATION_REQUIRED");
+      checks[key] = original;
+    }
+  });
+
   it("polls on startup, never overlaps ticks, and stops cleanly", async () => {
     const { db } = await fixture();
     const store = createMemoryOrderNotificationOutbox();

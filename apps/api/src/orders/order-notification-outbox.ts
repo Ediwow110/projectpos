@@ -127,10 +127,32 @@ export class PgOrderNotificationOutbox implements OrderNotificationOutboxStore {
   async assertReady(): Promise<void> {
     const c = await this.ctx.client();
     try {
-      const result = await c.query<{ tablePresent: string | null }>(
-        'SELECT to_regclass($1) AS "tablePresent"', ['public."OrderNotificationOutbox"'],
+      const result = await c.query<{
+        tablePresent: boolean;
+        migrationApplied: boolean;
+        rlsEnabled: boolean;
+        tenantConstraintPresent: boolean;
+        dedupeIndexPresent: boolean;
+      }>(
+        'SELECT to_regclass($1) IS NOT NULL AS "tablePresent", ' +
+        'EXISTS (SELECT 1 FROM public."_migrations" WHERE "name"=$2) AS "migrationApplied", ' +
+        'COALESCE((SELECT "relrowsecurity" FROM pg_catalog.pg_class WHERE "oid"=to_regclass($1)), false) AS "rlsEnabled", ' +
+        'EXISTS (SELECT 1 FROM pg_catalog.pg_constraint WHERE "conname"=$3 ' +
+        'AND "conrelid"=to_regclass($1) AND "contype"=$5) AS "tenantConstraintPresent", ' +
+        'to_regclass($4) IS NOT NULL AS "dedupeIndexPresent"',
+        [
+          'public."OrderNotificationOutbox"',
+          "0049_order_notification_outbox",
+          "OrderNotificationOutbox_order_tenant_fkey",
+          'public."OrderNotificationOutbox_business_dedupe_key"',
+          "f",
+        ],
       );
-      if (!result.rows[0]?.tablePresent) throw new Error("OUTBOX_MIGRATION_REQUIRED");
+      const row = result.rows[0];
+      if (!row?.tablePresent || !row.migrationApplied || !row.rlsEnabled ||
+        !row.tenantConstraintPresent || !row.dedupeIndexPresent) {
+        throw new Error("OUTBOX_MIGRATION_REQUIRED");
+      }
     } finally { if (this.ctx.owns()) c.release(); }
   }
 
