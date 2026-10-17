@@ -17,13 +17,14 @@ export class BusinessService {
   async getBusiness(businessId: string): Promise<{
     id: string;
     name: string;
+    currency: string;
     storefrontKey: string | null;
     settings: Record<string, unknown>;
   }> {
     const business = await this.db.findBusinessById(businessId);
     if (!business) throw new Error("TENANT_REQUIRED");
     const settings = await this.db.getSettings(businessId);
-    return { id: business.id, name: business.name, storefrontKey: business.storefrontKey, settings };
+    return { id: business.id, name: business.name, currency: business.currency, storefrontKey: business.storefrontKey, settings };
   }
 
   async ensureStorefrontKey(businessId: string): Promise<string> {
@@ -107,9 +108,22 @@ export class BusinessService {
   ): Promise<OnboardingState> {
     if (!granted.includes("settings.write")) throw new Error("FORBIDDEN");
     return this.db.withLock(`business-settings:${businessId}`, async () => {
+    const settings = await this.db.getSettings(businessId);
+    if (patch.step === "taxCurrency" && patch.state === "done") {
+      const currency = settings["currency"];
+      const taxName = settings["taxName"];
+      const taxRateBps = settings["taxRateBps"];
+      const business = await this.db.findBusinessById(businessId);
+      if (!business || currency !== business.currency ||
+        typeof currency !== "string" || currency.length !== 3 || currency !== currency.toUpperCase() ||
+        typeof taxName !== "string" || taxName.trim().length === 0 || taxName.length > 80 ||
+        typeof taxRateBps !== "number" || !Number.isInteger(taxRateBps) ||
+        taxRateBps < 0 || taxRateBps > 10000) {
+        throw new Error("ONBOARDING_SETTINGS_REQUIRED");
+      }
+    }
     const current = await this.getOnboarding(businessId);
     const next = applyOnboardingPatch(current, patch);
-    const settings = await this.db.getSettings(businessId);
     await this.db.saveSettings(businessId, { ...settings, onboarding: next });
     await this.db.appendAudit({
       businessId,

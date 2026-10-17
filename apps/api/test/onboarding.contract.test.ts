@@ -70,6 +70,14 @@ describe("onboarding HTTP contract", () => {
   });
 
   it("persists valid required-step progress and blocks workspace API access while setup remains incomplete", async () => {
+    const configured = await request(app.getHttpServer())
+      .patch("/api/v1/business/settings")
+      .set("Cookie", cookie)
+      .set("X-CSRF-Token", csrf)
+      .send({ currency: "PHP", taxName: "VAT", taxRateBps: 1200 });
+    expect(configured.status).toBe(200);
+    expect(configured.body.settings).toMatchObject({ currency: "PHP", taxName: "VAT", taxRateBps: 1200 });
+
     const saved = await request(app.getHttpServer())
       .patch("/api/v1/onboarding")
       .set("Cookie", cookie)

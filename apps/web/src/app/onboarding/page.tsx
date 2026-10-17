@@ -1,6 +1,6 @@
 "use client";
 
-import type { JSX } from "react";
+import type { FormEvent, JSX } from "react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -26,7 +26,7 @@ const STEP_META: Record<Step, { title: string; description: string; note: string
   taxCurrency: {
     title: "Currency & tax",
     description: "Confirm that pricing and tax defaults have been configured for how the business operates.",
-    note: "This screen does not pretend to persist currency/tax fields the current onboarding API does not accept.",
+    note: "Currency and tax settings are saved to your business before this step is completed.",
   },
   receiptSetup: {
     title: "Receipt setup",
@@ -63,6 +63,86 @@ async function loadOnboarding(): Promise<OnboardingState> {
   return state as unknown as OnboardingState;
 }
 
+interface TaxSettings {
+  currency: string;
+  taxName: string;
+  taxRateBps: number;
+}
+
+function TaxCurrencyForm({
+  saving,
+  onSave,
+}: {
+  saving: boolean;
+  onSave: (settings: TaxSettings) => void;
+}): JSX.Element {
+  const business = useQuery({
+    queryKey: ["onboarding", "business-settings"],
+    queryFn: () => apiFetch<{ currency: string; settings: Record<string, unknown> }>("/api/v1/business"),
+    retry: false,
+  });
+  const [currency, setCurrency] = useState("PHP");
+  const [taxName, setTaxName] = useState("");
+  const [taxRate, setTaxRate] = useState("");
+  const [validationError, setValidationError] = useState("");
+
+  useEffect(() => {
+    const settings = business.data?.settings;
+    if (!settings) return;
+    if (typeof business.data?.currency === "string") setCurrency(business.data.currency);
+    if (typeof settings["taxName"] === "string") setTaxName(settings["taxName"]);
+    if (typeof settings["taxRateBps"] === "number") setTaxRate(String(settings["taxRateBps"] / 100));
+  }, [business.data]);
+
+  function submit(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    const name = taxName.trim();
+    const rate = taxRate.trim();
+    if (!/^[A-Z]{3}$/.test(currency) || name.length === 0 || name.length > 80 ||
+      !/^[0-9]{1,3}(\.[0-9]{1,2})?$/.test(rate) || Number(rate) > 100) {
+      setValidationError("Enter a three-letter currency, a tax name and a tax rate from 0 to 100 with up to two decimal places.");
+      return;
+    }
+    setValidationError("");
+    onSave({ currency, taxName: name, taxRateBps: Math.round(Number(rate) * 100) });
+  }
+
+  return (
+    <form className="mt-6 space-y-4" onSubmit={submit}>
+      <p className="text-[11px] leading-5 text-[#73685f]">Enter the tax rules that apply to your business. For tax-exempt sales, enter a descriptive name and 0%. No rate is assumed.</p>
+      {business.isLoading ? <p role="status" className="text-xs text-[#73685f]">Loading saved business settings…</p> : null}
+      {business.isError ? (
+        <div role="alert" className="text-xs text-[#c43e3e]">
+          Could not load saved business settings.
+          <button type="button" className="ml-2 font-semibold underline" onClick={() => void business.refetch()}>Try again</button>
+        </div>
+      ) : null}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="space-y-1 text-[11px] font-semibold text-[#2a241f]">
+          Currency (ISO code)
+          <input className="field w-full" name="currency" value={currency} maxLength={3} required readOnly
+            aria-label="Currency (ISO code)" aria-readonly="true" />
+        </label>
+        <label className="space-y-1 text-[11px] font-semibold text-[#2a241f]">
+          Tax name
+          <input className="field w-full" name="taxName" value={taxName} maxLength={80} required
+            placeholder="VAT or No tax" onChange={(event) => setTaxName(event.target.value)} />
+        </label>
+        <label className="space-y-1 text-[11px] font-semibold text-[#2a241f]">
+          Tax rate (%)
+          <input className="field w-full" name="taxRate" type="number" min="0" max="100" step="0.01"
+            value={taxRate} required placeholder="Enter a percentage" onChange={(event) => setTaxRate(event.target.value)} />
+        </label>
+      </div>
+      <p className="text-[10px] leading-4 text-[#73685f]">Currency is fixed when the business is created to keep catalog prices and payments consistent.</p>
+      {validationError ? <p role="alert" className="text-xs text-[#c43e3e]">{validationError}</p> : null}
+      <PrimaryButton type="submit" disabled={saving || business.isLoading || business.isError} aria-busy={saving}>
+        {saving ? "Saving currency & tax…" : "Save currency & tax"}
+      </PrimaryButton>
+    </form>
+  );
+}
+
 export default function OnboardingPage(): JSX.Element {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -81,12 +161,18 @@ export default function OnboardingPage(): JSX.Element {
     if (unauthorized) router.replace("/login");
   }, [router, unauthorized]);
 
-  async function patchStep(step: Step, state: "done" | "skipped"): Promise<void> {
+  async function patchStep(step: Step, state: "done" | "skipped", taxSettings?: TaxSettings): Promise<void> {
     if (savingStep !== null) return;
     setError("");
     setSavingStep(step);
     try {
       const csrf = await apiFetch<{ csrfToken: string }>("/api/v1/auth/csrf");
+      if (taxSettings) {
+        await apiFetch("/api/v1/business/settings", {
+          csrfToken: csrf.csrfToken,
+          init: { method: "PATCH", body: JSON.stringify(taxSettings) },
+        });
+      }
       await apiFetch("/api/v1/onboarding", {
         csrfToken: csrf.csrfToken,
         init: { method: "PATCH", body: JSON.stringify({ step, state }) },
@@ -135,7 +221,7 @@ export default function OnboardingPage(): JSX.Element {
         <NexposLogo variant="light" size="md" />
         <div className="ml-auto flex items-center gap-3">
           <span className="font-data text-[9px] text-[#7a6f66]">SETUP {String(currentIndex + 1).padStart(2, "0")} / 05</span>
-          <StatusPill tone="ok">● Saved</StatusPill>
+          <StatusPill tone="info">Setup in progress</StatusPill>
         </div>
       </header>
 
@@ -208,7 +294,12 @@ export default function OnboardingPage(): JSX.Element {
                 </div>
               ) : null}
 
-              {steps[current] === "pending" ? (
+              {steps[current] === "pending" && current === "taxCurrency" ? (
+                <TaxCurrencyForm
+                  saving={savingStep !== null}
+                  onSave={(settings) => void patchStep("taxCurrency", "done", settings)}
+                />
+              ) : steps[current] === "pending" ? (
                 <div className="mt-6 flex flex-wrap gap-2">
                   <PrimaryButton
                     type="button"

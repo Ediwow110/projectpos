@@ -41,6 +41,16 @@ describe("onboarding navigation", () => {
     expect(html).toContain("Complete required setup to open the dashboard.");
   });
 
+  it("asks the owner to save real tax settings instead of marking the step complete", () => {
+    fixture.data.currentStep = "taxCurrency";
+    const html = renderToStaticMarkup(<OnboardingPage />);
+
+    expect(html).toContain("Tax name");
+    expect(html).toContain("Tax rate (%)");
+    expect(html).toContain("Save currency &amp; tax");
+    expect(html).not.toContain("Mark step complete");
+  });
+
   it("lets owners go to the dashboard when only optional setup steps remain", () => {
     fixture.data.currentStep = "products";
     fixture.data.steps.taxCurrency = "done";

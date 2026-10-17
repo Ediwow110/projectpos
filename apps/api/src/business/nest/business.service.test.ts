@@ -71,6 +71,8 @@ describe("phase11 settings gate and audit context", () => {
       ),
     ).rejects.toThrow("FORBIDDEN");
 
+    await db.saveSettings(biz.id, { currency: "PHP", taxName: "No tax", taxRateBps: 0 });
+
     await expect(
       svc.patchOnboarding(
         biz.id,
@@ -80,6 +82,27 @@ describe("phase11 settings gate and audit context", () => {
         ["settings.write"],
       ),
     ).resolves.toMatchObject({ currentStep: "receiptSetup" });
+  });
+
+  it("does not complete tax and currency onboarding until real settings are saved", async () => {
+    const db = createMemoryDb();
+    const biz = await db.createBusiness({ name: "Tax setup", currency: "PHP" });
+    const svc = new BusinessService(db);
+    await db.saveSettings(biz.id, { currency: "PHP" });
+
+    await expect(svc.patchOnboarding(
+      biz.id, "owner", { step: "taxCurrency", state: "done" }, "no-tax-config", ["settings.write"],
+    )).rejects.toThrow("ONBOARDING_SETTINGS_REQUIRED");
+    expect((await svc.getOnboarding(biz.id)).steps.taxCurrency).toBe("pending");
+
+    await db.saveSettings(biz.id, { currency: "USD", taxName: "No tax", taxRateBps: 0 });
+    await expect(svc.patchOnboarding(
+      biz.id, "owner", { step: "taxCurrency", state: "done" }, "mismatched-currency", ["settings.write"],
+    )).rejects.toThrow("ONBOARDING_SETTINGS_REQUIRED");
+    await db.saveSettings(biz.id, { currency: "PHP", taxName: "No tax", taxRateBps: 0 });
+    await expect(svc.patchOnboarding(
+      biz.id, "owner", { step: "taxCurrency", state: "done" }, "with-tax-config", ["settings.write"],
+    )).resolves.toMatchObject({ currentStep: "receiptSetup" });
   });
 
   it.each(["businessDetails", "taxCurrency", "receiptSetup"] as const)(
