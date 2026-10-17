@@ -68,9 +68,9 @@ for (const viewport of VIEWPORTS) {
 
     // Quantity controls: native clicks, previously intercepted by the products pane.
     await page.getByRole("button", { name: `Increase Responsive A ${stamp}` }).click();
-    await expect(page.getByText("Qty 2", { exact: true }).first()).toBeVisible();
+    await expect(posCartRegion(page).getByText("Qty 2 × ₱10.00", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: `Decrease Responsive A ${stamp}` }).click();
-    await expect(page.getByText("Qty 1", { exact: true }).first()).toBeVisible();
+    await expect(posCartRegion(page).getByText("Qty 1 × ₱10.00", { exact: true })).toBeVisible();
 
     await expectCartActionReachable(page);
 
