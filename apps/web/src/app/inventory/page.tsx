@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { AppShell } from "../../components/AppShell";
+import { AtlasInventoryWorkbench } from "../../components/AtlasInventoryWorkbench";
 import { ManagerApprovalDialog } from "../../components/ManagerApprovalDialog";
 import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "../../components/premium";
 import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
@@ -140,7 +141,7 @@ export default function InventoryPage(): JSX.Element {
 
   if (meQuery.isLoading || balancesQuery.isPending) {
     return (
-      <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role}>
+      <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role} atlasInventory>
         <main className="mx-auto max-w-[1240px] p-6"><Panel className="p-6 text-sm text-[#73685f]">Loading inventory…</Panel></main>
       </AppShell>
     );
@@ -148,7 +149,7 @@ export default function InventoryPage(): JSX.Element {
 
   if (meQuery.isError || balancesQuery.isError) {
     return (
-      <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role}>
+      <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role} atlasInventory>
         <main className="mx-auto max-w-[1240px] p-6">
           <Panel className="border-[#efb9b9] bg-[#fff0f0] p-6">
             <p role="alert" className="text-sm font-medium text-[#9d3030]">
@@ -174,11 +175,14 @@ export default function InventoryPage(): JSX.Element {
   const visibleUnits = data.items.reduce((sum, item) => sum + Math.max(0, item.qtyOnHand), 0);
 
   return (
-    <AppShell businessName={meQuery.data?.businessName} role={role}>
+    <AppShell businessName={meQuery.data?.businessName} role={role} atlasInventory>
       <main className="mx-auto max-w-[1240px] space-y-5 px-4 pb-10 pt-3 sm:px-6">
+        {role === "inventory" ? (
+          <AtlasInventoryWorkbench items={data.items} total={data.total} branchName={meQuery.data?.activeBranchName ?? null} />
+        ) : null}
         <PageHeader
-          eyebrow="Inventory / Stock control"
-          title="Inventory"
+          eyebrow={role === "inventory" ? "INVENTORY / STOCK CONTROL" : "Inventory / Stock control"}
+          title={role === "inventory" ? "Stock levels" : "Inventory"}
           description={
             meQuery.data?.activeBranchName
               ? "Viewing stock for " + meQuery.data.activeBranchName + ". Track on-hand inventory and audited movement within this branch."
@@ -216,6 +220,7 @@ export default function InventoryPage(): JSX.Element {
           </div>
         </Panel>
 
+        <div id="inventory-balances" className="scroll-mt-24">
         <DataTableFrame>
           <div className="flex items-center justify-between gap-3 px-5 py-4">
             <div>
@@ -254,6 +259,7 @@ export default function InventoryPage(): JSX.Element {
             <GhostButton type="button" disabled={page >= pages} onClick={() => setPage((current) => current + 1)}>Next</GhostButton>
           </div>
         </DataTableFrame>
+        </div>
 
         {adjustable ? (
           <Panel className="p-5">

@@ -291,7 +291,7 @@ export function AppShell({
         <header
           data-ui="shell-header"
           className={
-            (atlasLayout ? "hidden border-b border-[#e5e9e3] bg-white px-4 backdrop-blur sm:px-6 xl:block " + (ownerAtlas ? "xl:pl-[264px] " : inventoryAtlas ? "xl:pl-[251px] " : "xl:pl-[255px] ") : posMode ? "border-b border-[#e5e9e3] bg-white px-4 backdrop-blur sm:px-6 xl:pl-[78px] " : "border-b border-[#eadfd6] bg-[#fcf8f3]/95 px-4 backdrop-blur sm:px-6 ") +
+            (atlasLayout ? "hidden border-b border-[#e5e9e3] bg-white px-4 backdrop-blur sm:px-6 xl:block " + (ownerAtlas ? "xl:pl-[264px] " : inventoryAtlas ? "xl:pl-[263px] " : "xl:pl-[255px] ") : posMode ? "border-b border-[#e5e9e3] bg-white px-4 backdrop-blur sm:px-6 xl:pl-[78px] " : "border-b border-[#eadfd6] bg-[#fcf8f3]/95 px-4 backdrop-blur sm:px-6 ") +
             mobileHeaderHeight
           }
         >
@@ -502,7 +502,7 @@ export function AppShell({
 
       <div
         data-ui="shell-body"
-        className={"relative mx-auto grid w-full flex-1 " + (posMode ? "max-w-none xl:grid-cols-[78px_minmax(0,1fr)]" : ownerAtlas ? "max-w-none xl:grid-cols-[239px_minmax(0,1fr)]" : approvalAtlas || cashierAtlas ? "max-w-none xl:grid-cols-[230px_minmax(0,1fr)]" : inventoryAtlas ? "max-w-none xl:grid-cols-[226px_minmax(0,1fr)]" : "max-w-[1480px] xl:grid-cols-[220px_minmax(0,1fr)]")}
+        className={"relative mx-auto grid w-full flex-1 " + (posMode ? "max-w-none xl:grid-cols-[78px_minmax(0,1fr)]" : ownerAtlas ? "max-w-none xl:grid-cols-[239px_minmax(0,1fr)]" : approvalAtlas || cashierAtlas ? "max-w-none xl:grid-cols-[230px_minmax(0,1fr)]" : inventoryAtlas ? "max-w-none xl:grid-cols-[238px_minmax(0,1fr)]" : "max-w-[1480px] xl:grid-cols-[220px_minmax(0,1fr)]")}
       >
         <aside
           data-ui="shell-sidebar"
