@@ -23,6 +23,7 @@ import { withInventoryLocks } from "../inventory/inventory-locks";
 import { deriveOrderPaymentStatus } from "./payment-status";
 import type { OrderListItem } from "./order-types";
 import { recordIdempotencyConflict, recordOrderLifecycle } from "../common/metrics";
+import { orderNotificationStatusFromAudit, type OrderNotificationStatus } from "./order-notification-status";
 
 export interface OrderListQuery {
   cursor?: string;
@@ -897,6 +898,7 @@ export class OrderService {
       lines: Awaited<ReturnType<DbPort["listFulfillmentLines"]>>;
     }>;
     paymentStatus: DbOrderPaymentStatus;
+    notificationStatus?: OrderNotificationStatus;
   }> {
     withScope(businessId, {});
     const order = await this.db.findOrderById(id, businessId);
@@ -908,6 +910,11 @@ export class OrderService {
       this.paymentStatus(order),
     ]);
     const canSeeDelivery = granted.includes("order.view_delivery_details");
+    // Viewing order contents is insufficient to expose staff-only delivery
+    // operations. The existing resend authority gates delivery evidence too.
+    const notificationStatus = granted.includes("order.manage_access")
+      ? orderNotificationStatusFromAudit(await this.db.listAuditFor(businessId, "Order", id))
+      : undefined;
     const redactFulfillment = (row: typeof fulfillmentRows[number]) => canSeeDelivery ? row : {
       ...row, email: null, phone: null, deliveryAddress: null, instructions: null,
     };
@@ -922,6 +929,7 @@ export class OrderService {
         lines: await this.db.listFulfillmentLines(row.id, businessId),
       }))),
       paymentStatus,
+      ...(notificationStatus ? { notificationStatus } : {}),
     };
   }
 }
