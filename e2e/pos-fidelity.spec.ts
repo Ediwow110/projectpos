@@ -45,11 +45,17 @@ test("POS shell and responsive geometry match the current navigation contract", 
     const mainBox = await main.boundingBox();
     expect(sidebarBox).not.toBeNull();
     expect(mainBox).not.toBeNull();
-    expect(sidebarBox!.width).toBeGreaterThanOrEqual(215);
-    expect(sidebarBox!.width).toBeLessThanOrEqual(225);
-    expect(mainBox!.x).toBeGreaterThanOrEqual(215);
-    expect(mainBox!.width).toBeGreaterThan(1100);
-    await expect(page.getByRole("complementary", { name: "Cart" })).toBeVisible();
+    expect(sidebarBox!.width).toBeCloseTo(78, 0);
+    expect(mainBox!.x).toBeCloseTo(78, 0);
+    expect(mainBox!.width).toBeCloseTo(1440 - 78, 0);
+    const rail = page.getByRole("navigation", { name: "Register navigation" });
+    await expect(rail.getByRole("link", { name: "SALE" })).toBeVisible();
+    const cart = page.getByRole("complementary", { name: "Cart" });
+    await expect(cart).toBeVisible();
+    expect((await cart.boundingBox())?.width).toBeCloseTo(455, 0);
+    await expect(cart).toHaveCSS("background-color", "rgb(255, 255, 255)");
+    const catalog = page.getByRole("region", { name: "Products" });
+    await expect(catalog.getByRole("heading", { name: "Products" })).toBeVisible();
   } else if (tablet) {
     await expect(sidebar).toBeHidden();
     await expect(mobileNav).toBeVisible();
