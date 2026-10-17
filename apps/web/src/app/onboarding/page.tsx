@@ -10,6 +10,7 @@ import { Panel } from "../../components/premium";
 import { NexposLogo } from "../../components/brand/NexposLogo";
 import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { ApiError, apiFetch } from "../../lib/api";
+import { BusinessDetailsForm, type BusinessContactSettings } from "./BusinessDetailsForm";
 import { ReceiptSetupForm, type ReceiptCopySettings } from "./ReceiptSetupForm";
 
 const ORDER = ["businessDetails", "taxCurrency", "receiptSetup", "products", "employees"] as const;
@@ -21,8 +22,8 @@ const SKIPPABLE: Step[] = ["products", "employees"];
 const STEP_META: Record<Step, { title: string; description: string; note: string }> = {
   businessDetails: {
     title: "Business details",
-    description: "Confirm the identity and operating context of this business.",
-    note: "The onboarding API currently records completion state for this step.",
+    description: "Confirm the business identity and save its operating contact information.",
+    note: "The registered business name is fixed; its operating address and optional contact number are saved to business settings.",
   },
   taxCurrency: {
     title: "Currency & tax",
@@ -165,17 +166,17 @@ export default function OnboardingPage(): JSX.Element {
   async function patchStep(
     step: Step,
     state: "done" | "skipped",
-    options?: { taxSettings?: TaxSettings; receiptCopy?: ReceiptCopySettings; receiptPreviewConfirmed?: boolean },
+    options?: { businessDetails?: BusinessContactSettings; taxSettings?: TaxSettings; receiptCopy?: ReceiptCopySettings; receiptPreviewConfirmed?: boolean },
   ): Promise<void> {
     if (savingStep !== null) return;
     setError("");
     setSavingStep(step);
     try {
       const csrf = await apiFetch<{ csrfToken: string }>("/api/v1/auth/csrf");
-      if (options?.taxSettings || options?.receiptCopy) {
+      if (options?.businessDetails || options?.taxSettings || options?.receiptCopy) {
         await apiFetch("/api/v1/business/settings", {
           csrfToken: csrf.csrfToken,
-          init: { method: "PATCH", body: JSON.stringify(options.taxSettings ?? options.receiptCopy) },
+          init: { method: "PATCH", body: JSON.stringify(options.businessDetails ?? options.taxSettings ?? options.receiptCopy) },
         });
       }
       await apiFetch("/api/v1/onboarding", {
@@ -301,7 +302,12 @@ export default function OnboardingPage(): JSX.Element {
                 </div>
               ) : null}
 
-              {steps[current] === "pending" && current === "taxCurrency" ? (
+              {steps[current] === "pending" && current === "businessDetails" ? (
+                <BusinessDetailsForm
+                  saving={savingStep !== null}
+                  onSave={(settings) => void patchStep("businessDetails", "done", { businessDetails: settings })}
+                />
+              ) : steps[current] === "pending" && current === "taxCurrency" ? (
                 <TaxCurrencyForm
                   saving={savingStep !== null}
                   onSave={(settings) => void patchStep("taxCurrency", "done", { taxSettings: settings })}

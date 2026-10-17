@@ -48,6 +48,9 @@ test("real browser, web app, and API preserve onboarding gates and progress", as
   expect(bypass.status).toBe(400);
   expect(bypass.body.code).toBe("ONBOARDING_REQUIRED_STEP");
 
+  await expect(page.getByRole("heading", { name: "Business details" })).toBeVisible();
+  await onboarding.saveBusinessDetails();
+  await expect(page.getByRole("heading", { name: "Currency & tax" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save currency & tax" })).toBeVisible();
   await onboarding.saveTaxConfiguration();
   await expect(page.getByText("Receipt setup", { exact: true })).toBeVisible();
@@ -87,8 +90,10 @@ test("new owner can add a product and record opening stock through the real inve
   await page.getByRole("button", { name: "Create business" }).click();
 
   await expect(page).toHaveURL(/\/onboarding$/);
-  await expect(page.getByRole("heading", { name: "Currency & tax" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Business details" })).toBeVisible();
   const onboarding = new OnboardingPage(page);
+  await onboarding.saveBusinessDetails();
+  await expect(page.getByRole("heading", { name: "Currency & tax" })).toBeVisible();
   await onboarding.saveTaxConfiguration();
   await expect(page.getByRole("heading", { name: "Receipt setup" })).toBeVisible();
   await onboarding.confirmReceiptSetup();

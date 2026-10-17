@@ -59,6 +59,8 @@ export const onboardingPatchSchema = z.object({
 });
 
 export const businessSettingsSchema = z.object({
+  businessAddress: z.string().trim().min(5).max(240).optional(),
+  businessPhone: z.string().trim().max(40).optional(),
   currency: z.string().length(3).optional(),
   taxName: z.string().max(80).optional(),
   taxRateBps: z.number().int().min(0).max(10000).optional(),

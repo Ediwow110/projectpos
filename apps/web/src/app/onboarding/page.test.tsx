@@ -51,6 +51,16 @@ describe("onboarding navigation", () => {
     expect(html).not.toContain("Mark step complete");
   });
 
+  it("collects real business contact details before the owner completes business setup", () => {
+    fixture.data.currentStep = "businessDetails";
+    fixture.data.steps.businessDetails = "pending";
+    const html = renderToStaticMarkup(<OnboardingPage />);
+    expect(html).toContain("Business address");
+    expect(html).toContain("Business contact phone");
+    expect(html).toContain("Save business details");
+    expect(html).not.toContain("Mark step complete");
+  });
+
   it("requires owner confirmation of receipt output instead of a blind step completion", () => {
     fixture.data.currentStep = "receiptSetup";
     fixture.data.steps.taxCurrency = "done";

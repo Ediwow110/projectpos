@@ -32,6 +32,15 @@ afterAll(async () => {
 });
 
 describe("onboarding HTTP contract", () => {
+  it("starts new owner registrations with business details pending", async () => {
+    const state = await request(app.getHttpServer()).get("/api/v1/onboarding").set("Cookie", cookie);
+    expect(state.status).toBe(200);
+    expect(state.body).toMatchObject({
+      currentStep: "businessDetails",
+      steps: { businessDetails: "pending", taxCurrency: "pending", receiptSetup: "pending" },
+    });
+  });
+
   it.each(["businessDetails", "taxCurrency", "receiptSetup"] as const)(
     "rejects a direct API attempt to skip required step %s without changing saved progress",
     async (step) => {
@@ -70,6 +79,28 @@ describe("onboarding HTTP contract", () => {
   });
 
   it("persists valid required-step progress and blocks workspace API access while setup remains incomplete", async () => {
+    const noBusinessAddress = await request(app.getHttpServer())
+      .patch("/api/v1/onboarding")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ step: "businessDetails", state: "done" });
+    expect(noBusinessAddress.status).toBe(400);
+    expect(noBusinessAddress.body.code).toBe("ONBOARDING_SETTINGS_REQUIRED");
+
+    const businessSettings = await request(app.getHttpServer())
+      .patch("/api/v1/business/settings")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ businessAddress: "123 Test St, Manila", businessPhone: "09171234567" });
+    expect(businessSettings.status).toBe(200);
+    expect(businessSettings.body.settings).toMatchObject({
+      businessAddress: "123 Test St, Manila", businessPhone: "09171234567",
+    });
+    const businessSaved = await request(app.getHttpServer())
+      .patch("/api/v1/onboarding")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ step: "businessDetails", state: "done" });
+    expect(businessSaved.status).toBe(200);
+    expect(businessSaved.body.steps.businessDetails).toBe("done");
+
     const configured = await request(app.getHttpServer())
       .patch("/api/v1/business/settings")
       .set("Cookie", cookie)

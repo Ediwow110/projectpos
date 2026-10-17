@@ -51,8 +51,6 @@ test("capture Figma-sized POS surfaces", async ({ page, request }, testInfo) => 
     await seedProduct(request, headers, { name, priceMinor, stock });
   }
   for (const [step, state] of [
-    ["taxCurrency", "done"],
-    ["receiptSetup", "done"],
     ["products", "skipped"],
     ["employees", "skipped"],
   ] as const) {

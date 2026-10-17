@@ -54,6 +54,8 @@ No global toast provider is currently canonical. Status, warnings, errors, payme
 
 ### H5 owner onboarding — receipt readiness
 
+- New owner registrations begin at Business details. The registered business name remains read-only; a real operating address is required, with an optional contact phone. Owners save these into permission-protected business settings before the server permits business-details completion.
+- Existing businesses with persisted onboarding progress are not automatically forced back through this new first step. This profile is not a replacement for government registration or fiscal-document compliance.
 - Owners complete Currency & tax by saving the business's existing currency, a named tax rule and the rate; server-side completion is denied if values are missing or the currency differs from the registered business currency.
 - Receipt setup displays the registered business name and any saved receipt header/footer, plus an explanatory standard-receipt preview. Completion requires a review confirmation and completed business/tax steps; a bare onboarding PATCH cannot mark the step done.
 - Owners may optionally edit a receipt header/footer via the existing CSRF-protected business settings API, subject to the current paid `receipt_customization` entitlement. A denied customization request does not complete onboarding; standard-receipt review remains available regardless of plan.

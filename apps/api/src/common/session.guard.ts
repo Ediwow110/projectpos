@@ -6,7 +6,7 @@ import type { DbPort } from "./db.port";
 import { assignedBranches, assignedRegisters, effectivePermissions } from "../auth/member-permissions";
 import { permitsAssignedBranchRequest } from "../auth/branch-access-policy";
 
-const SETUP_SETTINGS = new Set(["currency", "taxName", "taxRateBps", "receiptHeader", "receiptFooter"]);
+const SETUP_SETTINGS = new Set(["businessAddress", "businessPhone", "currency", "taxName", "taxRateBps", "receiptHeader", "receiptFooter"]);
 
 function isSetupSettingsPatch(body: unknown): boolean {
   return typeof body === "object" && body !== null && !Array.isArray(body) &&

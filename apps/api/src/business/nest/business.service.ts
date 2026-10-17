@@ -109,6 +109,14 @@ export class BusinessService {
     if (!granted.includes("settings.write")) throw new Error("FORBIDDEN");
     return this.db.withLock(`business-settings:${businessId}`, async () => {
     const settings = await this.db.getSettings(businessId);
+    if (patch.step === "businessDetails" && patch.state === "done") {
+      const business = await this.db.findBusinessById(businessId);
+      const address = settings["businessAddress"];
+      if (!business || !business.name.trim() ||
+          typeof address !== "string" || address.trim().length < 5 || address.length > 240) {
+        throw new Error("ONBOARDING_SETTINGS_REQUIRED");
+      }
+    }
     if (patch.step === "taxCurrency" && patch.state === "done") {
       const currency = settings["currency"];
       const taxName = settings["taxName"];

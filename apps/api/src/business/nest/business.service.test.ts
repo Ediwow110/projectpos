@@ -105,6 +105,23 @@ describe("phase11 settings gate and audit context", () => {
     )).resolves.toMatchObject({ currentStep: "receiptSetup" });
   });
 
+  it("rejects business details completion until the owner saves a real business address", async () => {
+    const db = createMemoryDb();
+    const biz = await db.createBusiness({ name: "New merchant", currency: "PHP" });
+    const svc = new BusinessService(db);
+    await expect(svc.patchOnboarding(
+      biz.id, "owner", { step: "businessDetails", state: "done" }, "missing-address", ["settings.write"],
+    )).rejects.toThrow("ONBOARDING_SETTINGS_REQUIRED");
+    await db.saveSettings(biz.id, { businessAddress: "  " });
+    await expect(svc.patchOnboarding(
+      biz.id, "owner", { step: "businessDetails", state: "done" }, "blank-address", ["settings.write"],
+    )).rejects.toThrow("ONBOARDING_SETTINGS_REQUIRED");
+    await db.saveSettings(biz.id, { businessAddress: "123 Test St, Manila" });
+    await expect(svc.patchOnboarding(
+      biz.id, "owner", { step: "businessDetails", state: "done" }, "real-address", ["settings.write"],
+    )).resolves.toMatchObject({ steps: { businessDetails: "done" } });
+  });
+
   it("requires a reviewed receipt configuration and completed tax setup before receipt signoff", async () => {
     const db = createMemoryDb();
     const biz = await db.createBusiness({ name: "Receipt Store", currency: "PHP" });

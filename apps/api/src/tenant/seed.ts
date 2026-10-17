@@ -100,9 +100,9 @@ export async function buildRegistrationSeed(input: RegistrationInput): Promise<R
       { key: "deliveryFlatFeeMinor", value: 0 },
     ],
     onboarding: {
-      currentStep: "taxCurrency",
+      currentStep: "businessDetails",
       steps: {
-        businessDetails: "done",
+        businessDetails: "pending",
         taxCurrency: "pending",
         receiptSetup: "pending",
         products: "pending",

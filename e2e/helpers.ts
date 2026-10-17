@@ -67,7 +67,19 @@ export async function registerOperationalBusiness(
     const csrfResponse = await fetch("/api/v1/auth/csrf", { credentials: "include" });
     if (!csrfResponse.ok) return { ok: false, status: csrfResponse.status };
     const csrf = (await csrfResponse.json()) as { csrfToken: string };
-    for (const step of ["taxCurrency", "receiptSetup"] as const) {
+    const settings = await fetch("/api/v1/business/settings", {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf.csrfToken },
+      body: JSON.stringify({
+        businessAddress: "123 QA Street, Manila",
+        currency: "PHP",
+        taxName: "No tax",
+        taxRateBps: 0,
+      }),
+    });
+    if (!settings.ok) return { ok: false, status: settings.status };
+    for (const step of ["businessDetails", "taxCurrency", "receiptSetup"] as const) {
       const response = await fetch("/api/v1/onboarding", {
         method: "PATCH",
         credentials: "include",
@@ -75,7 +87,10 @@ export async function registerOperationalBusiness(
           "Content-Type": "application/json",
           "X-CSRF-Token": csrf.csrfToken,
         },
-        body: JSON.stringify({ step, state: "done" }),
+        body: JSON.stringify({
+          step, state: "done",
+          ...(step === "receiptSetup" ? { receiptPreviewConfirmed: true } : {}),
+        }),
       });
       if (!response.ok) return { ok: false, status: response.status };
     }
