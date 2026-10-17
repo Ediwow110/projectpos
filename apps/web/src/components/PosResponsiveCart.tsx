@@ -245,8 +245,13 @@ export function PosResponsiveCart({
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[13px] font-semibold">{item.name}</p>
-                    <p className="money mt-1 text-[11px] text-white/45">₱{money(item.priceMinor)} each</p>
+                    <p className="money mt-1 text-[11px] text-white/45">{item.qty} × ₱{money(item.priceMinor)} = ₱{money(item.priceMinor * item.qty)}</p>
                     {item.lineDiscountMinor > 0 ? <p className="money mt-1 text-[10px] text-[#ff9a82]">Line discount −₱{money(item.lineDiscountMinor)}</p> : null}
+                    <button type="button" disabled={saleLocked} aria-label={"Remove " + item.name}
+                      onClick={() => onSetQty(item.productId, -item.qty)}
+                      className="mt-1 min-h-7 text-[10px] font-semibold text-[#ff9a82] hover:underline disabled:opacity-35">
+                      Remove
+                    </button>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <button

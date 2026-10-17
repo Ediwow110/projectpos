@@ -1,0 +1,48 @@
+import { expect, test } from "@playwright/test";
+import { apiAuthedContext, registerOperationalBusiness, seedProduct } from "./helpers";
+
+test("Atlas V4 chooses pieces before adding to sale and explicitly removes a line", async ({ page, request }, testInfo) => {
+  test.setTimeout(180_000);
+  const email = await registerOperationalBusiness(page, {
+    ownerName: "Quantity QA Owner",
+    email: `v4-quantity-${testInfo.project.name}-${Date.now()}@example.test`,
+    password: "correct-horse-12",
+    businessName: "Quantity QA Store",
+  });
+  const { headers } = await apiAuthedContext(request, email, "correct-horse-12", page);
+  await seedProduct(request, headers, { name: "Quantity Milk", priceMinor: 13500, stock: 30 });
+
+  await page.goto("/pos");
+  await page.getByRole("button", { name: "Set qty for Quantity Milk" }).click();
+  const dialog = page.getByRole("dialog", { name: "Set quantity for Quantity Milk" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("spinbutton", { name: "Pieces" }).fill("3");
+  await expect(dialog.getByText("₱405.00")).toBeVisible();
+  await dialog.getByRole("button", { name: "Add 3 pieces" }).click();
+  await expect(dialog).toBeHidden();
+
+  if (testInfo.project.name === "desktop") {
+    const cart = page.getByRole("complementary", { name: "Cart" });
+    await expect(cart.getByText("Qty 3")).toBeVisible();
+    await expect(cart.getByText("₱405.00")).toBeVisible();
+    await cart.getByRole("button", { name: "Remove Quantity Milk" }).click();
+    await expect(cart.getByText("Cart is empty. Tap products to add.")).toBeVisible();
+  } else {
+    const cartBar = page.getByRole("region", { name: testInfo.project.name === "tablet" ? "Tablet cart" : "Mobile cart" });
+    await cartBar.getByRole("button", { name: "View cart" }).click();
+    const cart = page.getByRole("dialog", { name: "Tablet cart details" });
+    await expect(cart.getByText("Quantity Milk")).toBeVisible();
+    await expect(cart.getByText("3 × ₱135.00 = ₱405.00")).toBeVisible();
+    await cart.getByRole("button", { name: "Remove Quantity Milk" }).click();
+    await expect(cart.getByText("Cart is empty. Tap products to add.")).toBeVisible();
+    await cart.getByRole("button", { name: "Close cart" }).click();
+  }
+
+  // Existing scan and one-tap sale behavior stays available; bulk entry is optional.
+  await page.getByRole("button", { name: /Quantity Milk ₱135\.00/ }).click();
+  if (testInfo.project.name === "desktop") {
+    await expect(page.getByRole("heading", { name: "Cart (1)" })).toBeVisible();
+  } else {
+    await expect(page.getByText("1 item in cart")).toBeVisible();
+  }
+});

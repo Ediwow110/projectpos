@@ -1,10 +1,11 @@
-import React, { type ReactNode } from "react";
+import React, { useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
 
 import { minorToMajorFixed } from "../lib/money";
 import { validProductImageUrl } from "../lib/product-image";
 import type { PosProduct } from "../lib/pos-sale-model";
 import { productInitials, productTileClass } from "../lib/pos-view";
+import { PosQuantityDialog } from "./PosQuantityDialog";
 
 interface RegisterOption {
   id: string;
@@ -35,7 +36,7 @@ interface PosProductCatalogProps {
   onQueryChange: (query: string) => void;
   onSearch: () => void;
   onCategoryChange: (categoryId: string) => void;
-  onAddProduct: (product: PosProduct) => void;
+  onAddProduct: (product: PosProduct, quantity?: number) => void;
   onAssignCustomer: () => void;
 }
 
@@ -63,6 +64,12 @@ export function PosProductCatalog({
   onAddProduct,
   onAssignCustomer,
 }: PosProductCatalogProps) {
+  const [pendingProduct, setPendingProduct] = useState<PosProduct | null>(null);
+  const quantityTrigger = useRef<HTMLButtonElement | null>(null);
+  function closeQuantity(): void {
+    setPendingProduct(null);
+    quantityTrigger.current?.focus();
+  }
   return (
     <section aria-label="Products" className="min-w-0 p-4 lg:max-xl:flex lg:max-xl:h-full lg:max-xl:flex-col lg:max-xl:px-7 lg:max-xl:pb-7 lg:max-xl:pt-6 xl:relative xl:flex xl:h-[866px] xl:flex-col xl:p-[18px] xl:pr-0">
       <label className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-[10px] font-semibold text-white/70 md:hidden">
@@ -165,7 +172,7 @@ export function PosProductCatalog({
         {products.map((product, index) => {
           const selected = selectedProductIds.has(product.id);
           return (
-            <li key={product.id} style={{ animation: `rise 0.35s ${Math.min(index * 0.02, 0.25)}s both` }}>
+            <li key={product.id} className="relative" style={{ animation: `rise 0.35s ${Math.min(index * 0.02, 0.25)}s both` }}>
               <button
                 type="button"
                 onClick={() => onAddProduct(product)}
@@ -192,7 +199,15 @@ export function PosProductCatalog({
                 </span>
                 <span className="mt-2.5 block truncate text-[13.5px] font-semibold lg:max-xl:absolute lg:max-xl:left-[13px] lg:max-xl:top-[131px] lg:max-xl:mt-0 lg:max-xl:max-w-[252px] lg:max-xl:text-[12px] xl:absolute xl:left-[11px] xl:top-[83px] xl:mt-0 xl:max-w-[120px] xl:text-[10px]">{product.name}</span>
                 <span className="money absolute bottom-3 left-3 block text-[13px] font-bold text-white/85 lg:max-xl:left-[13px] lg:max-xl:top-[185px] lg:max-xl:bottom-auto lg:max-xl:text-[11px] xl:left-[11px] xl:top-[125px] xl:bottom-auto xl:text-[10px]">₱{money(product.priceMinor)}</span>
-                <span data-ui="product-add" aria-hidden className="absolute hidden h-7 w-7 place-items-center rounded-lg bg-[#f35d3f] text-[18px] font-semibold text-[#211814] xl:left-[135px] xl:top-[113px] xl:grid">+</span>
+                <span data-ui="product-add" aria-hidden className="absolute hidden h-7 w-7 place-items-center rounded-lg bg-[#f35d3f] text-[18px] font-semibold text-[#211814] xl:left-[135px] xl:top-[81px] xl:grid">+</span>
+              </button>
+              <button type="button" aria-label={`Set qty for ${product.name}`} disabled={saleLocked}
+                onClick={(event) => {
+                  quantityTrigger.current = event.currentTarget;
+                  setPendingProduct(product);
+                }}
+                className="absolute bottom-2.5 right-2.5 z-10 min-h-9 rounded-lg border border-[#ffb7a4]/50 bg-[#4a2118] px-2.5 text-[10px] font-semibold text-[#ffb7a4] shadow-sm hover:border-[#f35d3f] hover:bg-[#6b3023] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffb7a4] disabled:opacity-35">
+                Set qty
               </button>
             </li>
           );
@@ -211,6 +226,14 @@ export function PosProductCatalog({
         </button>
       </div>
       {connectivityBanner}
+      {pendingProduct && !saleLocked ? (
+        <PosQuantityDialog product={pendingProduct}
+          onAdd={(quantity) => {
+            onAddProduct(pendingProduct, quantity);
+            closeQuantity();
+          }}
+          onClose={closeQuantity} />
+      ) : null}
     </section>
   );
 }

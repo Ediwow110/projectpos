@@ -131,14 +131,15 @@ export function buildOfflineSalePayload(
   };
 }
 
-export function addProductToCart(cart: PosCartEntry[], product: PosProduct): PosCartEntry[] {
+export function addProductToCart(cart: PosCartEntry[], product: PosProduct, quantity = 1): PosCartEntry[] {
+  if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 999) return cart;
   const existing = cart.find((entry) => entry.productId === product.id);
   if (existing) {
-    return cart.map((entry) => entry.productId === product.id ? { ...entry, qty: entry.qty + 1 } : entry);
+    return cart.map((entry) => entry.productId === product.id ? { ...entry, qty: entry.qty + quantity } : entry);
   }
   return [
     ...cart,
-    { productId: product.id, name: product.name, ...(product.imageUrl ? { imageUrl: product.imageUrl } : {}), priceMinor: product.priceMinor, qty: 1, lineDiscountMinor: 0 },
+    { productId: product.id, name: product.name, ...(product.imageUrl ? { imageUrl: product.imageUrl } : {}), priceMinor: product.priceMinor, qty: quantity, lineDiscountMinor: 0 },
   ];
 }
 

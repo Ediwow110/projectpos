@@ -105,6 +105,20 @@ describe("POS sale model", () => {
     expect(filterOfflineCatalog([coffee, tea], "cf", "c1")).toEqual([coffee]);
   });
 
+  it("adds a chosen quantity before checkout while preserving product order and prior discounts", () => {
+    const coffee = { id: "coffee", name: "Coffee", sku: null, categoryId: null, priceMinor: 2500, isActive: true };
+    const milk = { id: "milk", name: "Milk", sku: null, categoryId: null, priceMinor: 13500, isActive: true };
+    const first = addProductToCart([], coffee, 3);
+    const discounted = applyCartDiscounts(first, { coffee: 500 });
+    const next = addProductToCart(addProductToCart(discounted, milk, 2), coffee, 4);
+    expect(next.map((line) => [line.productId, line.qty])).toEqual([["coffee", 7], ["milk", 2]]);
+    expect(next[0].lineDiscountMinor).toBe(500);
+    expect(posDiscountSummary(next, 0).grossMinor).toBe(7 * 2500 + 2 * 13500);
+    expect(addProductToCart(next, coffee, 0)).toEqual(next);
+    expect(addProductToCart(next, coffee, 1.5)).toEqual(next);
+    expect(addProductToCart(next, coffee, 1000)).toEqual(next);
+  });
+
   it("applies fixed line and order discounts in minor units and caps them to the sale value", () => {
     const cart = [
       { productId: "p1", name: "Coffee", priceMinor: 2500, qty: 2, lineDiscountMinor: 0 },
