@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 
 import { minorToMajorFixed } from "../lib/money";
 import type { PosCartEntry } from "../lib/pos-sale-model";
@@ -58,6 +58,12 @@ export function PosPaymentWorkspace({
   onClose,
   onPay,
 }: PosPaymentWorkspaceProps) {
+  const desktopHeading = useRef<HTMLHeadingElement>(null);
+  const mobileHeading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    const desktop = window.matchMedia("(min-width: 1280px)").matches;
+    (desktop ? desktopHeading : mobileHeading).current?.focus();
+  }, []);
   const availableTiles = paymentTiles.filter((method) => !offline || method.key === "cash");
   const cashTender = effectiveMethod === "cash";
   const payMongoTender = ["card", "gcash", "maya", "qrph"].includes(effectiveMethod);
@@ -73,7 +79,7 @@ export function PosPaymentWorkspace({
         <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-white/10 bg-[#171614] shadow-2xl animate-[rise_0.3s_ease_both]">
           <div className="flex items-center justify-between px-5 pt-4">
             <div>
-              <h2 className="text-[15px] font-bold">Payment</h2>
+              <h2 ref={mobileHeading} tabIndex={-1} className="text-[15px] font-bold outline-none">Payment</h2>
               <p className="text-[11.5px] text-white/40">Current sale · {count} item{count === 1 ? "" : "s"}</p>
             </div>
             <button onClick={onClose} aria-label="Close payment" className="grid h-8 w-8 place-items-center rounded-lg bg-white/[0.07] text-white/60 hover:text-white">✕</button>
@@ -143,7 +149,7 @@ export function PosPaymentWorkspace({
           <p className="font-data text-[9px] font-medium uppercase tracking-[0.05em] text-[#ff765a]">
             PAYMENT / {registerSelected ? "REGISTER SELECTED" : "NO REGISTER"}
           </p>
-          <h2 className="font-display mt-5 text-[34px] font-bold">Take payment</h2>
+          <h2 ref={desktopHeading} tabIndex={-1} className="font-display mt-5 text-[34px] font-bold outline-none">Take payment</h2>
           <p className="font-data mt-4 text-[9px] font-medium uppercase tracking-[0.05em] text-[#9e948c]">Amount due</p>
           {giftCardLoadMinor > 0 ? <p className="mt-2 text-[10px] text-[#ffb7a4]">Gift-card load ₱{money(giftCardLoadMinor)} · external tender only</p> : null}
           <p className="money mt-1 text-[50px] font-bold leading-none">₱{money(due)}</p>

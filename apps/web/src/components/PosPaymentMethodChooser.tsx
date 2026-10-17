@@ -27,31 +27,59 @@ export function PosPaymentMethodChooser({
   onMoreMethods,
   onClose,
 }: PosPaymentMethodChooserProps) {
+  const dialogRef = useRef<HTMLElement>(null);
   const backButton = useRef<HTMLButtonElement>(null);
-  useEffect(() => { backButton.current?.focus(); }, []);
+  const returnFocus = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const trigger = document.activeElement;
+    if (trigger instanceof HTMLElement) returnFocus.current = trigger;
+    backButton.current?.focus();
+  }, []);
   const enabled = (key: string): boolean => (!offline || key === "cash") && methodAvailable(key);
+
+  function closeAndRestoreFocus(): void {
+    onClose();
+    // The opener remains in the underlying sale when the overlay unmounts.
+    requestAnimationFrame(() => returnFocus.current?.focus());
+  }
 
   return (
     <div
       className="fixed inset-0 z-[100] hidden place-items-center bg-[#202826]/35 p-4 backdrop-blur-[1px] xl:grid"
       onKeyDown={(event) => {
         if (event.key === "Escape") {
+          event.preventDefault();
           event.stopPropagation();
-          onClose();
+          closeAndRestoreFocus();
+        } else if (event.key === "Tab") {
+          const buttons = dialogRef.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)");
+          if (!buttons?.length) return;
+          const first = buttons[0];
+          const last = buttons[buttons.length - 1];
+          const active = document.activeElement;
+          if (event.shiftKey && (active === first || !dialogRef.current?.contains(active))) {
+            event.preventDefault();
+            last?.focus();
+          } else if (!event.shiftKey && (active === last || !dialogRef.current?.contains(active))) {
+            event.preventDefault();
+            first?.focus();
+          }
         }
       }}
     >
       <section
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="Payment"
         aria-labelledby="atlas-payment-chooser-title"
+        aria-describedby="atlas-payment-chooser-description"
         data-ui="atlas-v4-payment-chooser"
         className="flex min-h-[586px] w-full max-w-[530px] flex-col rounded-[17px] bg-white px-[26px] pt-[30px] pb-[17px] text-[#202826] shadow-[0_20px_65px_-12px_rgb(20_32_27/0.22)]"
       >
         <p className="text-[10px] font-medium uppercase tracking-[0.05em] text-[#da614c]">Workflow step</p>
         <h2 id="atlas-payment-chooser-title" className="font-display mt-6 text-[23px] font-semibold">Choose a payment method</h2>
-        <p className="mt-3 text-[13px] text-[#71807a]">Cash is local. Card and QR Ph use hosted payment.</p>
+        <p id="atlas-payment-chooser-description" className="mt-3 text-[13px] text-[#71807a]">Cash is local. Card and QR Ph use hosted payment.</p>
         <div className="mt-[40px] border-t border-[#e5e9e3] pt-[26px]">
           <div className="grid gap-[14px]">
             {METHODS.map((method) => (
@@ -80,7 +108,7 @@ export function PosPaymentMethodChooser({
           </button>
         </div>
         <div className="mt-auto flex items-center justify-end gap-5 border-t border-[#e5e9e3] pt-[17px]">
-          <button ref={backButton} type="button" onClick={onClose} aria-label="Back to sale"
+          <button ref={backButton} type="button" onClick={closeAndRestoreFocus} aria-label="Back to sale"
             className="min-h-11 rounded-lg px-6 text-[13px] font-medium text-[#53615a] hover:bg-[#eff2ed]">
             Back
           </button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type JSX } from "react";
+import { useEffect, useRef, useState, type JSX } from "react";
 import { applyCartDiscounts, posDiscountSummary } from "../../lib/pos-sale-model";
 import { ConnectivityBanner } from "../../lib/sync-ui";
 import { AppShell } from "../../components/AppShell";
@@ -19,6 +19,7 @@ import { usePosPageController } from "./use-pos-page-controller";
 
 export default function PosPage(): JSX.Element {
   const [paymentChooserOpen, setPaymentChooserOpen] = useState(false);
+  const paymentOpener = useRef<HTMLElement | null>(null);
   const {
     activeCategoryId,
     addToCart,
@@ -105,13 +106,37 @@ export default function PosPage(): JSX.Element {
     store,
   } = usePosPageController();
 
+  useEffect(() => {
+    if (!paymentChooserOpen) return;
+    const desktop = window.matchMedia("(min-width: 1280px)");
+    const followViewport = (): void => {
+      if (desktop.matches) return;
+      setPaymentChooserOpen(false);
+      setShowPay(true);
+    };
+    desktop.addEventListener("change", followViewport);
+    followViewport();
+    return () => desktop.removeEventListener("change", followViewport);
+  }, [paymentChooserOpen, setShowPay]);
+
   function openPaymentFlow(): void {
+    const opener = document.activeElement;
+    if (opener instanceof HTMLElement) paymentOpener.current = opener;
     setStatus("");
     if (window.matchMedia("(min-width: 1280px)").matches) {
       setPaymentChooserOpen(true);
     } else {
       setShowPay(true);
     }
+  }
+
+  function closePaymentDetails(): void {
+    setShowPay(false);
+    requestAnimationFrame(() => {
+      const target = paymentOpener.current;
+      if (target?.isConnected && target.getClientRects().length) target.focus();
+      else document.getElementById("pos-search")?.focus();
+    });
   }
 
   return (
@@ -359,7 +384,7 @@ export default function PosPage(): JSX.Element {
             internalInstrumentId={internalInstrumentId}
             onInternalInstrumentIdChange={setInternalInstrumentId}
             onReceivedChange={setReceived}
-            onClose={() => setShowPay(false)}
+            onClose={closePaymentDetails}
             onPay={() => void pay()}
           />
         ) : null}
