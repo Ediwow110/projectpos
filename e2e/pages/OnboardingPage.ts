@@ -14,8 +14,16 @@ export class OnboardingPage {
     await expect(this.page.getByRole("link", { name: /Back to dashboard/i })).toHaveCount(0);
   }
 
-  async completeCurrentStep(): Promise<void> {
-    await this.page.getByRole("button", { name: "Mark step complete" }).click();
+  async saveTaxConfiguration(): Promise<void> {
+    await this.page.getByLabel("Tax name").fill("No tax");
+    await this.page.getByLabel("Tax rate (%)").fill("0");
+    await this.page.getByRole("button", { name: "Save currency & tax" }).click();
+  }
+
+  async confirmReceiptSetup(): Promise<void> {
+    await expect(this.page.getByText("Automatic receipt number")).toBeVisible();
+    await this.page.getByLabel("I reviewed the receipt details for this business").check();
+    await this.page.getByRole("button", { name: "Confirm receipt setup" }).click();
   }
 
   async skipOptionalStep(): Promise<void> {

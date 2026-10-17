@@ -10,6 +10,7 @@ import { Panel } from "../../components/premium";
 import { NexposLogo } from "../../components/brand/NexposLogo";
 import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { ApiError, apiFetch } from "../../lib/api";
+import { ReceiptSetupForm, type ReceiptCopySettings } from "./ReceiptSetupForm";
 
 const ORDER = ["businessDetails", "taxCurrency", "receiptSetup", "products", "employees"] as const;
 type Step = (typeof ORDER)[number];
@@ -30,8 +31,8 @@ const STEP_META: Record<Step, { title: string; description: string; note: string
   },
   receiptSetup: {
     title: "Receipt setup",
-    description: "Confirm that receipt behavior is ready before the first live shift.",
-    note: "Receipt customization stays in its existing product surfaces; onboarding records the step state only.",
+    description: "Review your business receipt format before the first live shift.",
+    note: "Standard receipt formatting is available now; optional header and footer changes use the existing plan-gated settings.",
   },
   products: {
     title: "First products",
@@ -161,21 +162,27 @@ export default function OnboardingPage(): JSX.Element {
     if (unauthorized) router.replace("/login");
   }, [router, unauthorized]);
 
-  async function patchStep(step: Step, state: "done" | "skipped", taxSettings?: TaxSettings): Promise<void> {
+  async function patchStep(
+    step: Step,
+    state: "done" | "skipped",
+    options?: { taxSettings?: TaxSettings; receiptCopy?: ReceiptCopySettings; receiptPreviewConfirmed?: boolean },
+  ): Promise<void> {
     if (savingStep !== null) return;
     setError("");
     setSavingStep(step);
     try {
       const csrf = await apiFetch<{ csrfToken: string }>("/api/v1/auth/csrf");
-      if (taxSettings) {
+      if (options?.taxSettings || options?.receiptCopy) {
         await apiFetch("/api/v1/business/settings", {
           csrfToken: csrf.csrfToken,
-          init: { method: "PATCH", body: JSON.stringify(taxSettings) },
+          init: { method: "PATCH", body: JSON.stringify(options.taxSettings ?? options.receiptCopy) },
         });
       }
       await apiFetch("/api/v1/onboarding", {
         csrfToken: csrf.csrfToken,
-        init: { method: "PATCH", body: JSON.stringify({ step, state }) },
+        init: { method: "PATCH", body: JSON.stringify({
+          step, state, ...(options?.receiptPreviewConfirmed ? { receiptPreviewConfirmed: true } : {}),
+        }) },
       });
       await query.refetch();
       await queryClient.invalidateQueries({ queryKey: ["me"] });
@@ -297,7 +304,15 @@ export default function OnboardingPage(): JSX.Element {
               {steps[current] === "pending" && current === "taxCurrency" ? (
                 <TaxCurrencyForm
                   saving={savingStep !== null}
-                  onSave={(settings) => void patchStep("taxCurrency", "done", settings)}
+                  onSave={(settings) => void patchStep("taxCurrency", "done", { taxSettings: settings })}
+                />
+              ) : steps[current] === "pending" && current === "receiptSetup" ? (
+                <ReceiptSetupForm
+                  saving={savingStep !== null}
+                  onConfirm={(receiptCopy) => void patchStep("receiptSetup", "done", {
+                    receiptPreviewConfirmed: true,
+                    ...(receiptCopy ? { receiptCopy } : {}),
+                  })}
                 />
               ) : steps[current] === "pending" ? (
                 <div className="mt-6 flex flex-wrap gap-2">

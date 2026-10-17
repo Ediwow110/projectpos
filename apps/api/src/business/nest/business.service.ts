@@ -102,7 +102,7 @@ export class BusinessService {
   async patchOnboarding(
     businessId: string,
     actorId: string,
-    patch: { step: "businessDetails" | "taxCurrency" | "receiptSetup" | "products" | "employees"; state: "done" | "skipped" },
+    patch: { step: "businessDetails" | "taxCurrency" | "receiptSetup" | "products" | "employees"; state: "done" | "skipped"; receiptPreviewConfirmed?: boolean },
     requestId: string,
     granted: string[] = [],
   ): Promise<OnboardingState> {
@@ -123,6 +123,12 @@ export class BusinessService {
       }
     }
     const current = await this.getOnboarding(businessId);
+    if (patch.step === "receiptSetup" && patch.state === "done" &&
+        (patch.receiptPreviewConfirmed !== true ||
+          current.steps.businessDetails !== "done" ||
+          current.steps.taxCurrency !== "done")) {
+      throw new Error("ONBOARDING_SETTINGS_REQUIRED");
+    }
     const next = applyOnboardingPatch(current, patch);
     await this.db.saveSettings(businessId, { ...settings, onboarding: next });
     await this.db.appendAudit({

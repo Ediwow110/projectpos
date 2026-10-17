@@ -105,6 +105,28 @@ describe("phase11 settings gate and audit context", () => {
     )).resolves.toMatchObject({ currentStep: "receiptSetup" });
   });
 
+  it("requires a reviewed receipt configuration and completed tax setup before receipt signoff", async () => {
+    const db = createMemoryDb();
+    const biz = await db.createBusiness({ name: "Receipt Store", currency: "PHP" });
+    const svc = new BusinessService(db);
+    const confirmed = { step: "receiptSetup" as const, state: "done" as const, receiptPreviewConfirmed: true };
+
+    await expect(svc.patchOnboarding(
+      biz.id, "owner", confirmed, "premature", ["settings.write"],
+    )).rejects.toThrow("ONBOARDING_SETTINGS_REQUIRED");
+    await db.saveSettings(biz.id, { currency: "PHP", taxName: "No tax", taxRateBps: 0 });
+    await svc.patchOnboarding(biz.id, "owner", { step: "taxCurrency", state: "done" }, "tax", ["settings.write"]);
+
+    await expect(svc.patchOnboarding(
+      biz.id, "owner", { step: "receiptSetup", state: "done" }, "unreviewed", ["settings.write"],
+    )).rejects.toThrow("ONBOARDING_SETTINGS_REQUIRED");
+    expect((await svc.getOnboarding(biz.id)).steps.receiptSetup).toBe("pending");
+
+    await expect(svc.patchOnboarding(
+      biz.id, "owner", confirmed, "reviewed", ["settings.write"],
+    )).resolves.toMatchObject({ steps: { receiptSetup: "done" } });
+  });
+
   it.each(["businessDetails", "taxCurrency", "receiptSetup"] as const)(
     "rejects direct attempts to skip required onboarding step %s",
     async (step) => {

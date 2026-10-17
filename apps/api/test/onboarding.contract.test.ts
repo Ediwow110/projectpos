@@ -126,11 +126,19 @@ describe("onboarding HTTP contract", () => {
   });
 
   it("opens workspace APIs when required steps are complete, even with optional steps pending", async () => {
-    const saved = await request(app.getHttpServer())
+    const bypass = await request(app.getHttpServer())
       .patch("/api/v1/onboarding")
       .set("Cookie", cookie)
       .set("X-CSRF-Token", csrf)
       .send({ step: "receiptSetup", state: "done" });
+    expect(bypass.status).toBe(400);
+    expect(bypass.body.code).toBe("ONBOARDING_SETTINGS_REQUIRED");
+
+    const saved = await request(app.getHttpServer())
+      .patch("/api/v1/onboarding")
+      .set("Cookie", cookie)
+      .set("X-CSRF-Token", csrf)
+      .send({ step: "receiptSetup", state: "done", receiptPreviewConfirmed: true });
     expect(saved.status).toBe(200);
     expect(saved.body.steps.products).toBe("pending");
     expect(saved.body.steps.employees).toBe("pending");

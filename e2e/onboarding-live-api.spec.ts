@@ -48,10 +48,10 @@ test("real browser, web app, and API preserve onboarding gates and progress", as
   expect(bypass.status).toBe(400);
   expect(bypass.body.code).toBe("ONBOARDING_REQUIRED_STEP");
 
-  await expect(page.getByRole("button", { name: "Mark step complete" })).toBeVisible();
-  await onboarding.completeCurrentStep();
+  await expect(page.getByRole("button", { name: "Save currency & tax" })).toBeVisible();
+  await onboarding.saveTaxConfiguration();
   await expect(page.getByText("Receipt setup", { exact: true })).toBeVisible();
-  await onboarding.completeCurrentStep();
+  await onboarding.confirmReceiptSetup();
 
   await expect(page.getByText("First products", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "← Back to dashboard" })).toBeVisible();
@@ -88,10 +88,11 @@ test("new owner can add a product and record opening stock through the real inve
 
   await expect(page).toHaveURL(/\/onboarding$/);
   await expect(page.getByRole("heading", { name: "Currency & tax" })).toBeVisible();
-  for (const nextStep of ["Receipt setup", "First products"]) {
-    await page.getByRole("button", { name: "Mark step complete" }).click();
-    await expect(page.getByRole("heading", { name: nextStep })).toBeVisible();
-  }
+  const onboarding = new OnboardingPage(page);
+  await onboarding.saveTaxConfiguration();
+  await expect(page.getByRole("heading", { name: "Receipt setup" })).toBeVisible();
+  await onboarding.confirmReceiptSetup();
+  await expect(page.getByRole("heading", { name: "First products" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Mark step complete" })).toBeEnabled();
   await page.getByRole("link", { name: "Open products →" }).click();
   await expect(page).toHaveURL(/\/products$/);

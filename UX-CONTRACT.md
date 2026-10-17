@@ -52,6 +52,13 @@ No global toast provider is currently canonical. Status, warnings, errors, payme
 
 ## Component behavior
 
+### H5 owner onboarding — receipt readiness
+
+- Owners complete Currency & tax by saving the business's existing currency, a named tax rule and the rate; server-side completion is denied if values are missing or the currency differs from the registered business currency.
+- Receipt setup displays the registered business name and any saved receipt header/footer, plus an explanatory standard-receipt preview. Completion requires a review confirmation and completed business/tax steps; a bare onboarding PATCH cannot mark the step done.
+- Owners may optionally edit a receipt header/footer via the existing CSRF-protected business settings API, subject to the current paid `receipt_customization` entitlement. A denied customization request does not complete onboarding; standard-receipt review remains available regardless of plan.
+- The preview is not a test print, printer-enrollment flow, fiscal-document certification, or promise of legal compliance. Receipt numbering, totals and payment settlement keep their existing server-side contracts.
+
 ### Atlas V4 managed product images (feature-gated)
 
 - A logged-in **owner** may upload, crop/zoom-preview, replace or remove a product image in the Product Detail page when `GET /api/v1/product-media/capabilities` reports enabled. Other roles see no media-management controls.

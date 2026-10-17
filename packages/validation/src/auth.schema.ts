@@ -55,6 +55,7 @@ const ONBOARDING_STEPS = [
 export const onboardingPatchSchema = z.object({
   step: z.enum(ONBOARDING_STEPS),
   state: z.enum(["done", "skipped"]),
+  receiptPreviewConfirmed: z.boolean().optional(),
 });
 
 export const businessSettingsSchema = z.object({

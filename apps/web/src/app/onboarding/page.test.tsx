@@ -51,6 +51,17 @@ describe("onboarding navigation", () => {
     expect(html).not.toContain("Mark step complete");
   });
 
+  it("requires owner confirmation of receipt output instead of a blind step completion", () => {
+    fixture.data.currentStep = "receiptSetup";
+    fixture.data.steps.taxCurrency = "done";
+    const html = renderToStaticMarkup(<OnboardingPage />);
+    expect(html).toContain("Receipt preview");
+    expect(html).toContain("Automatic receipt number");
+    expect(html).toContain("I reviewed the receipt details");
+    expect(html).toContain("Confirm receipt setup");
+    expect(html).not.toContain("Mark step complete");
+  });
+
   it("lets owners go to the dashboard when only optional setup steps remain", () => {
     fixture.data.currentStep = "products";
     fixture.data.steps.taxCurrency = "done";
