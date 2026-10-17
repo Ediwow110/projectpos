@@ -403,6 +403,23 @@ describe("PayMongo adapter", () => {
     expect(client().verifyWebhook(raw, `t=${timestamp},te=deadbeef,li=`)).toBe(false);
   });
 
+  it("rejects signed timestamps outside the webhook freshness window, including numeric overflow", () => {
+    const raw = '{"data":{"id":"evt_timestamp"}}';
+    const sign = (timestamp: string) => createHmac("sha256", "whsec_test")
+      .update(`${timestamp}.${raw}`).digest("hex");
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const valid = String(nowSeconds);
+    const old = String(nowSeconds - 301);
+    const future = String(nowSeconds + 301);
+    const overflow = "9".repeat(400);
+    const unsafeInteger = "9007199254740993";
+    expect(client().verifyWebhook(raw, `t=${valid},te=${sign(valid)},li=`)).toBe(true);
+    for (const invalid of [old, future, overflow, unsafeInteger, "-1", "1e309", ""]) {
+      expect(client().verifyWebhook(raw, `t=${invalid},te=${sign(invalid)},li=`)).toBe(false);
+    }
+    expect(client().verifyWebhook(raw + " ", `t=${valid},te=${sign(valid)},li=`)).toBe(false);
+  });
+
   it("accepts only the signature slot matching the configured test or live API key", () => {
     const raw = '{"data":{"id":"evt_mode"}}';
     const timestamp = String(Math.floor(Date.now() / 1000));

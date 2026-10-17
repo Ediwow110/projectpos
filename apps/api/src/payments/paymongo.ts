@@ -309,8 +309,12 @@ export class PayMongoHttpClient implements PayMongoPort {
     );
     const timestamp = parts["t"];
     if (!timestamp || !/^\d+$/.test(timestamp)) return false;
-    const ageSeconds = Math.abs(Date.now() / 1000 - Number(timestamp));
-    if (Number.isFinite(ageSeconds) && ageSeconds > this.config.webhookToleranceSeconds) return false;
+    // Reject unrepresentable integers before evaluating freshness. Numeric
+    // overflow to Infinity must never bypass the webhook replay window.
+    const issuedAtSeconds = Number(timestamp);
+    if (!Number.isSafeInteger(issuedAtSeconds)) return false;
+    const ageSeconds = Math.abs(Date.now() / 1000 - issuedAtSeconds);
+    if (!Number.isFinite(ageSeconds) || ageSeconds > this.config.webhookToleranceSeconds) return false;
     const expected = createHmac("sha256", this.config.webhookSecret)
       .update(`${timestamp}.${rawBody}`)
       .digest("hex");

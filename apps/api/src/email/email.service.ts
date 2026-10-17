@@ -149,22 +149,28 @@ export class BrevoApiTransport implements MailTransport {
 
   async send(message: MailMessage): Promise<void> {
     const sender = parseMailbox(message.from);
-    const response = await this.fetchImpl("https://api.brevo.com/v3/smtp/email", {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        "content-type": "application/json",
-        "api-key": this.apiKey,
-      },
-      body: JSON.stringify({
-        sender,
-        to: [{ email: message.to }],
-        subject: message.subject,
-        textContent: message.text,
-        htmlContent: message.html,
-      }),
-      signal: AbortSignal.timeout(10_000),
-    });
+    let response: Response;
+    try {
+      response = await this.fetchImpl("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+          "api-key": this.apiKey,
+        },
+        body: JSON.stringify({
+          sender,
+          to: [{ email: message.to }],
+          subject: message.subject,
+          textContent: message.text,
+          htmlContent: message.html,
+        }),
+        signal: AbortSignal.timeout(10_000),
+      });
+    } catch {
+      // Never propagate provider/network exception details to API callers.
+      throw new Error("EMAIL_DELIVERY_FAILED");
+    }
     if (!response.ok) throw new Error("EMAIL_DELIVERY_FAILED");
   }
 }

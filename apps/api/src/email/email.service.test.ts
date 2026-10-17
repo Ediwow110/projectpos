@@ -240,4 +240,18 @@ describe("transactional email", () => {
       }),
     ).rejects.toThrow("EMAIL_DELIVERY_FAILED");
   });
+
+  it("normalizes Brevo network errors and timeouts without leaking provider details", async () => {
+    const fakeFetch: typeof fetch = async () => {
+      throw new Error("secret upstream DNS and key detail");
+    };
+    const transport = new BrevoApiTransport("secret-api-key", fakeFetch);
+    await expect(transport.send({
+      from: "NexPOS <noreply@example.com>",
+      to: "owner@example.com",
+      subject: "Verify",
+      text: "Test",
+      html: "<p>Test</p>",
+    })).rejects.toThrow(/^EMAIL_DELIVERY_FAILED$/);
+  });
 });
