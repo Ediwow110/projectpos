@@ -32,15 +32,16 @@ describe("pre-auth privacy presentation", () => {
     expect(login).toContain("Create account");
   });
 
-  it("keeps login and registration on the same auth layout grid", () => {
+  it("keeps login and registration aligned on the shared Atlas V4 entry layout", () => {
     const login = readFileSync(resolve(process.cwd(), "src/app/login/page.tsx"), "utf8");
     const register = readFileSync(resolve(process.cwd(), "src/app/register/page.tsx"), "utf8");
 
     for (const source of [login, register]) {
-      expect(source).toContain("lg:grid-cols-[1.08fr_.92fr]");
-      expect(source).toContain("lg:mt-28");
-      expect(source).toContain("min-h-[720px]");
-      expect(source).toContain("h-[720px] w-[430px]");
+      expect(source).toContain("lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1fr)]");
+      expect(source).toContain("AtlasEntryBrand");
+      expect(source).toContain("lg:min-h-screen");
+      expect(source).toContain("animate-auth-copy");
+      expect(source).toContain("animate-auth-card atlas-panel");
       expect(source).toContain("max-w-[536px]");
     }
   });

@@ -320,7 +320,7 @@ export async function createTestApp(options: { paymongo?: PayMongoPort; humanVer
                 businessTimezone: "Asia/Manila",
                 taxName: "No tax",
                 taxRateBps: 0,
-                receiptHeader: input.businessName,
+                standardReceiptConfirmed: true,
               });
               return result;
             };

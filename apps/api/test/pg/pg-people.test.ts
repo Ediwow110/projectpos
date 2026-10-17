@@ -10,7 +10,7 @@ import type { DbCustomer, DbExchange, DbExpense, DbRefund, DbRefundItem } from "
 // behavior — same tenant filters, same ordering, null for missing/cross-tenant
 // rows, [] for empty lists. Refund/RefundItem/Expense have no saleId/shiftId
 // FKs in the DDL (only businessId), so fabricated parent ids are safe.
-const URL = `${process.env["PGTEST_BASE"] ?? "postgres://pos:pos@localhost:5433"}/pos_test_pg`;
+const URL = `${process.env["PGTEST_BASE"] ?? "postgres://pos:pos@localhost:5433"}/${process.env["PGTEST_DB"] ?? "pos_test_pg"}`;
 const uniq = (p: string) => `${p}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
