@@ -5,8 +5,9 @@ export class DashboardPage {
 
   async expectEmptyState(): Promise<void> {
     await expect(this.page).toHaveURL(/\/$/);
-    await expect(this.page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
-    await expect(this.page.getByText("Getting started", { exact: true })).toBeVisible();
+    const ownerOverview = this.page.getByRole("region", { name: "Atlas owner overview" });
+    await expect(ownerOverview.getByRole("heading", { name: "Owner overview", exact: true })).toBeVisible();
+    await expect(ownerOverview.getByText("Sales in selected period", { exact: true })).toBeVisible();
     await expect(this.page.getByRole("link", { name: "Continue setup" })).toHaveCount(0);
   }
 }
