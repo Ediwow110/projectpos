@@ -14,6 +14,8 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 $container = "nexpos-h5-export-" + [guid]::NewGuid().ToString("N").Substring(0, 12)
 $sqlFile = Join-Path $env:TEMP ("nexpos-h5-export-counts-" + [guid]::NewGuid().ToString("N") + ".sql")
+$metaFile = Join-Path $env:TEMP ("nexpos-h5-export-meta-" + [guid]::NewGuid().ToString("N") + ".sh")
+$dumpFile = Join-Path $env:TEMP ("nexpos-h5-export-dump-" + [guid]::NewGuid().ToString("N") + ".sh")
 $plainDump = Join-Path $env:TEMP ("nexpos-h5-export-plaintext-" + [guid]::NewGuid().ToString("N") + ".dump")
 $stage = $null
 $running = $false
@@ -103,7 +105,7 @@ try {
   docker run --rm -d --name $container --network bridge `
     -e H5_DATABASE_URL -e PGSSLMODE=require `
     -e "PGOPTIONS=-c default_transaction_read_only=on" `
-    postgres:17-alpine sh -c "sleep 900" | Out-Null
+    postgres:17-alpine sleep 900 | Out-Null
   Assert-DockerExit "start short-lived PostgreSQL client"
   $running = $true
 
@@ -114,8 +116,31 @@ try {
   [IO.File]::WriteAllText($sqlFile, $sql, (New-Object Text.UTF8Encoding($false)))
   docker cp $sqlFile "$($container):/tmp/h5-source-counts.sql" | Out-Null
   Assert-DockerExit "copy metadata count query"
-  $metaCommand = 'exec psql -X -v ON_ERROR_STOP=1 -A -t -F "|" -d "$H5_DATABASE_URL" -f /tmp/h5-source-counts.sql'
-  $preLines = @((docker exec $container sh -c $metaCommand | Out-String).Trim() -split '\r?\n')
+
+  # Windows PowerShell strips nested quotes when sending a long shell
+  # command through Docker. This previously produced "sh: -d: not found"
+  # and "psql: option requires an argument: F". Use two non-secret script
+  # files instead so sh receives all arguments without host-shell re-parsing.
+  # The URI is NOT passed through the host PowerShell/Docker command line
+  # or written into scripts, but libpq clients receive it as an argument
+  # within the short-lived container (which trusted Docker admins can inspect).
+  $metaScript = @'
+#!/bin/sh
+set -eu
+exec psql -X -v ON_ERROR_STOP=1 -A -t -F '|' -d "$H5_DATABASE_URL" -f /tmp/h5-source-counts.sql
+'@
+  $dumpScript = @'
+#!/bin/sh
+set -eu
+exec pg_dump -d "$H5_DATABASE_URL" --schema=public --format=custom --no-owner --no-privileges --serializable-deferrable --file=/tmp/h5-fresh.dump
+'@
+  [IO.File]::WriteAllText($metaFile, ($metaScript.Replace([string][char]13, "") + [string][char]10), (New-Object Text.UTF8Encoding($false)))
+  [IO.File]::WriteAllText($dumpFile, ($dumpScript.Replace([string][char]13, "") + [string][char]10), (New-Object Text.UTF8Encoding($false)))
+  docker cp $metaFile "$($container):/tmp/h5-meta.sh" | Out-Null
+  Assert-DockerExit "copy metadata shell wrapper"
+  docker cp $dumpFile "$($container):/tmp/h5-dump.sh" | Out-Null
+  Assert-DockerExit "copy export shell wrapper"
+  $preLines = @((docker exec $container sh /tmp/h5-meta.sh | Out-String).Trim() -split '\r?\n')
   Assert-DockerExit "read authorized H5 metadata"
   $pre = $preLines[0]
   if ($preLines.Count -ne 4 -or
@@ -134,10 +159,9 @@ try {
       [int]$countFields[3] -ne $ExpectedPublicTables) {
     throw "H5 migrations/tables differ from required release baseline; no backup accepted"
   }
-  $dumpCommand = 'exec pg_dump -d "$H5_DATABASE_URL" --schema=public --format=custom --no-owner --no-privileges --serializable-deferrable --file=/tmp/h5-fresh.dump'
-  docker exec $container sh -c $dumpCommand | Out-Null
+  docker exec $container sh /tmp/h5-dump.sh | Out-Null
   Assert-DockerExit "create consistent read-only public-schema dump"
-  $postLines = @((docker exec $container sh -c $metaCommand | Out-String).Trim() -split '\r?\n')
+  $postLines = @((docker exec $container sh /tmp/h5-meta.sh | Out-String).Trim() -split '\r?\n')
   Assert-DockerExit "recheck H5 metadata after dump"
   if (($postLines -join '|') -ne ($preLines -join '|')) {
     throw "H5 metadata changed during export; refusing inconsistent evidence"
@@ -201,6 +225,8 @@ finally {
   if ($running) { docker stop $container 2>$null | Out-Null }
   if (Test-Path -LiteralPath $plainDump) { Remove-Item -LiteralPath $plainDump -Force }
   if (Test-Path -LiteralPath $sqlFile) { Remove-Item -LiteralPath $sqlFile -Force }
+  if (Test-Path -LiteralPath $metaFile) { Remove-Item -LiteralPath $metaFile -Force }
+  if (Test-Path -LiteralPath $dumpFile) { Remove-Item -LiteralPath $dumpFile -Force }
   if ($stage -and (Test-Path -LiteralPath $stage)) { Remove-Item -LiteralPath $stage -Force -Recurse }
   if (-not $publicationComplete) {
     if ($publishedArchive -and (Test-Path -LiteralPath $publishedArchive)) {
