@@ -600,6 +600,7 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
 
       <Modal
         open={refundMode !== null && sale !== undefined}
+        variant={refundMode === "approve" ? "standard" : "atlasFlow"}
         onClose={() => !busy && setRefundMode(null)}
         title={refundMode === "request" ? "Request refund" : refundMode === "approve" ? "Approve refund" : "Reject refund request"}
         description={refundMode === "approve" ? "Choose exact merchandise quantities, gift-card load amounts, and/or the full remaining delivery charge. Gift-card loads return only to the original gift card." : "Record a clear reason so the refund decision remains auditable."}

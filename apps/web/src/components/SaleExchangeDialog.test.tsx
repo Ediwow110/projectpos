@@ -21,6 +21,9 @@ describe("sale exchange dialog", () => {
       />,
     );
     expect(html).toContain("Exchange items");
+    expect(html).toContain('data-ui="atlas-flow-modal"');
+    expect(html).toContain("Refunds and exchanges use the original sale");
+    expect(html).toContain("original cash tender");
     expect(html).toContain("Cash-settled sale");
     expect(html).toContain("Original Shirt");
     expect(html).toContain("Replacement Shirt");

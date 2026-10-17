@@ -12,6 +12,7 @@ import { ManagerApprovalDialog } from "../../components/ManagerApprovalDialog";
 import { PosPaymentWorkspace } from "../../components/PosPaymentWorkspace";
 import { PosPaymentMethodChooser } from "../../components/PosPaymentMethodChooser";
 import { PosSaleConfirmedDialog } from "../../components/PosSaleConfirmedDialog";
+import { PosPaymentUnknownDialog } from "../../components/PosPaymentUnknownDialog";
 import { PosProductCatalog } from "../../components/PosProductCatalog";
 import { PosResponsiveCart } from "../../components/PosResponsiveCart";
 import { GiftCardLoadDialog } from "../../components/GiftCardLoadDialog";
@@ -20,6 +21,7 @@ import { usePosPageController } from "./use-pos-page-controller";
 
 export default function PosPage(): JSX.Element {
   const [paymentChooserOpen, setPaymentChooserOpen] = useState(false);
+  const [unknownDialogDismissedFor, setUnknownDialogDismissedFor] = useState<string | null>(null);
   const paymentOpener = useRef<HTMLElement | null>(null);
   const {
     activeCategoryId,
@@ -395,6 +397,12 @@ export default function PosPage(): JSX.Element {
         {giftCardResult ? <GiftCardLoadResultDialog code={giftCardResult.code} amountMinor={giftCardResult.amountMinor} onClose={() => setGiftCardResult(null)} /> : null}
         {confirmedSale && !giftCardResult ? (
           <PosSaleConfirmedDialog sale={confirmedSale} onClose={() => setConfirmedSale(null)} />
+        ) : null}
+        {reconcileSaleId && !showPay && !giftCardResult && unknownDialogDismissedFor !== reconcileSaleId ? (
+          <PosPaymentUnknownDialog
+            saleId={reconcileSaleId}
+            onClose={() => setUnknownDialogDismissedFor(reconcileSaleId)}
+          />
         ) : null}
       </div>
     </AppShell>

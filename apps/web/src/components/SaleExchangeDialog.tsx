@@ -123,21 +123,22 @@ export function SaleExchangeDialog({
   return (
     <Modal
       open
+      variant="atlasFlow"
       title="Exchange items"
-      description="Return items from this completed cash sale and replace them at current catalog pricing."
+      description="Refunds and exchanges use the original sale. Select exact return and replacement quantities."
       onClose={() => !busy && onClose()}
       footer={
         <div className="flex flex-wrap justify-end gap-2">
           <GhostButton type="button" onClick={onClose} disabled={busy}>Cancel</GhostButton>
-          <PrimaryButton type="submit" form="sale-exchange-form" disabled={busy}>
+          <PrimaryButton type="submit" form="sale-exchange-form" className="!bg-[#202826] !shadow-none hover:!bg-[#36443c]" disabled={busy}>
             {busy ? "Completing…" : "Complete exchange"}
           </PrimaryButton>
         </div>
       }
     >
       <form id="sale-exchange-form" noValidate onSubmit={submit} className="space-y-5">
-        <div className="rounded-xl border border-[#f0e2d7] bg-[#fff8f3] p-4 text-[11px] leading-5 text-[#6d6057]">
-          <strong>Cash-settled sale only.</strong> NexPOS records the return and replacement as linked gross transactions, while the register cash movements net to the customer difference shown below. Electronic-tender exchanges are not simulated.
+        <div className="rounded-[8px] bg-[#eff2ed] p-4 text-[11px] leading-5 text-[#53615a]">
+          <strong className="text-[#202826]">Cash-settled sale only.</strong> Returns and replacements are linked to the original sale. Any customer difference uses the original cash tender. Electronic-tender exchanges are not simulated.
         </div>
 
         <section className="space-y-3" aria-label="Items to return">
@@ -226,7 +227,7 @@ export function SaleExchangeDialog({
           />
         </label>
 
-        <section className="grid gap-3 rounded-xl bg-[#f7f1ea] p-4 text-[11px] sm:grid-cols-3" aria-label="Exchange preview">
+        <section className="grid gap-3 rounded-xl bg-[#eff2ed] p-4 text-[11px] sm:grid-cols-3" aria-label="Exchange preview">
           <div><span className="text-[#8b8077]">Return value</span><p className="font-data mt-1 font-semibold text-[#2a241f]">₱{money(preview.returnMinor)}</p></div>
           <div><span className="text-[#8b8077]">Replacement value</span><p className="font-data mt-1 font-semibold text-[#2a241f]">₱{money(preview.replacementMinor)}</p></div>
           <div className="sm:text-right"><span className="text-[#8b8077]">Net difference</span><p className="font-data mt-1 font-bold text-[#e44e34]">{netLabel}</p></div>

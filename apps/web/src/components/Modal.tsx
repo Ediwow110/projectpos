@@ -21,6 +21,7 @@ export function Modal({
   footer,
   onClose,
   variant = "standard",
+  hideHeaderClose = false,
 }: {
   open: boolean;
   title: string;
@@ -29,6 +30,7 @@ export function Modal({
   footer?: ReactNode;
   onClose: () => void;
   variant?: "standard" | "atlasFlow";
+  hideHeaderClose?: boolean;
 }): JSX.Element | null {
   const dialogRef = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
@@ -141,14 +143,14 @@ export function Modal({
             <h2 id={titleId} className={"font-display font-semibold " + (atlasFlow ? "mt-7 text-[25px] text-[#202826]" : "mt-1 text-[22px] text-[#17130f]")}>{title}</h2>
             {description ? <p id={descriptionId} className={"max-w-2xl leading-5 " + (atlasFlow ? "mt-2 text-[14px] text-[#71807a]" : "mt-1 text-[12px] text-[#73685f]")}>{description}</p> : null}
           </div>
-          <button
+          {!hideHeaderClose ? <button
             type="button"
             onClick={onClose}
             aria-label="Close"
             className={"grid h-11 w-11 shrink-0 place-items-center rounded-[10px] text-lg transition " + (atlasFlow ? "border border-[#e4e9e3] bg-white text-[#71807a] hover:bg-[#eff2ed] hover:text-[#202826]" : "border border-[#eee4db] bg-[#fcf8f3] text-[#73685f] hover:bg-[#fff0ea] hover:text-[#e44e34]")}
           >
             ×
-          </button>
+          </button> : null}
         </header>
         <div className={"min-h-0 flex-1 overflow-y-auto " + (atlasFlow ? "px-[26px] py-5" : "px-5 py-5 sm:px-6")}>{children}</div>
         {footer ? <footer className={"border-t bg-white " + (atlasFlow ? "border-[#e4e9e3] px-[26px] py-[17px]" : "border-[#eadfd6] px-5 py-4 sm:px-6")}>{footer}</footer> : null}
