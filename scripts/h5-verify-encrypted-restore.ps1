@@ -13,7 +13,8 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$EncryptedArchivePath,
   [string]$ManifestPath = "",
-  [string]$ExpectedProjectId = ""
+  [string]$ExpectedProjectId = "",
+  [string[]]$RequiredMigrations = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -102,15 +103,32 @@ try {
   Assert-DockerExit "restore supplied backup to offline database"
 
   $sql = 'SELECT (SELECT count(*) FROM public._migrations), (SELECT count(*) FROM public."Business"), (SELECT count(*) FROM public."Sale"), (SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname = ''public'');'
+  if ($RequiredMigrations.Count -gt 0) {
+    foreach ($name in $RequiredMigrations) {
+      if ($name -notmatch '^[a-z0-9_]+$') { throw "Invalid required migration name" }
+    }
+    $names = ($RequiredMigrations | ForEach-Object { "'$_'" }) -join ","
+    $sql += "`nSELECT name FROM public._migrations WHERE name IN ($names) ORDER BY name;"
+  }
   # A copied query file preserves PostgreSQL's quoted mixed-case identifiers
   # across Windows PowerShell -> docker exec argument parsing.
   [IO.File]::WriteAllText($countsQueryFile, $sql, (New-Object Text.UTF8Encoding($false)))
   docker cp $countsQueryFile "$($container):/tmp/h5-counts.sql" | Out-Null
   Assert-DockerExit "copy metadata-only verification SQL to offline container"
-  $counts = (docker exec $container psql -X -U pos -d pos -v ON_ERROR_STOP=1 -A -t -F '|' -f /tmp/h5-counts.sql | Out-String).Trim()
+  $lines = ((docker exec $container psql -X -U pos -d pos -v ON_ERROR_STOP=1 -A -t -F '|' -f /tmp/h5-counts.sql | Out-String).Trim() -split '\r?\n')
   Assert-DockerExit "verify offline restored row/table counts"
+  $counts = $lines[0]
   if ($counts -ne $sourceCounts) {
     throw "Restored counts do not match manifest; expected $sourceCounts, got $counts"
+  }
+  if ($RequiredMigrations.Count -gt 0) {
+    $expectedNames = @($RequiredMigrations | Sort-Object -Unique)
+    $restoredNames = @($lines | Select-Object -Skip 1)
+    if ($expectedNames.Count -ne $restoredNames.Count -or
+        (($expectedNames -join '|') -ne ($restoredNames -join '|'))) {
+      throw "Restored snapshot is missing one or more required migrations"
+    }
+    Write-Output "REQUIRED_MIGRATIONS=PASS"
   }
   Write-Output "RESULT=PASS"
   Write-Output "MODE=OFFLINE_EXISTING_SNAPSHOT"

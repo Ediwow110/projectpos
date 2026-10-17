@@ -86,3 +86,60 @@ If the H5 connection secret is unavailable to the authorized execution
 environment, **stop**. Do not fake a fresh backup using local migrations,
 Supabase metadata APIs or a schema-only export. Do not paste a database URL
 into a chat or commit it to the repository.
+
+### Prepare a fresh H5 public-schema backup (requires authorized connection)
+
+The isolated Windows worktree also includes:
+`scripts/h5-create-fresh-encrypted-backup.ps1`
+
+By default this command **only checks local readiness**; it does not connect,
+export, create files, or use provider secrets:
+
+```powershell
+./scripts/h5-create-fresh-encrypted-backup.ps1
+```
+
+Expected gate as of the 2026-10-18 read-only H5 review:
+`42` applied migrations and `93` `public` tables, with
+`0040_product_media` and `0048_h4r9_tenant_integrity`.
+Reconfirm if the source has changed before running a later export.
+
+Once an authorized operator has provided `H5_DATABASE_URL` to the Windows
+**process environment** using an approved secret manager (not command-line
+arguments, source files or chat), the operator can explicitly run:
+
+```powershell
+./scripts/h5-create-fresh-encrypted-backup.ps1 -Execute
+```
+
+Never copy the database URI into this repository, a shell transcript,
+PowerShell history, CI logs, or chat. Clear the process environment on
+completion. This command refuses a missing variable, other Supabase project
+host/user identities, insecure SSL flags, a non-PostgreSQL-17 source, and
+schema counts/migration names that do not match the release baseline.
+
+The export client runs as a short-lived `postgres:17-alpine` container using
+an inherited environment-variable **name**, never a literal URI in a Docker
+command argument. **Docker administrators can inspect container environment
+variables while the client exists**, so use only a trusted local Docker
+machine. The client uses TLS and a read-only transaction default and creates
+no remote database objects. It saves a custom-format `public` dump briefly
+in the Docker container and Windows TEMP, encrypts with CurrentUser DPAPI,
+then verifies a disposable `--network none` PostgreSQL 17 restore before
+publishing a newly named encrypted archive and its manifest. Temporary
+plaintext and incomplete staging files are cleaned by a `finally` block;
+check manually after a forcibly terminated or crashed process. Never
+overwrite the 2026-10-17 backup.
+
+The new backup remains a `public`-only export, not a full Supabase disaster
+recovery solution. Verify and separately back up Storage object bytes, managed
+authentication configuration, provider settings, offsite encrypted copies and
+an independent restore before changing the H5 release from HOLD / NO-GO.
+
+**Execution validation status:** As of 2026-10-18, the safe preflight and
+missing-secret refusal were tested. The fresh remote-export path was **not**
+executed because the local H5 connection variable was absent. The existing
+encrypted-archive restore drill passed, and a stale snapshot missing
+`0040_product_media` was correctly rejected by the new required-migration
+check. Do not present the fresh-export path as verified until it is executed
+against an authorized H5 source and its new archive is restored successfully.
