@@ -15,7 +15,7 @@ describe("phase1 exit", () => {
     const hash = await hashPassword("correct-horse-12");
     expect(await verifyPassword(hash, "correct-horse-12")).toBe(true);
     let s = defaultOnboardingState();
-    for (const step of ["taxCurrency", "receiptSetup"] as const) {
+    for (const step of ["businessDetails", "taxCurrency", "receiptSetup"] as const) {
       s = applyOnboardingPatch(s, { step, state: "done" });
     }
     s = applyOnboardingPatch(s, { step: "products", state: "skipped" });
