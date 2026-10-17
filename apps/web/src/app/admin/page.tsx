@@ -7,22 +7,13 @@ import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "../../components/AppShell";
 import { PageHeader, Panel, SectionHeader } from "../../components/premium";
 import { apiFetch } from "../../lib/api";
+import { businessAdminDestinationsForRole } from "../../lib/admin-destinations";
 import { AdminHelpActions } from "./AdminHelpActions";
 
 interface Me {
   role: string;
   businessName?: string;
 }
-
-const OWNER_DESTINATIONS = [
-  { href: "/admin/owner-controls", title: "Owner controls", description: "Review staff access, branches, account security and sensitive-action safeguards.", icon: "◆" },
-  { href: "/team", title: "Team", description: "Add staff, review roles, and deactivate access.", icon: "◎" },
-  { href: "/devices", title: "Devices", description: "Register, review, and revoke trusted tills or workstations.", icon: "▦" },
-  { href: "/branches", title: "Branches", description: "Manage the store locations used by operational records.", icon: "⌘" },
-  { href: "/registers", title: "Registers", description: "Maintain the registers used for shifts and selling.", icon: "▣" },
-  { href: "/printers", title: "Printers", description: "Pair receipt printers, choose defaults, test output, and review print queues.", icon: "▧" },
-  { href: "/admin/loyalty", title: "Loyalty settings", description: "Configure earn and redeem rules for the customer loyalty program.", icon: "✦" },
-] as const;
 
 export default function AdminPage(): JSX.Element {
   const meQuery = useQuery({
@@ -32,12 +23,10 @@ export default function AdminPage(): JSX.Element {
   });
   const role = meQuery.data?.role ?? "cashier";
   const canAdmin = role === "owner" || role === "manager";
-  const destinations = role === "owner"
-    ? OWNER_DESTINATIONS
-    : OWNER_DESTINATIONS.filter((item) => item.href !== "/team");
+  const destinations = businessAdminDestinationsForRole(role);
 
   return (
-    <AppShell businessName={meQuery.data?.businessName} role={role}>
+    <AppShell businessName={meQuery.data?.businessName} role={role} atlasApprovals={role === "manager"}>
       <main className="mx-auto max-w-[1240px] space-y-5 px-4 pb-10 pt-3 sm:px-6">
         <PageHeader
           eyebrow="Administration / Help"
@@ -45,6 +34,15 @@ export default function AdminPage(): JSX.Element {
           description="Keep lower-frequency workspace controls discoverable without crowding daily selling and inventory workflows."
           actions={<AdminHelpActions />}
         />
+        {canAdmin ? (
+          <section data-ui="atlas-business-admin-scope" aria-label="Business administration scope"
+            className="rounded-xl border border-[#e5e9e3] bg-white px-5 py-4">
+            <h2 className="font-display text-[16px] font-semibold text-[#202826]">Business administration</h2>
+            <p className="mt-2 text-[12px] leading-5 text-[#53615a]">
+              These controls apply to your authorized business. The platform tenant directory is separate and is not available through this workspace.
+            </p>
+          </section>
+        ) : null}
 
         {!meQuery.isLoading && !canAdmin ? (
           <Panel className="border-[#f1d6ad] bg-[#fff8ea] p-5">
@@ -61,12 +59,12 @@ export default function AdminPage(): JSX.Element {
               <Link
                 key={item.href}
                 href={item.href}
-                className="group rounded-2xl border border-[#eee4db] bg-white p-5 shadow-[0_10px_28px_-10px_rgb(28_20_15/0.10)] transition hover:-translate-y-0.5 hover:border-[#f2b8a9] hover:shadow-[0_14px_32px_-12px_rgb(28_20_15/0.16)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f35d3f] focus-visible:ring-offset-2 motion-reduce:transform-none"
+                className="group rounded-xl border border-[#e5e9e3] bg-white p-5 shadow-[0_3px_11px_rgba(20,38,31,0.04)] transition hover:-translate-y-0.5 hover:border-[#b0c5b6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#267552] focus-visible:ring-offset-2 motion-reduce:transform-none"
               >
-                <span aria-hidden className="grid h-10 w-10 place-items-center rounded-xl bg-[#fff0ea] font-data text-sm font-semibold text-[#e44e34]">{item.icon}</span>
-                <h2 className="font-display mt-4 text-[17px] font-semibold text-[#17130f]">{item.title}</h2>
-                <p className="mt-2 text-[12px] leading-5 text-[#73685f]">{item.description}</p>
-                <span className="mt-4 inline-flex text-[11px] font-semibold text-[#e44e34]">Open {item.title} →</span>
+                <span aria-hidden className="grid h-10 w-10 place-items-center rounded-xl bg-[#e9f4ec] font-data text-sm font-semibold text-[#267552]">{item.icon}</span>
+                <h2 className="font-display mt-4 text-[17px] font-semibold text-[#202826]">{item.title}</h2>
+                <p className="mt-2 text-[12px] leading-5 text-[#53615a]">{item.description}</p>
+                <span className="mt-4 inline-flex text-[11px] font-semibold text-[#267552]">Open {item.title} →</span>
               </Link>
             ))}
           </section>

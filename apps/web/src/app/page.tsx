@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { AppShell } from "../components/AppShell";
+import { AtlasManagerControlCenter } from "../components/AtlasManagerControlCenter";
 import { NexposMark } from "../components/brand/NexposLogo";
 import { MetricCard, PageHeader, Panel, SectionHeader } from "../components/premium";
 import { Card, Delta, Peso, StatusPill } from "../components/ui";
@@ -166,6 +167,28 @@ export default function DashboardPage(): JSX.Element {
   const activeMetric = available.includes(metric) ? metric : "revenue";
   const hasData = (data?.kpis.orders.value ?? 0) > 0;
   const attention = attentionRows(data?.attention ?? []);
+
+  if (me.role === "manager") {
+    return (
+      <AppShell businessName={me.businessName} role={me.role} atlasApprovals>
+        <main className="mx-auto w-full max-w-[1390px] space-y-5 px-4 pb-10 pt-7 sm:px-6 xl:px-8">
+          <AtlasManagerControlCenter
+            overview={data ? {
+              orders: data.kpis.orders.value,
+              netRevenueMinor: data.kpis.netRevenue.value,
+              compareLabel: data.compareLabel,
+            } : null}
+            attention={attention}
+            loading={overviewQuery.isPending}
+            failed={overviewQuery.isError}
+            onRetry={() => void overviewQuery.refetch()}
+          />
+          {syncStore ? <ConnectivityBanner store={syncStore} /> : null}
+          {syncStore ? <SyncAttentionItems store={syncStore} /> : null}
+        </main>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell businessName={me.businessName} role={me.role}>
