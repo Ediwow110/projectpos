@@ -13,18 +13,29 @@ test("Atlas V4 chooses pieces before adding to sale and explicitly removes a lin
   await seedProduct(request, headers, { name: "Quantity Milk", priceMinor: 13500, stock: 30 });
 
   await page.goto("/pos");
-  await page.getByRole("button", { name: "Set qty for Quantity Milk" }).click();
+  const quantityTrigger = page.getByRole("button", { name: "Set qty for Quantity Milk" });
+  await quantityTrigger.click();
   const dialog = page.getByRole("dialog", { name: "Set quantity for Quantity Milk" });
   await expect(dialog).toBeVisible();
-  await dialog.getByRole("spinbutton", { name: "Pieces" }).fill("3");
+  const pieces = dialog.getByRole("spinbutton", { name: "Pieces" });
+  await pieces.fill("0");
+  await expect(dialog.getByRole("button", { name: "Enter quantity" })).toBeDisabled();
+  await pieces.fill("1000");
+  await expect(dialog.getByRole("button", { name: "Enter quantity" })).toBeDisabled();
+  await pieces.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(quantityTrigger).toBeFocused();
+  await quantityTrigger.click();
+  await pieces.fill("3");
   await expect(dialog.getByText("₱405.00")).toBeVisible();
   await dialog.getByRole("button", { name: "Add 3 pieces" }).click();
   await expect(dialog).toBeHidden();
 
   if (testInfo.project.name === "desktop") {
     const cart = page.getByRole("complementary", { name: "Cart" });
-    await expect(cart.getByText("Qty 3")).toBeVisible();
-    await expect(cart.getByText("₱405.00")).toBeVisible();
+    const line = cart.getByRole("listitem").filter({ hasText: "Quantity Milk" });
+    await expect(line.getByText("Qty 3 × ₱135.00", { exact: true })).toBeVisible();
+    await expect(line.getByText("₱405.00", { exact: true })).toBeVisible();
     await cart.getByRole("button", { name: "Remove Quantity Milk" }).click();
     await expect(cart.getByText("Cart is empty. Tap products to add.")).toBeVisible();
   } else {
@@ -43,6 +54,7 @@ test("Atlas V4 chooses pieces before adding to sale and explicitly removes a lin
   if (testInfo.project.name === "desktop") {
     await expect(page.getByRole("heading", { name: "Cart (1)" })).toBeVisible();
   } else {
-    await expect(page.getByText("1 item in cart")).toBeVisible();
+    const cartBar = page.getByRole("region", { name: testInfo.project.name === "tablet" ? "Tablet cart" : "Mobile cart" });
+    await expect(cartBar.getByText("1 item in cart", { exact: true })).toBeVisible();
   }
 });
