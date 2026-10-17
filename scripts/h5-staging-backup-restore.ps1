@@ -7,6 +7,7 @@
 [CmdletBinding()]
 param(
     [switch]$PreflightOnly,
+    [switch]$ValidateTargetOnly,
     [string]$BackupDirectory = "$env:USERPROFILE\Documents\NexPOS\H5-Backups"
 )
 
@@ -27,11 +28,13 @@ function InvokeDockerCli([string[]]$command, [string]$title) {
 }
 
 try {
-    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-        throw "Docker Desktop is required."
+    if (-not $ValidateTargetOnly) {
+        if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+            throw "Docker Desktop is required."
+        }
+        InvokeDockerCli @("run","--rm",$image,"pg_dump","--version") "pg_dump 17 preflight"
+        InvokeDockerCli @("run","--rm",$image,"pg_restore","--version") "pg_restore 17 preflight"
     }
-    InvokeDockerCli @("run","--rm",$image,"pg_dump","--version") "pg_dump 17 preflight"
-    InvokeDockerCli @("run","--rm",$image,"pg_restore","--version") "pg_restore 17 preflight"
     if ($PreflightOnly) {
         Write-Output "PASS: PG17 backup/restore tools available, no database contacted."
         return
@@ -41,21 +44,43 @@ try {
     if ([string]::IsNullOrWhiteSpace($conn)) {
         throw "H5_DATABASE_URL missing. Set it privately from H5 Supabase Connect. Do not put it in Git or chat."
     }
-    try { $uri = [uri]$conn } catch { throw "Invalid H5 PostgreSQL connection URL." }
+    # The copied Supabase URI may have whitespace around it or an optional
+    # ?sslmode=require suffix. Do not print its value or password on error.
+    try { $uri = [uri]$conn.Trim() } catch { throw "H5 target rejected: invalid PostgreSQL URI. Check percent-encoding of password punctuation." }
     if ($uri.Scheme -notin @("postgres","postgresql")) { throw "H5 target rejected: invalid scheme." }
     $hostName = $uri.DnsSafeHost.ToLowerInvariant()
     $parts = $uri.UserInfo.Split(":",2)
-    if ($parts.Length -ne 2) { throw "H5 target rejected: missing credentials." }
+    if ($parts.Length -ne 2) { throw "H5 target rejected: missing username or password in the URI." }
     $pgUser = [uri]::UnescapeDataString($parts[0])
     $pgPassword = [uri]::UnescapeDataString($parts[1])
     $port = if ($uri.IsDefaultPort) { 5432 } else { $uri.Port }
-    $direct = $hostName -eq "db.$ref.supabase.co" -and $pgUser -eq "postgres" -and $port -eq 5432
-    $pooler = $hostName.EndsWith(".pooler.supabase.com") -and $pgUser -eq "postgres.$ref" -and $port -eq 5432
-    if (-not ($direct -or $pooler) -or $uri.AbsolutePath -ne "/postgres" -or $uri.Query -or $uri.Fragment) {
-        throw "H5 target rejected: only the approved H5 direct DB or 5432 session pooler is accepted."
+    $directHost = $hostName -eq "db.$ref.supabase.co"
+    $poolerHost = $hostName -match '^[a-z0-9.-]+\.pooler\.supabase\.com$'
+    if (-not ($directHost -or $poolerHost)) {
+        throw "H5 target rejected: host is not an approved Supabase H5 direct/session-pooler hostname. Check project selection and percent-encode password special characters."
+    }
+    if ($port -ne 5432) {
+        throw "H5 target rejected: expected port 5432 (Session pooler). Transaction pooler port 6543 cannot be used here."
+    }
+    if (($directHost -and $pgUser -ne "postgres") -or
+        ($poolerHost -and $pgUser -ne "postgres.$ref")) {
+        throw "H5 target rejected: username does not identify H5 staging. Select H5 in Supabase Connect, Session pooler, Type URI."
+    }
+    if ($uri.AbsolutePath -ne "/postgres") {
+        throw "H5 target rejected: database path must be /postgres."
+    }
+    if ($uri.Fragment -or ($uri.Query -and $uri.Query -ne "?sslmode=require")) {
+        throw "H5 target rejected: unsupported URI options. Only ?sslmode=require is allowed; percent-encode special characters in the password."
     }
     if (-not $pgPassword -or $pgPassword.Contains([char]10) -or $pgPassword.Contains([char]13)) {
         throw "H5 target rejected: invalid password."
+    }
+    if ($pgPassword -eq "[YOUR-PASSWORD]" -or $pgPassword -eq "YOUR-PASSWORD") {
+        throw "H5 target rejected: [YOUR-PASSWORD] is still a placeholder. Enter the actual H5 database password privately."
+    }
+    if ($ValidateTargetOnly) {
+        Write-Output "PASS: URI identifies approved H5 staging, port 5432 and database postgres. No database connection attempted."
+        return
     }
 
     $backupDir = [IO.Path]::GetFullPath($BackupDirectory)
@@ -75,16 +100,23 @@ try {
     ), $utf8)
     Remove-Variable pgPassword -ErrorAction SilentlyContinue
     $mount = $temp + ":/backup"
-    InvokeDockerCli @("run","--rm","--env-file",$envFile,"-v",$mount,$image,
-        "pg_dump","--format=custom","--schema=public","--no-owner","--no-privileges",
-        "--file=/backup/h5-public.dump","postgres") "H5 public schema dump"
+    # Windows PowerShell's native argument conversion can strip double
+    # quotes from -c statements, turning public."Business" into public.business.
+    # A mounted SQL file preserves the quoted PostgreSQL identifiers.
     $countSql = 'SELECT (SELECT count(*) FROM public._migrations), (SELECT count(*) FROM public."Business"), (SELECT count(*) FROM public."Product"), (SELECT count(*) FROM information_schema.tables WHERE table_schema = ''public'' AND table_type = ''BASE TABLE'');'
-    $sourceCounts = & docker.exe run --rm --env-file $envFile $image psql -At -v ON_ERROR_STOP=1 -c $countSql postgres
+    $countSqlPath = Join-Path $temp "h5-counts.sql"
+    [IO.File]::WriteAllText($countSqlPath, ($countSql + [Environment]::NewLine), $utf8)
+    $sourceCounts = & docker.exe run --rm --env-file $envFile -v $mount $image psql -X -At -v ON_ERROR_STOP=1 -f /backup/h5-counts.sql postgres
     CheckExit "H5 source metadata read"
     $sourceCounts = ($sourceCounts | Select-Object -Last 1)
     if ($sourceCounts -notmatch '^\d+\|\d+\|\d+\|\d+$') {
         throw "H5 source metadata returned unexpected counters."
     }
+    # Only start the dump after we have proved that this statement can
+    # query the case-sensitive NexPOS schema on the source.
+    InvokeDockerCli @("run","--rm","--env-file",$envFile,"-v",$mount,$image,
+        "pg_dump","--format=custom","--schema=public","--no-owner","--no-privileges",
+        "--file=/backup/h5-public.dump","postgres") "H5 public schema dump"
     Remove-Item -LiteralPath $envFile -Force
     $plain = Join-Path $temp "h5-public.dump"
     if ((Get-Item -LiteralPath $plain).Length -lt 1000) { throw "Backup unexpectedly small." }
@@ -103,14 +135,20 @@ try {
         Start-Sleep -Seconds 1
     }
     if (-not $ready) { throw "Isolated restore database did not start." }
-    $sql = 'CREATE SCHEMA IF NOT EXISTS extensions; CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions; CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA extensions;'
-    InvokeDockerCli @("exec",$container,"psql","-U","h5restore","-d","h5restore",
-        "-v","ON_ERROR_STOP=1","-c",$sql) "Restore prerequisite extensions"
+    # Also send extension names as SQL files: "uuid-ossp" must retain quotes
+    # when passed through Windows PowerShell to docker.exe.
+    $extensionSqlPath = Join-Path $temp "h5-restore-extensions.sql"
+    $extensionSql = 'CREATE SCHEMA IF NOT EXISTS extensions; CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions; CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA extensions;'
+    [IO.File]::WriteAllText($extensionSqlPath, ($extensionSql + [Environment]::NewLine), $utf8)
+    InvokeDockerCli @("cp",$extensionSqlPath,($container + ":/tmp/h5-restore-extensions.sql")) "Copy restore prerequisites"
+    InvokeDockerCli @("exec",$container,"psql","-X","-U","h5restore","-d","h5restore",
+        "-v","ON_ERROR_STOP=1","-f","/tmp/h5-restore-extensions.sql") "Restore prerequisite extensions"
     InvokeDockerCli @("cp",$plain,($container + ":/tmp/h5-public.dump")) "Copy dump for restore"
     InvokeDockerCli @("exec",$container,"pg_restore","--exit-on-error","--no-owner",
         "--no-privileges","--clean","--if-exists","-U","h5restore",
         "-d","h5restore","/tmp/h5-public.dump") "H5 restore rehearsal"
-    $restored = & docker.exe exec $container psql -U h5restore -d h5restore -At -v ON_ERROR_STOP=1 -c $countSql
+    InvokeDockerCli @("cp",$countSqlPath,($container + ":/tmp/h5-counts.sql")) "Copy count SQL into isolated restore"
+    $restored = & docker.exe exec $container psql -X -U h5restore -d h5restore -At -v ON_ERROR_STOP=1 -f /tmp/h5-counts.sql
     CheckExit "Verify H5 restored counts"
     $restored = ($restored | Select-Object -Last 1)
     if ($restored -ne $sourceCounts) {
