@@ -117,6 +117,11 @@ PowerShell history, CI logs, or chat. Clear the process environment on
 completion. This command refuses a missing variable, other Supabase project
 host/user identities, insecure SSL flags, a non-PostgreSQL-17 source, and
 schema counts/migration names that do not match the release baseline.
+The reviewed 42/93 baseline cannot be weakened by passing alternative
+count arguments. If H5 advances, update the source gate through review and
+rerun tests before attempting the next export. Ordinary partial publication
+failures clean up incomplete archive/manifest pairs. An abnormal process
+termination still requires manual inspection and cleanup.
 
 The export client runs as a short-lived `postgres:17-alpine` container using
 an inherited environment-variable **name**, never a literal URI in a Docker
@@ -143,3 +148,35 @@ encrypted-archive restore drill passed, and a stale snapshot missing
 `0040_product_media` was correctly rejected by the new required-migration
 check. Do not present the fresh-export path as verified until it is executed
 against an authorized H5 source and its new archive is restored successfully.
+
+### Offline rehearsal of the 42-migration / 93-table recovery gate
+
+`scripts/h5-rehearse-current-schema-export.ps1` is an explicitly **synthetic
+offline test**, NOT a way to obtain or reconstruct the actual current H5
+backup. It starts with the *previously verified* 41-migration/92-table
+encrypted public-schema archive and runs entirely in network-disabled
+disposable PostgreSQL 17 containers. It adds one placeholder migration
+(`0040_product_media`) and one placeholder `ProductMediaAsset` table
+**only to its synthetic database**, then tests:
+
+1. PostgreSQL 17 `pg_dump -Fc` of the synthetic 42/93 database.
+2. Windows DPAPI CurrentUser encryption and a temporary checksum manifest.
+3. The independent PostgreSQL 17 restore verifier requiring both
+   `0040_product_media` and `0048_h4r9_tenant_integrity`, with restored
+   counts `42|1|0|93`.
+4. Removal of all rehearsal files and containers. No new H5 archive is
+   published and no staging/prod database is contacted.
+
+Default safe preflight and explicit local synthetic drill:
+
+```powershell
+$archive = Join-Path $env:USERPROFILE 'Documents\NexPOS\H5-Backups\NexPOS-H5-public-20261017-083151.pgdump.dpapi'
+./scripts/h5-rehearse-current-schema-export.ps1 -ExistingEncryptedArchive $archive
+./scripts/h5-rehearse-current-schema-export.ps1 -ExistingEncryptedArchive $archive -Execute
+```
+
+This test proves the offline dump/encryption/manifest/restore toolchain can
+handle a **simulated shape** resembling the 2026-10-18 H5 metadata, but does
+not prove that the actual latest DDL, constraints, RLS, media assets, or
+live data can be recovered. Keep the H5 release HOLD / NO-GO until a genuine
+fresh encrypted source archive is independently restored and approved.

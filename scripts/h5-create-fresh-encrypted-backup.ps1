@@ -17,6 +17,9 @@ $sqlFile = Join-Path $env:TEMP ("nexpos-h5-export-counts-" + [guid]::NewGuid().T
 $plainDump = Join-Path $env:TEMP ("nexpos-h5-export-plaintext-" + [guid]::NewGuid().ToString("N") + ".dump")
 $stage = $null
 $running = $false
+$publishedArchive = $null
+$publishedManifest = $null
+$publicationComplete = $false
 
 function Assert-DockerExit([string]$action) {
   if ($LASTEXITCODE -ne 0) { throw "H5 backup aborted at '$action' (Docker exit $LASTEXITCODE)" }
@@ -71,6 +74,11 @@ try {
   Assert-ArchiveSource $env:H5_DATABASE_URL $ExpectedProjectId
   if ($ExpectedMigrationCount -lt 1 -or $ExpectedPublicTables -lt 1) {
     throw "Expected counts must be positive; refusing export"
+  }
+  # A release candidate must update this reviewed gate instead of overriding
+  # its numbers at invocation time and accepting an arbitrarily old schema.
+  if ($ExpectedMigrationCount -ne 42 -or $ExpectedPublicTables -ne 93) {
+    throw "Unexpected schema gate override. Review and update the H5 release baseline before exporting"
   }
   if (-not (Test-Path -LiteralPath $OutputDirectory -PathType Container)) {
     throw "Backup destination must already exist; refusing to create a new destination"
@@ -173,8 +181,12 @@ try {
   }
   $manifest.restore = "PASS"
   $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $stagedManifest -Encoding UTF8
-  Move-Item -LiteralPath $stagedArchive -Destination $archivePath -ErrorAction Stop
+  if (Test-Path -LiteralPath "$archivePath.manifest.json") { throw "Backup manifest filename already exists" }
   Move-Item -LiteralPath $stagedManifest -Destination "$archivePath.manifest.json" -ErrorAction Stop
+  $publishedManifest = "$archivePath.manifest.json"
+  Move-Item -LiteralPath $stagedArchive -Destination $archivePath -ErrorAction Stop
+  $publishedArchive = $archivePath
+  $publicationComplete = $true
   Write-Output "RESULT=PASS"
   Write-Output "MODE=FRESH_H5_PUBLIC_SCHEMA"
   Write-Output "POSTGRES_CLIENT=17"
@@ -190,4 +202,12 @@ finally {
   if (Test-Path -LiteralPath $plainDump) { Remove-Item -LiteralPath $plainDump -Force }
   if (Test-Path -LiteralPath $sqlFile) { Remove-Item -LiteralPath $sqlFile -Force }
   if ($stage -and (Test-Path -LiteralPath $stage)) { Remove-Item -LiteralPath $stage -Force -Recurse }
+  if (-not $publicationComplete) {
+    if ($publishedArchive -and (Test-Path -LiteralPath $publishedArchive)) {
+      Remove-Item -LiteralPath $publishedArchive -Force
+    }
+    if ($publishedManifest -and (Test-Path -LiteralPath $publishedManifest)) {
+      Remove-Item -LiteralPath $publishedManifest -Force
+    }
+  }
 }
