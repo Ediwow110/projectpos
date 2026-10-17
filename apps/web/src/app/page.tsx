@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { AppShell } from "../components/AppShell";
 import { AtlasManagerControlCenter } from "../components/AtlasManagerControlCenter";
+import { AtlasOwnerOverview } from "../components/AtlasOwnerOverview";
 import { NexposMark } from "../components/brand/NexposLogo";
 import { MetricCard, PageHeader, Panel, SectionHeader } from "../components/premium";
 import { Card, Delta, Peso, StatusPill } from "../components/ui";
@@ -190,9 +191,8 @@ export default function DashboardPage(): JSX.Element {
     );
   }
 
-  return (
-    <AppShell businessName={me.businessName} role={me.role}>
-      <main className="mx-auto max-w-[1240px] space-y-5 px-4 pb-10 pt-3 sm:px-6">
+  const legacyDashboard = (
+    <>
         <PageHeader
           eyebrow={"Good " + daypart()}
           title="Dashboard"
@@ -389,6 +389,32 @@ export default function DashboardPage(): JSX.Element {
             </nav>
           </>
         ) : null}
+    </>
+  );
+
+  return (
+    <AppShell businessName={me.businessName} role={me.role} atlasOwner={me.role === "owner"}>
+      <main className={me.role === "owner"
+        ? "mx-auto w-full max-w-[1390px] space-y-5 px-4 pb-10 pt-7 sm:px-6 xl:px-8"
+        : "mx-auto max-w-[1240px] space-y-5 px-4 pb-10 pt-3 sm:px-6"}>
+        {me.role === "owner" ? (
+          <>
+            <AtlasOwnerOverview
+              overview={data ? { orders: data.kpis.orders.value, netRevenueMinor: data.kpis.netRevenue.value } : null}
+              attention={attention}
+              loading={overviewQuery.isPending}
+              failed={overviewQuery.isError}
+              onRetry={() => void overviewQuery.refetch()}
+            />
+            {syncStore ? <ConnectivityBanner store={syncStore} /> : null}
+            <details data-ui="owner-detailed-analytics" className="rounded-xl border border-[#e5e9e3] bg-white">
+              <summary className="min-h-12 cursor-pointer px-5 py-4 text-[13px] font-semibold text-[#202826] focus-visible:outline-2 focus-visible:outline-[#da614c]">
+                Detailed analytics, trends and operational reports
+              </summary>
+              <div className="space-y-5 border-t border-[#e5e9e3] p-5">{legacyDashboard}</div>
+            </details>
+          </>
+        ) : legacyDashboard}
       </main>
     </AppShell>
   );

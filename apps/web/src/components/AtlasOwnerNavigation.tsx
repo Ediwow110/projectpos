@@ -5,7 +5,8 @@ import type { JSX } from "react";
 import { AtlasWorkspaceDestinations } from "./AtlasWorkspaceDestinations";
 
 const OWNER_SECTIONS = [
-  { href: "/admin/owner-controls", label: "Overview" },
+  { href: "/", label: "Overview" },
+  { href: "/admin/owner-controls", label: "Owner controls" },
   { href: "/team", label: "Team & permissions" },
   { href: "/branches", label: "Branches & registers" },
   { href: "/admin/owner-controls#financial-policies", label: "Financial policies" },
@@ -28,7 +29,7 @@ export function AtlasOwnerNavigation({
 }): JSX.Element {
   return (
     <div className="flex h-full min-h-[640px] flex-col overflow-y-auto bg-white px-3 pb-5 pt-6">
-      <Link href="/admin/owner-controls" className="mx-3 flex items-center gap-3 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#da614c]" aria-label="NexPOS owner overview">
+      <Link href="/" className="mx-3 flex items-center gap-3 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#da614c]" aria-label="NexPOS owner overview">
         <span aria-hidden className="grid h-[43px] w-[43px] place-items-center rounded-[11px] bg-[#202826] font-display text-[24px] font-bold text-white">N</span>
         <span className="font-display text-[22px] font-semibold tracking-tight text-[#202826]">NexPOS</span>
       </Link>
@@ -37,7 +38,7 @@ export function AtlasOwnerNavigation({
         {OWNER_SECTIONS.map((section, index) => {
           const active = section.href.includes("#")
             ? false
-            : pathname === section.href || (index !== 0 && pathname.startsWith(`${section.href}/`));
+            : pathname === section.href || (index !== 0 && section.href !== "/" && pathname.startsWith(`${section.href}/`));
           return (
             <Link
               key={section.label}
