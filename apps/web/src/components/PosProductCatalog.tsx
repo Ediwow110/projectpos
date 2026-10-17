@@ -1,6 +1,8 @@
 import React, { type ReactNode } from "react";
+import Image from "next/image";
 
 import { minorToMajorFixed } from "../lib/money";
+import { validProductImageUrl } from "../lib/product-image";
 import type { PosProduct } from "../lib/pos-sale-model";
 import { productInitials, productTileClass } from "../lib/pos-view";
 
@@ -176,12 +178,17 @@ export function PosProductCatalog({
                 <span
                   data-ui="product-visual"
                   className={
-                    "font-display flex h-16 items-center rounded-[9px] px-[14px] text-2xl font-extrabold text-white/95 lg:max-xl:absolute lg:max-xl:left-[13px] lg:max-xl:top-[13px] lg:max-xl:h-[100px] lg:max-xl:w-[252px] lg:max-xl:px-4 xl:absolute xl:left-[11px] xl:top-[11px] xl:h-[62px] xl:w-[152px] xl:text-[20px] " +
+                    "font-display relative flex h-16 items-center overflow-hidden rounded-[9px] px-[14px] text-2xl font-extrabold text-white/95 lg:max-xl:absolute lg:max-xl:left-[13px] lg:max-xl:top-[13px] lg:max-xl:h-[100px] lg:max-xl:w-[252px] lg:max-xl:px-4 xl:absolute xl:left-[11px] xl:top-[11px] xl:h-[62px] xl:w-[152px] xl:text-[20px] " +
                     (selected ? "bg-[#4a2118]" : productTileClass(product.name))
                   }
                   aria-hidden
                 >
                   {productInitials(product.name)}
+                  {product.imageUrl && validProductImageUrl(product.imageUrl) ? (
+                    <Image unoptimized src={product.imageUrl} alt="" fill
+                      sizes="(min-width: 1280px) 152px, (min-width: 1024px) 252px, 50vw"
+                      className="object-cover" />
+                  ) : null}
                 </span>
                 <span className="mt-2.5 block truncate text-[13.5px] font-semibold lg:max-xl:absolute lg:max-xl:left-[13px] lg:max-xl:top-[131px] lg:max-xl:mt-0 lg:max-xl:max-w-[252px] lg:max-xl:text-[12px] xl:absolute xl:left-[11px] xl:top-[83px] xl:mt-0 xl:max-w-[120px] xl:text-[10px]">{product.name}</span>
                 <span className="money absolute bottom-3 left-3 block text-[13px] font-bold text-white/85 lg:max-xl:left-[13px] lg:max-xl:top-[185px] lg:max-xl:bottom-auto lg:max-xl:text-[11px] xl:left-[11px] xl:top-[125px] xl:bottom-auto xl:text-[10px]">₱{money(product.priceMinor)}</span>

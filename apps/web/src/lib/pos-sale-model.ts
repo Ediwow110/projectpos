@@ -1,6 +1,7 @@
 export interface PosProduct {
   id: string;
   name: string;
+  imageUrl?: string | null;
   sku: string | null;
   barcode?: string | null;
   categoryId: string | null;
@@ -12,6 +13,7 @@ export interface PosProduct {
 export interface PosCartEntry {
   productId: string;
   name: string;
+  imageUrl?: string | null;
   priceMinor: number;
   qty: number;
   lineDiscountMinor: number;
@@ -136,7 +138,7 @@ export function addProductToCart(cart: PosCartEntry[], product: PosProduct): Pos
   }
   return [
     ...cart,
-    { productId: product.id, name: product.name, priceMinor: product.priceMinor, qty: 1, lineDiscountMinor: 0 },
+    { productId: product.id, name: product.name, ...(product.imageUrl ? { imageUrl: product.imageUrl } : {}), priceMinor: product.priceMinor, qty: 1, lineDiscountMinor: 0 },
   ];
 }
 
