@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import Link from "next/link";
 import type { JSX } from "react";
 import { AtlasWorkspaceDestinations } from "./AtlasWorkspaceDestinations";
@@ -35,9 +36,11 @@ export function AtlasInventoryNavigation({
     <p className="px-3 pb-5 pt-9 font-data text-[11px] font-medium tracking-[0.06em] text-[#267552]">INVENTORY PORTAL</p>
     <nav aria-label="Inventory controls" className="space-y-1">
       {INVENTORY_LINKS.map(({ href, label }) => {
-        const active = (label !== "Receiving" && pathname === href) || (href === "/inventory/counts" && pathname.startsWith("/inventory/counts/"))
-          || (href === "/purchase-orders" && pathname.startsWith("/purchase-orders/"));
-        return <Link key={href} href={href} aria-current={active ? "page" : undefined}
+        const active = label !== "Receiving" && (
+          pathname === href || (href === "/inventory/counts" && pathname.startsWith("/inventory/counts/"))
+          || (href === "/purchase-orders" && pathname.startsWith("/purchase-orders/"))
+        );
+        return <Link key={label + ":" + href} href={href} aria-current={active ? "page" : undefined}
           onClick={() => { if (!active && !href.includes("#")) onNavigate(href); }}
           className={"flex min-h-[46px] items-center rounded-[8px] px-4 text-[14px] transition-colors focus-visible:outline-2 focus-visible:outline-[#267552] " +
             (active ? "bg-[#e9f4ec] font-medium text-[#267552]" : "text-[#202826] hover:bg-[#f0f3ef]")}>{label}</Link>;

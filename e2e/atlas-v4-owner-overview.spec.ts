@@ -17,6 +17,24 @@ test("Atlas V4 owner landing shows authoritative overview and preserves owner co
   await expect(overview.getByText("Net sales in selected period")).toBeVisible();
   await expect(overview.getByText("Sales in selected period", { exact: true })).toBeVisible();
   await expect(overview.getByText("Reported attention items", { exact: true })).toBeVisible();
+  const range = overview.getByRole("combobox", { name: "Owner report period" });
+  await expect(range).toHaveValue("30");
+  const todayRequest = page.waitForResponse((response) =>
+    response.url().includes("/api/v1/dashboard/overview?") && response.status() === 200
+    && new URL(response.url()).searchParams.has("dateFrom"),
+  );
+  await range.selectOption("0");
+  const today = new URL((await todayRequest).url()).searchParams.get("dateFrom");
+  expect(today).toBeTruthy();
+  await expect(range).toHaveValue("0");
+  const sevenDayRequest = page.waitForResponse((response) =>
+    response.url().includes("/api/v1/dashboard/overview?") && response.status() === 200
+    && new URL(response.url()).searchParams.has("dateFrom")
+    && new URL(response.url()).searchParams.get("dateFrom") !== today,
+  );
+  await range.selectOption("7");
+  await sevenDayRequest;
+  await expect(range).toHaveValue("7");
   await page.screenshot({ path: `test-results/atlas-owner-overview-${testInfo.project.name}.png`, fullPage: false });
   await expect(page.locator('[data-ui="owner-detailed-analytics"]')).toBeVisible();
   await expect(page.locator('[data-ui="owner-detailed-analytics"]')).not.toHaveAttribute("open", "");

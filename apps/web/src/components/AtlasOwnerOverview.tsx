@@ -11,13 +11,16 @@ interface OwnerOverview {
 
 /** A business-scoped overview; never presents Figma sample metrics as actual sales. */
 export function AtlasOwnerOverview({
-  overview, attention, loading, failed, onRetry,
+  overview, attention, loading, failed, onRetry, period, periods, onPeriodChange,
 }: {
   overview: OwnerOverview | null;
   attention: DashboardAttention[];
   loading: boolean;
   failed: boolean;
   onRetry: () => void;
+  period: number;
+  periods: readonly { label: string; days: number }[];
+  onPeriodChange: (days: number) => void;
 }) {
   const hasReport = !!overview && !loading && !failed;
   const attentionTotal = attention.reduce((total, item) => total + item.count, 0);
@@ -39,9 +42,19 @@ export function AtlasOwnerOverview({
           <h1 className="font-display mt-2 text-[29px] font-semibold text-[#202826]">Owner overview</h1>
           <p className="mt-2 text-[14px] text-[#71807a]">Revenue, transactions, and items that need your attention.</p>
         </div>
-        <Link href="/reports/sales" className="inline-flex min-h-11 min-w-[190px] items-center justify-center rounded-lg bg-[#202826] px-5 text-[13px] font-semibold text-white hover:bg-[#36443c] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#da614c]">
-          Open sales reports
-        </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-[12px] font-medium text-[#53615a]">
+            Report period
+            <select aria-label="Owner report period" value={period}
+              onChange={(event) => onPeriodChange(Number(event.target.value))}
+              className="min-h-11 rounded-lg border border-[#dce3dc] bg-white px-3 text-[12px] font-semibold text-[#202826] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#da614c]">
+              {periods.map((option) => <option key={option.days} value={option.days}>{option.label}</option>)}
+            </select>
+          </label>
+          <Link href="/reports/sales" className="inline-flex min-h-11 min-w-[190px] items-center justify-center rounded-lg bg-[#202826] px-5 text-[13px] font-semibold text-white hover:bg-[#36443c] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#da614c]">
+            Open sales reports
+          </Link>
+        </div>
       </header>
       {loading ? <p role="status" className="text-[13px] text-[#71807a]">Loading authorized reports…</p> : null}
       {failed ? <div role="alert" className="rounded-lg border border-[#e9bcae] bg-[#fff0eb] px-4 py-3 text-[13px] text-[#963d32]">
@@ -80,7 +93,7 @@ export function AtlasOwnerOverview({
         </aside>
       </div>
       <p className="text-[11px] text-[#71807a]">
-        Report values reflect your authorized date and branch scope. Figma figures are illustrative only.
+        Report values reflect the selected period and authorized branch scope. Figma figures are illustrative only.
       </p>
     </section>
   );

@@ -183,6 +183,9 @@ export default function DashboardPage(): JSX.Element {
             loading={overviewQuery.isPending}
             failed={overviewQuery.isError}
             onRetry={() => void overviewQuery.refetch()}
+            period={preset}
+            periods={PRESETS}
+            onPeriodChange={setPreset}
           />
           {syncStore ? <ConnectivityBanner store={syncStore} /> : null}
           {syncStore ? <SyncAttentionItems store={syncStore} /> : null}
@@ -405,6 +408,9 @@ export default function DashboardPage(): JSX.Element {
               loading={overviewQuery.isPending}
               failed={overviewQuery.isError}
               onRetry={() => void overviewQuery.refetch()}
+              period={preset}
+              periods={PRESETS}
+              onPeriodChange={setPreset}
             />
             {syncStore ? <ConnectivityBanner store={syncStore} /> : null}
             <details data-ui="owner-detailed-analytics" className="rounded-xl border border-[#e5e9e3] bg-white">

@@ -23,6 +23,23 @@ test("Atlas V4 manager control center uses own scoped reports and protects platf
   await expect(center.getByText("Orders in selected period")).toBeVisible();
   await expect(center.getByText("Reported attention items", { exact: true })).toBeVisible();
   await expect(center.getByText("Net sales in selected period")).toBeVisible();
+  const range = center.getByRole("combobox", { name: "Manager report period" });
+  await expect(range).toHaveValue("30");
+  const todayRequest = page.waitForResponse((response) =>
+    response.url().includes("/api/v1/dashboard/overview?") && response.status() === 200
+    && new URL(response.url()).searchParams.has("dateFrom"),
+  );
+  await range.selectOption("0");
+  const today = new URL((await todayRequest).url()).searchParams.get("dateFrom");
+  expect(today).toBeTruthy();
+  await expect(range).toHaveValue("0");
+  const sevenDayRequest = page.waitForResponse((response) =>
+    response.url().includes("/api/v1/dashboard/overview?") && response.status() === 200
+    && new URL(response.url()).searchParams.get("dateFrom") !== today,
+  );
+  await range.selectOption("7");
+  await sevenDayRequest;
+  await expect(range).toHaveValue("7");
   await expect(center.getByRole("link", { name: /Shift readiness/ })).toHaveAttribute("href", "/shifts");
   await expect(page.getByRole("heading", { name: "Tenant directory", exact: true })).toHaveCount(0);
 

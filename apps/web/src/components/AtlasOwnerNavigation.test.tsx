@@ -7,6 +7,7 @@ vi.stubGlobal("React", React);
 
 describe("Atlas owner navigation", () => {
   it.each([
+    ["/", "/"],
     ["/admin/owner-controls", "/admin/owner-controls"],
     ["/team", "/team"],
     ["/branches", "/branches"],
