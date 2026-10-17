@@ -174,6 +174,17 @@ export function AppShell({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [showMobileMenu, atlasLayout]);
 
+  React.useEffect(() => {
+    if (!showMobileMenu || !atlasLayout) return;
+    const desktop = window.matchMedia("(min-width: 1280px)");
+    const closeIfDesktop = (): void => {
+      if (desktop.matches) setShowMobileMenu(false);
+    };
+    desktop.addEventListener("change", closeIfDesktop);
+    closeIfDesktop();
+    return () => desktop.removeEventListener("change", closeIfDesktop);
+  }, [showMobileMenu, atlasLayout]);
+
   // Redirect exactly once per signed-out denial. Clearing the ["me"] query
   // forces an immediate refetch, which settles back into the same denial;
   // without this guard the effect would clear + replace on every cycle,
@@ -458,7 +469,7 @@ export function AppShell({
                     {activeBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
                   </select>
                 </label>
-                <button type="button" onClick={() => { setShowMobileMenu(false); setShowTour(true); }}
+                <button type="button" onClick={() => { setShowMobileMenu(false); atlasMenuButtonRef.current?.focus(); setShowTour(true); }}
                   className="min-h-11 rounded-lg border border-[#dce3dc] bg-white px-4 text-sm font-semibold text-[#29332d]">Restart system tour</button>
                 <button type="button" disabled={signingOut} onClick={() => void signOut()}
                   className="min-h-11 rounded-lg border border-[#dce3dc] bg-white px-4 text-sm font-semibold text-[#29332d] disabled:opacity-60">{signingOut ? "Signing out…" : "Sign out"}</button>
