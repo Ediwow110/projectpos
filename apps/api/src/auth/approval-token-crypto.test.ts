@@ -15,7 +15,9 @@ describe("approval queue token encryption", () => {
     expect(() => encryptApprovalToken("mgr_token", undefined)).toThrow("APPROVAL_QUEUE_ENCRYPTION_KEY_INVALID");
     const encrypted = encryptApprovalToken("mgr_token", KEY);
     const [iv, tag, ciphertext] = encrypted.split(".");
-    const changed = `${iv}.${tag}.${ciphertext!.slice(0, -1)}A`;
+    const modifiedCiphertext = Buffer.from(ciphertext!, "base64url");
+    modifiedCiphertext[0] ^= 0x01;
+    const changed = `${iv}.${tag}.${modifiedCiphertext.toString("base64url")}`;
     expect(() => decryptApprovalToken(changed, KEY)).toThrow("APPROVAL_QUEUE_TOKEN_INVALID");
     expect(() => decryptApprovalToken(encrypted, "ff".repeat(32))).toThrow("APPROVAL_QUEUE_TOKEN_INVALID");
   });
