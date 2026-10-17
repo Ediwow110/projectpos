@@ -1,9 +1,11 @@
 import React from "react";
+import Image from "next/image";
 import Link from "next/link";
 
 import { minorToMajorFixed } from "../lib/money";
 import type { PosCartEntry } from "../lib/pos-sale-model";
 import { productInitials, productTileClass } from "../lib/pos-view";
+import { validProductImageUrl } from "../lib/product-image";
 
 type StatusTone = "ok" | "warn" | "info" | "neutral";
 
@@ -235,8 +237,11 @@ export function PosResponsiveCart({
               ) : null}
               {cart.map((item) => (
                 <li key={item.productId} className="flex items-center gap-3 rounded-xl bg-white/[0.05] p-3">
-                  <span className={"grid h-10 w-10 shrink-0 place-items-center rounded-lg " + productTileClass(item.name) + " text-sm font-extrabold"} aria-hidden>
+                  <span className={"relative grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-lg " + productTileClass(item.name) + " text-sm font-extrabold"} aria-hidden>
                     {productInitials(item.name)}
+                    {item.imageUrl && validProductImageUrl(item.imageUrl) ? (
+                      <Image unoptimized src={item.imageUrl} alt="" fill sizes="40px" className="object-cover" />
+                    ) : null}
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[13px] font-semibold">{item.name}</p>

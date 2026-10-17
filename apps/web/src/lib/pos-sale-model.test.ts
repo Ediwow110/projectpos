@@ -15,6 +15,17 @@ import {
 } from "./pos-sale-model";
 
 describe("POS sale model", () => {
+  it("carries product photo URLs for display but excludes them from payment drafts", () => {
+    const cart = addProductToCart([], {
+      id: "p-photo", name: "Oat Milk", sku: null, categoryId: null,
+      priceMinor: 13500, isActive: true,
+      imageUrl: "https://images.example.test/oat-milk.webp",
+    });
+    expect(cart[0].imageUrl).toBe("https://images.example.test/oat-milk.webp");
+    const draft = buildDraftSaleInput(cart, "", "", "");
+    expect(JSON.stringify(draft)).not.toContain("images.example.test");
+    expect(draft.lines).toEqual([{ productId: "p-photo", qty: 1, lineDiscountMinor: 0 }]);
+  });
   it("restores held-sale items in their saved cashier order", () => {
     expect(heldSaleToCart({
       items: [

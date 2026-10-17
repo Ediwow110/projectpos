@@ -1,7 +1,9 @@
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 
 import { minorToMajorFixed } from "../lib/money";
+import { validProductImageUrl } from "../lib/product-image";
 import type { PosCartEntry } from "../lib/pos-sale-model";
 
 type StatusTone = "ok" | "warn" | "info" | "neutral";
@@ -119,6 +121,11 @@ export function PosCartPanel({
             const net = Math.max(0, gross - entry.lineDiscountMinor);
             return (
             <li key={entry.productId} className="flex h-[61px] items-center justify-between gap-3 border-b border-[#393530]">
+              {entry.imageUrl && validProductImageUrl(entry.imageUrl) ? (
+                <span aria-hidden className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-[#252422]">
+                  <Image unoptimized src={entry.imageUrl} alt="" fill sizes="40px" className="object-cover" />
+                </span>
+              ) : null}
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[9px] font-semibold text-white">{entry.name}</p>
                 <div className="mt-2 flex items-center gap-2 font-data text-[8px] text-[#aaa096]">

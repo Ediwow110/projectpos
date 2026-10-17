@@ -1,6 +1,7 @@
 "use client";
 
 import type { JSX } from "react";
+import { ProductMediaEditor } from '../../../components/ProductMediaEditor';
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -15,6 +16,7 @@ import { canEditCatalog, canSeeCost } from "../../../lib/catalog";
 import { formatMoneyMinor, minorToMajorFixed } from "../../../lib/money";
 
 interface ProductDetail {
+  imageUrl?: string | null;
   id: string;
   name: string;
   sku: string | null;
@@ -193,6 +195,11 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
 
         {success ? <div role="status" className="rounded-xl border border-[#cfe9dc] bg-[#eaf7f0] px-4 py-3 text-sm font-medium text-[#1f8a5b]">{success}</div> : null}
         {error ? <Panel className="border-[#efb9b9] bg-[#fff0f0] p-4"><p role="alert" className="text-sm font-medium text-[#c43e3e]">{error}</p></Panel> : null}
+
+        {product && role === 'owner' ? (
+          <ProductMediaEditor productId={product.id} productName={product.name} role={role} imageUrl={product.imageUrl ?? null}
+            onChanged={async () => { await detailQuery.refetch(); }} />
+        ) : null}
 
         {product ? (
           <div className="grid gap-4 lg:grid-cols-[1.2fr_.8fr]">
