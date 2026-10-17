@@ -149,6 +149,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
         saleGiftCardLoads: new Map(saleGiftCardLoads), saleLoyalty: new Map(saleLoyalty), saleItemLoyaltyAllocations: new Map(saleItemLoyaltyAllocations),
         inventoryCounts: new Map(inventoryCounts), inventoryCountLines: new Map(inventoryCountLines), inventoryCountSeq: new Map(inventoryCountSeq),
         audit: [...audit], poSeq: new Map(poSeq), purchaseReceiptSeq: new Map(purchaseReceiptSeq), supplierReturnSeq: new Map(supplierReturnSeq),
+        webhookEvents: new Map(webhookEvents),
       };
       try {
         return await fn(memoryDb);
@@ -168,6 +169,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
         restore(saleGiftCardLoads, snapshot.saleGiftCardLoads); restore(saleLoyalty, snapshot.saleLoyalty); restore(saleItemLoyaltyAllocations, snapshot.saleItemLoyaltyAllocations);
         restore(inventoryCounts, snapshot.inventoryCounts); restore(inventoryCountLines, snapshot.inventoryCountLines); restore(inventoryCountSeq, snapshot.inventoryCountSeq);
         restore(poSeq, snapshot.poSeq); restore(purchaseReceiptSeq, snapshot.purchaseReceiptSeq); restore(supplierReturnSeq, snapshot.supplierReturnSeq);
+        restore(webhookEvents, snapshot.webhookEvents);
         audit.splice(0, audit.length, ...snapshot.audit);
         throw error;
       } finally { transactionDepth -= 1; }

@@ -29,7 +29,7 @@ export class SalesPayMongoWebhookService {
   private async settlePaid(
     event: PayMongoPaidEvent,
     requestId: string,
-  ): Promise<string | null> {
+  ): Promise<{ confirmedOrderId: string | null; newlySettled: boolean; channel: "WEB" | "POS" }> {
     return this.db.withLock(`sales:${event.businessId}`, async () => this.db.withTransaction(async () => {
       const sale = await this.db.findSaleById(event.saleId, event.businessId);
       if (!sale) throw new Error("NOT_FOUND");
@@ -57,7 +57,7 @@ export class SalesPayMongoWebhookService {
         throw new Error("PAYMENT_TOTAL_MISMATCH");
       }
       if (sale.status === "COMPLETED" && payment.status === "SUCCEEDED") {
-        return null;
+        return { confirmedOrderId: null, newlySettled: false, channel: "POS" };
       }
       if (sale.status !== "PENDING_PAYMENT") {
         throw new Error("SALE_INVALID_TRANSITION");
@@ -105,9 +105,11 @@ export class SalesPayMongoWebhookService {
         entityId: payment.id,
         requestId,
       });
-      incrementMetric("pos_sales_completed_total");
-      recordSaleChannel(linkedOrder?.channel === "WEB" ? "WEB" : "POS");
-      return shouldNotify ? linkedOrder!.id : null;
+      return {
+        confirmedOrderId: shouldNotify ? linkedOrder!.id : null,
+        newlySettled: true,
+        channel: linkedOrder?.channel === "WEB" ? "WEB" : "POS",
+      };
     }));
   }
 
@@ -125,35 +127,43 @@ export class SalesPayMongoWebhookService {
     }
     const event = parsePayMongoPaidEvent(payload, rawBody);
     if (!event) return { handled: false };
-    return this.db.withLock(`paymongo-webhook:${event.eventId}`, async () => {
-      const claimed = await this.db.claimWebhookEvent({
-        businessId: event.businessId,
-        provider: "paymongo",
-        eventId: event.eventId,
-        type: event.type,
-        payload,
-        status: "processing",
-      });
-      if (!claimed) return { handled: true, deduplicated: true };
-      let confirmedOrderId: string | null;
-      try {
-        confirmedOrderId = await this.settlePaid(event, requestId);
+    // The claim, sale/stock/order settlement and processed marker are ONE
+    // transaction. If marking the event processed fails, none of the sale
+    // effects may commit. The PostgreSQL event lock itself is transactional;
+    // the explicit transaction also gives the in-memory adapter parity.
+    const result = await this.db.withLock(`paymongo-webhook:${event.eventId}`, () =>
+      this.db.withTransaction(async () => {
+        const claimed = await this.db.claimWebhookEvent({
+          businessId: event.businessId,
+          provider: "paymongo",
+          eventId: event.eventId,
+          type: event.type,
+          payload,
+          status: "processing",
+        });
+        if (!claimed) return { deduplicated: true as const, settlement: null };
+        const settlement = await this.settlePaid(event, requestId);
         await this.db.updateWebhookEventStatus(claimed.id, "processed");
-      } catch (error) {
-        await this.db.deleteWebhookEvent(claimed.id);
-        throw error;
+        return { deduplicated: false as const, settlement };
+      }),
+    );
+    if (result.deduplicated) return { handled: true, deduplicated: true };
+    if (result.settlement?.newlySettled) {
+      // Metrics reflect committed payments, never a rolled-back attempt.
+      incrementMetric("pos_sales_completed_total");
+      recordSaleChannel(result.settlement.channel);
+    }
+
+    // Run external notification AFTER the event lock's DB transaction has
+    // committed. A failure to send must never reverse payment, remove the
+    // processed event or ask PayMongo to deliver this payment event again.
+    if (result.settlement?.confirmedOrderId && this.notifications) {
+      try {
+        await this.notifications.sendEvent(event.businessId, result.settlement.confirmedOrderId, "CONFIRMED");
+      } catch {
+        incrementMetric("pos_order_notification_failures_total");
       }
-      // Settlement and processed-event status are already durable. Customer
-      // notifications must not undo the webhook claim or request provider
-      // redelivery for a sale that has been charged and completed.
-      if (confirmedOrderId && this.notifications) {
-        try {
-          await this.notifications.sendEvent(event.businessId, confirmedOrderId, "CONFIRMED");
-        } catch {
-          incrementMetric("pos_order_notification_failures_total");
-        }
-      }
-      return { handled: true };
-    });
+    }
+    return { handled: true };
   }
 }

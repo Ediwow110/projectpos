@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createMemoryDb } from "../common/memory.db";
+import { renderMetrics } from "../common/metrics";
 import { OrderNotificationService } from "../orders/order-notification-service";
 import { OrderSaleService } from "../orders/order-sale-service";
 import { ReservationService } from "../orders/reservation-service";
@@ -147,7 +148,24 @@ describe("phase22 PayMongo settlement with Order reservations", () => {
       async sendReceiptShare() {},
       async sendOrderUpdate() {},
     });
-    const sendEvent = vi.spyOn(notifier, "sendEvent").mockRejectedValue(new Error("TOKEN_ISSUER_UNAVAILABLE"));
+    let eventLockHeld = false;
+    const originalWithLock = db.withLock.bind(db);
+    vi.spyOn(db, "withLock").mockImplementation(async (key, fn) => {
+      if (key !== "paymongo-webhook:evt_notify_fail") return originalWithLock(key, fn);
+      return originalWithLock(key, async () => {
+        eventLockHeld = true;
+        try {
+          return await fn();
+        } finally {
+          eventLockHeld = false;
+        }
+      });
+    });
+    let notificationLockState: boolean | null = null;
+    const sendEvent = vi.spyOn(notifier, "sendEvent").mockImplementation(async () => {
+      notificationLockState = eventLockHeld;
+      throw new Error("TOKEN_ISSUER_UNAVAILABLE");
+    });
     const webhook = new SalesPayMongoWebhookService(db, paymongo, new SalesStockService(db), notifier);
     const raw = JSON.stringify(payload);
     await expect(webhook.handle(raw, "valid", payload, "notify-1")).resolves.toEqual({ handled: true });
@@ -158,10 +176,86 @@ describe("phase22 PayMongo settlement with Order reservations", () => {
     ]);
     expect((await db.listMovements(product.id, business.id, branch.id)).filter((row) => row.type === "sale")).toHaveLength(1);
     expect(sendEvent).toHaveBeenCalledTimes(1);
+    expect(notificationLockState).toBe(false);
     await expect(webhook.handle(raw, "valid", payload, "notify-2")).resolves.toEqual({
       handled: true, deduplicated: true,
     });
     expect(sendEvent).toHaveBeenCalledTimes(1);
     expect((await db.listMovements(product.id, business.id, branch.id)).filter((row) => row.type === "sale")).toHaveLength(1);
+  });
+
+  it("rolls back a failed webhook status update and safely retries settlement exactly once", async () => {
+    const db = createMemoryDb();
+    const business = await db.createBusiness({ name: "Atomic settlement", currency: "PHP" });
+    const product = await db.createProduct({
+      businessId: business.id, categoryId: null, name: "Stock QA", sku: "ATOMIC",
+      barcode: null, brand: null, unit: "pc", costMinor: 10, priceMinor: 100,
+      taxRateBps: null, reorderLevel: 0, trackInventory: true, isActive: true, imageUrl: null,
+    });
+    await db.upsertBalance({ businessId: business.id, branchId: null, productId: product.id, qtyOnHand: 2 });
+    const sale = await db.createSale({
+      businessId: business.id, receiptNo: "TEST-ATOM-1", status: "PENDING_PAYMENT",
+      subtotalMinor: 100, discountMinor: 0, taxMinor: 0, totalMinor: 100,
+      paidMinor: 0, changeMinor: 0, currency: "PHP", customerId: null, customerName: null,
+      notes: null, actorId: "staff", requestId: "sale", idempotencyKey: null,
+      registerId: null, branchId: null, createdAt: new Date(),
+    });
+    await db.createSaleItem({
+      businessId: business.id, saleId: sale.id, productId: product.id, name: product.name,
+      unit: "pc", qty: 1, priceMinor: 100, costMinor: 10, taxRateBps: null,
+      lineDiscountMinor: 0, lineTotalMinor: 100,
+    });
+    await db.createPayment({
+      businessId: business.id, saleId: sale.id, method: "card", amountMinor: 100,
+      status: "PENDING", providerRef: "cs_atomic", idempotencyKey: "qa-atomic-payment",
+    });
+    const payload = {
+      data: {
+        id: "evt_atomic_failure", type: "checkout_session.payment.paid",
+        data: { id: "cs_atomic", attributes: {
+          reference_number: sale.id,
+          metadata: { businessId: business.id, saleId: sale.id, method: "card" },
+          payments: [{ attributes: { status: "paid", amount: 100, currency: "PHP", source: { type: "card" } } }],
+        } },
+      },
+    };
+    const originalUpdate = db.updateWebhookEventStatus.bind(db);
+    const updateStatus = vi.spyOn(db, "updateWebhookEventStatus")
+      .mockRejectedValueOnce(new Error("INJECTED_STATUS_WRITE_FAILURE"))
+      .mockImplementation(originalUpdate);
+    const webhook = new SalesPayMongoWebhookService(db, new FakePayMongo(), new SalesStockService(db));
+    const raw = JSON.stringify(payload);
+    const completedCount = () => Number(
+      renderMetrics().split("\n").find((line) => line.startsWith("pos_sales_completed_total "))?.split(" ")[1] ?? 0,
+    );
+    const metricBefore = completedCount();
+    await expect(webhook.handle(raw, "valid", payload, "atomic-1"))
+      .rejects.toThrow("INJECTED_STATUS_WRITE_FAILURE");
+    expect(completedCount()).toBe(metricBefore);
+    expect(await db.findWebhookEvent("paymongo", "evt_atomic_failure")).toBeNull();
+    expect(await db.findSaleById(sale.id, business.id)).toMatchObject({ status: "PENDING_PAYMENT", paidMinor: 0 });
+    expect(await db.listPaymentsBySale(sale.id, business.id)).toEqual([
+      expect.objectContaining({ status: "PENDING" }),
+    ]);
+    expect((await db.findBalance(product.id, business.id, null))?.qtyOnHand).toBe(2);
+    expect((await db.listMovements(product.id, business.id, null)).filter((row) => row.type === "sale")).toHaveLength(0);
+
+    await expect(webhook.handle(raw, "valid", payload, "atomic-2")).resolves.toEqual({ handled: true });
+    expect(completedCount()).toBe(metricBefore + 1);
+    await expect(webhook.handle(raw, "valid", payload, "atomic-3"))
+      .resolves.toEqual({ handled: true, deduplicated: true });
+    expect(completedCount()).toBe(metricBefore + 1);
+    const differentEvent = {
+      data: { ...payload.data, id: "evt_atomic_second_event" },
+    };
+    await expect(webhook.handle(JSON.stringify(differentEvent), "valid", differentEvent, "atomic-4"))
+      .resolves.toEqual({ handled: true });
+    expect(completedCount()).toBe(metricBefore + 1);
+    expect(await db.findWebhookEvent("paymongo", "evt_atomic_failure")).toMatchObject({ status: "processed" });
+    expect(await db.findWebhookEvent("paymongo", "evt_atomic_second_event")).toMatchObject({ status: "processed" });
+    expect(await db.findSaleById(sale.id, business.id)).toMatchObject({ status: "COMPLETED", paidMinor: 100 });
+    expect((await db.findBalance(product.id, business.id, null))?.qtyOnHand).toBe(1);
+    expect((await db.listMovements(product.id, business.id, null)).filter((row) => row.type === "sale")).toHaveLength(1);
+    expect(updateStatus).toHaveBeenCalledTimes(3);
   });
 });
