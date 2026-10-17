@@ -26,6 +26,23 @@ describe("phase11 settings gate and audit context", () => {
     ).resolves.toBeTruthy();
   });
 
+  it("rejects a currency setting that differs from the registered business currency", async () => {
+    const db = createMemoryDb();
+    const biz = await db.createBusiness({ name: "Currency Integrity", currency: "PHP" });
+    const service = new BusinessService(db);
+
+    await expect(service.patchSettings(
+      biz.id, "owner", { currency: "USD", taxName: "No tax", taxRateBps: 0 },
+      "mismatched-currency", ["settings.write"],
+    )).rejects.toThrow("VALIDATION");
+    expect((await db.getSettings(biz.id))["currency"]).toBeUndefined();
+
+    await expect(service.patchSettings(
+      biz.id, "owner", { currency: "PHP", taxName: "No tax", taxRateBps: 0 },
+      "correct-currency", ["settings.write"],
+    )).resolves.toMatchObject({ currency: "PHP" });
+  });
+
   it("audits the settings patch with before and after snapshots", async () => {
     const db = createMemoryDb();
     const biz = await db.createBusiness({ name: "S", currency: "PHP" });

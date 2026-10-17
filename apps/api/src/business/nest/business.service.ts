@@ -49,6 +49,12 @@ export class BusinessService {
     if (!granted.includes("settings.write")) throw new Error("FORBIDDEN");
     return this.db.withLock(`business-settings:${businessId}`, async () => {
     const current = await this.db.getSettings(businessId);
+    // Keep receipt totals, tax defaults and the business's immutable currency aligned.
+    if (patch["currency"] !== undefined) {
+      const business = await this.db.findBusinessById(businessId);
+      if (!business) throw new Error("TENANT_REQUIRED");
+      if (patch["currency"] !== business.currency) throw new Error("VALIDATION");
+    }
     // Receipt customization is a paid feature: the settings schema accepts
     // receipt, receipt.*, receiptHeader and receiptFooter, so the gate matches
     // the whole receipt* family rather than a single key spelling.
