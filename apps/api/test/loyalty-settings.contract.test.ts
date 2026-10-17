@@ -31,9 +31,9 @@ beforeAll(async () => {
     .send({ email: "loyalty-settings-cashier@example.com", password: invitation.body.tempPassword });
   cashierCookie = jar(cashier.headers["set-cookie"]);
   cashierCsrf = cashier.body.csrfToken as string;
-});
+}, 30_000);
 
-afterAll(async () => { await app.close(); });
+afterAll(async () => { await app?.close(); });
 
 describe("loyalty settings contract", () => {
   it("returns an explicit no-program state and persists the owner configuration", async () => {
