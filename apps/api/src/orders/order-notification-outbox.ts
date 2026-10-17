@@ -262,7 +262,16 @@ export class OrderNotificationOutboxWorker {
     let permanent = false;
     let mintedId: string | null = null;
     const wallStart = Date.now();
+    // Compare acknowledgments with elapsed wall time, not merely the time
+    // at which the claim was taken. A slow provider cannot extend a lease.
+    const effectiveNow = () => new Date(now.getTime() + Math.max(0, Date.now() - wallStart));
     try {
+      // A process repeatedly crashing before it can record a failure must
+      // not send unlimited emails through endlessly reclaimed leases.
+      if (job.attempts > this.maxAttempts) {
+        const expired = await this.store.markFailed(job.id, job.leaseId!, effectiveNow(), this.maxAttempts, true);
+        return expired === "DEAD" ? "DEAD" : "STALE";
+      }
       const order = await this.db.findOrderById(job.orderId, job.businessId);
       if (!order?.email) {
         permanent = true;
@@ -275,7 +284,7 @@ export class OrderNotificationOutboxWorker {
           // The caller's clock is fixed for deterministic tests; account for
           // elapsed real delivery time so an expired lease cannot be ACKed.
           const acknowledged = await this.store.markSent(
-            job.id, job.leaseId!, new Date(now.getTime() + Math.max(0, Date.now() - wallStart)),
+            job.id, job.leaseId!, effectiveNow(),
           );
           if (acknowledged) {
             mintedId = null;
@@ -299,7 +308,7 @@ export class OrderNotificationOutboxWorker {
         incrementMetric("pos_order_notification_outbox_token_cleanup_failures_total");
       }
     }
-    const outcome = await this.store.markFailed(job.id, job.leaseId!, now, this.maxAttempts, permanent);
+    const outcome = await this.store.markFailed(job.id, job.leaseId!, effectiveNow(), this.maxAttempts, permanent);
     return outcome === "RETRY" ? "RETRY" : outcome;
   }
 }

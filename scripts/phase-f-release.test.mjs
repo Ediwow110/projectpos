@@ -58,6 +58,24 @@ test("H5 notification outbox migration is tenant-scoped and remains opt-in", () 
   assert.doesNotMatch(read("docker/api.Dockerfile"), /ORDER_NOTIFICATION_OUTBOX_ENABLED=true/);
 });
 
+test("enabling the H5 outbox without PostgreSQL fails before accepting requests", () => {
+  const result = spawnSync(process.execPath, ["--import", "tsx", "src/main.ts"], {
+    cwd: join(root, "apps/api"),
+    env: {
+      ...process.env,
+      NODE_ENV: "development",
+      DATABASE_URL: "",
+      ORDER_NOTIFICATION_OUTBOX_ENABLED: "true",
+    },
+    encoding: "utf8",
+    timeout: 20_000,
+    windowsHide: true,
+  });
+  assert.equal(result.error, undefined, "API outbox startup check failed");
+  assert.notEqual(result.status, 0, "flag without a database must not boot");
+  assert.match(result.stderr + result.stdout, /OUTBOX_REQUIRES_POSTGRES/);
+});
+
 test("production startup fails before listening when approval key is absent", () => {
   const result = spawnSync(process.execPath, ["--import", "tsx", "src/main.ts"], {
     cwd: join(root, "apps/api"),

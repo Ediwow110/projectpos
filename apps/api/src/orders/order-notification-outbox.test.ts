@@ -84,7 +84,7 @@ describe("H5 durable order notification outbox", () => {
     fail = false;
     const newWorker = new OrderNotificationOutboxWorker(db, store, new OrderNotificationService(db, email));
     expect(await newWorker.runOnce(new Date(29_999))).toMatchObject({ claimed: 0 });
-    expect(await newWorker.runOnce(new Date(30_000))).toEqual({ claimed: 1, sent: 1, retried: 0, dead: 0 });
+    expect(await newWorker.runOnce(new Date(30_100))).toEqual({ claimed: 1, sent: 1, retried: 0, dead: 0 });
     expect(delivered).toHaveLength(1);
     expect(await new OrderAccessService(db).authenticate(delivered[0]!, "STATUS", order.id))
       .toMatchObject({ orderId: order.id });
@@ -97,7 +97,7 @@ describe("H5 durable order notification outbox", () => {
     await store.enqueue({ businessId: business.id, orderId: order.id, event: "CONFIRMED", dedupeKey: "failed" }, new Date(0));
     const worker = new OrderNotificationOutboxWorker(db, store, new OrderNotificationService(db, email), 2);
     expect(await worker.runOnce(new Date(0))).toMatchObject({ retried: 1 });
-    expect(await worker.runOnce(new Date(30_000))).toMatchObject({ dead: 1 });
+    expect(await worker.runOnce(new Date(30_100))).toMatchObject({ dead: 1 });
     expect(await worker.runOnce(new Date(500_000))).toMatchObject({ claimed: 0 });
     const [job] = await store.listForTests();
     expect(job!.status).toBe("DEAD");
@@ -109,6 +109,38 @@ describe("H5 durable order notification outbox", () => {
     await store.enqueue({ businessId: "b", orderId: "o", event: "CONFIRMED", dedupeKey: "e" }, new Date(0));
     expect(await store.cancelOrder("b", "o", new Date(100))).toBe(1);
     expect(await store.claimDue(new Date(200), 10, 10_000)).toHaveLength(0);
+  });
+
+  it("rejects acknowledgment if the provider call runs past the lease deadline", async () => {
+    const { db, business, order } = await fixture();
+    const outbox = createMemoryOrderNotificationOutbox();
+    let currentMs = 1000;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => currentMs);
+    try {
+      await outbox.enqueue({ businessId: business.id, orderId: order.id, event: "CONFIRMED", dedupeKey: "slow" }, new Date(1000));
+      const sender = emailSender(async () => { currentMs += 125_000; });
+      const worker = new OrderNotificationOutboxWorker(db, outbox, new OrderNotificationService(db, sender));
+      expect(await worker.runOnce(new Date(1000))).toMatchObject({ claimed: 1, sent: 0 });
+      expect(await db.listActiveOrderAccessTokens(order.id, business.id, "STATUS", new Date())).toEqual([]);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("does not send again after repeated crashed leases exhaust the attempt budget", async () => {
+    const { db, business, order } = await fixture();
+    const outbox = createMemoryOrderNotificationOutbox();
+    await outbox.enqueue({ businessId: business.id, orderId: order.id, event: "CONFIRMED", dedupeKey: "crashes" }, new Date(0));
+    let now = 0;
+    for (let i = 0; i < 3; i++) {
+      const [job] = await outbox.claimDue(new Date(now), 1, 1_000);
+      expect(job).toBeDefined();
+      now += 1_001;
+    }
+    const send = vi.fn(async () => {});
+    const worker = new OrderNotificationOutboxWorker(db, outbox, new OrderNotificationService(db, emailSender(send)), 2);
+    expect(await worker.runOnce(new Date(now))).toMatchObject({ claimed: 1, dead: 1 });
+    expect(send).not.toHaveBeenCalled();
   });
 
   it("retires a newly emailed link if cancellation wins while the provider is sending", async () => {
