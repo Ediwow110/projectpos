@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
 import type { INestApplication } from "@nestjs/common";
 import { createTestApp } from "../src/app.module";
+import type { DbPort } from "../src/common/db.port";
 
 let app: INestApplication;
 let cookie: string;
@@ -144,6 +145,37 @@ describe("onboarding HTTP contract", () => {
       .set("X-CSRF-Token", csrf)
       .send({ taxName: "VAT" });
     expect(setupSetting.status).toBe(200);
+  });
+
+  it("keeps workspace access blocked when a saved custom header has not been explicitly confirmed", async () => {
+    const me = await request(app.getHttpServer()).get("/api/v1/me").set("Cookie", cookie);
+    expect(me.status).toBe(200);
+    expect(me.body.businessId).toBeTypeOf("string");
+    const db = app.get<DbPort>("DbPort");
+    const settings = await db.getSettings(me.body.businessId);
+    // Seed a previously configured header in this isolated memory fixture.
+    // Customizing its text does not acknowledge that the receipt was reviewed.
+    await db.saveSettings(me.body.businessId, { ...settings, receiptHeader: "Configured merchant header" });
+    const before = await request(app.getHttpServer())
+      .get("/api/v1/onboarding").set("Cookie", cookie);
+    expect(before.status).toBe(200);
+    expect(before.body.steps.receiptSetup).toBe("pending");
+
+    const bypass = await request(app.getHttpServer())
+      .patch("/api/v1/onboarding")
+      .set("Cookie", cookie)
+      .set("X-CSRF-Token", csrf)
+      .send({ step: "receiptSetup", state: "done" });
+    expect(bypass.status).toBe(400);
+    expect(bypass.body.code).toBe("ONBOARDING_CONFIGURATION_REQUIRED");
+
+    const after = await request(app.getHttpServer())
+      .get("/api/v1/onboarding").set("Cookie", cookie);
+    expect(after.body).toEqual(before.body);
+    const workspace = await request(app.getHttpServer())
+      .get("/api/v1/products").set("Cookie", cookie);
+    expect(workspace.status).toBe(403);
+    expect(workspace.body.code).toBe("ONBOARDING_REQUIRED");
   });
 
   it("opens workspace APIs when required steps are complete, even with optional steps pending", async () => {

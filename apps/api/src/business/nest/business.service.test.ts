@@ -121,6 +121,78 @@ describe("phase11 settings gate and audit context", () => {
     });
   });
 
+  it.each([undefined, false, "true"])(
+    "does not infer receipt confirmation from a custom header when acknowledgement is %s",
+    async (acknowledgement) => {
+      const db = createMemoryDb();
+      const biz = await db.createBusiness({ name: "Unconfirmed Receipt", currency: "PHP" });
+      const svc = new BusinessService(db);
+      const settings = {
+        onboardingSchemaVersion: 2,
+        businessAddress: "123 Test Street, Manila",
+        businessTimezone: "Asia/Manila",
+        currency: "PHP",
+        taxName: "No tax",
+        taxRateBps: 0,
+        receiptHeader: "Custom merchant header",
+        standardReceiptConfirmed: acknowledgement,
+        onboarding: {
+          steps: {
+            businessDetails: "done", taxCurrency: "done", receiptSetup: "pending",
+            products: "skipped", employees: "skipped",
+          },
+        },
+      };
+      await db.saveSettings(biz.id, settings);
+
+      await expect(svc.patchOnboarding(
+        biz.id, "owner", { step: "receiptSetup", state: "done" },
+        "unconfirmed-receipt", ["settings.write"],
+      )).rejects.toThrow("ONBOARDING_CONFIGURATION_REQUIRED");
+      expect(await db.getSettings(biz.id)).toEqual(settings);
+      expect((await db.listAudit()).filter((entry) => entry.action === "onboarding.update"))
+        .toHaveLength(0);
+
+      await svc.patchSettings(
+        biz.id, "owner", { standardReceiptConfirmed: true },
+        "explicit-receipt-confirmation", ["settings.write"],
+      );
+      await expect(svc.patchOnboarding(
+        biz.id, "owner", { step: "receiptSetup", state: "done" },
+        "confirmed-receipt", ["settings.write"],
+      )).resolves.toMatchObject({ currentStep: "complete", steps: { receiptSetup: "done" } });
+      expect((await db.getSettings(biz.id))["taxRateBps"]).toBe(0);
+    },
+  );
+
+  it("reopens an unconfirmed V2 receipt step even when a custom header and done flag were saved", async () => {
+    const db = createMemoryDb();
+    const biz = await db.createBusiness({ name: "Reconciled Receipt", currency: "PHP" });
+    await db.saveSettings(biz.id, {
+      onboardingSchemaVersion: 2,
+      businessAddress: "123 Test Street, Manila",
+      businessTimezone: "Asia/Manila",
+      currency: "PHP",
+      taxName: "No tax",
+      taxRateBps: 0,
+      receiptHeader: "Custom merchant header",
+      onboarding: {
+        steps: {
+          businessDetails: "done", taxCurrency: "done", receiptSetup: "done",
+          products: "skipped", employees: "skipped",
+        },
+      },
+    });
+    const svc = new BusinessService(db);
+
+    await expect(svc.getOnboarding(biz.id)).resolves.toMatchObject({
+      currentStep: "receiptSetup", steps: { receiptSetup: "pending" },
+    });
+    await expect(svc.getSaleReadiness(biz.id)).resolves.toMatchObject({
+      businessConfigured: false, readyForFirstSale: false,
+    });
+  });
+
   it("allows a Free-plan owner to confirm a standard receipt without granting paid customization", async () => {
     const db = createMemoryDb();
     const biz = await db.createBusiness({ name: "Free Shop", currency: "PHP" });
