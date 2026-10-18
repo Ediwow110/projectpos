@@ -49,7 +49,10 @@ test("P5 visual accessibility: V4 text contrast, payment disclosure and Escape r
   await confirmPosQuantity(page, 2);
   const opener = page.locator('[data-ui="atlas-pos-cart"] button[aria-label^="Pay ₱"]');
   await opener.click();
-  const payment = page.getByRole("dialog", { name: "Payment" });
+  const chooser = page.locator('[data-ui="atlas-v4-payment-chooser"]');
+  await expect(chooser).toBeVisible();
+  await chooser.getByRole("button", { name: "Continue", exact: true }).click();
+  const payment = page.locator('[data-ui="payment-workspace"]');
   await expect(payment).toBeVisible();
   expect(await contrastRatio(page, '[data-ui="payment-workspace"] > div > p:nth-of-type(2)')).toBeGreaterThanOrEqual(4.5);
 
@@ -64,6 +67,8 @@ test("P5 visual accessibility: V4 text contrast, payment disclosure and Escape r
   await expect(payment).toBeHidden();
   await expect(opener).toBeFocused();
   await opener.click();
+  await expect(chooser).toBeVisible();
+  await chooser.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(payment).toBeVisible();
 });
 
