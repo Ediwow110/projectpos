@@ -9,7 +9,7 @@ before the first deploy; after that, sections 4–7 are the routine path.
 |---|---|---|---|
 | Web (Next.js 15) | `docker/web.Dockerfile` → `next start -p 3000` | 3000 | Browser app; uses same-site API traffic or a same-origin `/api` proxy |
 | API (NestJS 11) | `docker/api.Dockerfile` → `tsx src/main.ts` | 3001 | Runs TypeScript from source by design (no build step) |
-| PostgreSQL 16 | any managed Postgres | 5432 | Raw `pg` driver; migrations via `scripts/apply-migrations.mjs` |
+| PostgreSQL 17 | Supabase managed Postgres | 5432 | Current NexPOS production and H5 staging major version; raw `pg` driver; migrations via `scripts/apply-migrations.mjs` |
 
 Key constraints the architecture imposes on any hosting choice:
 
@@ -65,9 +65,12 @@ in an image.
 
 ## 3. Database and migrations
 
-1. Provision a **clean** PostgreSQL 16 database. The SQL migrations are
-   tracked in a `_migrations` ledger table, not written with `IF NOT EXISTS`,
-   so first application must start from an empty database.
+1. **New environments only:** provision a **clean** PostgreSQL 17 database.
+   Current NexPOS production and H5 staging already use PostgreSQL 17;
+   **do not recreate, replace, or reset these existing databases**. The SQL
+   migrations are tracked in a `_migrations` ledger table, not written with
+   `IF NOT EXISTS`, so the very first application in a new environment must
+   start from an empty database.
 2. Apply all migrations **before first boot and before every schema-changing
    release**, using a separately authorized migration job:
    `node scripts/apply-migrations.mjs` with `DATABASE_URL` provided securely.
