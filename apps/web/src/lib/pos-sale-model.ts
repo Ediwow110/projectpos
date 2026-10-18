@@ -135,6 +135,7 @@ export function addProductToCart(cart: PosCartEntry[], product: PosProduct, quan
   if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 999) return cart;
   const existing = cart.find((entry) => entry.productId === product.id);
   if (existing) {
+    if (!Number.isSafeInteger(existing.qty + quantity) || existing.qty + quantity > 999) return cart;
     return cart.map((entry) => entry.productId === product.id ? { ...entry, qty: entry.qty + quantity } : entry);
   }
   return [

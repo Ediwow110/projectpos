@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "../../components/AppShell";
 import { PageHeader, Panel, SectionHeader } from "../../components/premium";
 import { apiFetch } from "../../lib/api";
-import { businessAdminDestinationsForRole } from "../../lib/admin-destinations";
+import { atlasAdminDestinationsForRole } from "../../lib/atlas-admin-destinations";
 import { AdminHelpActions } from "./AdminHelpActions";
 
 interface Me {
@@ -23,15 +23,21 @@ export default function AdminPage(): JSX.Element {
   });
   const role = meQuery.data?.role ?? "cashier";
   const canAdmin = role === "owner" || role === "manager";
-  const destinations = businessAdminDestinationsForRole(role);
+  const destinations = atlasAdminDestinationsForRole(role);
+  const isOwner = role === "owner";
+  const isManager = role === "manager";
 
   return (
-    <AppShell businessName={meQuery.data?.businessName} role={role} atlasApprovals={role === "manager"}>
-      <main className="mx-auto max-w-[1240px] space-y-5 px-4 pb-10 pt-3 sm:px-6">
+    <AppShell businessName={meQuery.data?.businessName} role={role} atlasOwner={isOwner} atlasManager={isManager}>
+      <main className="mx-auto w-full max-w-[1380px] space-y-6 px-4 pb-12 pt-8 sm:px-7 xl:px-[38px]">
         <PageHeader
-          eyebrow="Administration / Help"
-          title="Administration & Help"
-          description="Keep lower-frequency workspace controls discoverable without crowding daily selling and inventory workflows."
+          eyebrow={isOwner ? "OWNER / ADMINISTRATION" : isManager ? "MANAGER / ADMINISTRATION" : "WORKSPACE / HELP"}
+          title={isOwner ? "Owner administration" : isManager ? "Manager operations" : "Administration & Help"}
+          description={isOwner
+            ? "Business controls and authorized account decisions in one workspace."
+            : isManager
+              ? "Review operations, approvals, shifts and inventory within your assigned authority."
+              : "Find operational guidance without exposing restricted business settings."}
           actions={<AdminHelpActions />}
         />
         {canAdmin ? (
@@ -54,23 +60,29 @@ export default function AdminPage(): JSX.Element {
         ) : null}
 
         {canAdmin ? (
-          <section className="grid gap-4 sm:grid-cols-2" aria-label="Administration destinations">
+          <section aria-label="Administration destinations" className="space-y-4">
+            <div>
+              <h2 className="font-display text-[20px] font-semibold text-[#202826]">{isOwner ? "Owner controls & access" : "Manager work areas"}</h2>
+              <p className="mt-1 text-sm text-[#748078]">Actions require the relevant server-side permission; availability may vary by assignment.</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
             {destinations.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
-                className="group rounded-xl border border-[#e5e9e3] bg-white p-5 shadow-[0_3px_11px_rgba(20,38,31,0.04)] transition hover:-translate-y-0.5 hover:border-[#b0c5b6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#267552] focus-visible:ring-offset-2 motion-reduce:transform-none"
+                className="group flex min-h-[175px] flex-col rounded-[14px] border border-[#e5e9e3] bg-white p-5 transition-colors duration-150 hover:border-[#da614c] hover:bg-[#fbfcf9] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#da614c] motion-reduce:transition-none"
               >
-                <span aria-hidden className="grid h-10 w-10 place-items-center rounded-xl bg-[#e9f4ec] font-data text-sm font-semibold text-[#267552]">{item.icon}</span>
-                <h2 className="font-display mt-4 text-[17px] font-semibold text-[#202826]">{item.title}</h2>
-                <p className="mt-2 text-[12px] leading-5 text-[#53615a]">{item.description}</p>
-                <span className="mt-4 inline-flex text-[11px] font-semibold text-[#267552]">Open {item.title} →</span>
+                <span aria-hidden className="grid size-10 place-items-center rounded-[10px] bg-[#eff2ed] font-data text-base font-semibold text-[#29332d]">{item.icon}</span>
+                <h3 className="font-display mt-3 text-[16px] font-semibold text-[#202826]">{item.title}</h3>
+                <p className="mt-1.5 text-[12px] leading-5 text-[#748078]">{item.description}</p>
+                <span className="mt-auto pt-3 text-[12px] font-semibold text-[#da614c]">Open →</span>
               </Link>
             ))}
+            </div>
           </section>
         ) : null}
 
-        <Panel className="p-5">
+        <Panel className="border-[#e5e9e3] bg-white p-5">
           <SectionHeader
             title="Workspace map"
             description="Use the shell groups as a mental model when you are learning the system."
@@ -82,15 +94,15 @@ export default function AdminPage(): JSX.Element {
               ["Operations", "Registers, Shifts, Transfers, Expenses, Branches, Devices, and Sync."],
               ["Reports", "Sales and operational reporting for review and reconciliation."],
             ].map(([title, copy]) => (
-              <div key={title} className="rounded-xl border border-[#eee4db] bg-[#fcf8f3] p-4">
-                <h3 className="font-display text-[13px] font-semibold text-[#2a241f]">{title}</h3>
-                <p className="mt-2 text-[11px] leading-5 text-[#73685f]">{copy}</p>
+              <div key={title} className="rounded-xl border border-[#e5e9e3] bg-[#f7f8f5] p-4">
+                <h3 className="font-display text-[13px] font-semibold text-[#202826]">{title}</h3>
+                <p className="mt-2 text-[11px] leading-5 text-[#748078]">{copy}</p>
               </div>
             ))}
           </div>
         </Panel>
 
-        <Panel className="p-5">
+        <Panel className="border-[#e5e9e3] bg-white p-5">
           <SectionHeader
             title="POS operating hints"
             description="NexPOS is designed for repeated keyboard and scanner use during a shift."

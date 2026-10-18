@@ -1,47 +1,32 @@
 "use client";
 
 import Link from "next/link";
-import type { JSX } from "react";
+import React, { type JSX } from "react";
 
-// Compact navigation mirrors the Atlas V4 register rail without hiding the
-// full role-specific workspace (the logo returns to its normal dashboard).
-const SHORTCUTS = [
-  { href: "/pos", label: "SALE", caption: "New sale" },
-  { href: "/inventory", label: "ITEMS", caption: "Inventory" },
-  { href: "/orders", label: "ORDERS", caption: "Orders" },
-  { href: "/shifts", label: "SHIFT", caption: "Shifts" },
-] as const;
-
-export function AtlasPosRail({
-  pathname,
-  onNavigate,
-}: {
+/** Compact selling rail from Atlas V4. The API, not this navigation, enforces roles. */
+export function AtlasPosRail({ pathname, onNavigate, onSignOut, signingOut = false }: {
   pathname: string;
   onNavigate: (href: string) => void;
+  onSignOut?: () => void;
+  signingOut?: boolean;
 }): JSX.Element {
-  return (
-    <div className="flex h-full flex-col items-center bg-[#252e2b] px-2 pt-6 text-white">
-      <Link href="/" aria-label="NexPOS dashboard"
-        onClick={() => onNavigate("/")}
-        className="grid h-[42px] w-[42px] place-items-center rounded-[11px] bg-[#da614c] font-display text-[23px] font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
-        N
-      </Link>
-      <nav aria-label="Register navigation" className="mt-[56px] w-full space-y-7">
-        {SHORTCUTS.map((shortcut) => {
-          const active = pathname === shortcut.href;
-          return (
-            <Link key={shortcut.href} href={shortcut.href}
-              title={shortcut.caption}
-              aria-current={active ? "page" : undefined}
-              onClick={() => { if (!active) onNavigate(shortcut.href); }}
-              className={"flex min-h-[59px] w-full items-center justify-center rounded-[7px] text-[10px] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ffb7a4] " +
-                (active ? "bg-[#39443e] font-semibold text-white" : "text-[#bdc7c0] hover:bg-[#39443e] hover:text-white")}
-            >
-              {shortcut.label}
-            </Link>
-          );
-        })}
-      </nav>
-    </div>
-  );
+  const links = [
+    { href: "/pos", label: "SALE" },
+    { href: "/products", label: "ITEMS" },
+    { href: "/orders", label: "ORDERS" },
+    { href: "/shifts", label: "SHIFT" },
+  ];
+  return <div className="flex h-full min-h-[540px] flex-col items-center bg-[#252e2b] px-2 pt-6 text-white">
+    <Link href="/" aria-label="NexPOS dashboard" onClick={() => onNavigate("/")}
+      className="mb-14 grid size-[42px] place-items-center rounded-[11px] bg-[#da614c] font-display text-[23px] font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">N</Link>
+    <nav aria-label="Cashier sale navigation" className="w-full space-y-6">
+      {links.map((item) => <Link key={item.href} href={item.href}
+        aria-current={pathname === item.href ? "page" : undefined}
+        onClick={() => { if (pathname !== item.href) onNavigate(item.href); }}
+        className={"flex min-h-[58px] items-center justify-center rounded-[7px] px-1 font-data text-[10px] tracking-wide transition-colors focus-visible:outline-2 focus-visible:outline-white " + (pathname === item.href ? "bg-[#39443e] text-white" : "text-[#dae2db] hover:bg-[#39443e]")}
+      >{item.label}</Link>)}
+    </nav>
+    {onSignOut ? <button type="button" onClick={onSignOut} disabled={signingOut} aria-label="Sign out" title="Sign out"
+      className="mt-auto mb-5 flex min-h-11 w-full items-center justify-center rounded-lg text-[11px] text-[#dae2db] hover:bg-[#39443e] disabled:opacity-50">{signingOut ? "…" : "Exit"}</button> : null}
+  </div>;
 }

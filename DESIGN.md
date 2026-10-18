@@ -153,6 +153,38 @@ Voice is operational, concise, and specific. Unknown/pending/offline states are 
 
 ## Atlas 2026 V4 operational surfaces
 
+### Atlas V4 owner product media
+
+- The product detail page implements owner-only image upload, replacement, square crop/zoom preview and confirmed removal (Figma Atlas owner product editor `63:239`). The controls are feature-gated, use real catalog images or initials fallback, and are hidden from cashiers/other roles.
+- Product media uses public-read/server-write-only Supabase Storage, an immutable tenant/product key per image, and 200 MiB active-image quota per business. Never embed Figma's example products/assets into the business catalog. The backend app's own session/CSRF/tenant authorization remains the authority; public object URLs are only for displaying photos.
+- A separate staging rollout must provision the bucket and secret, apply migration `0040_product_media`, run isolated cross-tenant/upload tests and only then set `PRODUCT_MEDIA_ENABLED=1`. This code is not a production rollout approval.
+
+### Atlas V4 cashier sale workspace
+
+- The active `/pos` route now opts into the light Atlas cashier treatment
+  (Figma 66:3): 78px dark `#252E2B` sale rail at desktop widths, coral
+  NexPOS mark, light `#F7F8F5` product surface, white editable current-sale
+  panel and `#DA614C` payment CTA. The payment-method chooser uses the
+  light modal treatment from Figma 66:964; disabled tender methods remain
+  disabled if the server/provider has not enabled them.
+- Product imagery must come from the owner's real catalog `imageUrl` data;
+  use accessible name/initials fallbacks when missing. Never ship Figma's
+  example photos, product names, inventory quantities or demo monetary
+  values as actual business data. The UI must never fake stock availability.
+- Existing POS sale creation, hold/resume, discounts, manager approvals,
+  PayMongo webhook settlement, offline handling, cart order and receipt
+  totals remain authoritative and separate from visual presentation.
+- On smaller screens the cashier retains the accessible V4 mobile header
+  and navigation, with a light cart tray/drawer and a keyboard-accessible
+  payment method modal. Test 390 / 820 / 1024 / 1280 / 1440px.
+- **P5 accessibility refinement:** Keep Figma's coral `#DA614C` as a
+  decorative accent where appropriate, but use darkened `#B84F3C` for
+  normal-sized white-on-coral POS action labels (at least 4.5:1 contrast).
+  Use `#53615A` instead of lighter `#71807A` / `#748078` for small text
+  on white or `#F7F8F5` POS surfaces. Payment workflow labels on white
+  use `#B04A39` rather than light coral. Contrast is measured from browser
+  computed styles, not accepted solely from design-token names.
+
 Figma Atlas V4 is an **additional, role-specific operational layout** within NexPOS,
 not permission to replace the existing POS transaction engine or invent example
 transactions. The older cream/coral direction above still applies to routes not
@@ -168,6 +200,12 @@ Guest/Platform 99:2, Responsive QA 100:2).
 - **Desktop shells:** owner sidebar 239px; approvals sidebar 230px; inventory
   sidebar 226px; platform sidebar 233px. Major desktop headers are approximately
   78–80px high; content is fluid rather than a scaled 1440px screenshot.
+- **Manager administration (Atlas P4):** `/admin` uses a 228px manager
+  workspace rail, V4 canvas and accessible task cards for real approvals,
+  sales, inventory, procurement, shifts and reporting. Owners retain their
+  239px control shell and broader account shortcuts. Do not display the sample
+  financial figures in Figma frame 63:62 as live metrics. Manager and
+  non-management roles must not receive owner-only links or grants.
 - **Atlas mobile shell:** 77px white header, 42px dark square NexPOS mark,
   visible role badge and a minimum 44px menu disclosure. Navigation,
   active-branch selection, tour controls and sign-out are reachable from the

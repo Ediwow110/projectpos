@@ -17,10 +17,11 @@ import {
 import { branchScopeLabel } from "../lib/workspace-branch";
 import { GuidedTour } from "./GuidedTour";
 import { AtlasOwnerNavigation } from "./AtlasOwnerNavigation";
+import { AtlasManagerNavigation } from "./AtlasManagerNavigation";
+import { AtlasPosRail } from "./AtlasPosRail";
 import { AtlasApprovalNavigation } from "./AtlasApprovalNavigation";
 import { AtlasCashierNavigation } from "./AtlasCashierNavigation";
 import { AtlasInventoryNavigation } from "./AtlasInventoryNavigation";
-import { AtlasPosRail } from "./AtlasPosRail";
 import { useBranchSwitcher } from "./use-branch-switcher";
 import { useNavigationProgress } from "./use-navigation-progress";
 import { useWorkspaceTour } from "./use-workspace-tour";
@@ -88,7 +89,9 @@ export function AppShell({
   offline,
   topbar,
   posMode = false,
+  atlasPos = false,
   atlasOwner = false,
+  atlasManager = false,
   atlasApprovals = false,
   atlasCashier = false,
   atlasInventory = false,
@@ -99,7 +102,9 @@ export function AppShell({
   offline?: boolean;
   topbar?: ReactNode;
   posMode?: boolean;
+  atlasPos?: boolean;
   atlasOwner?: boolean;
+  atlasManager?: boolean;
   atlasApprovals?: boolean;
   atlasCashier?: boolean;
   atlasInventory?: boolean;
@@ -142,10 +147,11 @@ export function AppShell({
   const name = businessName ?? "NexPOS";
   const currentRole = shellMe.data?.role ?? role ?? "owner";
   const ownerAtlas = atlasOwner && currentRole === "owner";
+  const managerAtlas = atlasManager && currentRole === "manager";
   const approvalAtlas = atlasApprovals && (currentRole === "manager" || currentRole === "owner");
   const cashierAtlas = atlasCashier && currentRole === "cashier";
   const inventoryAtlas = atlasInventory && ["inventory", "manager", "owner"].includes(currentRole);
-  const atlasLayout = ownerAtlas || approvalAtlas || cashierAtlas || inventoryAtlas;
+  const atlasLayout = ownerAtlas || managerAtlas || approvalAtlas || cashierAtlas || inventoryAtlas || atlasPos;
   const activeBranchId = shellMe.data?.activeBranchId ?? null;
   const activeBranchName = shellMe.data?.activeBranchName ?? null;
   const activeBranches = (branchesQuery.data?.items ?? []).filter((branch) => branch.isActive);
@@ -265,8 +271,8 @@ export function AppShell({
 
 
   return (
-    <div data-ui={posMode ? "atlas-v4-pos-shell" : ownerAtlas ? "atlas-owner-shell" : approvalAtlas ? "atlas-approval-shell" : cashierAtlas ? "atlas-cashier-shell" : inventoryAtlas ? "atlas-inventory-shell" : undefined} className={"relative flex min-h-screen flex-col overflow-x-clip " + (atlasLayout || posMode ? "bg-[#f7f8f5]" : "bg-[#fcf8f3]")}>
-      {!atlasLayout && !posMode ? <DecorativeBackdrop /> : null}
+    <div data-ui={atlasPos ? "atlas-pos-shell" : ownerAtlas ? "atlas-owner-shell" : managerAtlas ? "atlas-manager-shell" : approvalAtlas ? "atlas-approval-shell" : cashierAtlas ? "atlas-cashier-shell" : inventoryAtlas ? "atlas-inventory-shell" : undefined} className={"relative flex min-h-screen flex-col overflow-x-clip " + (atlasLayout ? "bg-[#f7f8f5]" : "bg-[#fcf8f3]")}>
+      {!atlasLayout ? <DecorativeBackdrop /> : null}
       <a
         href="#main-content"
         onClick={(event) => {
@@ -302,7 +308,7 @@ export function AppShell({
         <header
           data-ui="shell-header"
           className={
-            (atlasLayout ? "hidden border-b border-[#e5e9e3] bg-white px-4 backdrop-blur sm:px-6 xl:block " + (ownerAtlas ? "xl:pl-[264px] " : inventoryAtlas ? "xl:pl-[263px] " : "xl:pl-[255px] ") : posMode ? "border-b border-[#e5e9e3] bg-white px-4 backdrop-blur sm:px-6 xl:pl-[78px] " : "border-b border-[#eadfd6] bg-[#fcf8f3]/95 px-4 backdrop-blur sm:px-6 ") +
+            (atlasLayout ? "hidden border-b border-[#e5e9e3] bg-white px-4 backdrop-blur sm:px-6 " + (atlasPos ? "xl:hidden " : "xl:block ") + (ownerAtlas ? "xl:pl-[264px] " : managerAtlas ? "xl:pl-[253px] " : inventoryAtlas ? "xl:pl-[251px] " : "xl:pl-[255px] ") : "border-b border-[#eadfd6] bg-[#fcf8f3]/95 px-4 backdrop-blur sm:px-6 ") +
             mobileHeaderHeight
           }
         >
@@ -317,6 +323,7 @@ export function AppShell({
             </Link>
             {posMode ? <strong data-ui="atlas-pos-title" className="font-display hidden text-[25px] font-semibold text-[#202826] xl:block">New sale</strong> : null}
             {ownerAtlas ? <span className="hidden min-w-0 truncate text-[15px] font-medium text-[#202826] xl:block">{activeBranchName ?? name} / Owner workspace</span> : null}
+            {managerAtlas ? <span className="hidden min-w-0 truncate text-[15px] font-medium text-[#202826] xl:block">{activeBranchName ?? name} / Manager workspace</span> : null}
             {approvalAtlas ? <span className="hidden min-w-0 truncate text-[14px] font-medium text-[#202826] xl:block">{currentRole === "owner" ? "Owner" : "Manager"} desk / {activeBranchName ?? name}</span> : null}
 
             <div className={posMode ? "hidden items-center gap-2 lg:flex" : "hidden items-center gap-2 md:flex"}>
@@ -513,17 +520,19 @@ export function AppShell({
 
       <div
         data-ui="shell-body"
-        className={"relative mx-auto grid w-full flex-1 " + (posMode ? "max-w-none xl:grid-cols-[78px_minmax(0,1fr)]" : ownerAtlas ? "max-w-none xl:grid-cols-[239px_minmax(0,1fr)]" : approvalAtlas || cashierAtlas ? "max-w-none xl:grid-cols-[230px_minmax(0,1fr)]" : inventoryAtlas ? "max-w-none xl:grid-cols-[238px_minmax(0,1fr)]" : "max-w-[1480px] xl:grid-cols-[220px_minmax(0,1fr)]")}
+        className={"relative mx-auto grid w-full flex-1 " + (atlasPos ? "max-w-none xl:grid-cols-[78px_minmax(0,1fr)]" : ownerAtlas ? "max-w-none xl:grid-cols-[239px_minmax(0,1fr)]" : managerAtlas ? "max-w-none xl:grid-cols-[228px_minmax(0,1fr)]" : approvalAtlas || cashierAtlas ? "max-w-none xl:grid-cols-[230px_minmax(0,1fr)]" : inventoryAtlas ? "max-w-none xl:grid-cols-[226px_minmax(0,1fr)]" : "max-w-[1480px] xl:grid-cols-[220px_minmax(0,1fr)]")}
       >
         <aside
           data-ui="shell-sidebar"
-          className={posMode ? "z-[60] hidden bg-[#252e2b] xl:sticky xl:top-0 xl:-mt-[80px] xl:block xl:h-screen xl:self-start" : atlasLayout ? "z-[60] hidden border-r border-[#e5e9e3] bg-white xl:sticky xl:top-0 xl:-mt-[78px] xl:block xl:h-screen xl:self-start" : "hidden border-r border-[#eadfd6] bg-white/55 xl:sticky xl:top-[65px] xl:block xl:h-[calc(100vh-65px)] xl:self-start"}
+          className={atlasLayout ? (atlasPos ? "z-[60] hidden bg-[#252e2b] xl:sticky xl:top-0 xl:block xl:h-screen xl:self-start" : "z-[60] hidden border-r border-[#e5e9e3] bg-white xl:sticky xl:top-0 xl:-mt-[78px] xl:block xl:h-screen xl:self-start") : "hidden border-r border-[#eadfd6] bg-white/55 xl:sticky xl:top-[65px] xl:block xl:h-[calc(100vh-65px)] xl:self-start"}
           aria-label="Workspace navigation"
         >
-          {posMode ? (
-            <AtlasPosRail pathname={pathname} onNavigate={beginNavigation} />
+          {atlasPos ? (
+            <AtlasPosRail pathname={pathname} onNavigate={beginNavigation} onSignOut={() => void signOut()} signingOut={signingOut} />
           ) : ownerAtlas ? (
             <AtlasOwnerNavigation pathname={pathname} onNavigate={beginNavigation} onSignOut={() => void signOut()} signingOut={signingOut} />
+          ) : managerAtlas ? (
+            <AtlasManagerNavigation pathname={pathname} onNavigate={beginNavigation} onSignOut={() => void signOut()} signingOut={signingOut} />
           ) : approvalAtlas ? (
             <AtlasApprovalNavigation role={currentRole} pathname={pathname} onNavigate={beginNavigation} onSignOut={() => void signOut()} signingOut={signingOut} />
           ) : cashierAtlas ? (
@@ -582,7 +591,7 @@ export function AppShell({
 
       <footer
         data-ui="shell-footer"
-        className={"relative z-20 border-t border-[#eadfd6] bg-white/80 px-4 py-4 backdrop-blur sm:px-6 " + (posMode ? "xl:hidden" : "")}
+        className={"relative z-20 border-t border-[#eadfd6] bg-white/80 px-4 py-4 backdrop-blur sm:px-6 " + (atlasPos ? "xl:hidden" : "")}
       >
         <div className="mx-auto flex w-full max-w-[1480px] flex-wrap items-center justify-between gap-2 text-[9px] text-[#8b8077]">
           <p><span className="font-display font-semibold text-[#3b342e]">NEXPOS</span> · Retail operations workspace</p>

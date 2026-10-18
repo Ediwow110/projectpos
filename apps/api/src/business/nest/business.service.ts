@@ -18,13 +18,14 @@ export class BusinessService {
   async getBusiness(businessId: string): Promise<{
     id: string;
     name: string;
+    currency: string;
     storefrontKey: string | null;
     settings: Record<string, unknown>;
   }> {
     const business = await this.db.findBusinessById(businessId);
     if (!business) throw new Error("TENANT_REQUIRED");
     const settings = await this.db.getSettings(businessId);
-    return { id: business.id, name: business.name, storefrontKey: business.storefrontKey, settings };
+    return { id: business.id, name: business.name, currency: business.currency, storefrontKey: business.storefrontKey, settings };
   }
 
   async ensureStorefrontKey(businessId: string): Promise<string> {
@@ -163,7 +164,7 @@ export class BusinessService {
   async patchOnboarding(
     businessId: string,
     actorId: string,
-    patch: { step: "businessDetails" | "taxCurrency" | "receiptSetup" | "products" | "employees"; state: "done" | "skipped" },
+    patch: { step: "businessDetails" | "taxCurrency" | "receiptSetup" | "products" | "employees"; state: "done" | "skipped"; receiptPreviewConfirmed?: boolean },
     requestId: string,
     granted: string[] = [],
   ): Promise<OnboardingState> {
@@ -172,6 +173,29 @@ export class BusinessService {
     const settings = await this.db.getSettings(businessId);
     const current = configuredOnboardingState(settings);
     if (patch.state === "done" && !isRequiredSetupConfigured(patch.step, settings)) {
+      throw new Error("ONBOARDING_CONFIGURATION_REQUIRED");
+    }
+    if (patch.step === "businessDetails" && patch.state === "done") {
+      const business = await this.db.findBusinessById(businessId);
+      const address = settings["businessAddress"];
+      if (!business || !business.name.trim() ||
+          typeof address !== "string" || address.length > 240) {
+        throw new Error("ONBOARDING_SETTINGS_REQUIRED");
+      }
+    }
+    if (patch.step === "taxCurrency" && patch.state === "done") {
+      const business = await this.db.findBusinessById(businessId);
+      const currency = settings["currency"];
+      const taxName = settings["taxName"];
+      if (!business || currency !== business.currency ||
+          typeof currency !== "string" || currency !== currency.toUpperCase() ||
+          typeof taxName !== "string" || taxName.length > 80) {
+        throw new Error("ONBOARDING_SETTINGS_REQUIRED");
+      }
+    }
+    if (patch.step === "receiptSetup" && patch.state === "done" &&
+        (patch.receiptPreviewConfirmed !== true ||
+         current.steps.businessDetails !== "done" || current.steps.taxCurrency !== "done")) {
       throw new Error("ONBOARDING_CONFIGURATION_REQUIRED");
     }
     if (patch.state === "done" && patch.step === "products" &&

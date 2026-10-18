@@ -23,12 +23,19 @@
 
 ## Visual contract
 
+### Atlas V4 P4 — role-specific administration
+
+- `/admin` displays the Atlas V4 owner workspace for owners, and a dedicated 228px manager navigation with Atlas V4 styling for managers. The 77px compact mobile role header and keyboard-operable menu remain shared with other Atlas routes.
+- Owner shortcuts may include employee access, business settings, guest-support consent and online ordering. Manager shortcuts are restricted to operations such as approvals, shifts, inventory, procurement, sales and reports; they must never advertise owner-only controls or employee management.
+- Cashier and inventory roles have no privileged administration shortcuts. The UI never grants authority: existing API permissions and tenant restrictions are always authoritative, including per-member denials.
+- Administration cards and manager navigation use real routes and labels only, not sample KPI numbers from Figma. Verify at 390/820/1024/1280/1440px and with role-switching browser tests.
+
 - Project DESIGN.md: DESIGN.md
 - Token ownership model: DESIGN.md records intent; runtime CSS/components are canonical implementation.
 - Runtime design-system/token source: apps/web/src/app/globals.css, apps/web/src/components/ui.tsx, apps/web/src/components/premium.tsx, apps/web/src/components/AppShell.tsx.
 - Mapping/export/adapters: direct CSS/Tailwind token mapping; no generated export step.
 - Token drift gate: visual QA against Figma plus tests/typecheck/build; old navy/blue shell colors are disallowed in migrated shell code.
-- Supported themes: light management shell; dark POS operational workspace.
+- Supported themes: light management shell; light Atlas V4 POS sale workspace; legacy dark POS components remain available only as non-Atlas fallbacks.
 - Design-context owner/review policy: system-level visual changes update DESIGN.md and runtime tokens/components together.
 
 ## Canonical UI Map
@@ -51,6 +58,37 @@ No global toast provider is currently canonical. Status, warnings, errors, payme
 
 ## Component behavior
 
+### H5 owner onboarding — receipt readiness
+
+- New owner registrations begin at Business details. The registered business name remains read-only; a real operating address is required, with an optional contact phone. Owners save these into permission-protected business settings before the server permits business-details completion.
+- Existing businesses with persisted onboarding progress are not automatically forced back through this new first step. This profile is not a replacement for government registration or fiscal-document compliance.
+- Owners complete Currency & tax by saving the business's existing currency, a named tax rule and the rate; server-side completion is denied if values are missing or the currency differs from the registered business currency.
+- Receipt setup displays the registered business name and any saved receipt header/footer, plus an explanatory standard-receipt preview. Completion requires a review confirmation and completed business/tax steps; a bare onboarding PATCH cannot mark the step done.
+- Owners may optionally edit a receipt header/footer via the existing CSRF-protected business settings API, subject to the current paid `receipt_customization` entitlement. A denied customization request does not complete onboarding; standard-receipt review remains available regardless of plan.
+- The preview is not a test print, printer-enrollment flow, fiscal-document certification, or promise of legal compliance. Receipt numbering, totals and payment settlement keep their existing server-side contracts.
+
+### Atlas V4 managed product images (feature-gated)
+
+- A logged-in **owner** may upload, crop/zoom-preview, replace or remove a product image in the Product Detail page when `GET /api/v1/product-media/capabilities` reports enabled. Other roles see no media-management controls.
+- Newly created products are saved first; their success message links to the new product editor, where optional image upload is separate. A failed upload must **not** delete a successfully created product.
+- The browser sends multipart FormData to the NexPOS API with the existing session and CSRF token. It never calls Supabase with a secret, and it must not set a multipart Content-Type manually.
+- Uploads are limited to JPEG, PNG or WebP source files up to 3 MiB. The server decodes, re-encodes as stripped-down WebP <=1 MiB and up to 1600px, stores via server-only Supabase Storage, and updates the business-scoped media registry with optimistic version checks. Existing photo URLs are preserved on conflicts/errors.
+- `Product.imageUrl` remains usable for existing products, but a managed active image must not be silently overridden by the legacy URL-edit field. Removing/replacing a photo uses the dedicated owner-only media API. No image bytes or object paths travel with sales, payment or receipt payloads.
+- **Disabled by default:** when storage isn't provisioned, the owner sees clear unavailable copy and can still use the existing public image URL field; fake upload buttons must never imply it is operational.
+
+### P5 — POS keyboard and touch interaction
+
+- **Contrast (P5 refinement):** normal-sized description text and white-on-coral actions in the Atlas cashier views must achieve WCAG's 4.5:1 contrast minimum. Browser tests measure computed foreground/background; the V4 color intent remains intact through an accessible darker action coral and darker neutral copy.
+- The payment method disclosure must always reference an existing controlled element via `aria-controls` even when the extra tenders are hidden; Escape must dismiss the modal and restore focus to the opening Pay control without initiating a sale.
+
+- Atlas V4 `/pos` now uses the 78px dark cashier rail, light product cards, white desktop sale panel and light payment chooser from Figma 66:3 / 66:964. The three primary tenders stay visible, while extra configured methods are available under an accessible disclosure; disabled methods stay disabled. The browser verifies layout widths, colors and pointer targets.
+- Owner catalog `imageUrl` is propagated into newly added cart entries as optional display-only state for product thumbnails. Sale creation/payment requests contain product ID, quantity and discounts but never image URLs. If a saved or held cart lacks a photo, a legible initials fallback remains available. Figma's sample product photos and example stock counts must never be fabricated in real business data.
+
+- The sale page has exactly one visible level-one heading, **New sale**, and a main landmark. Product selection opens the native modal quantity dialog with focus on the pieces field; cancelling via Escape does not insert a cart line.
+- The quantity picker announces the line total as quantities change. Product ordering, recorded discounts, cash change and payment unknown recovery remain governed by the existing sale/payment contracts.
+- The responsive cart uses an accessible modal dialog. When opened it focuses **Close cart**, traps Tab and Shift+Tab within the drawer, supports Escape dismissal and restores focus to the opener when dismissed. Its close and quantity stepper controls have at least 44 × 44 CSS px targets.
+- These keyboard and geometry requirements must pass at 390, 820, 1024, 1280 and 1440px. Functional accessibility is distinct from pixel parity with Atlas V4; the original charcoal POS workspace still needs a separate V4 visual migration before visual acceptance can pass.
+
 | Component | Default | Hover | Focus | Active | Disabled | Busy | Error |
 |---|---|---|---|---|---|---|---|
 | Button | labeled action | stronger contrast | coral focus ring | pressed by browser | readable, no action | geometry preserved | nearby inline error |
@@ -71,6 +109,12 @@ No global toast provider is currently canonical. Status, warnings, errors, payme
 - Selection scope: no canonical bulk-selection workflow is currently established.
 
 ## Flow ledger
+
+### POS product selection and catalog images
+
+- Selecting a product tile opens a quantity dialog before adding anything to the active sale. The cashier selects a whole number of pieces from 1 to 9,999, sees the extended price, and can cancel without changing the cart. The barcode-scanning shortcut continues to add one piece without opening the picker.
+- The current sale preserves item insertion order. Each line allows quantity adjustments and a separate, labeled Remove action on desktop and responsive cart drawers; held/resumed locked sales do not permit cart edits.
+- Catalog editors may set or clear an optional HTTP(S) product image URL (maximum 500 characters) using the existing catalog API. POS tiles display that image when supplied and otherwise retain their initials background. Images do not change receipt, tax, discount, inventory, or payment calculations.
 
 | Operation | Trigger | Pending | Success destination | Success feedback | Failure recovery | Focus outcome | Source ref |
 |---|---|---|---|---|---|---|---|

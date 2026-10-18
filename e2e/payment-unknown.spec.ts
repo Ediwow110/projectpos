@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { API, registerOperationalBusiness, apiAuthedContext, clickPosPay, seedProduct } from "./helpers";
+import { API, registerOperationalBusiness, apiAuthedContext, clickPosPay, confirmPosQuantity, seedProduct } from "./helpers";
 
 test("unknown provider outcome stays visibly unresolved and blocks false success", async ({ page, request }) => {
   const stamp = Date.now();
@@ -19,6 +19,7 @@ test("unknown provider outcome stays visibly unresolved and blocks false success
   await page.goto("/pos");
   await page.getByLabel("Search product, SKU or scan barcode").fill("Unknown Cola");
   await page.getByRole("button", { name: /Unknown Cola ₱25\.00/ }).click();
+  await confirmPosQuantity(page);
   await clickPosPay(page, "25.00");
   await expect(page.getByRole("button", { name: "GCash", exact: true })).toBeDisabled();
 

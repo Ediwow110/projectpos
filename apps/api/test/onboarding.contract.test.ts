@@ -33,6 +33,15 @@ afterAll(async () => {
 });
 
 describe("onboarding HTTP contract", () => {
+  it("starts new owner registrations with business details pending", async () => {
+    const state = await request(app.getHttpServer()).get("/api/v1/onboarding").set("Cookie", cookie);
+    expect(state.status).toBe(200);
+    expect(state.body).toMatchObject({
+      currentStep: "businessDetails",
+      steps: { businessDetails: "pending", taxCurrency: "pending", receiptSetup: "pending" },
+    });
+  });
+
   it("refuses marking required steps done without actual saved settings", async () => {
     for (const step of ["businessDetails", "taxCurrency", "receiptSetup"]) {
       const attempted = await request(app.getHttpServer())
@@ -86,8 +95,11 @@ describe("onboarding HTTP contract", () => {
       .patch("/api/v1/business/settings")
       .set("Cookie", cookie)
       .set("X-CSRF-Token", csrf)
-      .send({ businessAddress: "125 Main Street, Manila", businessTimezone: "Asia/Manila" });
+      .send({ businessAddress: "125 Main Street, Manila", businessPhone: "09171234567", businessTimezone: "Asia/Manila" });
     expect(businessProfile.status).toBe(200);
+    expect(businessProfile.body.settings).toMatchObject({
+      businessAddress: "125 Main Street, Manila", businessPhone: "09171234567", businessTimezone: "Asia/Manila",
+    });
     const profile = await request(app.getHttpServer())
       .patch("/api/v1/onboarding")
       .set("Cookie", cookie)
@@ -179,17 +191,32 @@ describe("onboarding HTTP contract", () => {
   });
 
   it("opens workspace APIs when required steps are complete, even with optional steps pending", async () => {
+    const unconfirmed = await request(app.getHttpServer())
+      .patch("/api/v1/onboarding")
+      .set("Cookie", cookie)
+      .set("X-CSRF-Token", csrf)
+      .send({ step: "receiptSetup", state: "done", receiptPreviewConfirmed: true });
+    expect(unconfirmed.status).toBe(400);
+    expect(unconfirmed.body.code).toBe("ONBOARDING_CONFIGURATION_REQUIRED");
+
     const receiptSettings = await request(app.getHttpServer())
       .patch("/api/v1/business/settings")
       .set("Cookie", cookie)
       .set("X-CSRF-Token", csrf)
       .send({ standardReceiptConfirmed: true });
     expect(receiptSettings.status).toBe(200);
-    const saved = await request(app.getHttpServer())
+    const missingPreview = await request(app.getHttpServer())
       .patch("/api/v1/onboarding")
       .set("Cookie", cookie)
       .set("X-CSRF-Token", csrf)
       .send({ step: "receiptSetup", state: "done" });
+    expect(missingPreview.status).toBe(400);
+    expect(missingPreview.body.code).toBe("ONBOARDING_CONFIGURATION_REQUIRED");
+    const saved = await request(app.getHttpServer())
+      .patch("/api/v1/onboarding")
+      .set("Cookie", cookie)
+      .set("X-CSRF-Token", csrf)
+      .send({ step: "receiptSetup", state: "done", receiptPreviewConfirmed: true });
     expect(saved.status).toBe(200);
     expect(saved.body.steps.products).toBe("pending");
     expect(saved.body.steps.employees).toBe("pending");

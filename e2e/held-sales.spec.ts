@@ -4,6 +4,7 @@ import {
   API,
   apiAuthedContext,
   clickPosPay,
+  confirmPosQuantity,
   expectOnePosCartItem,
   registerOperationalBusiness,
   seedProduct,
@@ -71,6 +72,7 @@ test("seller can hold, find, resume, and complete the original draft", async ({ 
   await page.getByLabel("Search product, SKU or scan barcode").fill(productName);
   const productButton = page.getByRole("button", { name: `${productName} ₱25.00` });
   await productButton.click();
+  await confirmPosQuantity(page);
   await expectOnePosCartItem(page);
 
   await holdCurrentSale(page);

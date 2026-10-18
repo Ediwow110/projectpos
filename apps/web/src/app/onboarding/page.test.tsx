@@ -44,6 +44,40 @@ describe("onboarding navigation", () => {
     expect(html).not.toContain("Mark step complete");
   });
 
+  it("asks the owner to save real tax settings instead of marking the step complete", () => {
+    fixture.data.currentStep = "taxCurrency";
+    const html = renderToStaticMarkup(<OnboardingPage />);
+
+    expect(html).toContain("Tax name");
+    expect(html).toContain("Tax rate (%)");
+    expect(html).toContain("Currency");
+    expect(html).toContain("Save &amp; continue");
+    expect(html).not.toContain("Mark step complete");
+  });
+
+  it("collects real business contact details before the owner completes business setup", () => {
+    fixture.data.currentStep = "businessDetails";
+    fixture.data.steps.businessDetails = "pending";
+    const html = renderToStaticMarkup(<OnboardingPage />);
+    expect(html).toContain("Operating address");
+    expect(html).toContain("Business phone (optional)");
+    expect(html).toContain("Operating timezone");
+    expect(html).toContain("Save &amp; continue");
+    expect(html).not.toContain("Mark step complete");
+  });
+
+  it("requires owner confirmation of receipt output instead of a blind step completion", () => {
+    fixture.data.currentStep = "receiptSetup";
+    fixture.data.steps.taxCurrency = "done";
+    const html = renderToStaticMarkup(<OnboardingPage />);
+    expect(html).toContain("Receipt preview");
+    expect(html).toContain("Automatic receipt number");
+    expect(html).toContain("I reviewed the receipt details");
+    expect(html).toContain("type=\"checkbox\"");
+    expect(html).toContain("Save &amp; continue");
+    expect(html).not.toContain("Mark step complete");
+  });
+
   it("lets owners go to the dashboard when only optional setup steps remain", () => {
     fixture.data.currentStep = "products";
     fixture.data.steps.taxCurrency = "done";

@@ -20,8 +20,8 @@ const SKIPPABLE: Step[] = ["products", "employees"];
 const STEP_META: Record<Step, { title: string; description: string; note: string }> = {
   businessDetails: {
     title: "Business details",
-    description: "Confirm the identity and operating context of this business.",
-    note: "Save your operating address and timezone before continuing.",
+    description: "Confirm the business identity and save its operating contact information.",
+    note: "Save your operating address, optional phone and timezone before continuing.",
   },
   taxCurrency: {
     title: "Currency & tax",
@@ -31,7 +31,7 @@ const STEP_META: Record<Step, { title: string; description: string; note: string
   receiptSetup: {
     title: "Receipt setup",
     description: "Confirm that receipt behavior is ready before the first live shift.",
-    note: "Choose the text printed on receipts and preview it before opening your store.",
+    note: "Standard receipt formatting is available now; optional header and footer changes use the existing plan-gated settings.",
   },
   products: {
     title: "First products",
@@ -52,6 +52,7 @@ interface OnboardingState {
 
 interface BusinessDetails {
   name: string;
+  currency: string;
   settings: Record<string, unknown>;
 }
 
@@ -92,6 +93,7 @@ export default function OnboardingPage(): JSX.Element {
   const [taxRatePercent, setTaxRatePercent] = useState("");
   const [receiptHeader, setReceiptHeader] = useState("");
   const [receiptFooter, setReceiptFooter] = useState("");
+  const [receiptReviewed, setReceiptReviewed] = useState(false);
   const query = useQuery({ queryKey: ["onboarding"], queryFn: loadOnboarding, retry: false });
   const business = useQuery({ queryKey: ["onboarding-business"], queryFn: () => apiFetch<BusinessDetails>("/api/v1/business"), retry: false });
   const unauthorized = query.error instanceof ApiError && (query.error.status === 401 || query.error.status === 403);
@@ -108,18 +110,22 @@ export default function OnboardingPage(): JSX.Element {
     setBusinessAddress(typeof s["businessAddress"] === "string" ? s["businessAddress"] : "");
     setBusinessPhone(typeof s["businessPhone"] === "string" ? s["businessPhone"] : "");
     setBusinessTimezone(typeof s["businessTimezone"] === "string" ? s["businessTimezone"] : "Asia/Manila");
-    setCurrency(typeof s["currency"] === "string" ? s["currency"] : "PHP");
+    setCurrency(business.data.currency);
     setTaxName(typeof s["taxName"] === "string" ? s["taxName"] : "");
     setTaxRatePercent(typeof s["taxRateBps"] === "number" ? String(s["taxRateBps"] / 100) : "");
     setReceiptHeader(typeof s["receiptHeader"] === "string" ? s["receiptHeader"] : "");
     setReceiptFooter(typeof s["receiptFooter"] === "string" ? s["receiptFooter"] : "");
+    setReceiptReviewed(s["standardReceiptConfirmed"] === true);
   }, [business.data]);
 
   useEffect(() => {
     if (unauthorized) router.replace("/login");
   }, [router, unauthorized]);
 
-  async function patchStep(step: Step, state: "done" | "skipped"): Promise<void> {
+  async function patchStep(
+    step: Step,
+    state: "done" | "skipped",
+  ): Promise<void> {
     if (savingStep !== null) return;
     setError("");
     setSavingStep(step);
@@ -141,6 +147,9 @@ export default function OnboardingPage(): JSX.Element {
           }
           payload = { currency, taxName: taxName.trim(), taxRateBps: bps };
         } else {
+          if (!receiptReviewed) {
+            throw new Error("Review the receipt preview and confirm it before continuing.");
+          }
           payload = { standardReceiptConfirmed: true };
           if (readiness.data?.canCustomizeReceipt) {
             payload = {
@@ -157,7 +166,9 @@ export default function OnboardingPage(): JSX.Element {
       }
       const saved = await apiFetch<OnboardingState>("/api/v1/onboarding", {
         csrfToken: csrf.csrfToken,
-        init: { method: "PATCH", body: JSON.stringify({ step, state }) },
+        init: { method: "PATCH", body: JSON.stringify({
+          step, state, ...(step === "receiptSetup" && state === "done" ? { receiptPreviewConfirmed: true } : {}),
+        }) },
       });
       await query.refetch();
       await business.refetch();
@@ -294,9 +305,7 @@ export default function OnboardingPage(): JSX.Element {
               {current === "taxCurrency" && (steps[current] === "pending" || editingCompletedStep) ? (
                 <div className="mt-5 grid gap-4">
                   <label className="text-xs font-medium">Currency
-                    <select className="field mt-2 block w-full" value={currency} onChange={(e) => setCurrency(e.target.value)}>
-                      <option value="PHP">Philippine peso (PHP)</option>
-                    </select>
+                    <input className="field mt-2 block w-full" value={currency} readOnly aria-readonly="true" />
                   </label>
                   <label className="text-xs font-medium">Tax name (e.g. VAT, non-VAT, no tax)
                     <input className="field mt-2 block w-full" maxLength={80} value={taxName} onChange={(e) => setTaxName(e.target.value)} placeholder="Choose the correct classification for your business" />
@@ -324,11 +333,18 @@ export default function OnboardingPage(): JSX.Element {
                     <p className="text-xs text-[#73685f]">Optional custom header and footer are available on plans with receipt customization. Standard receipts remain available on Free.</p>
                   ) : null}
                   <div className="rounded-lg border border-dashed bg-white p-4 text-center text-xs">
+                    <p className="mb-3 font-semibold">Receipt preview</p>
                     <p className="font-semibold">{business.data.name}</p>
                     {readiness.data?.canCustomizeReceipt && receiptHeader ? <p className="mt-1">{receiptHeader}</p> : null}
-                    <p className="mt-2">Illustrative preview — receipt number, monetary amounts and tax are calculated at sale time. This is not a regulatory compliance certification.</p>
+                    <p className="mt-2">Automatic receipt number — generated when the sale is completed.</p>
+                    <p className="mt-2">Illustrative preview — monetary amounts and tax are calculated at sale time. This is not a regulatory compliance certification.</p>
                     {readiness.data?.canCustomizeReceipt && receiptFooter ? <p className="mt-2">{receiptFooter}</p> : null}
                   </div>
+                  <label className="flex items-start gap-3 text-xs leading-5 text-[#202826]">
+                    <input type="checkbox" className="mt-1" checked={receiptReviewed}
+                      onChange={(event) => setReceiptReviewed(event.target.checked)} />
+                    I reviewed the receipt details and confirm the standard receipt for this business.
+                  </label>
                 </div>
               ) : null}
 

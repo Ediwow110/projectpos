@@ -3,15 +3,13 @@ import { expect, test, type Page } from "@playwright/test";
 import {
   apiAuthedContext,
   clickPosPay,
+  confirmPosQuantity,
   posCartRegion,
   registerOperationalBusiness,
   seedProduct,
 } from "./helpers";
 
-// Regression coverage for the POS two-pane overlap: the xl two-pane grid
-// used fixed 760px + 452px tracks, so at 1280-1440px viewports (with the
-// workspace sidebar) the cart column overflowed and cart actions were
-// clipped or intercepted by the products pane. Native pointer clicks only.
+// Native-click regression on the Atlas V4 two-pane grid and 78px sale rail.
 const VIEWPORTS = [
   { width: 1280, height: 800 },
   { width: 1366, height: 768 },
@@ -20,9 +18,7 @@ const VIEWPORTS = [
 
 async function expectCartActionReachable(page: Page): Promise<void> {
   const geometry = await page.evaluate(() => {
-    const pay = [...document.querySelectorAll("button")].find((button) =>
-      /^▣ Pay ₱/.test(button.textContent ?? ""),
-    );
+    const pay = document.querySelector<HTMLButtonElement>('[data-ui="atlas-pos-cart"] button[aria-label^="Pay ₱"]');
     if (!pay) return { found: false, right: 0, viewport: window.innerWidth, hit: "missing" };
     const rect = pay.getBoundingClientRect();
     const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
@@ -63,7 +59,9 @@ for (const viewport of VIEWPORTS) {
     await page.goto("/pos");
     // Non-alphabetical add order exercises cart ordering alongside layout.
     await page.getByRole("button", { name: new RegExp(`Responsive B ${stamp}.*₱20\\.00`) }).click();
+    await confirmPosQuantity(page);
     await page.getByRole("button", { name: new RegExp(`Responsive A ${stamp}.*₱10\\.00`) }).click();
+    await confirmPosQuantity(page);
     await expect(page.getByRole("heading", { name: "Cart (2)" })).toBeVisible();
 
     // Quantity controls: native clicks, previously intercepted by the products pane.

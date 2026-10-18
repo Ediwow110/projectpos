@@ -19,17 +19,32 @@ export class OnboardingPage {
     await expect(heading).toBeVisible();
     const currentStep = (await heading.innerText()).trim();
     if (currentStep === "Business details") {
-      await this.page.getByLabel("Operating address").fill("123 Test Street, Manila");
+      await this.saveBusinessDetails();
     } else if (currentStep === "Currency & tax") {
-      await this.page.getByLabel("Tax name (e.g. VAT, non-VAT, no tax)").fill("No tax");
-      await this.page.getByLabel(/Tax rate/).fill("0");
+      await this.saveTaxConfiguration();
     } else if (currentStep === "Receipt setup") {
-      await expect(this.page.getByText(/Standard receipt included/)).toBeVisible();
+      await this.confirmReceiptSetup();
     } else {
       throw new Error(`Unexpected required onboarding step: ${currentStep}`);
     }
-    await this.page.getByRole("button", { name: "Save & continue" }).click();
     await expect(heading).not.toHaveText(currentStep);
+  }
+
+  async saveBusinessDetails(): Promise<void> {
+    await this.page.getByLabel("Operating address").fill("123 QA Street, Manila");
+    await this.page.getByRole("button", { name: "Save & continue" }).click();
+  }
+
+  async saveTaxConfiguration(): Promise<void> {
+    await this.page.getByLabel(/Tax name/).fill("No tax");
+    await this.page.getByLabel(/Tax rate/).fill("0");
+    await this.page.getByRole("button", { name: "Save & continue" }).click();
+  }
+
+  async confirmReceiptSetup(): Promise<void> {
+    await expect(this.page.getByText(/Automatic receipt number/)).toBeVisible();
+    await this.page.getByRole("checkbox", { name: /I reviewed the receipt details/ }).check();
+    await this.page.getByRole("button", { name: "Save & continue" }).click();
   }
 
   async skipOptionalStep(): Promise<void> {
