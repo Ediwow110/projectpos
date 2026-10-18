@@ -151,7 +151,7 @@ test("Phase E: unauthenticated and reduced-motion states expose no private data"
   await checkViewport(page, "/platform/support-access", 390);
 
   await page.goto("/login");
-  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in to NexPOS" })).toBeVisible();
   const visualMotion = await page.evaluate(() => {
     const probe = document.querySelector("button");
     return probe ? getComputedStyle(probe).transitionDuration : null;

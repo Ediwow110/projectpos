@@ -21,7 +21,7 @@ test("sign-out revokes the original session and blocks protected pages", async (
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/login(?:\?|$)/, { timeout: 30_000 });
-  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in to NexPOS" })).toBeVisible();
 
   // A client-side redirect alone is insufficient: the server must reject
   // the original cookie even when it is replayed after logout.

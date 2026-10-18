@@ -5,10 +5,12 @@ import { describe, expect, it } from "vitest";
 describe("pre-auth privacy presentation", () => {
   it("keeps the login landing page free of business metrics and identities", () => {
     const source = readFileSync(resolve(process.cwd(), "src/app/login/page.tsx"), "utf8");
+    const identity = readFileSync(resolve(process.cwd(), "src/components/AtlasAuthBrandPanel.tsx"), "utf8");
 
-    expect(source).toContain("Run the business.");
-    expect(source).toContain("Keep the business private.");
-    expect(source).toContain("Your operational data stays behind secure sign-in.");
+    expect(identity).toContain("Retail,");
+    expect(identity).toContain("under control.");
+    expect(identity).toContain("Security and simplicity for every shift.");
+    expect(identity).toContain("No private business metrics or customer details are shown before sign-in.");
     expect(source).not.toMatch(/₱\s*\d/);
     expect(source).not.toContain("Mabuhay Market");
     expect(source).not.toContain("owner@mabuhaymarket.ph");
@@ -32,18 +34,26 @@ describe("pre-auth privacy presentation", () => {
     expect(login).toContain("Create account");
   });
 
-  it("keeps login and registration aligned on the shared Atlas V4 entry layout", () => {
+  it("keeps login and registration aligned to the Figma V4 auth layout", () => {
     const login = readFileSync(resolve(process.cwd(), "src/app/login/page.tsx"), "utf8");
     const register = readFileSync(resolve(process.cwd(), "src/app/register/page.tsx"), "utf8");
+    const identity = readFileSync(resolve(process.cwd(), "src/components/AtlasAuthBrandPanel.tsx"), "utf8");
 
     for (const source of [login, register]) {
-      expect(source).toContain("lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1fr)]");
-      expect(source).toContain("AtlasEntryBrand");
+      expect(source).toContain("lg:grid-cols-[535px_minmax(0,1fr)]");
+      expect(source).toContain("AtlasAuthBrandPanel");
       expect(source).toContain("lg:min-h-screen");
-      expect(source).toContain("animate-auth-copy");
-      expect(source).toContain("animate-auth-card atlas-panel");
-      expect(source).toContain("max-w-[536px]");
+      expect(source).toContain("animate-auth-card");
+      expect(source).toContain("max-w-[684px]");
+      expect(source).toContain("lg:px-[82px]");
     }
+    expect(identity).toContain("AtlasEntryBrand");
+    expect(identity).toContain("animate-auth-copy");
+    expect(identity).toContain("bg-[#fff0eb]");
+    expect(login).toContain("you@business.com");
+    expect(login).toContain("Sign in to NexPOS");
+    expect(register).toContain("owner@store.com");
+    expect(register).toContain("Business name");
   });
 
   it("does not render redundant auth-page badge strips", () => {

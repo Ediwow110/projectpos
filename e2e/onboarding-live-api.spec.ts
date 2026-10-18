@@ -5,7 +5,7 @@ import { OnboardingPage } from "./pages/OnboardingPage";
 test("signed-out direct onboarding returns to sign in", async ({ page }) => {
   await page.goto("/onboarding");
   await expect(page).toHaveURL(/\/login$/);
-  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in to NexPOS" })).toBeVisible();
 });
 
 test("real browser, web app, and API preserve onboarding gates and progress", async ({ page, context }) => {

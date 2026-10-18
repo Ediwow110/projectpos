@@ -92,5 +92,5 @@ test("cashier session can sell and read inventory without owner controls", async
 
 test("logged-out users are gated", async ({ page }) => {
   await page.goto("/login");
-  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in to NexPOS" })).toBeVisible();
 });

@@ -109,7 +109,7 @@ test("signed-out onboarding returns to login", async ({ page }) => {
   }));
   await page.goto("/onboarding");
   await expect(page).toHaveURL(/\/login$/);
-  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in to NexPOS" })).toBeVisible();
 });
 
 test("invalid onboarding response shows a recoverable error", async ({ page }) => {
@@ -230,7 +230,7 @@ test("signed-out workspace routes redirect to login without rendering a fallback
   });
   await page.goto("/team");
   await expect(page).toHaveURL(/\/login$/);
-  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in to NexPOS" })).toBeVisible();
   await expect(page.getByRole("complementary", { name: "Workspace navigation" })).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => localStorage.getItem("nexpos-active-sync-scope-v1"))).toBeNull();
 });
@@ -259,7 +259,7 @@ for (const status of [401, 403]) {
     // check with a reload: route mocks and localStorage survive it.
     await page.reload();
     await expect(page).toHaveURL(/\/login$/);
-    await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Sign in to NexPOS" })).toBeVisible();
     await expect.poll(() => page.evaluate(() => localStorage.getItem("nexpos-active-sync-scope-v1"))).toBeNull();
     await expect(page.getByRole("complementary", { name: "Workspace navigation" })).toHaveCount(0);
   });
