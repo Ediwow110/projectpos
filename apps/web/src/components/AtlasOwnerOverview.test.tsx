@@ -4,6 +4,17 @@ import { describe, expect, it } from "vitest";
 import { AtlasOwnerOverview } from "./AtlasOwnerOverview";
 
 describe("Atlas V4 owner landing overview", () => {
+  it("prompts legacy owners to review missing saved business settings without inventing metrics", () => {
+    const html = renderToStaticMarkup(<AtlasOwnerOverview
+      overview={null} attention={[]} loading={false} failed={false} onRetry={() => undefined}
+      period={30} periods={[{ label: "Last 30 days", days: 30 }]} onPeriodChange={() => undefined}
+      legacySetupReviewSteps={["businessDetails", "taxCurrency", "receiptSetup"]}
+    />);
+    expect(html).toContain('aria-label="Review business setup"');
+    expect(html).toContain("3 required configuration");
+    expect(html).toContain('href="/onboarding"');
+    expect(html).toContain("Existing workspace access is preserved");
+  });
   it("shows authoritative scoped results and keeps links to reports and operational controls", () => {
     const html = renderToStaticMarkup(<AtlasOwnerOverview
       overview={{ orders: 18, netRevenueMinor: 4862000 }}

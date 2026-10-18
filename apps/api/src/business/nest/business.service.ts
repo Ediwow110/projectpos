@@ -6,6 +6,8 @@ import {
   isOnboardingComplete,
   isRequiredSetupConfigured,
   mergeSettings,
+  REQUIRED_STEPS,
+  type OnboardingStep,
   type OnboardingState,
 } from "../onboarding";
 import type { DbPort } from "../../common/db.port";
@@ -107,6 +109,7 @@ export class BusinessService {
 
   async getSaleReadiness(businessId: string): Promise<{
     businessConfigured: boolean;
+    legacySetupReviewSteps: OnboardingStep[];
     hasSellableProduct: boolean;
     hasActiveRegister: boolean;
     hasOpenShift: boolean;
@@ -124,6 +127,11 @@ export class BusinessService {
     ]);
     const activeRegisters = registers.filter((register) => register.isActive);
     const businessConfigured = isOnboardingComplete(configuredOnboardingState(settings));
+    // Preserve session access for completed legacy businesses, but never
+    // equate their historical "done" flags with saved configuration.
+    const legacySetupReviewSteps = businessConfigured
+      ? REQUIRED_STEPS.filter((step) => !isRequiredSetupConfigured(step, settings))
+      : [];
     const hasActiveRegister = activeRegisters.length > 0;
     const hasSellableProduct = products.some((product) =>
       product.isActive && product.priceMinor > 0 && (
@@ -145,12 +153,14 @@ export class BusinessService {
         )));
     const missing: string[] = [];
     if (!businessConfigured) missing.push("business_setup");
+    if (legacySetupReviewSteps.length > 0) missing.push("business_setup_review");
     if (!hasSellableProduct) missing.push("sellable_product_or_stock");
     if (!hasActiveRegister) missing.push("active_register");
     if (!hasOpenShift) missing.push("open_shift");
     if (hasSellableProduct && hasOpenShift && !hasStockAtAnOpenRegister) missing.push("stock_at_open_register");
     return {
       businessConfigured,
+      legacySetupReviewSteps,
       hasSellableProduct,
       hasActiveRegister,
       hasOpenShift,

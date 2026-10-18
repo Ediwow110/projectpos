@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fixture = vi.hoisted(() => ({
+  legacyReviewSteps: [] as string[],
   data: {
     currentStep: "receiptSetup",
     steps: {
@@ -17,7 +18,14 @@ const fixture = vi.hoisted(() => ({
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@tanstack/react-query", () => ({
-  useQuery: () => ({ data: fixture.data, isLoading: false, isError: false, refetch: vi.fn() }),
+  useQuery: ({ queryKey }: { queryKey: string[] }) => ({
+    data: queryKey[0] === "onboarding-sale-readiness"
+      ? { legacySetupReviewSteps: fixture.legacyReviewSteps, canCustomizeReceipt: false }
+      : queryKey[0] === "onboarding-business"
+        ? { name: "QA Business", currency: "PHP", settings: {} }
+        : fixture.data,
+    isLoading: false, isError: false, refetch: vi.fn(),
+  }),
   useQueryClient: () => ({ invalidateQueries: vi.fn().mockResolvedValue(undefined) }),
 }));
 
@@ -26,12 +34,29 @@ import OnboardingPage from "./page";
 describe("onboarding navigation", () => {
   beforeEach(() => {
     vi.stubGlobal("React", React);
+    fixture.legacyReviewSteps = [];
     fixture.data.currentStep = "receiptSetup";
     fixture.data.steps.businessDetails = "done";
     fixture.data.steps.taxCurrency = "pending";
     fixture.data.steps.receiptSetup = "pending";
     fixture.data.steps.products = "pending";
     fixture.data.steps.employees = "pending";
+  });
+
+  it("opens the first missing saved legacy step for review despite historic done flags", () => {
+    fixture.data.currentStep = "complete";
+    fixture.data.steps.businessDetails = "done";
+    fixture.data.steps.taxCurrency = "done";
+    fixture.data.steps.receiptSetup = "done";
+    fixture.data.steps.products = "skipped";
+    fixture.data.steps.employees = "skipped";
+    fixture.legacyReviewSteps = ["businessDetails", "taxCurrency", "receiptSetup"];
+
+    const html = renderToStaticMarkup(<OnboardingPage />);
+    expect(html).toContain("Earlier setup was marked done without saving 3 required steps");
+    expect(html).toContain("Review required · Missing saved settings");
+    expect(html).toContain("Operating address");
+    expect(html).toContain("Save &amp; continue");
   });
 
   it("explains that mandatory setup must finish before the dashboard is available", () => {

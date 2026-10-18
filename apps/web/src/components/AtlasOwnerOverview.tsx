@@ -12,6 +12,7 @@ interface OwnerOverview {
 /** A business-scoped overview; never presents Figma sample metrics as actual sales. */
 export function AtlasOwnerOverview({
   overview, attention, loading, failed, onRetry, period, periods, onPeriodChange,
+  legacySetupReviewSteps = [],
 }: {
   overview: OwnerOverview | null;
   attention: DashboardAttention[];
@@ -21,6 +22,7 @@ export function AtlasOwnerOverview({
   period: number;
   periods: readonly { label: string; days: number }[];
   onPeriodChange: (days: number) => void;
+  legacySetupReviewSteps?: string[];
 }) {
   const hasReport = !!overview && !loading && !failed;
   const attentionTotal = attention.reduce((total, item) => total + item.count, 0);
@@ -36,6 +38,19 @@ export function AtlasOwnerOverview({
   ];
   return (
     <section aria-label="Atlas owner overview" data-ui="atlas-v4-owner-overview" className="space-y-6">
+      {legacySetupReviewSteps.length > 0 ? (
+        <aside aria-label="Review business setup" className="rounded-xl border border-[#f1c8a0] bg-[#fff9f0] px-5 py-4">
+          <h2 className="text-[16px] font-semibold text-[#784724]">Review your business setup</h2>
+          <p className="mt-2 text-[13px] leading-5 text-[#795b43]">
+            Your earlier setup is marked complete, but {legacySetupReviewSteps.length} required configuration
+            {legacySetupReviewSteps.length === 1 ? " step has" : " steps have"} not been saved.
+            Review them before your first sale. Existing workspace access is preserved.
+          </p>
+          <Link href="/onboarding" className="mt-3 inline-flex min-h-11 items-center rounded-lg bg-[#202826] px-4 text-[13px] font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#da614c]">
+            Review missing setup steps
+          </Link>
+        </aside>
+      ) : null}
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="font-data text-[11px] font-medium tracking-wide text-[#da614c]">OVERVIEW / OWNER</p>

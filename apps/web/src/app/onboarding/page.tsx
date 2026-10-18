@@ -58,6 +58,7 @@ interface BusinessDetails {
 
 interface SaleReadiness {
   businessConfigured: boolean;
+  legacySetupReviewSteps: Step[];
   hasSellableProduct: boolean;
   hasActiveRegister: boolean;
   hasOpenShift: boolean;
@@ -172,12 +173,13 @@ export default function OnboardingPage(): JSX.Element {
       });
       await query.refetch();
       await business.refetch();
-      await readiness.refetch();
+      const reviewedReadiness = await readiness.refetch();
       setEditingStep(null);
       await queryClient.invalidateQueries({ queryKey: ["me"] });
       if (editingStep === null &&
           REQUIRED.every((required) => saved.steps[required] === "done") &&
-          OPTIONAL.every((optional) => saved.steps[optional] !== "pending")) {
+          OPTIONAL.every((optional) => saved.steps[optional] !== "pending") &&
+          reviewedReadiness.data?.legacySetupReviewSteps?.length === 0) {
         router.push("/");
       }
     } catch (err) {
@@ -206,12 +208,14 @@ export default function OnboardingPage(): JSX.Element {
   }
 
   const steps = query.data!.steps;
+  const legacyReview = readiness.data?.legacySetupReviewSteps ?? [];
   const progressStep =
-    (ORDER.find((step) => step === query.data!.currentStep) ??
+    (legacyReview[0] ??
+      ORDER.find((step) => step === query.data!.currentStep) ??
       ORDER.find((step) => steps[step] === "pending") ??
       ORDER[ORDER.length - 1]) as Step;
   const current = editingStep ?? progressStep;
-  const editingCompletedStep = editingStep === current && steps[current] === "done";
+  const editingCompletedStep = (editingStep === current || legacyReview.includes(current)) && steps[current] === "done";
   const currentIndex = ORDER.indexOf(current);
   const currentMeta = STEP_META[current];
 
@@ -231,6 +235,12 @@ export default function OnboardingPage(): JSX.Element {
           <p className="atlas-eyebrow">BUSINESS WORKSPACE</p>
           <h1 className="font-display mt-4 text-[21px] font-semibold text-[#202826]">Set up your business</h1>
           <p className="mt-3 text-[13px] leading-5 text-[#748078]">Configure the essentials. We verify each saved step before you continue.</p>
+          {legacyReview.length > 0 ? (
+            <p role="status" className="mt-4 rounded-lg border border-[#f1c8a0] bg-[#fff9f0] p-3 text-[12px] leading-5 text-[#784724]">
+              Earlier setup was marked done without saving {legacyReview.length} required step{legacyReview.length === 1 ? "" : "s"}.
+              Review the highlighted step and save the real business settings.
+            </p>
+          ) : null}
 
           <ol className="mt-8 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
             {ORDER.map((step, index) => {
@@ -255,7 +265,7 @@ export default function OnboardingPage(): JSX.Element {
                     onClick={() => setEditingStep(step)}>
                     <p className={"text-[13px] " + (active ? "font-semibold text-[#202826]" : "font-medium text-[#526159]")}>{STEP_META[step].title}</p>
                     <p className={"font-data mt-1 text-[10px] " + (state === "done" ? "text-[#267552]" : active ? "text-[#da614c]" : state === "skipped" ? "text-[#9a6e32]" : "text-[#748078]")}>
-                      {state === "done" ? "Done · Select to review" : state === "skipped" ? "Skipped" : active ? "Current" : "Next"}
+                      {legacyReview.includes(step) ? "Review required · Missing saved settings" : state === "done" ? "Done · Select to review" : state === "skipped" ? "Skipped" : active ? "Current" : "Next"}
                     </p>
                   </button>
                 </li>

@@ -135,6 +135,12 @@ export default function DashboardPage(): JSX.Element {
     retry: false,
     enabled: meQuery.data?.onboardingRequired === false && !meQuery.isError,
   });
+  const ownerSetupReviewQuery = useQuery({
+    queryKey: ["owner-setup-review", meQuery.data?.businessId],
+    queryFn: () => apiFetch<{ legacySetupReviewSteps: string[] }>("/api/v1/onboarding/readiness"),
+    retry: false,
+    enabled: meQuery.data?.role === "owner" && meQuery.data.onboardingRequired === false,
+  });
 
   if (meQuery.isLoading || unauthorized) {
     return (
@@ -403,6 +409,7 @@ export default function DashboardPage(): JSX.Element {
         {me.role === "owner" ? (
           <>
             <AtlasOwnerOverview
+              legacySetupReviewSteps={ownerSetupReviewQuery.data?.legacySetupReviewSteps ?? []}
               overview={data ? { orders: data.kpis.orders.value, netRevenueMinor: data.kpis.netRevenue.value } : null}
               attention={attention}
               loading={overviewQuery.isPending}

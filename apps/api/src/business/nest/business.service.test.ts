@@ -3,6 +3,36 @@ import { createMemoryDb } from "../../common/memory.db";
 import { BusinessService } from "./business.service";
 
 describe("phase11 settings gate and audit context", () => {
+  it("reports unsaved legacy onboarding steps without locking a completed business", async () => {
+    const db = createMemoryDb();
+    const business = await db.createBusiness({ name: "Legacy Shop", currency: "PHP" });
+    const svc = new BusinessService(db);
+    await db.saveSettings(business.id, {
+      onboarding: {
+        currentStep: "complete",
+        steps: {
+          businessDetails: "done", taxCurrency: "done", receiptSetup: "done",
+          products: "skipped", employees: "skipped",
+        },
+      },
+      currency: "PHP",
+    });
+    await expect(svc.getSaleReadiness(business.id)).resolves.toMatchObject({
+      businessConfigured: true,
+      legacySetupReviewSteps: ["businessDetails", "taxCurrency", "receiptSetup"],
+      readyForFirstSale: false,
+      missing: expect.arrayContaining(["business_setup_review"]),
+    });
+    await svc.patchSettings(business.id, "owner", {
+      businessAddress: "123 Market St, Manila", businessTimezone: "Asia/Manila",
+      taxName: "No tax", taxRateBps: 0, standardReceiptConfirmed: true,
+    }, "legacy-review", ["settings.write"]);
+    await expect(svc.getSaleReadiness(business.id)).resolves.toMatchObject({
+      businessConfigured: true,
+      legacySetupReviewSteps: [],
+      missing: expect.not.arrayContaining(["business_setup_review"]),
+    });
+  });
   it("persists the refund threshold used by existing owner-approval policy", async () => {
     const db = createMemoryDb();
     const biz = await db.createBusiness({ name: "Financial Rules", currency: "PHP" });
