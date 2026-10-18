@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { apiAuthedContext, confirmPosQuantity, registerOperationalBusiness, seedProduct } from "./helpers";
+import { apiAuthedContext, registerOperationalBusiness, seedProduct } from "./helpers";
 
 test("product quantity is chosen before cart insertion and individual lines can be removed", async ({ page, request }, testInfo) => {
   const stamp = Date.now();
