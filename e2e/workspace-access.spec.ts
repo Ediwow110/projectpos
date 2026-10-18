@@ -155,14 +155,18 @@ test("stale completed profile cannot keep the dashboard after setup becomes requ
   }));
 
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Owner overview", exact: true })).toBeVisible();
+  const detailedAnalytics = page.locator('[data-ui="owner-detailed-analytics"]');
+  await expect(detailedAnalytics).toBeVisible();
+  await expect(detailedAnalytics).not.toHaveAttribute("open", "");
+  await detailedAnalytics.locator("summary").click();
   await expect(page.getByText("SERVICE_UNAVAILABLE: Unavailable", { exact: true })).toBeVisible();
   await expect(page.getByText("Getting started", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Key metrics" })).toHaveCount(0);
   onboardingRequired = true;
   await page.reload();
   await new OnboardingPage(page).expectRequiredSetup();
-  await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Owner overview", exact: true })).toHaveCount(0);
 });
 
 test("owners can open the dashboard after required setup while optional steps remain", async ({ page }) => {
@@ -212,7 +216,7 @@ test("owners can open the dashboard after required setup while optional steps re
   await expect(page.getByRole("heading", { name: "First products" })).toBeVisible();
   await page.getByRole("link", { name: "← Back to dashboard" }).click();
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Owner overview", exact: true })).toBeVisible();
 });
 
 test("signed-out workspace routes redirect to login without rendering a fallback owner", async ({ page }) => {

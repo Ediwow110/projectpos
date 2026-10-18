@@ -296,7 +296,11 @@ test("cashier discount request appears in manager inbox and resumes only after a
     return body?.request?.status;
   }, { timeout: 10_000 }).toBe("APPROVED");
   await expect(cashierApproval).toBeHidden({ timeout: 30_000 });
-  await expect(page.getByRole("dialog", { name: "Payment" })).toHaveCount(0, { timeout: 30_000 });
+  const confirmedPayment = page.getByRole("dialog", { name: "Payment" });
+  await expect(confirmedPayment.getByRole("heading", { name: "Payment complete" })).toBeVisible({ timeout: 30_000 });
+  await expect(confirmedPayment.getByText("Receipt: available", { exact: true })).toBeVisible();
+  await confirmedPayment.getByRole("button", { name: "OK", exact: true }).click();
+  await expect(confirmedPayment).toHaveCount(0);
   const completedStatus = width < 1280
     ? page.getByRole("region", { name: "Tablet payment status" }).getByText("Sale completed.", { exact: true })
     : page.getByRole("complementary", { name: "Cart" }).getByText("Sale completed.", { exact: true });

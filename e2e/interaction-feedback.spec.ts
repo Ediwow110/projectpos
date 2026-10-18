@@ -1,17 +1,18 @@
 import { expect, test } from "@playwright/test";
 import { registerBusiness } from "./helpers";
+import { OnboardingPage } from "./pages/OnboardingPage";
 
 async function completeOnboarding(
   page: import("@playwright/test").Page,
   dismissTour = true,
 ): Promise<void> {
-  for (let i = 0; i < 4; i += 1) {
-    const button = page.getByRole("button", { name: "Mark step complete" });
-    await expect(button).toBeVisible({ timeout: 30_000 });
-    await button.click();
+  const onboarding = new OnboardingPage(page);
+  for (const nextStep of ["Currency & tax", "Receipt setup", "First products"]) {
+    await onboarding.completeCurrentStep();
+    await expect(page.getByRole("heading", { name: nextStep, exact: true })).toBeVisible();
   }
-  await expect(page).toHaveURL("/", { timeout: 30_000 });
-  if (dismissTour) {
+  await page.getByRole("link", { name: /Back to dashboard/i }).click();
+  await expect(page).toHaveURL("/", { timeout: 30_000 });  if (dismissTour) {
     const tour = page.getByRole("dialog", { name: "Welcome to NexPOS" });
     await expect(tour).toBeVisible({ timeout: 30_000 });
     const persisted = page.waitForResponse(
@@ -53,6 +54,9 @@ test("first workspace landing shows a dismissible tour once and allows manual re
   await page.reload();
   await expect(page.getByRole("dialog", { name: "Welcome to NexPOS" })).toHaveCount(0);
 
+  if ((page.viewportSize()?.width ?? 1440) < 1280) {
+    await page.getByRole("button", { name: "Open workspace menu" }).click();
+  }
   await page.getByRole("button", { name: "Restart system tour" }).click();
   await expect(page.getByRole("dialog", { name: "Welcome to NexPOS" })).toBeVisible();
   await expect(page.getByRole("dialog", { name: "Welcome to NexPOS" }).getByRole("button", { name: "Next" })).toBeFocused();
@@ -76,11 +80,12 @@ test("onboarding acknowledges a slow step mutation immediately", async ({ page }
     await route.continue();
   });
 
-  await page.getByRole("button", { name: "Mark step complete" }).click();
-  const busy = page.getByRole("button", { name: "Saving step…" });
+  await page.getByLabel("Operating address").fill("123 Test Street, Manila");
+  await page.getByRole("button", { name: "Save & continue" }).click();
+  const busy = page.getByRole("button", { name: /Saving configuration/ });
   await expect(busy).toBeDisabled();
   await expect(busy).toHaveAttribute("aria-busy", "true");
-  await expect(page.getByText("SETUP 03 / 05")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Currency & tax", exact: true })).toBeVisible({ timeout: 30_000 });
 });
 
 test("main navigation shows progress while a delayed route is loading", async ({ page }) => {
@@ -92,17 +97,24 @@ test("main navigation shows progress while a delayed route is loading", async ({
   });
   await completeOnboarding(page);
 
-  const nav = (page.viewportSize()?.width ?? 1440) >= 1280
-    ? page.locator('[data-ui="shell-sidebar"] nav')
-    : page.locator('[data-ui="shell-mobile-nav"]');
-  const salesLink = nav.getByRole("link", { name: "Sales", exact: true });
-  await salesLink.evaluate((node) => {
+  const desktop = (page.viewportSize()?.width ?? 1440) >= 1280;
+  const getDestination = async () => {
+    if (!desktop) {
+      await page.getByRole("button", { name: "Open workspace menu" }).click();
+    }
+    const nav = desktop
+      ? page.getByRole("navigation", { name: "Owner navigation" })
+      : page.getByRole("navigation", { name: "More workspace navigation" });
+    return nav.getByRole("link", { name: "Owner controls", exact: true });
+  };
+  const firstClick = await getDestination();
+  await firstClick.evaluate((node) => {
     node.addEventListener("click", (event) => event.preventDefault(), { once: true });
   });
-  await salesLink.click();
+  await firstClick.click();
   await expect(page.locator('[data-ui="navigation-progress"]')).toBeVisible();
-  await salesLink.click();
-  await expect(page).toHaveURL("/sales", { timeout: 30_000 });
+  await (await getDestination()).click();
+  await expect(page).toHaveURL("/admin/owner-controls", { timeout: 30_000 });
   await expect(page.locator('[data-ui="navigation-progress"]')).toBeHidden();
 });
 
