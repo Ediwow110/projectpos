@@ -345,6 +345,7 @@ export default function PosPage(): JSX.Element {
 
         {paymentChooserOpen && !showPay ? (
           <PosPaymentMethodChooser
+            returnFocusTo={paymentOpener.current}
             effectiveMethod={effectiveMethod}
             offline={offline}
             methodAvailable={methodAvailable}

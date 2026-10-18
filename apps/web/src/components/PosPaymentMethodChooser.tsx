@@ -3,6 +3,7 @@
 import React, { useEffect, useRef } from "react";
 
 interface PosPaymentMethodChooserProps {
+  returnFocusTo?: HTMLElement | null;
   effectiveMethod: string;
   offline: boolean;
   methodAvailable: (method: string) => boolean;
@@ -19,6 +20,7 @@ const METHODS = [
 ] as const;
 
 export function PosPaymentMethodChooser({
+  returnFocusTo,
   effectiveMethod,
   offline,
   methodAvailable,
@@ -32,15 +34,21 @@ export function PosPaymentMethodChooser({
   const returnFocus = useRef<HTMLElement | null>(null);
   useEffect(() => {
     const trigger = document.activeElement;
-    if (trigger instanceof HTMLElement) returnFocus.current = trigger;
+    // React may have moved focus to the page body by the time the chooser
+    // mounts. Prefer the actual Pay trigger captured by the POS page.
+    returnFocus.current = returnFocusTo?.isConnected
+      ? returnFocusTo
+      : trigger instanceof HTMLElement ? trigger : null;
     backButton.current?.focus();
-  }, []);
+  }, [returnFocusTo]);
   const enabled = (key: string): boolean => (!offline || key === "cash") && methodAvailable(key);
 
   function closeAndRestoreFocus(): void {
     onClose();
     // The opener remains in the underlying sale when the overlay unmounts.
-    requestAnimationFrame(() => returnFocus.current?.focus());
+    requestAnimationFrame(() => {
+      if (returnFocus.current?.isConnected) returnFocus.current.focus();
+    });
   }
 
   return (
