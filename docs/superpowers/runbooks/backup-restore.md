@@ -99,9 +99,10 @@ export, create files, or use provider secrets:
 ./scripts/h5-create-fresh-encrypted-backup.ps1
 ```
 
-Expected gate as of the 2026-10-18 read-only H5 review:
-`42` applied migrations and `93` `public` tables, with
-`0040_product_media` and `0048_h4r9_tenant_integrity`.
+Expected gate as of the 2026-10-19 read-only H5 review:
+`43` applied migrations and `94` `public` tables, including
+`0040_product_media`, `0048_h4r9_tenant_integrity`, and
+`0049_order_notification_outbox`.
 Reconfirm if the source has changed before running a later export.
 
 Once an authorized operator has provided `H5_DATABASE_URL` to the Windows
@@ -117,7 +118,7 @@ PowerShell history, CI logs, or chat. Clear the process environment on
 completion. This command refuses a missing variable, other Supabase project
 host/user identities, insecure SSL flags, a non-PostgreSQL-17 source, and
 schema counts/migration names that do not match the release baseline.
-The reviewed 42/93 baseline cannot be weakened by passing alternative
+The reviewed 43/94 baseline cannot be weakened by passing alternative
 count arguments. If H5 advances, update the source gate through review and
 rerun tests before attempting the next export. Ordinary partial publication
 failures clean up incomplete archive/manifest pairs. An abnormal process
@@ -141,15 +142,17 @@ recovery solution. Verify and separately back up Storage object bytes, managed
 authentication configuration, provider settings, offsite encrypted copies and
 an independent restore before changing the H5 release from HOLD / NO-GO.
 
-**Execution validation status:** As of 2026-10-18, the safe preflight and
-missing-secret refusal were tested. The fresh remote-export path was **not**
-executed because the local H5 connection variable was absent. The existing
-encrypted-archive restore drill passed, and a stale snapshot missing
-`0040_product_media` was correctly rejected by the new required-migration
-check. Do not present the fresh-export path as verified until it is executed
-against an authorized H5 source and its new archive is restored successfully.
+**Execution validation status:** On 2026-10-19, the safe preflight confirmed
+the reviewed 43/94 gate but reported `SOURCE_ENV_SET=False`; no new remote
+export was attempted. An existing encrypted H5 public-schema snapshot dated
+2026-10-17 23:26 UTC passed a fresh isolated PostgreSQL 17 restore on the
+original Windows user account, with restored counts `43|2|0|94` and all
+three required migrations present. The older 42/93 synthetic exercise below
+is historical test evidence, **not** the current release gate. Do not present
+the fresh-export or independent offsite-recovery paths as verified until a
+newly authorized source export and portable offsite restore are completed.
 
-### Offline rehearsal of the 42-migration / 93-table recovery gate
+### Historical offline rehearsal of the older 42-migration / 93-table gate
 
 `scripts/h5-rehearse-current-schema-export.ps1` is an explicitly **synthetic
 offline test**, NOT a way to obtain or reconstruct the actual current H5
