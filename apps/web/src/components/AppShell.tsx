@@ -296,7 +296,18 @@ export function AppShell({
               <span className="font-display text-[21px] font-semibold tracking-tight text-[#202826]">NexPOS</span>
             </Link>
             <div className="flex min-w-0 items-center gap-2">
-              <span className="rounded-[7px] bg-[#f0f3ef] px-3 py-2 text-[10px] font-medium uppercase tracking-[0.05em] text-[#53615a]">{currentRole}</span>
+              <span className={"rounded-[7px] bg-[#f0f3ef] px-3 py-2 text-[10px] font-medium uppercase tracking-[0.05em] text-[#53615a] " + (atlasPos ? "hidden sm:inline-flex" : "")}>{currentRole}</span>
+              {atlasPos ? (
+                <label className="min-w-0">
+                  <span className="sr-only">Active branch</span>
+                  <select aria-label="Active branch" value={activeBranchId ?? ""} disabled={switchingBranch}
+                    onChange={(event) => void switchBranch(event.target.value)}
+                    className="min-h-11 w-[98px] max-w-full rounded-lg border border-[#e5e9e3] bg-white px-2 text-[11px] text-[#202826] disabled:opacity-50 sm:w-[138px]">
+                    <option value="">All branches</option>
+                    {activeBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                  </select>
+                </label>
+              ) : null}
               <button ref={atlasMenuButtonRef} type="button" aria-label={showMobileMenu ? "Close workspace menu" : "Open workspace menu"} aria-expanded={showMobileMenu} aria-controls="atlas-mobile-navigation"
                 onClick={() => setShowMobileMenu((open) => !open)}
                 className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-[#e5e9e3] bg-white text-sm font-semibold text-[#29332d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#da614c]">
@@ -584,7 +595,21 @@ export function AppShell({
           </div>}
         </aside>
 
-        <div data-ui="shell-main" className="min-w-0">
+        <div data-ui="shell-main" className="relative min-w-0">
+          {atlasPos ? (
+            <div className="absolute right-[190px] top-4 z-20 hidden xl:block">
+              <label className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-[#e5e9e3] bg-white px-2 text-xs text-[#53615a]">
+                <span className="sr-only">Active branch</span>
+                <select aria-label="Active branch" value={activeBranchId ?? ""} disabled={switchingBranch}
+                  onChange={(event) => void switchBranch(event.target.value)}
+                  className="min-h-9 max-w-[145px] bg-white px-2 text-xs font-medium text-[#202826] outline-offset-2 disabled:opacity-50">
+                  <option value="">All branches</option>
+                  {activeBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                </select>
+              </label>
+              {branchError ? <p role="alert" className="absolute right-0 top-full mt-1 rounded bg-[#fff0eb] p-2 text-xs text-[#a34132]">{branchError}</p> : null}
+            </div>
+          ) : null}
           {children}
         </div>
       </div>

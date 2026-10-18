@@ -21,6 +21,7 @@ test("unknown provider outcome stays visibly unresolved and blocks false success
   await page.getByRole("button", { name: /Unknown Cola ₱25\.00/ }).click();
   await confirmPosQuantity(page);
   await clickPosPay(page, "25.00");
+  await page.getByRole("dialog", { name: "Payment" }).getByRole("button", { name: /Other payment methods/ }).click();
   await expect(page.getByRole("button", { name: "GCash", exact: true })).toBeDisabled();
 
   // PAYMENT_UNKNOWN remains available as a privileged recovery path for

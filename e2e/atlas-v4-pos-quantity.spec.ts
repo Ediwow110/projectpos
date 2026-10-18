@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { apiAuthedContext, registerOperationalBusiness, seedProduct } from "./helpers";
+import { apiAuthedContext, confirmPosQuantity, registerOperationalBusiness, seedProduct } from "./helpers";
 
 test("Atlas V4 chooses pieces before adding to sale and explicitly removes a line", async ({ page, request }, testInfo) => {
   test.setTimeout(180_000);
@@ -13,22 +13,22 @@ test("Atlas V4 chooses pieces before adding to sale and explicitly removes a lin
   await seedProduct(request, headers, { name: "Quantity Milk", priceMinor: 13500, stock: 30 });
 
   await page.goto("/pos");
-  const quantityTrigger = page.getByRole("button", { name: "Set qty for Quantity Milk" });
+  const quantityTrigger = page.getByRole("button", { name: /Quantity Milk ₱135\.00/ });
   await quantityTrigger.click();
-  const dialog = page.getByRole("dialog", { name: "Set quantity for Quantity Milk" });
+  const dialog = page.getByRole("dialog", { name: "Choose pieces" });
   await expect(dialog).toBeVisible();
   const pieces = dialog.getByRole("spinbutton", { name: "Pieces" });
   await pieces.fill("0");
-  await expect(dialog.getByRole("button", { name: "Enter quantity" })).toBeDisabled();
+  expect(await pieces.evaluate((element) => (element as HTMLInputElement).validity.rangeUnderflow)).toBe(true);
   await pieces.fill("1000");
-  await expect(dialog.getByRole("button", { name: "Enter quantity" })).toBeDisabled();
+  expect(await pieces.evaluate((element) => (element as HTMLInputElement).validity.rangeOverflow)).toBe(true);
   await pieces.press("Escape");
   await expect(dialog).toBeHidden();
   await expect(quantityTrigger).toBeFocused();
   await quantityTrigger.click();
   await pieces.fill("3");
-  await expect(dialog.getByText("₱405.00")).toBeVisible();
-  await dialog.getByRole("button", { name: "Add 3 pieces" }).click();
+  await expect(dialog.getByText("Line total: ₱405.00")).toBeVisible();
+  await dialog.getByRole("button", { name: "Add to sale" }).click();
   await expect(dialog).toBeHidden();
 
   if (testInfo.project.name === "desktop") {
@@ -49,10 +49,11 @@ test("Atlas V4 chooses pieces before adding to sale and explicitly removes a lin
     await cart.getByRole("button", { name: "Close cart" }).click();
   }
 
-  // Existing scan and one-tap sale behavior stays available; bulk entry is optional.
+  // Reopening a product must require quantity confirmation again.
   await page.getByRole("button", { name: /Quantity Milk ₱135\.00/ }).click();
+  await confirmPosQuantity(page, 1);
   if (testInfo.project.name === "desktop") {
-    await expect(page.getByRole("heading", { name: "Cart (1)" })).toBeVisible();
+    await expect(page.getByRole("complementary", { name: "Cart" }).getByRole("heading", { name: "Cart (1)" })).toBeVisible();
   } else {
     const cartBar = page.getByRole("region", { name: testInfo.project.name === "tablet" ? "Tablet cart" : "Mobile cart" });
     await expect(cartBar.getByText("1 item in cart", { exact: true })).toBeVisible();

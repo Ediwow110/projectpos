@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { API, apiAuthedContext, registerOperationalBusiness, seedProduct } from "./helpers";
+import { API, apiAuthedContext, confirmPosQuantity, registerOperationalBusiness, seedProduct } from "./helpers";
 
 test("H5 cashier product grid and cart display only real catalog photos", async ({ page, request }) => {
   test.setTimeout(180_000);
@@ -30,6 +30,7 @@ test("H5 cashier product grid and cart display only real catalog photos", async 
   await expect(tile).toBeVisible();
   await expect(tile.locator("img")).toHaveAttribute("src", imageUrl);
   await tile.click();
+  await confirmPosQuantity(page);
   await expect(page.getByRole("complementary", { name: "Cart" }).locator("img"))
     .toHaveAttribute("src", imageUrl);
 });

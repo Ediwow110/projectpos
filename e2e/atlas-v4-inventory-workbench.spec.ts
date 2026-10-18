@@ -29,7 +29,7 @@ test("inventory staff get the Atlas V4 workbench, real stock, and role-scoped na
 
   if (testInfo.project.name === "desktop") {
     const aside = page.locator('[data-ui="shell-sidebar"]');
-    expect((await aside.boundingBox())?.width).toBeCloseTo(238, 0);
+    expect((await aside.boundingBox())?.width).toBeCloseTo(226, 0);
     const nav = page.getByRole("navigation", { name: "Inventory controls" });
     await expect(nav.getByRole("link", { name: "My work" })).toHaveAttribute("aria-current", "page");
     await expect(nav.getByRole("link", { name: "Counts", exact: true })).toHaveAttribute("href", "/inventory/counts");

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { apiAuthedContext, registerOperationalBusiness, seedProduct } from "./helpers";
+import { apiAuthedContext, confirmPosQuantity, registerOperationalBusiness, seedProduct } from "./helpers";
 
 test("Atlas V4 desktop payment chooser selects a method without bypassing hosted checkout gates", async ({ page, request }) => {
   test.setTimeout(180_000);
@@ -15,6 +15,7 @@ test("Atlas V4 desktop payment chooser selects a method without bypassing hosted
 
   await page.goto("/pos");
   await page.getByRole("button", { name: /Chooser Milk ₱135\.00/ }).click();
+  await confirmPosQuantity(page);
   const cart = page.getByRole("complementary", { name: "Cart" });
   const payButton = cart.getByRole("button", { name: /Pay ₱135\.00/ });
   await payButton.click();
@@ -68,8 +69,8 @@ test("Atlas V4 desktop payment chooser selects a method without bypassing hosted
   await page.setViewportSize({ width: 1024, height: 768 });
   await expect(page.locator('[data-ui="atlas-v4-payment-chooser"]')).toHaveCount(0);
   const tabletDetails = page.getByRole("dialog", { name: "Payment" });
-  await expect(tabletDetails.getByRole("heading", { name: "Payment", exact: true })).toBeVisible();
-  await expect(tabletDetails.getByRole("heading", { name: "Payment", exact: true })).toBeFocused();
-  await tabletDetails.getByRole("button", { name: "Close payment" }).click();
+  await expect(tabletDetails.getByRole("heading", { name: "Take payment", exact: true })).toBeVisible();
+  await expect(tabletDetails.getByRole("heading", { name: "Take payment", exact: true })).toBeFocused();
+  await tabletDetails.getByRole("button", { name: "Back to sale" }).click();
   await expect(page.getByRole("region", { name: "Tablet cart" })).toBeVisible();
 });

@@ -4,6 +4,7 @@ import {
   apiAuthedContext,
   clickPosPay,
   createCounterWithOpenShift,
+  confirmPosQuantity,
   expectOnePosCartItem,
   posCartRegion,
   registerOperationalBusiness,
@@ -17,6 +18,7 @@ async function completeCustomerValueSale(page: Page, registerName: string, produ
   await selectPosRegister(page, registerName);
   await page.getByLabel("Search product, SKU or scan barcode").fill(productName);
   await page.getByRole("button", { name: `${productName} ₱25.00` }).click();
+  await confirmPosQuantity(page);
   await expectOnePosCartItem(page);
 
   if ((page.viewportSize()?.width ?? 1440) < 1280) {
@@ -24,7 +26,7 @@ async function completeCustomerValueSale(page: Page, registerName: string, produ
     await page.getByRole("dialog", { name: "Tablet cart details" })
       .getByRole("button", { name: "Add customer" }).click();
   } else {
-    await posCartRegion(page).getByRole("button", { name: "Assign customer to sale" }).click();
+    await posCartRegion(page).getByRole("button", { name: "Add customer" }).click();
   }
   const customerDialog = page.getByRole("dialog", { name: "Customer assignment" });
   await customerDialog.getByRole("textbox", { name: "Customer", exact: true }).fill(customerName);
@@ -35,6 +37,7 @@ async function completeCustomerValueSale(page: Page, registerName: string, produ
   await clickPosPay(page, "25.00");
   const payment = page.getByRole("dialog", { name: "Payment" });
   await expect(payment).toBeVisible();
+  await payment.getByRole("button", { name: /Other payment methods/ }).click();
   await payment.getByRole("button", { name: method, exact: true }).click();
   await payment.getByRole("button", { name: /Complete payment/i }).click();
   if ((page.viewportSize()?.width ?? 1440) < 1280) {

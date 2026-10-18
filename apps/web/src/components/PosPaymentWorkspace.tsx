@@ -64,8 +64,8 @@ export function PosPaymentWorkspace({
   const mobileHeading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     const desktop = window.matchMedia("(min-width: 1280px)").matches;
-    (desktop ? desktopHeading : mobileHeading).current?.focus();
-  }, []);
+    (atlasV4 || desktop ? desktopHeading : mobileHeading).current?.focus();
+  }, [atlasV4]);
   const availableTiles = paymentTiles.filter((method) => !offline || method.key === "cash");
   const prominentMethods = availableTiles.filter((method) => ["cash", "card", "qrph"].includes(method.key));
   const additionalMethods = availableTiles.filter((method) => !["cash", "card", "qrph"].includes(method.key));
@@ -91,7 +91,7 @@ export function PosPaymentWorkspace({
       data-ui="payment-workspace">
       <div className="px-5 pt-6 sm:px-7">
         <p className="font-data text-[10px] uppercase tracking-widest text-[#b04a39]">Workflow step</p>
-        <h2 className="font-display mt-4 text-[21px] font-semibold">Choose a payment method</h2>
+        <h2 ref={desktopHeading} tabIndex={-1} className="font-display mt-4 text-[21px] font-semibold outline-none">Take payment</h2>
         <p className="mt-2 text-xs leading-5 text-[#53615a]">Cash is local. Card and QR Ph use hosted payment when configured.</p>
         <p className="mt-4 border-b border-[#e5e9e3] pb-4 font-data text-[12px] text-[#53615a]">Total due <strong className="ml-2 font-display text-[18px] text-[#202826]">₱{money(due)}</strong> · {count} unit{count === 1 ? "" : "s"}</p>
         <fieldset className="mt-5 space-y-2.5">

@@ -109,13 +109,18 @@ test("POS shell and responsive geometry match the current navigation contract", 
   }
   const paymentDialog = page.getByRole("dialog", { name: "Payment" });
   await expect(paymentDialog).toBeVisible();
-  if (desktop) await expect(page.locator('[data-ui="atlas-pos-products"]')).toBeVisible();
-  await expect(paymentDialog.getByRole("heading", { name: "Choose a payment method" })).toBeVisible();
-  await expect(paymentDialog.getByRole("button", { name: "Cash", exact: true })).toBeVisible();
-  const morePaymentMethods = paymentDialog.getByRole("button", { name: /Other payment methods/ });
+  if (desktop) {
+    await expect(page.locator('[data-ui="atlas-pos-products"]')).toBeVisible();
+    await expect(paymentDialog.getByRole("heading", { name: "Choose a payment method" })).toBeVisible();
+    await paymentDialog.getByRole("button", { name: "Other payment methods" }).click();
+  }
+  const details = page.locator('[data-ui="payment-workspace"]');
+  await expect(details.getByRole("heading", { name: "Take payment" })).toBeVisible();
+  await expect(details.getByRole("button", { name: "Cash", exact: true })).toBeVisible();
+  const morePaymentMethods = details.getByRole("button", { name: /Other payment methods/ });
   await expect(morePaymentMethods).toHaveAttribute("aria-expanded", "false");
   await morePaymentMethods.click();
-  await expect(paymentDialog.getByRole("button", { name: /Fewer payment methods/ })).toHaveAttribute("aria-expanded", "true");
-  await expect(paymentDialog.getByRole("button", { name: "QR Ph", exact: true })).toBeVisible();
-  await expect(paymentDialog.getByRole("button", { name: "QR Ph", exact: true })).toBeDisabled();
+  await expect(details.getByRole("button", { name: /Fewer payment methods/ })).toHaveAttribute("aria-expanded", "true");
+  await expect(details.getByRole("button", { name: "QR Ph", exact: true })).toBeVisible();
+  await expect(details.getByRole("button", { name: "QR Ph", exact: true })).toBeDisabled();
 });

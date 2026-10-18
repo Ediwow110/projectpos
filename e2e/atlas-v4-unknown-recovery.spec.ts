@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import {
   apiAuthedContext,
   clickPosPay,
+  confirmPosQuantity,
   createCounterWithOpenShift,
   registerOperationalBusiness,
   seedProduct,
@@ -22,6 +23,7 @@ test("Atlas V4 POS unknown response exposes evidence review but no final receipt
   await page.goto("/pos");
   await selectPosRegister(page, "Recovery QA Counter");
   await page.getByRole("button", { name: /Recovery Milk ₱25\.00/ }).click();
+  await confirmPosQuantity(page);
   await clickPosPay(page, "25.00");
 
   // Simulate an ambiguous completion response at the network boundary.

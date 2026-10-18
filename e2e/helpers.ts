@@ -39,7 +39,9 @@ export async function expectOnePosCartItem(page: Page): Promise<void> {
     await expect(posCartRegion(page).getByText("1 item in cart", { exact: true })).toBeVisible();
     return;
   }
-  await expect(page.getByRole("heading", { name: "Cart (1)" })).toBeVisible();
+  const cart = posCartRegion(page);
+  await expect(cart.getByRole("heading", { name: "Cart (1)" })).toBeVisible();
+  await expect(cart.locator("ul > li").first()).not.toContainText("Cart is empty.");
 }
 
 export async function registerBusiness(
@@ -209,11 +211,15 @@ export async function signIn(page: Page, email: string, password: string): Promi
 
 export async function signOut(page: Page): Promise<void> {
   // Atlas V4 mobile keeps session actions in the accessible workspace menu.
-  // Other layouts retain the persistent header sign-out action.
+  // Atlas V4 desktop keeps them in the role-specific rail, not a hidden header.
   const mobileHeader = page.locator('[data-ui="atlas-mobile-header"]');
+  const sidebar = page.locator('[data-ui="shell-sidebar"]');
   if (await mobileHeader.isVisible()) {
     await mobileHeader.getByRole("button", { name: "Open workspace menu" }).click();
     await page.locator('[data-ui="shell-mobile-more"]').getByRole("button", { name: "Sign out" }).click();
+  } else if (await sidebar.isVisible() &&
+      await sidebar.getByRole("button", { name: "Sign out" }).count() > 0) {
+    await sidebar.getByRole("button", { name: "Sign out" }).click();
   } else {
     await page.getByRole("banner").getByRole("button", { name: "Sign out" }).click();
   }
@@ -293,6 +299,7 @@ export async function completePosSale(
   await selectPosRegister(page, input.register);
   await page.getByLabel("Search product, SKU or scan barcode").fill(input.productName);
   await page.getByRole("button", { name: `${input.productName} ₱${input.productPriceLabel}` }).click();
+  await confirmPosQuantity(page);
   await expectOnePosCartItem(page);
   await clickPosPay(page, input.payAmount);
   await expect(page.getByRole("dialog", { name: "Payment" })).toBeVisible();

@@ -15,7 +15,7 @@ describe("POS payment workspace", () => {
     />);
     expect(html).toContain('data-ui="payment-workspace"');
     expect(html).toContain('aria-label="Payment"');
-    expect(html).toContain("Choose a payment method");
+    expect(html).toContain("Take payment");
     expect(html).toContain("QR Ph");
     expect(html).toContain("₱50.00");
     expect(html).toContain("Complete Payment");

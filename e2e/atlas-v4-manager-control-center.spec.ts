@@ -66,5 +66,5 @@ test("Atlas V4 manager control center uses own scoped reports and protects platf
   await expect(page.getByRole("link", { name: /Owner controls/ })).toHaveCount(0);
   await expect(page.getByRole("link", { name: /^Open Team/ })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Tenant directory" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: /Open Devices/ })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Administration destinations" }).getByRole("link", { name: /Devices/ })).toHaveAttribute("href", "/devices");
 });
