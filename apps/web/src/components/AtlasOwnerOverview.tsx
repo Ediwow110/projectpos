@@ -3,6 +3,11 @@
 import React from "react";
 import Link from "next/link";
 import type { DashboardAttention } from "../lib/dashboard-view";
+import {
+  readinessGapLabels,
+  saleReadinessChecks,
+  type SaleReadiness,
+} from "../lib/sale-readiness";
 
 interface OwnerOverview {
   netRevenueMinor: number;
@@ -13,6 +18,7 @@ interface OwnerOverview {
 export function AtlasOwnerOverview({
   overview, attention, loading, failed, onRetry, period, periods, onPeriodChange,
   legacySetupReviewSteps = [],
+  readiness = null, readinessFailed = false,
 }: {
   overview: OwnerOverview | null;
   attention: DashboardAttention[];
@@ -23,6 +29,8 @@ export function AtlasOwnerOverview({
   periods: readonly { label: string; days: number }[];
   onPeriodChange: (days: number) => void;
   legacySetupReviewSteps?: string[];
+  readiness?: SaleReadiness | null;
+  readinessFailed?: boolean;
 }) {
   const hasReport = !!overview && !loading && !failed;
   const attentionTotal = attention.reduce((total, item) => total + item.count, 0);
@@ -36,6 +44,8 @@ export function AtlasOwnerOverview({
     { href: "/orders", label: "Open orders" },
     { href: "/shifts", label: "Review shifts" },
   ];
+  const checks = readiness ? saleReadinessChecks(readiness) : [];
+  const gaps = readiness ? readinessGapLabels(readiness) : [];
   return (
     <section aria-label="Atlas owner overview" data-ui="atlas-v4-owner-overview" className="space-y-6">
       {legacySetupReviewSteps.length > 0 ? (
@@ -82,6 +92,59 @@ export function AtlasOwnerOverview({
           <p className="mt-2 text-[13px] text-[#71807a]">{metric.label}</p>
         </div>)}
       </div>
+      <section aria-label="First sale readiness" className="rounded-xl border border-[#e5e9e3] bg-white p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="font-display text-[19px] font-semibold text-[#202826]">First sale readiness</h2>
+            <p className="mt-1 text-[12px] leading-5 text-[#53615a]">
+              {readiness
+                ? readiness.businessConfigured && readiness.legacySetupReviewSteps.length === 0
+                  ? "Business setup is complete. These operational checks come from the server."
+                  : "Business setup is not complete yet. Finish setup before your first sale."
+                : "Business setup and sale readiness are reported by the server."}
+            </p>
+          </div>
+          {readiness ? (
+            <span className={"shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold " +
+              (readiness.readyForFirstSale ? "bg-[#e8f4ec] text-[#267552]" : "bg-[#fff4df] text-[#8a5a06]")}>
+              {readiness.readyForFirstSale ? "Ready for first sale" : "Not ready for first sale"}
+            </span>
+          ) : null}
+        </div>
+        {readiness ? (
+          <>
+            <ul className="mt-4 grid gap-2 sm:grid-cols-3">
+              {checks.map((check) => (
+                <li key={check.key} className="rounded-lg border border-[#e5e9e3] bg-[#fbfcfa] p-3">
+                  <Link href={check.href}
+                    className="text-[13px] font-medium text-[#202826] underline decoration-[#cdd6cd] underline-offset-2 hover:decoration-[#da614c] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#da614c]">
+                    {check.label}
+                  </Link>
+                  <p className={"mt-1 text-[11px] font-semibold " + (check.done ? "text-[#267552]" : "text-[#8a5a06]")}>
+                    {check.done ? "Ready" : "To do · " + check.pending}
+                  </p>
+                </li>
+              ))}
+            </ul>
+            {gaps.length > 0 ? (
+              <ul className="mt-3 space-y-1 text-[12px] font-medium text-[#8a5a06]">
+                {gaps.map((gap) => <li key={gap}>{gap}</li>)}
+              </ul>
+            ) : null}
+          </>
+        ) : (
+          <p role={readinessFailed ? "alert" : "status"} className="mt-4 text-[12px] text-[#53615a]">
+            {readinessFailed ? "Could not load sale readiness. Retry after refresh." : "Checking sale readiness…"}
+          </p>
+        )}
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#e5e9e3] pt-4">
+          <p className="text-[12px] text-[#53615a]">Saved business settings stay reviewable at any time.</p>
+          <Link href="/onboarding"
+            className="inline-flex min-h-11 items-center rounded-lg border border-[#dce3dc] bg-white px-4 text-[12px] font-semibold text-[#202826] hover:bg-[#f0f3ef] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#da614c]">
+            Review business setup
+          </Link>
+        </div>
+      </section>
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_270px]">
         <section aria-label="Owner operational records" className="min-h-[360px] rounded-xl border border-[#e5e9e3] bg-white p-5">
           <h2 className="font-display text-[21px] font-semibold text-[#202826]">Operational records</h2>

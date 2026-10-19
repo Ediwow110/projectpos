@@ -6,6 +6,7 @@ import { AtlasWorkspaceDestinations } from "./AtlasWorkspaceDestinations";
 
 const OWNER_SECTIONS = [
   { href: "/", label: "Overview" },
+  { href: "/onboarding", label: "Business setup" },
   { href: "/admin/owner-controls", label: "Owner controls" },
   { href: "/team", label: "Team & permissions" },
   { href: "/branches", label: "Branches & registers" },

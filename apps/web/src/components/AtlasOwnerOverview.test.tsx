@@ -48,4 +48,86 @@ describe("Atlas V4 owner landing overview", () => {
     expect(html).not.toContain("₱0.00");
     expect(html).not.toContain("No reported attention items");
   });
+
+  it("shows the server sale-readiness checklist and links to the real setup flows", () => {
+    const html = renderToStaticMarkup(<AtlasOwnerOverview
+      overview={null} attention={[]} loading={false} failed={false} onRetry={() => undefined}
+      period={30} periods={[{ label: "Last 30 days", days: 30 }]} onPeriodChange={() => undefined}
+      readiness={{
+        businessConfigured: true, legacySetupReviewSteps: [], hasSellableProduct: false,
+        hasActiveRegister: false, hasOpenShift: false, hasStaff: false,
+        canCustomizeReceipt: false, readyForFirstSale: false,
+        missing: ["sellable_product_or_stock", "active_register", "open_shift"],
+      }}
+    />);
+    expect(html).toContain('aria-label="First sale readiness"');
+    expect(html).toContain("Not ready for first sale");
+    expect(html).toContain("Business setup is complete");
+    expect(html).toContain('href="/products"');
+    expect(html).toContain('href="/registers"');
+    expect(html).toContain('href="/shifts"');
+    expect(html).toContain("No sellable product yet");
+    expect(html).toContain("No active register yet");
+    expect(html).toContain("No open shift yet");
+    expect(html).toContain("Review business setup");
+    expect(html).not.toContain("₱0.00");
+  });
+
+  it("confirms first-sale readiness when the server reports every check is satisfied", () => {
+    const html = renderToStaticMarkup(<AtlasOwnerOverview
+      overview={{ orders: 18, netRevenueMinor: 4862000 }} attention={[]} loading={false} failed={false}
+      onRetry={() => undefined}
+      period={30} periods={[{ label: "Last 30 days", days: 30 }]} onPeriodChange={() => undefined}
+      readiness={{
+        businessConfigured: true, legacySetupReviewSteps: [], hasSellableProduct: true,
+        hasActiveRegister: true, hasOpenShift: true, hasStaff: false,
+        canCustomizeReceipt: false, readyForFirstSale: true, missing: [],
+      }}
+    />);
+    expect(html).toContain("Ready for first sale");
+    expect(html).not.toContain("Not ready for first sale");
+    expect(html).toContain("Review business setup");
+  });
+
+  it("does not present a completed business setup as first-sale readiness", () => {
+    const html = renderToStaticMarkup(<AtlasOwnerOverview
+      overview={null} attention={[]} loading={false} failed={false} onRetry={() => undefined}
+      period={30} periods={[{ label: "Last 30 days", days: 30 }]} onPeriodChange={() => undefined}
+      readiness={{
+        businessConfigured: false, legacySetupReviewSteps: ["businessDetails"], hasSellableProduct: false,
+        hasActiveRegister: false, hasOpenShift: false, hasStaff: false,
+        canCustomizeReceipt: false, readyForFirstSale: false,
+        missing: ["business_setup", "business_setup_review", "active_register"],
+      }}
+    />);
+    expect(html).toContain("Not ready for first sale");
+    expect(html).not.toContain("Business setup is complete");
+    expect(html).toContain("Business setup needs to be reviewed and saved.");
+  });
+
+  it("does not present a branch as a prerequisite for a register", () => {    const html = renderToStaticMarkup(<AtlasOwnerOverview
+      overview={null} attention={[]} loading={false} failed={false} onRetry={() => undefined}
+      period={30} periods={[{ label: "Last 30 days", days: 30 }]} onPeriodChange={() => undefined}
+      readiness={{
+        businessConfigured: true, legacySetupReviewSteps: [], hasSellableProduct: true,
+        hasActiveRegister: false, hasOpenShift: false, hasStaff: false,
+        canCustomizeReceipt: false, readyForFirstSale: false, missing: ["active_register"],
+      }}
+    />);
+    expect(html).not.toContain('href="/branches"');
+  });
+
+  it("does not claim setup is complete while required settings are still missing", () => {
+    const html = renderToStaticMarkup(<AtlasOwnerOverview
+      overview={null} attention={[]} loading={false} failed={false} onRetry={() => undefined}
+      period={30} periods={[{ label: "Last 30 days", days: 30 }]} onPeriodChange={() => undefined}
+      readiness={{
+        businessConfigured: true, legacySetupReviewSteps: ["businessDetails"], hasSellableProduct: true,
+        hasActiveRegister: true, hasOpenShift: true, hasStaff: false,
+        canCustomizeReceipt: false, readyForFirstSale: false, missing: ["business_setup_review"],
+      }}
+    />);
+    expect(html).not.toContain("Business setup is complete");
+    expect(html).toContain("Business setup needs to be reviewed and saved.");
+  });
 });

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fixture = vi.hoisted(() => ({
   legacyReviewSteps: [] as string[],
+  settings: {} as Record<string, unknown>,
   data: {
     currentStep: "receiptSetup",
     steps: {
@@ -22,7 +23,7 @@ vi.mock("@tanstack/react-query", () => ({
     data: queryKey[0] === "onboarding-sale-readiness"
       ? { legacySetupReviewSteps: fixture.legacyReviewSteps, canCustomizeReceipt: false }
       : queryKey[0] === "onboarding-business"
-        ? { name: "QA Business", currency: "PHP", settings: {} }
+        ? { name: "QA Business", currency: "PHP", settings: fixture.settings }
         : fixture.data,
     isLoading: false, isError: false, refetch: vi.fn(),
   }),
@@ -35,6 +36,7 @@ describe("onboarding navigation", () => {
   beforeEach(() => {
     vi.stubGlobal("React", React);
     fixture.legacyReviewSteps = [];
+    fixture.settings = {};
     fixture.data.currentStep = "receiptSetup";
     fixture.data.steps.businessDetails = "done";
     fixture.data.steps.taxCurrency = "pending";
@@ -113,5 +115,48 @@ describe("onboarding navigation", () => {
     expect(html).toContain('href="/"');
     expect(html).toContain("← Back to dashboard");
     expect(html).not.toContain("Complete required setup to open the dashboard.");
+  });
+
+  it("lands a completed owner on the first required step and shows the saved business settings", () => {
+    fixture.data.currentStep = "complete";
+    fixture.data.steps.businessDetails = "done";
+    fixture.data.steps.taxCurrency = "done";
+    fixture.data.steps.receiptSetup = "done";
+    fixture.data.steps.products = "skipped";
+    fixture.data.steps.employees = "skipped";
+    fixture.settings = {
+      businessAddress: "123 Rizal St, Manila",
+      businessPhone: "09171234567",
+      businessTimezone: "Asia/Manila",
+      taxName: "no tax",
+      taxRateBps: 0,
+      standardReceiptConfirmed: true,
+    };
+
+    const html = renderToStaticMarkup(<OnboardingPage />);
+
+    expect(html).toContain('aria-label="Saved business settings"');
+    expect(html).toContain("123 Rizal St, Manila");
+    expect(html).toContain("Asia/Manila");
+    expect(html).toContain("PHP");
+    expect(html).toContain("no tax");
+    expect(html).toContain("0%");
+    expect(html).toContain("Standard receipt confirmed");
+    expect(html).toContain("This step is complete");
+    expect(html).not.toContain("Owner-only stores can skip employee setup.");
+  });
+
+  it("keeps a single dashboard link when a completed owner reviews saved settings", () => {
+    fixture.data.currentStep = "complete";
+    fixture.data.steps.businessDetails = "done";
+    fixture.data.steps.taxCurrency = "done";
+    fixture.data.steps.receiptSetup = "done";
+    fixture.data.steps.products = "skipped";
+    fixture.data.steps.employees = "skipped";
+
+    const html = renderToStaticMarkup(<OnboardingPage />);
+
+    expect(html.match(/href="\/"/g) ?? []).toHaveLength(1);
+    expect(html).toContain("← Back to dashboard");
   });
 });

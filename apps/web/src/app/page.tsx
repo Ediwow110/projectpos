@@ -17,6 +17,7 @@ import { errorText } from "../lib/billing";
 import { attentionRows, dashboardKpi, dashboardSeries } from "../lib/dashboard-view";
 import { VerticalBarChart } from "../lib/charts";
 import { availableMetrics, buildOverviewQuery, money } from "../lib/reports";
+import type { SaleReadiness } from "../lib/sale-readiness";
 import {
   IndexedDbSyncStore,
   clearActiveSyncScope,
@@ -137,7 +138,7 @@ export default function DashboardPage(): JSX.Element {
   });
   const ownerSetupReviewQuery = useQuery({
     queryKey: ["owner-setup-review", meQuery.data?.businessId],
-    queryFn: () => apiFetch<{ legacySetupReviewSteps: string[] }>("/api/v1/onboarding/readiness"),
+    queryFn: () => apiFetch<SaleReadiness>("/api/v1/onboarding/readiness"),
     retry: false,
     enabled: meQuery.data?.role === "owner" && meQuery.data.onboardingRequired === false,
   });
@@ -410,6 +411,8 @@ export default function DashboardPage(): JSX.Element {
           <>
             <AtlasOwnerOverview
               legacySetupReviewSteps={ownerSetupReviewQuery.data?.legacySetupReviewSteps ?? []}
+              readiness={ownerSetupReviewQuery.data ?? null}
+              readinessFailed={ownerSetupReviewQuery.isError}
               overview={data ? { orders: data.kpis.orders.value, netRevenueMinor: data.kpis.netRevenue.value } : null}
               attention={attention}
               loading={overviewQuery.isPending}

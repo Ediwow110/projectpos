@@ -10,6 +10,11 @@ import { Panel } from "../../components/premium";
 import { AtlasEntryBrand } from "../../components/AtlasEntryBrand";
 import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { ApiError, apiFetch } from "../../lib/api";
+import {
+  formatTaxRate,
+  readSavedBusinessSettings,
+  type SaleReadiness,
+} from "../../lib/sale-readiness";
 
 const ORDER = ["businessDetails", "taxCurrency", "receiptSetup", "products", "employees"] as const;
 type Step = (typeof ORDER)[number];
@@ -54,17 +59,6 @@ interface BusinessDetails {
   name: string;
   currency: string;
   settings: Record<string, unknown>;
-}
-
-interface SaleReadiness {
-  businessConfigured: boolean;
-  legacySetupReviewSteps: Step[];
-  hasSellableProduct: boolean;
-  hasActiveRegister: boolean;
-  hasOpenShift: boolean;
-  hasStaff: boolean;
-  canCustomizeReceipt: boolean;
-  readyForFirstSale: boolean;
 }
 
 async function loadOnboarding(): Promise<OnboardingState> {
@@ -208,16 +202,20 @@ export default function OnboardingPage(): JSX.Element {
   }
 
   const steps = query.data!.steps;
-  const legacyReview = readiness.data?.legacySetupReviewSteps ?? [];
+  const legacyReview = (readiness.data?.legacySetupReviewSteps ?? []) as Step[];
   const progressStep =
     (legacyReview[0] ??
       ORDER.find((step) => step === query.data!.currentStep) ??
       ORDER.find((step) => steps[step] === "pending") ??
-      ORDER[ORDER.length - 1]) as Step;
+      // A completed setup has no pending step: land on the first required step
+      // so the owner reviews saved business settings instead of a skipped
+      // optional step that says nothing.
+      (REQUIRED.every((step) => steps[step] === "done") ? REQUIRED[0] : ORDER[ORDER.length - 1])) as Step;
   const current = editingStep ?? progressStep;
   const editingCompletedStep = (editingStep === current || legacyReview.includes(current)) && steps[current] === "done";
   const currentIndex = ORDER.indexOf(current);
   const currentMeta = STEP_META[current];
+  const saved = readSavedBusinessSettings(business.data!);
 
   return (
     <main data-ui="atlas-v4-onboarding" className="atlas-entry min-h-screen p-4 sm:p-6 lg:p-8">
@@ -287,6 +285,44 @@ export default function OnboardingPage(): JSX.Element {
           <p className="mt-3 max-w-3xl text-[14px] leading-6 text-[#748078]">{currentMeta.description}</p>
           {editingCompletedStep ? <button type="button" className="mt-3 text-xs font-semibold text-[#e44e34]"
             onClick={() => setEditingStep(null)}>← Return to current setup</button> : null}
+
+          {requiredDone ? (
+            <section aria-label="Saved business settings" className="mt-6 rounded-xl border border-[#e5e9e3] bg-white p-5">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h3 className="font-display text-[17px] font-semibold text-[#202826]">Saved business settings</h3>
+                <p className="font-data text-[10px] tracking-wide text-[#53615a]">SAVED ON THE SERVER</p>
+              </div>
+              <dl className="mt-4 grid gap-4 sm:grid-cols-3">
+                <div>
+                  <dt className="text-[11px] font-medium text-[#53615a]">Business details</dt>
+                  <dd className="mt-1 text-[13px] font-semibold text-[#202826]">{saved.name}</dd>
+                  <dd className="mt-1 text-[12px] leading-5 text-[#53615a]">{saved.address || "No address saved"}</dd>
+                  {saved.phone ? <dd className="text-[12px] leading-5 text-[#53615a]">{saved.phone}</dd> : null}
+                  <dd className="text-[12px] leading-5 text-[#53615a]">{saved.timezone || "No timezone saved"}</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] font-medium text-[#53615a]">Currency &amp; tax</dt>
+                  <dd className="mt-1 text-[13px] font-semibold text-[#202826]">
+                    {saved.currency} · {saved.taxName || "No tax name saved"}
+                  </dd>
+                  <dd className="mt-1 text-[12px] leading-5 text-[#53615a]">{formatTaxRate(saved.taxRateBps)} tax rate</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] font-medium text-[#53615a]">Receipt setup</dt>
+                  <dd className="mt-1 text-[13px] font-semibold text-[#202826]">
+                    {saved.receiptConfirmed ? "Standard receipt confirmed" : "Standard receipt not confirmed"}
+                  </dd>
+                  {readiness.data?.canCustomizeReceipt && (saved.receiptHeader || saved.receiptFooter) ? (
+                    <dd className="mt-1 text-[12px] leading-5 text-[#53615a]">
+                      {saved.receiptHeader ? `Header: ${saved.receiptHeader}` : "No custom header saved"}
+                      <br />
+                      {saved.receiptFooter ? `Footer: ${saved.receiptFooter}` : "No custom footer saved"}
+                    </dd>
+                  ) : null}
+                </div>
+              </dl>
+            </section>
+          ) : null}
 
           <div className="mt-8 grid gap-4 xl:grid-cols-[minmax(0,1fr)_220px]">
             <div className="rounded-xl border border-[#e5e9e3] bg-[#fbfcfa] p-5 sm:p-7">
@@ -405,7 +441,11 @@ export default function OnboardingPage(): JSX.Element {
                   ) : null}
                 </div>
               ) : (
-                <p className="mt-6 text-[11px] font-medium text-[#1f8a5b]">This step is already resolved.</p>
+                <p className="mt-6 text-[11px] font-medium text-[#1f8a5b]">
+                  {steps[current] === "done"
+                    ? "This step is complete. Saved values are shown above; use the list to change them."
+                    : "This step is already resolved."}
+                </p>
               )}
             </div>
 

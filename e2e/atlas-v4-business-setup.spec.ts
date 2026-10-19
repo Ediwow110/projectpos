@@ -1,0 +1,173 @@
+import { expect, test, type Page } from "@playwright/test";
+import { registerOperationalBusiness } from "./helpers";
+
+/** Resolves both optional onboarding steps so the business reaches a complete setup. */
+async function skipOptionalSetup(page: Page): Promise<void> {
+  const result = await page.evaluate(async () => {
+    const csrfResponse = await fetch("/api/v1/auth/csrf", { credentials: "include" });
+    if (!csrfResponse.ok) return { ok: false, status: csrfResponse.status };
+    const csrf = (await csrfResponse.json()) as { csrfToken: string };
+    for (const step of ["products", "employees"]) {
+      const response = await fetch("/api/v1/onboarding", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf.csrfToken },
+        body: JSON.stringify({ step, state: "skipped" }),
+      });
+      if (!response.ok) return { ok: false, status: response.status };
+    }
+    return { ok: true, status: 200 };
+  });
+  expect(result.ok, `skipping optional setup failed with HTTP ${result.status}`).toBe(true);
+}
+
+test("owner can reach saved business settings and first-sale readiness without leaving the workspace", async ({ page }, testInfo) => {
+  test.setTimeout(240_000);
+  await registerOperationalBusiness(page, {
+    ownerName: "Atlas Business Setup QA",
+    email: `owner-business-setup-${testInfo.project.name}-${Date.now()}@example.test`,
+    password: "correct-horse-12",
+    businessName: "Business Setup QA Business",
+  });
+  await skipOptionalSetup(page);
+
+  await page.goto("/");
+  const overview = page.getByRole("region", { name: "Atlas owner overview" });
+  await expect(overview.getByRole("heading", { name: "Owner overview" })).toBeVisible();
+
+  const readiness = overview.getByRole("region", { name: "First sale readiness" });
+  await expect(readiness).toBeVisible();
+  await expect(readiness.getByText("Not ready for first sale")).toBeVisible();
+  await expect(readiness.getByText("Business setup is complete")).toBeVisible();
+  await expect(readiness.getByRole("link", { name: "Sellable product with available stock" })).toHaveAttribute("href", "/products");
+  await expect(readiness.getByRole("link", { name: "Active register" })).toHaveAttribute("href", "/registers");
+  await expect(readiness.getByRole("link", { name: "Open shift" })).toHaveAttribute("href", "/shifts");
+  // A register does not depend on a branch, so a branch is never presented as a
+  // prerequisite for the first sale.
+  await expect(readiness.getByRole("link", { name: "Branches" })).toHaveCount(0);
+
+  const reviewLink = readiness.getByRole("link", { name: "Review business setup" });
+  await expect(reviewLink).toHaveAttribute("href", "/onboarding");
+
+  // Viewing saved settings must never write.
+  const writes: string[] = [];
+  page.on("request", (request) => {
+    const url = request.url();
+    if (request.method() !== "PATCH") return;
+    if (url.includes("/api/v1/business/settings") || url.includes("/api/v1/onboarding")) {
+      writes.push(`${request.method()} ${new URL(url).pathname}`);
+    }
+  });
+
+  await reviewLink.click();
+  await expect(page).toHaveURL(/\/onboarding$/);
+
+  const saved = page.getByRole("region", { name: "Saved business settings" });
+  await expect(saved).toBeVisible();
+  await expect(saved.getByText("123 Test Street, Manila")).toBeVisible();
+  await expect(saved.getByText("Asia/Manila")).toBeVisible();
+  await expect(saved.getByText("PHP · No tax")).toBeVisible();
+  await expect(saved.getByText("0% tax rate")).toBeVisible();
+  await expect(saved.getByText("Standard receipt confirmed")).toBeVisible();
+
+  // A completed owner lands on a meaningful required step, not a skipped tail step.
+  await expect(page.getByRole("heading", { name: "Business details" })).toBeVisible();
+  await expect(page.getByText("STEP 01 / 05")).toBeVisible();
+  await expect(page.getByText("This step is complete")).toBeVisible();
+
+  // Reviewing a saved step must not write anything.
+  await page.waitForTimeout(500);
+  expect(writes, `viewing saved settings issued writes: ${writes.join(", ")}`).toEqual([]);
+
+  await page.getByRole("link", { name: "← Back to dashboard" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(overview.getByRole("heading", { name: "Owner overview" })).toBeVisible();
+
+  // Direct navigation back to the review surface keeps the saved values and does
+  // not reset progress.
+  await page.goto("/onboarding");
+  await expect(page.getByRole("region", { name: "Saved business settings" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Business details" })).toBeVisible();
+  await expect(page.getByText("STEP 01 / 05")).toBeVisible();
+
+  // Browser back/forward keeps the owner inside the workspace.
+  await page.goBack();
+  await expect(page).toHaveURL(/\/$/);
+  await page.goForward();
+  await expect(page).toHaveURL(/\/onboarding$/);
+  await expect(page.getByRole("region", { name: "Saved business settings" })).toBeVisible();
+
+  // The Atlas owner rail is a desktop destination list: it is hidden below the
+  // xl breakpoint, where the mobile header takes over and the readiness card
+  // link is the owner path to business setup.
+  await page.goto("/");
+  if (testInfo.project.name === "desktop") {
+    const nav = page.getByRole("navigation", { name: "Owner navigation" });
+    const setupLink = nav.getByRole("link", { name: "Business setup", exact: true });
+    await expect(setupLink).toHaveAttribute("href", "/onboarding");
+    await setupLink.click();
+    await expect(page).toHaveURL(/\/onboarding$/);
+  } else {
+    await page.getByRole("link", { name: "Review business setup" }).click();
+    await expect(page).toHaveURL(/\/onboarding$/);
+  }
+  await expect(page.getByRole("region", { name: "Saved business settings" })).toBeVisible();
+});
+
+test("signed-out owners are redirected away from the business setup surface", async ({ page }) => {
+  await page.goto("/onboarding");
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByRole("heading", { name: "Sign in to NexPOS" })).toBeVisible();
+});
+
+test("business setup review stays readable and free of horizontal overflow", async ({ page }, testInfo) => {
+  test.setTimeout(240_000);
+  await registerOperationalBusiness(page, {
+    ownerName: "Atlas Business Setup Responsive QA",
+    email: `owner-business-setup-responsive-${testInfo.project.name}-${Date.now()}@example.test`,
+    password: "correct-horse-12",
+    businessName: "Business Setup Responsive QA Business",
+  });
+  await skipOptionalSetup(page);
+  await page.goto("/onboarding");
+
+  // The desktop project owns the full width sweep; the mobile-emulated
+  // project keeps its own 390px viewport because Chromium device emulation
+  // does not reliably re-layout on an arbitrary resize.
+  const widths = testInfo.project.name === "desktop"
+    ? [390, 820, 1024, 1280, 1440]
+    : [testInfo.project.name === "mobile" ? 390 : 1024];
+  for (const width of widths) {
+    await page.setViewportSize({ width, height: 900 });
+    const saved = page.getByRole("region", { name: "Saved business settings" });
+    await expect(saved).toBeVisible();
+    const widths = await page.evaluate(() => ({
+      documentWidth: document.documentElement.scrollWidth,
+      viewportWidth: document.documentElement.clientWidth,
+    }));
+    expect(widths.documentWidth, `horizontal overflow at ${width}px`).toBeLessThanOrEqual(widths.viewportWidth + 2);
+  }
+});
+
+test("the business setup link is reachable by keyboard", async ({ page }, testInfo) => {
+  test.setTimeout(240_000);
+  await registerOperationalBusiness(page, {
+    ownerName: "Atlas Business Setup Keyboard QA",
+    email: `owner-business-setup-keyboard-${testInfo.project.name}-${Date.now()}@example.test`,
+    password: "correct-horse-12",
+    businessName: "Business Setup Keyboard QA Business",
+  });
+  await skipOptionalSetup(page);
+  await page.goto("/");
+
+  const reviewLink = page.getByRole("link", { name: "Review business setup" });
+  await reviewLink.focus();
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Shift+Tab");
+  const focused = await page.evaluate(() => ({
+    text: document.activeElement?.textContent?.trim() ?? "",
+    focusVisible: document.activeElement instanceof HTMLElement && document.activeElement.matches(":focus-visible"),
+  }));
+  expect(focused.text).toBe("Review business setup");
+  expect(focused.focusVisible).toBe(true);
+});
