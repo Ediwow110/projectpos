@@ -44,6 +44,9 @@ const ITEMS = {
   purchaseOrders: { href: "/purchase-orders", label: "Purchase Orders", icon: "▱", tour: "purchase-orders" },
   supplierReturns: { href: "/supplier-returns", label: "Supplier Returns", icon: "↩", tour: "supplier-returns" },
   ownerSupport: { href: "/admin/support", label: "Guest support & consent", icon: "?", tour: "admin" },
+  // Owner-only: currency, tax and receipt settings are edited exclusively in
+  // /onboarding, and only the owner role holds settings.write.
+  businessSetup: { href: "/onboarding", label: "Business setup", icon: "◉", tour: "business-setup" },
 } as const satisfies Record<string, WorkspaceNavigationItem>;
 
 function group(label: string, keys: Array<keyof typeof ITEMS>): WorkspaceNavigationGroup {
@@ -81,7 +84,7 @@ export function workspaceNavigationForRole(role?: string): WorkspaceNavigationGr
     group("Procurement", ["suppliers", "purchaseOrders", "supplierReturns"]),
     group("Operations", ["registers", "shifts", "transfers", "expenses"]),
     group("Insights", ["reports"]),
-    group("Administration", ["ownerControls", "ownerSupport", "branches", "devices", "printers", "sync", "team", "admin", "loyaltySettings", "onlineOrdering"]),
+    group("Administration", ["businessSetup", "ownerControls", "ownerSupport", "branches", "devices", "printers", "sync", "team", "admin", "loyaltySettings", "onlineOrdering"]),
   ];
 }
 

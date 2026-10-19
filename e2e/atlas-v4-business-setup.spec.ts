@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { registerOperationalBusiness } from "./helpers";
+import { API, apiAuthedContext, registerOperationalBusiness } from "./helpers";
 
 /** Resolves both optional onboarding steps so the business reaches a complete setup. */
 async function skipOptionalSetup(page: Page): Promise<void> {
@@ -170,4 +170,91 @@ test("the business setup link is reachable by keyboard", async ({ page }, testIn
   }));
   expect(focused.text).toBe("Review business setup");
   expect(focused.focusVisible).toBe(true);
+});
+
+test("the below-xl workspace menu offers owners the business setup destination", async ({ page }, testInfo) => {
+  test.setTimeout(240_000);
+  // The Atlas owner rail is a desktop-only destination list, so below the xl
+  // breakpoint the shared workspace navigation is the owner's route to it.
+  test.skip(testInfo.project.name === "desktop", "the owner rail is always visible at desktop width");
+
+  await registerOperationalBusiness(page, {
+    ownerName: "Atlas Business Setup Mobile QA",
+    email: `owner-business-setup-mobile-${testInfo.project.name}-${Date.now()}@example.test`,
+    password: "correct-horse-12",
+    businessName: "Business Setup Mobile QA Business",
+  });
+  await skipOptionalSetup(page);
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Open workspace menu" }).click();
+  const menu = page.getByRole("navigation", { name: "More workspace navigation" });
+  await expect(menu).toBeVisible();
+  const setupLink = menu.getByRole("link", { name: "Business setup", exact: true });
+  await expect(setupLink).toHaveAttribute("href", "/onboarding");
+
+  // The mobile entry is keyboard reachable and shows a focus ring. A real
+  // keyboard event is required for :focus-visible to apply, so drive focus
+  // with Tab/Shift+Tab rather than a programmatic focus() alone.
+  await setupLink.focus();
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Shift+Tab");
+  const focused = await page.evaluate(() => ({
+    text: document.activeElement?.textContent?.trim() ?? "",
+    focusVisible: document.activeElement instanceof HTMLElement && document.activeElement.matches(":focus-visible"),
+  }));
+  expect(focused.text).toContain("Business setup");
+  expect(focused.focusVisible).toBe(true);
+
+  await setupLink.click();
+  await expect(page).toHaveURL(/\/onboarding$/);
+  await expect(page.getByRole("region", { name: "Saved business settings" })).toBeVisible();
+});
+
+test("non-owner roles are never offered the business setup destination", async ({ page, request }, testInfo) => {
+  test.setTimeout(240_000);
+  const ownerEmail = await registerOperationalBusiness(page, {
+    ownerName: "Atlas Business Setup Role QA",
+    email: `owner-business-setup-role-${testInfo.project.name}-${Date.now()}@example.test`,
+    password: "correct-horse-12",
+    businessName: "Business Setup Role QA Business",
+  });
+  const ownerAuth = await apiAuthedContext(request, ownerEmail, "correct-horse-12", page);
+  const cashierEmail = `cashier-business-setup-${testInfo.project.name}-${Date.now()}@example.test`;
+  const created = await request.post(`${API}/api/v1/memberships`, {
+    headers: ownerAuth.headers,
+    data: { email: cashierEmail, name: "Business Setup Cashier", role: "cashier" },
+  });
+  expect(created.ok()).toBe(true);
+  const membership = (await created.json()) as { tempPassword?: string };
+  expect(membership.tempPassword).toBeTruthy();
+
+  await page.context().clearCookies();
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(cashierEmail);
+  await page.getByLabel("Password").fill(membership.tempPassword!);
+  await page.getByRole("button", { name: "Sign in securely" }).click();
+  await expect(page).toHaveURL(/\/$/);
+
+  // The first-run tour is a modal overlay; dismiss it before using the shell.
+  const tour = page.getByRole("dialog", { name: "Welcome to NexPOS" });
+  if (await tour.count()) {
+    await tour.getByRole("button", { name: "Skip tour" }).click();
+    await expect(tour).toBeHidden();
+  }
+
+  await expect(page.locator('a[href="/onboarding"]')).toHaveCount(0);
+  if (testInfo.project.name !== "desktop") {
+    // Owners get the Atlas mobile header; other roles keep the legacy shell
+    // whose disclosure is labelled "More workspace navigation".
+    const atlasMenu = page.getByRole("button", { name: "Open workspace menu" });
+    if (await atlasMenu.count()) {
+      await atlasMenu.click();
+    } else {
+      await page.getByRole("button", { name: /More workspace navigation/ }).first().click();
+    }
+    const menu = page.getByRole("navigation", { name: "More workspace navigation" });
+    await expect(menu).toBeVisible();
+    await expect(menu.locator('a[href="/onboarding"]')).toHaveCount(0);
+  }
 });

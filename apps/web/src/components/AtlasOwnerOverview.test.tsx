@@ -130,4 +130,24 @@ describe("Atlas V4 owner landing overview", () => {
     expect(html).not.toContain("Business setup is complete");
     expect(html).toContain("Business setup needs to be reviewed and saved.");
   });
+
+  it("states the readiness load and failure states without inventing a ready verdict", () => {
+    const loading = renderToStaticMarkup(<AtlasOwnerOverview
+      overview={null} attention={[]} loading={false} failed={false} onRetry={() => undefined}
+      period={30} periods={[{ label: "Last 30 days", days: 30 }]} onPeriodChange={() => undefined}
+    />);
+    expect(loading).toContain('aria-label="First sale readiness"');
+    expect(loading).toContain("Checking sale readiness…");
+    expect(loading).not.toContain("Ready for first sale");
+    expect(loading).not.toContain("Not ready for first sale");
+
+    const failed = renderToStaticMarkup(<AtlasOwnerOverview
+      overview={null} attention={[]} loading={false} failed={false} onRetry={() => undefined}
+      period={30} periods={[{ label: "Last 30 days", days: 30 }]} onPeriodChange={() => undefined}
+      readinessFailed
+    />);
+    expect(failed).toContain("Could not load sale readiness");
+    expect(failed).not.toContain("Ready for first sale");
+    expect(failed).not.toContain("Not ready for first sale");
+  });
 });
