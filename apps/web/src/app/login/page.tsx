@@ -84,7 +84,7 @@ export default function LoginPage(): JSX.Element {
             </div>
           ) : null}
 
-          <form onSubmit={submit} noValidate className="mt-14 space-y-4">
+          <form onSubmit={submit} noValidate className="mt-14 space-y-4 lg:mt-[68px] lg:space-y-5">
             <label className="block text-[13px] font-medium text-[#707b75]">
               Email address
               <input
@@ -125,7 +125,7 @@ export default function LoginPage(): JSX.Element {
               type="submit"
               disabled={submitting}
               aria-busy={submitting}
-              className="auth-interactive atlas-primary mt-8 w-full !bg-[#202826] px-4 text-[15px] disabled:cursor-not-allowed disabled:opacity-65"
+              className="auth-interactive atlas-primary mt-8 w-full !bg-[#202826] px-4 text-[15px] disabled:cursor-not-allowed disabled:opacity-65 lg:mt-[110px]"
             >
               {submitState === "connecting" ? "Connecting…" : submitLabel}
             </button>
