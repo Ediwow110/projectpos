@@ -67,35 +67,20 @@ test("owner can reach saved business settings and first-sale readiness without l
   await skipOptionalSetup(page);
 
   // Record every mutation from the first workspace navigation through the
-  // review journey. Only the explicit workspace-tour acknowledgement may
-  // write; business settings and onboarding must stay read-only.
+  // review journey. The registration helper already dismissed the first-run
+  // tour before this window, so the journey must issue no writes at all.
   const writes: string[] = [];
-  const acknowledged: string[] = [];
   page.on("request", (request) => {
     const method = request.method();
     if (method === "GET" || method === "HEAD" || method === "OPTIONS") return;
     const path = new URL(request.url()).pathname;
     if (!path.startsWith("/api/")) return;
-    if (path === "/api/v1/me/tour/seen") {
-      acknowledged.push(method + " " + path);
-      return;
-    }
     writes.push(method + " " + path);
   });
 
   await page.goto("/");
   const overview = page.getByRole("region", { name: "Atlas owner overview" });
   await expect(overview.getByRole("heading", { name: "Owner overview" })).toBeVisible();
-
-  const tour = page.getByRole("dialog", { name: "Welcome to NexPOS" });
-  const tourAppeared = await tour
-    .waitFor({ state: "visible", timeout: 20_000 })
-    .then(() => true)
-    .catch(() => false);
-  if (tourAppeared) {
-    await tour.getByRole("button", { name: "Skip tour" }).click();
-    await expect(tour).toBeHidden();
-  }
 
   if (testInfo.project.name === "desktop") {
     const ownerNavigation = page.getByRole("navigation", { name: "Owner navigation" });
@@ -136,7 +121,7 @@ test("owner can reach saved business settings and first-sale readiness without l
   await expect(page.getByText("This step is complete")).toBeVisible();
 
   // Reviewing a saved step must not write anything.
-  await page.waitForTimeout(500);
+  await page.waitForLoadState("networkidle");
   expect(writes, `viewing saved settings issued writes: ${writes.join(", ")}`).toEqual([]);
 
   // A query refresh and a fresh direct visit must also stay read-only.
@@ -144,7 +129,7 @@ test("owner can reach saved business settings and first-sale readiness without l
   await expect(page.getByRole("region", { name: "Saved business settings" })).toBeVisible();
   await page.goto("/onboarding");
   await expect(page.getByRole("region", { name: "Saved business settings" })).toBeVisible();
-  await page.waitForTimeout(500);
+  await page.waitForLoadState("networkidle");
   expect(writes, `the review journey issued writes: ${writes.join(", ")}`).toEqual([]);
 
   await page.getByRole("link", { name: "← Back to dashboard" }).click();
@@ -180,9 +165,8 @@ test("owner can reach saved business settings and first-sale readiness without l
     await expect(page).toHaveURL(/\/onboarding$/);
   }
   await expect(page.getByRole("region", { name: "Saved business settings" })).toBeVisible();
+  await page.waitForLoadState("networkidle");
   expect(writes, `direct owner navigation issued writes: ${writes.join(", ")}`).toEqual([]);
-  // The tour acknowledgement is the only sanctioned write in this journey.
-  expect(acknowledged.every((entry) => entry === "POST /api/v1/me/tour/seen")).toBe(true);
 });
 
 test("signed-out owners are redirected away from the business setup surface", async ({ page }) => {

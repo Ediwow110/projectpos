@@ -54,13 +54,13 @@ test("Atlas V4 login keeps secure sign-in and mobile layout usable", async ({ pa
     expect(identity!.width).toBeCloseTo(535, 0);
     const gutter = email!.x - (identity!.x + identity!.width);
     expect(gutter, "fixed gutter between the identity panel and the form")
-      .toBeGreaterThanOrEqual(76);
+      .toBeGreaterThanOrEqual(78);
     expect(gutter, "fixed gutter between the identity panel and the form")
-      .toBeLessThanOrEqual(88);
-    expect(email!.width, "form content column").toBeGreaterThanOrEqual(670);
-    expect(email!.width, "form content column").toBeLessThanOrEqual(700);
+      .toBeLessThanOrEqual(86);
+    expect(email!.width, "form content column").toBeGreaterThanOrEqual(676);
+    expect(email!.width, "form content column").toBeLessThanOrEqual(692);
     expect(Math.abs(submit!.x - email!.x), "submit action aligns with the form column").toBeLessThanOrEqual(2);
-    expect(email!.x + email!.width).toBeLessThanOrEqual(1440);
+    expect(1440 - (email!.x + email!.width), "right gutter").toBeGreaterThanOrEqual(100);
   }
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThan(3);
   await entry.getByRole("link", { name: "Create account" }).click();

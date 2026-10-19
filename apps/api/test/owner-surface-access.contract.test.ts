@@ -233,18 +233,31 @@ describe("owner-surface authorization", () => {
     });
     expect(other.status).toBe(201);
 
+    const otherCookie = cookies(other.headers["set-cookie"]);
+    const otherCsrf = other.body.csrfToken as string;
+
     const audit = await request(server)
       .get("/api/v1/owner/audit?limit=50")
-      .set("Cookie", cookies(other.headers["set-cookie"]));
+      .set("Cookie", otherCookie);
     expect(audit.status).toBe(200);
-    expect(
-      (audit.body.items as Array<{ entityId: string }>).every((item) => item.entityId !== businessId),
-    ).toBe(true);
+    // Tenant 1 wrote member.* audit rows whose entityId is a membershipId, so
+    // checking only the business id would miss a membership-row leak.
+    const auditRaw = JSON.stringify(audit.body);
+    expect(auditRaw).not.toContain(businessId);
+    expect(auditRaw).not.toContain(staff[0]!.membershipId);
 
     const business = await request(server)
       .get("/api/v1/business")
-      .set("Cookie", cookies(other.headers["set-cookie"]));
+      .set("Cookie", otherCookie);
     expect(business.body.id).not.toBe(businessId);
     expect(business.body.name).toBe("Other Surface Store");
+
+    // A cross-tenant write keyed by tenant 1's membership id must not resolve.
+    const crossTenantWrite = await request(server)
+      .patch(`/api/v1/memberships/${staff[0]!.membershipId}/restrictions`)
+      .set("Cookie", otherCookie)
+      .set("X-CSRF-Token", otherCsrf)
+      .send({ deniedPermissions: ["cost.view"] });
+    expect(crossTenantWrite.status).toBe(404);
   });
 });
