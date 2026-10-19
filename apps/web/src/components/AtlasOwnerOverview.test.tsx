@@ -179,4 +179,23 @@ describe("Atlas V4 owner landing overview", () => {
     expect(failed).not.toContain("Ready for first sale");
     expect(failed).not.toContain("Not ready for first sale");
   });
+
+  it("does not keep a cached ready verdict when a readiness refresh fails", () => {
+    const html = renderToStaticMarkup(<AtlasOwnerOverview
+      overview={{ orders: 18, netRevenueMinor: 4862000 }} attention={[]} loading={false} failed={false}
+      onRetry={() => undefined}
+      period={30} periods={[{ label: "Last 30 days", days: 30 }]} onPeriodChange={() => undefined}
+      readiness={{
+        businessConfigured: true, legacySetupReviewSteps: [], hasSellableProduct: true,
+        hasActiveRegister: true, hasOpenShift: true, hasStaff: false,
+        canCustomizeReceipt: false, readyForFirstSale: true, missing: [],
+      }}
+      readinessFailed
+    />);
+
+    expect(html).toContain("Readiness unavailable");
+    expect(html).toContain("Could not refresh sale readiness");
+    expect(html).not.toContain("Ready for first sale");
+    expect(html).not.toContain("Not ready for first sale");
+  });
 });

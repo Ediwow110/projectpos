@@ -12,6 +12,7 @@ import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { ApiError, apiFetch } from "../../lib/api";
 import {
   formatTaxRate,
+  readinessGapLabels,
   readSavedBusinessSettings,
   saleReadinessChecks,
   type SaleReadiness,
@@ -203,7 +204,12 @@ export default function OnboardingPage(): JSX.Element {
   }
 
   const steps = query.data!.steps;
-  const legacyReview = (readiness.data?.legacySetupReviewSteps ?? []) as Step[];
+  // Readiness is a server payload, not a typed contract at runtime. Ignore
+  // malformed values so an unexpected step cannot blank the setup page.
+  const legacyReview: Step[] = Array.isArray(readiness.data?.legacySetupReviewSteps)
+    ? readiness.data.legacySetupReviewSteps.filter((step): step is Step =>
+        (ORDER as readonly string[]).includes(step))
+    : [];
   const progressStep =
     (legacyReview[0] ??
       ORDER.find((step) => step === query.data!.currentStep) ??
@@ -217,6 +223,7 @@ export default function OnboardingPage(): JSX.Element {
   const currentIndex = ORDER.indexOf(current);
   const currentMeta = STEP_META[current];
   const saved = readSavedBusinessSettings(business.data!);
+  const readinessGaps = readiness.data ? readinessGapLabels(readiness.data) : [];
 
   return (
     <main data-ui="atlas-v4-onboarding" className="atlas-entry min-h-screen p-4 sm:p-6 lg:p-8">
@@ -466,13 +473,23 @@ export default function OnboardingPage(): JSX.Element {
               <h3 className="text-sm font-semibold text-[#17130f]">Before your first sale</h3>
               <p className="mt-2 text-xs text-[#73685f]">Business setup and operational readiness are separate. These checks come from the server; stock and checkout rules are validated again when you sell.</p>
               {readiness.data ? (
-                <ul className="mt-3 space-y-2 text-xs">
-                  {saleReadinessChecks(readiness.data).map((check) => (
-                    <li key={check.key}>
-                      {check.done ? "✓" : "○"} <Link className="underline" href={check.href}>{check.label}</Link>
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  <ul className="mt-3 space-y-2 text-xs">
+                    {saleReadinessChecks(readiness.data).map((check) => (
+                      <li key={check.key}>
+                        {check.done ? "✓" : "○"} <Link className="underline" href={check.href}>{check.label}</Link>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className={"mt-3 text-[11px] font-semibold " + (readiness.data.readyForFirstSale ? "text-[#267552]" : "text-[#8a5a06]")}>
+                    {readiness.data.readyForFirstSale ? "Ready for first sale" : "Not ready for first sale"}
+                  </p>
+                  {readinessGaps.length > 0 ? (
+                    <ul className="mt-2 space-y-1 text-[11px] font-medium text-[#8a5a06]">
+                      {readinessGaps.map((gap) => <li key={gap}>{gap}</li>)}
+                    </ul>
+                  ) : null}
+                </>
               ) : <p className="mt-3 text-xs" role="status">{readiness.isError ? "Could not load sale readiness; retry after refresh." : "Checking sale readiness…"}</p>}
               {readiness.isError ? (
                 <p role="status" className="mt-3 text-xs text-[#8a5a06]">

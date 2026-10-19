@@ -106,11 +106,18 @@ export function AtlasOwnerOverview({
           </div>
           {readiness ? (
             <span className={"shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold " +
-              (readiness.readyForFirstSale ? "bg-[#e8f4ec] text-[#267552]" : "bg-[#fff4df] text-[#8a5a06]")}>
-              {readiness.readyForFirstSale ? "Ready for first sale" : "Not ready for first sale"}
+              (readinessFailed
+                ? "bg-[#fff4df] text-[#8a5a06]"
+                : readiness.readyForFirstSale ? "bg-[#e8f4ec] text-[#267552]" : "bg-[#fff4df] text-[#8a5a06]")}>
+              {readinessFailed ? "Readiness unavailable" : readiness.readyForFirstSale ? "Ready for first sale" : "Not ready for first sale"}
             </span>
           ) : null}
         </div>
+        {readiness && readinessFailed ? (
+          <p role="alert" className="mt-3 text-[11px] font-medium text-[#8a5a06]">
+            Could not refresh sale readiness. Showing the last known server values; retry after refresh.
+          </p>
+        ) : null}
         {readiness ? (
           <>
             <ul className="mt-4 grid gap-2 sm:grid-cols-3">

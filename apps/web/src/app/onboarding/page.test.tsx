@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fixture = vi.hoisted(() => ({
   legacyReviewSteps: [] as string[],
+  readiness: {} as Record<string, unknown>,
   settings: {} as Record<string, unknown>,
   readinessError: false,
   data: {
@@ -22,7 +23,18 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@tanstack/react-query", () => ({
   useQuery: ({ queryKey }: { queryKey: string[] }) => ({
     data: queryKey[0] === "onboarding-sale-readiness"
-      ? (fixture.readinessError ? undefined : { legacySetupReviewSteps: fixture.legacyReviewSteps, canCustomizeReceipt: false })
+      ? (fixture.readinessError ? undefined : {
+          businessConfigured: true,
+          legacySetupReviewSteps: fixture.legacyReviewSteps,
+          hasSellableProduct: false,
+          hasActiveRegister: false,
+          hasOpenShift: false,
+          hasStaff: false,
+          canCustomizeReceipt: false,
+          readyForFirstSale: false,
+          missing: [],
+          ...fixture.readiness,
+        })
       : queryKey[0] === "onboarding-business"
         ? { name: "QA Business", currency: "PHP", settings: fixture.settings }
         : fixture.data,
@@ -39,6 +51,7 @@ describe("onboarding navigation", () => {
   beforeEach(() => {
     vi.stubGlobal("React", React);
     fixture.legacyReviewSteps = [];
+    fixture.readiness = {};
     fixture.settings = {};
     fixture.readinessError = false;
     fixture.data.currentStep = "receiptSetup";
@@ -213,5 +226,56 @@ describe("onboarding navigation", () => {
     // believing the setup was cross-checked. The unavailable status is stated.
     expect(html).toContain("Setup review status is unavailable");
     expect(html).toContain("Could not load sale readiness");
+  });
+
+  it("ignores an unrecognised legacy review step instead of blanking setup", () => {
+    fixture.data.currentStep = "complete";
+    fixture.data.steps.businessDetails = "done";
+    fixture.data.steps.taxCurrency = "done";
+    fixture.data.steps.receiptSetup = "done";
+    fixture.data.steps.products = "skipped";
+    fixture.data.steps.employees = "skipped";
+    fixture.legacyReviewSteps = ["bogus"];
+
+    const html = renderToStaticMarkup(<OnboardingPage />);
+
+    expect(html).toContain("Set up your business");
+    expect(html).toContain("Business details");
+  });
+
+  it("tolerates a non-array legacy review payload", () => {
+    fixture.data.currentStep = "complete";
+    fixture.data.steps.businessDetails = "done";
+    fixture.data.steps.taxCurrency = "done";
+    fixture.data.steps.receiptSetup = "done";
+    fixture.data.steps.products = "skipped";
+    fixture.data.steps.employees = "skipped";
+    fixture.legacyReviewSteps = "businessDetails" as unknown as string[];
+
+    const html = renderToStaticMarkup(<OnboardingPage />);
+
+    expect(html).toContain("Set up your business");
+  });
+
+  it("shows an outstanding server readiness gap even when all three visible checks pass", () => {
+    fixture.data.currentStep = "complete";
+    fixture.data.steps.businessDetails = "done";
+    fixture.data.steps.taxCurrency = "done";
+    fixture.data.steps.receiptSetup = "done";
+    fixture.data.steps.products = "skipped";
+    fixture.data.steps.employees = "skipped";
+    fixture.readiness = {
+      hasSellableProduct: true,
+      hasActiveRegister: true,
+      hasOpenShift: true,
+      readyForFirstSale: false,
+      missing: ["stock_at_open_register"],
+    };
+
+    const html = renderToStaticMarkup(<OnboardingPage />);
+
+    expect(html.match(/✓/g) ?? []).toHaveLength(3);
+    expect(html).toContain("No stock is available at the open register.");
+    expect(html).toContain("Not ready for first sale");
   });
 });
