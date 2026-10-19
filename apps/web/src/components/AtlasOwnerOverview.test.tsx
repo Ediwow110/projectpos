@@ -2,6 +2,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AtlasOwnerOverview } from "./AtlasOwnerOverview";
+import type { SaleReadiness } from "../lib/sale-readiness";
 
 describe("Atlas V4 owner landing overview", () => {
   it("prompts legacy owners to review missing saved business settings without inventing metrics", () => {
@@ -129,6 +130,34 @@ describe("Atlas V4 owner landing overview", () => {
     />);
     expect(html).not.toContain("Business setup is complete");
     expect(html).toContain("Business setup needs to be reviewed and saved.");
+  });
+
+  it("does not crash when the readiness payload omits the legacy review steps", () => {
+    const html = renderToStaticMarkup(<AtlasOwnerOverview
+      overview={null} attention={[]} loading={false} failed={false} onRetry={() => undefined}
+      period={30} periods={[{ label: "Last 30 days", days: 30 }]} onPeriodChange={() => undefined}
+      readiness={{
+        businessConfigured: true, legacySetupReviewSteps: undefined, hasSellableProduct: true,
+        hasActiveRegister: true, hasOpenShift: true, hasStaff: false,
+        canCustomizeReceipt: false, readyForFirstSale: true, missing: [],
+      } as unknown as SaleReadiness}
+    />);
+    expect(html).toContain('aria-label="First sale readiness"');
+    expect(html).not.toContain("Business setup is complete");
+  });
+
+  it("never renders a raw machine identifier for an unknown server gap", () => {
+    const html = renderToStaticMarkup(<AtlasOwnerOverview
+      overview={null} attention={[]} loading={false} failed={false} onRetry={() => undefined}
+      period={30} periods={[{ label: "Last 30 days", days: 30 }]} onPeriodChange={() => undefined}
+      readiness={{
+        businessConfigured: true, legacySetupReviewSteps: [], hasSellableProduct: true,
+        hasActiveRegister: true, hasOpenShift: true, hasStaff: false,
+        canCustomizeReceipt: false, readyForFirstSale: false, missing: ["some_new_server_check"],
+      }}
+    />);
+    expect(html).not.toContain("some_new_server_check");
+    expect(html).toContain("First sale readiness");
   });
 
   it("states the readiness load and failure states without inventing a ready verdict", () => {

@@ -13,6 +13,7 @@ import { ApiError, apiFetch } from "../../lib/api";
 import {
   formatTaxRate,
   readSavedBusinessSettings,
+  saleReadinessChecks,
   type SaleReadiness,
 } from "../../lib/sale-readiness";
 
@@ -327,7 +328,9 @@ export default function OnboardingPage(): JSX.Element {
           <div className="mt-8 grid gap-4 xl:grid-cols-[minmax(0,1fr)_220px]">
             <div className="rounded-xl border border-[#e5e9e3] bg-[#fbfcfa] p-5 sm:p-7">
               <h3 className="font-display text-lg font-semibold text-[#202826]">Configuration</h3>
-              <p className="mt-2 text-[13px] leading-5 text-[#748078]">{currentMeta.note}</p>
+              {steps[current] === "done" && !editingCompletedStep ? null : (
+                <p className="mt-2 text-[13px] leading-5 text-[#748078]">{currentMeta.note}</p>
+              )}
 
               {current === "businessDetails" && (steps[current] === "pending" || editingCompletedStep) ? (
                 <div className="mt-5 grid gap-4">
@@ -464,11 +467,18 @@ export default function OnboardingPage(): JSX.Element {
               <p className="mt-2 text-xs text-[#73685f]">Business setup and operational readiness are separate. These checks come from the server; stock and checkout rules are validated again when you sell.</p>
               {readiness.data ? (
                 <ul className="mt-3 space-y-2 text-xs">
-                  <li>{readiness.data.hasSellableProduct ? "✓" : "○"} <Link className="underline" href="/products">At least one sellable product with available stock (if tracked)</Link></li>
-                  <li>{readiness.data.hasActiveRegister ? "✓" : "○"} <Link className="underline" href="/registers">Active register</Link></li>
-                  <li>{readiness.data.hasOpenShift ? "✓" : "○"} <Link className="underline" href="/shifts">Open shift</Link></li>
+                  {saleReadinessChecks(readiness.data).map((check) => (
+                    <li key={check.key}>
+                      {check.done ? "✓" : "○"} <Link className="underline" href={check.href}>{check.label}</Link>
+                    </li>
+                  ))}
                 </ul>
               ) : <p className="mt-3 text-xs" role="status">{readiness.isError ? "Could not load sale readiness; retry after refresh." : "Checking sale readiness…"}</p>}
+              {readiness.isError ? (
+                <p role="status" className="mt-3 text-xs text-[#8a5a06]">
+                  Setup review status is unavailable, so the saved settings above could not be cross-checked against the completed steps. Reopen this page to confirm them.
+                </p>
+              ) : null}
             </div>
           ) : null}
 

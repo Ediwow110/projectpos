@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const fixture = vi.hoisted(() => ({
   legacyReviewSteps: [] as string[],
   settings: {} as Record<string, unknown>,
+  readinessError: false,
   data: {
     currentStep: "receiptSetup",
     steps: {
@@ -21,11 +22,13 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@tanstack/react-query", () => ({
   useQuery: ({ queryKey }: { queryKey: string[] }) => ({
     data: queryKey[0] === "onboarding-sale-readiness"
-      ? { legacySetupReviewSteps: fixture.legacyReviewSteps, canCustomizeReceipt: false }
+      ? (fixture.readinessError ? undefined : { legacySetupReviewSteps: fixture.legacyReviewSteps, canCustomizeReceipt: false })
       : queryKey[0] === "onboarding-business"
         ? { name: "QA Business", currency: "PHP", settings: fixture.settings }
         : fixture.data,
-    isLoading: false, isError: false, refetch: vi.fn(),
+    isLoading: false,
+    isError: queryKey[0] === "onboarding-sale-readiness" ? fixture.readinessError : false,
+    refetch: vi.fn(),
   }),
   useQueryClient: () => ({ invalidateQueries: vi.fn().mockResolvedValue(undefined) }),
 }));
@@ -37,6 +40,7 @@ describe("onboarding navigation", () => {
     vi.stubGlobal("React", React);
     fixture.legacyReviewSteps = [];
     fixture.settings = {};
+    fixture.readinessError = false;
     fixture.data.currentStep = "receiptSetup";
     fixture.data.steps.businessDetails = "done";
     fixture.data.steps.taxCurrency = "pending";
@@ -158,5 +162,56 @@ describe("onboarding navigation", () => {
 
     expect(html.match(/href="\/"/g) ?? []).toHaveLength(1);
     expect(html).toContain("← Back to dashboard");
+  });
+
+  it("renders the first-sale checklist from the shared readiness contract", () => {
+    fixture.data.currentStep = "complete";
+    fixture.data.steps.businessDetails = "done";
+    fixture.data.steps.taxCurrency = "done";
+    fixture.data.steps.receiptSetup = "done";
+    fixture.data.steps.products = "skipped";
+    fixture.data.steps.employees = "skipped";
+
+    const html = renderToStaticMarkup(<OnboardingPage />);
+
+    // The onboarding checklist and the owner overview checklist must come from
+    // one contract, so the labels and destinations cannot drift apart.
+    expect(html).toContain("Sellable product with available stock");
+    expect(html).toContain('href="/products"');
+    expect(html).toContain('href="/registers"');
+    expect(html).toContain('href="/shifts"');
+    expect(html).not.toContain("At least one sellable product with available stock (if tracked)");
+  });
+
+  it("does not show a stale instruction on a step that is already complete", () => {
+    fixture.data.currentStep = "complete";
+    fixture.data.steps.businessDetails = "done";
+    fixture.data.steps.taxCurrency = "done";
+    fixture.data.steps.receiptSetup = "done";
+    fixture.data.steps.products = "skipped";
+    fixture.data.steps.employees = "skipped";
+
+    const html = renderToStaticMarkup(<OnboardingPage />);
+
+    expect(html).not.toContain("Save your operating address, optional phone and timezone before continuing.");
+    expect(html).toContain("This step is complete");
+  });
+
+  it("states that the setup review status is unavailable when readiness cannot be read", () => {
+    fixture.data.currentStep = "complete";
+    fixture.data.steps.businessDetails = "done";
+    fixture.data.steps.taxCurrency = "done";
+    fixture.data.steps.receiptSetup = "done";
+    fixture.data.steps.products = "skipped";
+    fixture.data.steps.employees = "skipped";
+    fixture.readinessError = true;
+
+    const html = renderToStaticMarkup(<OnboardingPage />);
+
+    // The step flag itself genuinely says "done" (GET /api/v1/onboarding
+    // succeeded), so it is not suppressed; what must not happen is the owner
+    // believing the setup was cross-checked. The unavailable status is stated.
+    expect(html).toContain("Setup review status is unavailable");
+    expect(html).toContain("Could not load sale readiness");
   });
 });

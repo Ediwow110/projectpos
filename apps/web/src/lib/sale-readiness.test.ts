@@ -4,6 +4,7 @@ import {
   readinessGapLabels,
   readSavedBusinessSettings,
   saleReadinessChecks,
+  type SaleReadiness,
 } from "./sale-readiness";
 
 const baseReadiness = {
@@ -52,6 +53,22 @@ describe("sale readiness", () => {
     expect(readinessGapLabels({ ...baseReadiness, missing: ["business_setup_review"] }))
       .toEqual(["Business setup needs to be reviewed and saved."]);
     expect(readinessGapLabels({ ...baseReadiness })).toEqual([]);
+  });
+
+  it("never shows a raw machine identifier for an unknown server gap", () => {
+    const labels = readinessGapLabels({ ...baseReadiness, missing: ["some_new_server_check"] });
+
+    expect(labels).toHaveLength(1);
+    expect(labels[0]).not.toContain("some_new_server_check");
+    expect(labels[0]).toMatch(/[a-z]/i);
+  });
+
+  it("tolerates a readiness payload that omits the legacy review steps", () => {
+    const readiness = { ...baseReadiness, legacySetupReviewSteps: undefined } as unknown as SaleReadiness;
+
+    expect(() => saleReadinessChecks(readiness)).not.toThrow();
+    expect(() => readinessGapLabels(readiness)).not.toThrow();
+    expect(saleReadinessChecks(readiness)).toHaveLength(3);
   });
 
   it("reads saved business settings from the server payload rather than form state", () => {

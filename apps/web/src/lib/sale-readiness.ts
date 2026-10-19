@@ -9,7 +9,8 @@
 
 export interface SaleReadiness {
   businessConfigured: boolean;
-  legacySetupReviewSteps: string[];
+  /** Optional so a payload from an older server cannot crash a render. */
+  legacySetupReviewSteps?: string[];
   hasSellableProduct: boolean;
   hasActiveRegister: boolean;
   hasOpenShift: boolean;
@@ -70,6 +71,9 @@ const GAP_LABELS: Record<string, string> = {
   stock_at_open_register: "No stock is available at the open register.",
 };
 
+/** An unrecognised server key must never reach the owner as a raw token. */
+const UNKNOWN_GAP_LABEL = "One more server-reported setup requirement is outstanding.";
+
 export function saleReadinessChecks(readiness: SaleReadiness): SaleReadinessCheck[] {
   return FIRST_SALE_CHECKS.map((check) => ({
     key: check.key,
@@ -85,7 +89,7 @@ export function readinessGapLabels(readiness: SaleReadiness): string[] {
   const covered = new Set(FIRST_SALE_CHECKS.map((check) => check.key));
   return (readiness.missing ?? [])
     .filter((key) => !covered.has(key))
-    .map((key) => GAP_LABELS[key] ?? key);
+    .map((key) => GAP_LABELS[key] ?? UNKNOWN_GAP_LABEL);
 }
 
 export interface SavedBusinessSettings {

@@ -98,7 +98,7 @@ export function AtlasOwnerOverview({
             <h2 className="font-display text-[19px] font-semibold text-[#202826]">First sale readiness</h2>
             <p className="mt-1 text-[12px] leading-5 text-[#53615a]">
               {readiness
-                ? readiness.businessConfigured && readiness.legacySetupReviewSteps.length === 0
+                ? readiness.businessConfigured && readiness.legacySetupReviewSteps?.length === 0
                   ? "Business setup is complete. These operational checks come from the server."
                   : "Business setup is not complete yet. Finish setup before your first sale."
                 : "Business setup and sale readiness are reported by the server."}

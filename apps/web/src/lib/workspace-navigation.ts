@@ -46,7 +46,7 @@ const ITEMS = {
   ownerSupport: { href: "/admin/support", label: "Guest support & consent", icon: "?", tour: "admin" },
   // Owner-only: currency, tax and receipt settings are edited exclusively in
   // /onboarding, and only the owner role holds settings.write.
-  businessSetup: { href: "/onboarding", label: "Business setup", icon: "◉", tour: "business-setup" },
+  businessSetup: { href: "/onboarding", label: "Business setup", icon: "▩", tour: "business-setup" },
 } as const satisfies Record<string, WorkspaceNavigationItem>;
 
 function group(label: string, keys: Array<keyof typeof ITEMS>): WorkspaceNavigationGroup {
