@@ -236,9 +236,15 @@ test("non-owner roles are never offered the business setup destination", async (
   await page.getByRole("button", { name: "Sign in securely" }).click();
   await expect(page).toHaveURL(/\/$/);
 
-  // The first-run tour is a modal overlay; dismiss it before using the shell.
+  // The first-run tour is a modal overlay that intercepts pointer events, and
+  // it appears asynchronously after the session resolves. Wait for it rather
+  // than sampling its presence, otherwise the check races the tour's render.
   const tour = page.getByRole("dialog", { name: "Welcome to NexPOS" });
-  if (await tour.count()) {
+  const tourAppeared = await tour
+    .waitFor({ state: "visible", timeout: 20_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (tourAppeared) {
     await tour.getByRole("button", { name: "Skip tour" }).click();
     await expect(tour).toBeHidden();
   }
