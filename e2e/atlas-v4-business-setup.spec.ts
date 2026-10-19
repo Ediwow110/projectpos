@@ -1,5 +1,40 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { API, apiAuthedContext, registerOperationalBusiness } from "./helpers";
+
+/**
+ * WCAG contrast of the rendered text against its first opaque ancestor
+ * background. Chromium resolves the cascade to rgb()/rgba(), so this reads the
+ * real rendered colors rather than repeating a hex constant from the source.
+ */
+async function renderedContrast(locator: Locator): Promise<number> {
+  return locator.evaluate((node) => {
+    type Rgba = { r: number; g: number; b: number; a: number };
+    const parse = (value: string): Rgba | null => {
+      const match = /rgba?\(([^)]+)\)/.exec(value);
+      if (!match) return null;
+      const parts = match[1]!.split(",").map((part) => Number(part.trim()));
+      return { r: parts[0] ?? 0, g: parts[1] ?? 0, b: parts[2] ?? 0, a: parts[3] ?? 1 };
+    };
+    const channel = (value: number): number => {
+      const ratio = value / 255;
+      return ratio <= 0.04045 ? ratio / 12.92 : ((ratio + 0.055) / 1.055) ** 2.4;
+    };
+    const luminance = (color: Rgba): number =>
+      0.2126 * channel(color.r) + 0.7152 * channel(color.g) + 0.0722 * channel(color.b);
+    const foreground = parse(getComputedStyle(node).color) ?? { r: 0, g: 0, b: 0, a: 1 };
+    let background: Rgba = { r: 255, g: 255, b: 255, a: 1 };
+    for (let element: Element | null = node; element; element = element.parentElement) {
+      const candidate = parse(getComputedStyle(element).backgroundColor);
+      if (candidate && candidate.a > 0.999) {
+        background = candidate;
+        break;
+      }
+    }
+    const light = Math.max(luminance(foreground), luminance(background));
+    const dark = Math.min(luminance(foreground), luminance(background));
+    return (light + 0.05) / (dark + 0.05);
+  });
+}
 
 /** Resolves both optional onboarding steps so the business reaches a complete setup. */
 async function skipOptionalSetup(page: Page): Promise<void> {
@@ -31,9 +66,44 @@ test("owner can reach saved business settings and first-sale readiness without l
   });
   await skipOptionalSetup(page);
 
+  // Record every mutation from the first workspace navigation through the
+  // review journey. Only the explicit workspace-tour acknowledgement may
+  // write; business settings and onboarding must stay read-only.
+  const writes: string[] = [];
+  const acknowledged: string[] = [];
+  page.on("request", (request) => {
+    const method = request.method();
+    if (method === "GET" || method === "HEAD" || method === "OPTIONS") return;
+    const path = new URL(request.url()).pathname;
+    if (!path.startsWith("/api/")) return;
+    if (path === "/api/v1/me/tour/seen") {
+      acknowledged.push(method + " " + path);
+      return;
+    }
+    writes.push(method + " " + path);
+  });
+
   await page.goto("/");
   const overview = page.getByRole("region", { name: "Atlas owner overview" });
   await expect(overview.getByRole("heading", { name: "Owner overview" })).toBeVisible();
+
+  const tour = page.getByRole("dialog", { name: "Welcome to NexPOS" });
+  const tourAppeared = await tour
+    .waitFor({ state: "visible", timeout: 20_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (tourAppeared) {
+    await tour.getByRole("button", { name: "Skip tour" }).click();
+    await expect(tour).toBeHidden();
+  }
+
+  if (testInfo.project.name === "desktop") {
+    const ownerNavigation = page.getByRole("navigation", { name: "Owner navigation" });
+    const activeLink = ownerNavigation.getByRole("link", { name: "Overview", exact: true });
+    await expect(activeLink).toHaveAttribute("aria-current", "page");
+    expect(await renderedContrast(activeLink), "active owner navigation contrast")
+      .toBeGreaterThanOrEqual(4.5);
+  }
 
   const readiness = overview.getByRole("region", { name: "First sale readiness" });
   await expect(readiness).toBeVisible();
@@ -48,16 +118,6 @@ test("owner can reach saved business settings and first-sale readiness without l
 
   const reviewLink = readiness.getByRole("link", { name: "Review business setup" });
   await expect(reviewLink).toHaveAttribute("href", "/onboarding");
-
-  // Viewing saved settings must never write.
-  const writes: string[] = [];
-  page.on("request", (request) => {
-    const url = request.url();
-    if (request.method() !== "PATCH") return;
-    if (url.includes("/api/v1/business/settings") || url.includes("/api/v1/onboarding")) {
-      writes.push(`${request.method()} ${new URL(url).pathname}`);
-    }
-  });
 
   await reviewLink.click();
   await expect(page).toHaveURL(/\/onboarding$/);
@@ -78,6 +138,14 @@ test("owner can reach saved business settings and first-sale readiness without l
   // Reviewing a saved step must not write anything.
   await page.waitForTimeout(500);
   expect(writes, `viewing saved settings issued writes: ${writes.join(", ")}`).toEqual([]);
+
+  // A query refresh and a fresh direct visit must also stay read-only.
+  await page.reload();
+  await expect(page.getByRole("region", { name: "Saved business settings" })).toBeVisible();
+  await page.goto("/onboarding");
+  await expect(page.getByRole("region", { name: "Saved business settings" })).toBeVisible();
+  await page.waitForTimeout(500);
+  expect(writes, `the review journey issued writes: ${writes.join(", ")}`).toEqual([]);
 
   await page.getByRole("link", { name: "← Back to dashboard" }).click();
   await expect(page).toHaveURL(/\/$/);
@@ -112,6 +180,9 @@ test("owner can reach saved business settings and first-sale readiness without l
     await expect(page).toHaveURL(/\/onboarding$/);
   }
   await expect(page.getByRole("region", { name: "Saved business settings" })).toBeVisible();
+  expect(writes, `direct owner navigation issued writes: ${writes.join(", ")}`).toEqual([]);
+  // The tour acknowledgement is the only sanctioned write in this journey.
+  expect(acknowledged.every((entry) => entry === "POST /api/v1/me/tour/seen")).toBe(true);
 });
 
 test("signed-out owners are redirected away from the business setup surface", async ({ page }) => {
@@ -192,6 +263,9 @@ test("the below-xl workspace menu offers owners the business setup destination",
   await expect(menu).toBeVisible();
   const setupLink = menu.getByRole("link", { name: "Business setup", exact: true });
   await expect(setupLink).toHaveAttribute("href", "/onboarding");
+  const setupBox = await setupLink.boundingBox();
+  expect(setupBox, "the business setup menu link must render").not.toBeNull();
+  expect(setupBox!.height, "below-xl workspace menu hit target").toBeGreaterThanOrEqual(44);
 
   // The mobile entry is keyboard reachable and shows a focus ring. A real
   // keyboard event is required for :focus-visible to apply, so drive focus
@@ -209,6 +283,16 @@ test("the below-xl workspace menu offers owners the business setup destination",
   await setupLink.click();
   await expect(page).toHaveURL(/\/onboarding$/);
   await expect(page.getByRole("region", { name: "Saved business settings" })).toBeVisible();
+
+  // The compact menu uses the same token: verify its active row in the real
+  // browser at this breakpoint, not only the desktop owner rail.
+  await page.goto("/team");
+  await page.getByRole("button", { name: "Open workspace menu" }).click();
+  const teamLink = page.getByRole("navigation", { name: "More workspace navigation" })
+    .getByRole("link", { name: "Team", exact: true });
+  await expect(teamLink).toHaveAttribute("aria-current", "page");
+  expect(await renderedContrast(teamLink), "compact active navigation contrast")
+    .toBeGreaterThanOrEqual(4.5);
 });
 
 test("non-owner roles are never offered the business setup destination", async ({ page, request }, testInfo) => {

@@ -197,7 +197,7 @@ export default function OnboardingPage(): JSX.Element {
       <main className="atlas-entry grid min-h-screen place-items-center p-6 text-center">
         <div>
           <p role="alert" className="text-sm text-[#c43e3e]">Could not load setup progress.</p>
-          <button type="button" onClick={() => void query.refetch()} className="mt-4 text-sm font-semibold text-[#d94a30]">Try again</button>
+          <button type="button" onClick={() => void query.refetch()} className="mt-4 text-sm font-semibold text-[var(--color-atlas-accent-strong)]">Try again</button>
         </div>
       </main>
     );
@@ -258,7 +258,7 @@ export default function OnboardingPage(): JSX.Element {
                     className={
                       "font-data grid h-9 w-9 shrink-0 place-items-center rounded-[9px] text-[11px] " +
                       (state === "done" || active
-                        ? "bg-[#da614c] text-white"
+                        ? "bg-[var(--color-atlas-accent-strong)] text-white"
                         : state === "skipped"
                           ? "bg-[#fff4df] text-[#b56d0c]"
                           : "bg-[#f7f8f5] text-[#748078]")
@@ -270,7 +270,7 @@ export default function OnboardingPage(): JSX.Element {
                     disabled={state !== "done" || savingStep !== null}
                     onClick={() => setEditingStep(step)}>
                     <p className={"text-[13px] " + (active ? "font-semibold text-[#202826]" : "font-medium text-[#526159]")}>{STEP_META[step].title}</p>
-                    <p className={"font-data mt-1 text-[10px] " + (state === "done" ? "text-[#267552]" : active ? "text-[#da614c]" : state === "skipped" ? "text-[#9a6e32]" : "text-[#748078]")}>
+                    <p className={"font-data mt-1 text-[10px] " + (state === "done" ? "text-[#267552]" : active ? "text-[var(--color-atlas-accent-strong)]" : state === "skipped" ? "text-[#9a6e32]" : "text-[#748078]")}>
                       {legacyReview.includes(step) ? "Review required · Missing saved settings" : state === "done" ? "Done · Select to review" : state === "skipped" ? "Skipped" : active ? "Current" : "Next"}
                     </p>
                   </button>
@@ -291,7 +291,7 @@ export default function OnboardingPage(): JSX.Element {
           </p>
           <h2 className="font-display mt-5 max-w-3xl text-[30px] font-semibold text-[#202826]">{currentMeta.title}</h2>
           <p className="mt-3 max-w-3xl text-[14px] leading-6 text-[#748078]">{currentMeta.description}</p>
-          {editingCompletedStep ? <button type="button" className="mt-3 text-xs font-semibold text-[#e44e34]"
+          {editingCompletedStep ? <button type="button" className="mt-3 text-xs font-semibold text-[var(--color-atlas-accent-strong)]"
             onClick={() => setEditingStep(null)}>← Return to current setup</button> : null}
 
           {requiredDone ? (
@@ -417,13 +417,13 @@ export default function OnboardingPage(): JSX.Element {
                 <div className="mt-4 rounded-xl bg-white p-4">
                   <p className="text-[11px] font-semibold text-[#2a241f]">Catalog work is available now</p>
                   <p className="mt-2 text-[10px] leading-4 text-[#73685f]">Add real product records in the catalog, then return here when you are ready to resolve this step.</p>
-                  <Link href="/products" className="mt-3 inline-flex text-[11px] font-semibold text-[#e44e34]">Open products →</Link>
+                  <Link href="/products" className="mt-3 inline-flex text-[11px] font-semibold text-[var(--color-atlas-accent-strong)]">Open products →</Link>
                 </div>
               ) : null}
               {current === "employees" ? (
                 <div className="mt-4 rounded-xl bg-white p-4">
                   <p className="text-xs font-semibold">Owner-only stores can skip employee setup.</p>
-                  <Link href="/team" className="mt-2 inline-block text-xs font-semibold text-[#e44e34]">Open team management →</Link>
+                  <Link href="/team" className="mt-2 inline-block text-xs font-semibold text-[var(--color-atlas-accent-strong)]">Open team management →</Link>
                 </div>
               ) : null}
 
@@ -503,7 +503,7 @@ export default function OnboardingPage(): JSX.Element {
 
           <div className="mt-8 flex items-center justify-between gap-3 border-t border-[#eee6de] pt-5">
             {requiredDone
-              ? <Link href="/" className="text-[11px] font-semibold text-[#73685f] hover:text-[#d94a30]">← Back to dashboard</Link>
+              ? <Link href="/" className="text-[11px] font-semibold text-[#73685f] hover:text-[var(--color-atlas-accent-strong)]">← Back to dashboard</Link>
               : <p className="text-[11px] font-medium text-[#73685f]">Save your required business, tax and receipt settings to open the dashboard.</p>}
             <p className="font-data text-[9px] text-[#9a8d83]">Progress is saved by the onboarding endpoint</p>
           </div>

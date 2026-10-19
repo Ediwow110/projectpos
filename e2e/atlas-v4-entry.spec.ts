@@ -38,10 +38,29 @@ test("Atlas V4 login keeps secure sign-in and mobile layout usable", async ({ pa
   await expect(entry).toHaveCSS("background-color", "rgb(247, 248, 245)");
   await expect(entry.getByRole("button", { name: "Sign in securely" })).toHaveCSS("background-color", "rgb(32, 40, 38)");
   if (page.viewportSize()?.width === 1440) {
+    // Cross-platform Figma regression check: the identity panel keeps its
+    // 535px column, the form keeps its 684px content column behind the fixed
+    // gutter, and the submit action stays aligned with the email field. A
+    // single sub-pixel x value drifts between Windows and Linux font/scrollbar
+    // metrics (617 vs ~618.3) without any visual regression, so assert the
+    // design bounds instead of one OS-specific coordinate.
     const identity = await entry.locator('[data-ui="atlas-v4-auth-identity"]').boundingBox();
     const email = await entry.getByLabel("Email address").boundingBox();
-    expect(identity?.width).toBeCloseTo(535, 0);
-    expect(email?.x).toBeCloseTo(617, 0);
+    const submit = await entry.getByRole("button", { name: "Sign in securely" }).boundingBox();
+    expect(identity, "identity panel must render").not.toBeNull();
+    expect(email, "email field must render").not.toBeNull();
+    expect(submit, "submit action must render").not.toBeNull();
+    expect(identity!.x).toBeCloseTo(0, 0);
+    expect(identity!.width).toBeCloseTo(535, 0);
+    const gutter = email!.x - (identity!.x + identity!.width);
+    expect(gutter, "fixed gutter between the identity panel and the form")
+      .toBeGreaterThanOrEqual(76);
+    expect(gutter, "fixed gutter between the identity panel and the form")
+      .toBeLessThanOrEqual(88);
+    expect(email!.width, "form content column").toBeGreaterThanOrEqual(670);
+    expect(email!.width, "form content column").toBeLessThanOrEqual(700);
+    expect(Math.abs(submit!.x - email!.x), "submit action aligns with the form column").toBeLessThanOrEqual(2);
+    expect(email!.x + email!.width).toBeLessThanOrEqual(1440);
   }
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThan(3);
   await entry.getByRole("link", { name: "Create account" }).click();
