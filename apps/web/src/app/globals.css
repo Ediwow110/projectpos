@@ -39,6 +39,8 @@
   --color-atlas-line: #e5e9e3;
   --color-atlas-accent: #da614c;
   --color-atlas-accent-soft: #fff0eb;
+  /* Text-safe accent: 5.31:1 on accent-soft and 5.90:1 on white (WCAG AA). */
+  --color-atlas-accent-strong: #a8452f;
   --color-atlas-verified: #267552;
 
   --color-navy-950: #17130f;
@@ -169,7 +171,7 @@
   font-weight: 500;
   letter-spacing: .08em;
   text-transform: uppercase;
-  color: var(--color-atlas-accent);
+  color: var(--color-atlas-accent-strong);
 }
 .atlas-entry .atlas-step-action {
   background: var(--color-atlas-action);

@@ -63,7 +63,7 @@ export function AtlasOwnerOverview({
       ) : null}
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="font-data text-[11px] font-medium tracking-wide text-[#da614c]">OVERVIEW / OWNER</p>
+          <p className="font-data text-[11px] font-medium tracking-wide text-[var(--color-atlas-accent-strong)]">OVERVIEW / OWNER</p>
           <h1 className="font-display mt-2 text-[29px] font-semibold text-[#202826]">Owner overview</h1>
           <p className="mt-2 text-[14px] text-[#71807a]">Revenue, transactions, and items that need your attention.</p>
         </div>
@@ -164,14 +164,14 @@ export function AtlasOwnerOverview({
               </Link>
             </li>)}
           </ul> : hasReport ? <p className="mt-4 rounded-lg bg-[#eff2ed] p-4 text-[13px] text-[#53615a]">No reported attention items in the selected business scope.</p> : null}
-          <Link href="/sales" className="mt-6 inline-flex rounded-lg py-2 text-[12px] font-semibold text-[#da614c] hover:underline">View sale records →</Link>
+          <Link href="/sales" className="mt-6 inline-flex rounded-lg py-2 text-[12px] font-semibold text-[var(--color-atlas-accent-strong)] hover:underline">View sale records →</Link>
         </section>
         <aside aria-label="Owner workflow shortcuts" className="rounded-xl border border-[#e5e9e3] bg-white p-5">
           <h2 className="font-display text-[20px] font-semibold text-[#202826]">Workflow &amp; safeguards</h2>
           <ol className="mt-7 space-y-3">
             {actions.map((action, index) => <li key={action.href}>
               <Link href={action.href} className="flex min-h-[70px] items-center gap-3 rounded-lg bg-[#eff2ed] px-4 py-3 text-[12px] text-[#202826] hover:bg-[#e1eae1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#da614c]">
-                <span className="font-data text-[#da614c]">{String(index + 1).padStart(2, "0")}</span>{action.label}
+                <span className="font-data text-[var(--color-atlas-accent-strong)]">{String(index + 1).padStart(2, "0")}</span>{action.label}
               </Link>
             </li>)}
           </ol>

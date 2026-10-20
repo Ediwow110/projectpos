@@ -100,4 +100,38 @@ describe("sale readiness", () => {
     expect(saved.receiptConfirmed).toBe(false);
     expect(saved.address).toBe("");
   });
+
+  it("collapses repeated and unknown server gaps into unique warning lines", () => {
+    const labels = readinessGapLabels({
+      ...baseReadiness,
+      missing: [
+        "business_setup_review",
+        "business_setup_review",
+        "some_new_server_check",
+        "another_unknown_check",
+        "some_new_server_check",
+        "open_shift",
+      ],
+    });
+
+    expect(labels).toEqual([
+      "Business setup needs to be reviewed and saved.",
+      "One more server-reported setup requirement is outstanding.",
+    ]);
+  });
+
+  it("ignores blank and non-string gap keys instead of rendering them", () => {
+    const readiness = {
+      ...baseReadiness,
+      missing: [null, 42, {}, "", "   ", "active_register"],
+    } as unknown as SaleReadiness;
+
+    expect(readinessGapLabels(readiness)).toEqual([]);
+  });
+
+  it("treats a non-array missing payload as no outstanding gaps", () => {
+    const readiness = { ...baseReadiness, missing: "open_shift" } as unknown as SaleReadiness;
+
+    expect(readinessGapLabels(readiness)).toEqual([]);
+  });
 });

@@ -84,12 +84,27 @@ export function saleReadinessChecks(readiness: SaleReadiness): SaleReadinessChec
   }));
 }
 
-/** Outstanding server gaps that the visible checklist does not already show. */
+/**
+ * Outstanding server gaps that the visible checklist does not already show.
+ * A readiness payload is a runtime value, so non-string or non-array keys are
+ * ignored rather than rendered, and one rendered label appears at most once:
+ * several unknown machine keys must not stack duplicate warning lines.
+ */
 export function readinessGapLabels(readiness: SaleReadiness): string[] {
   const covered = new Set(FIRST_SALE_CHECKS.map((check) => check.key));
-  return (readiness.missing ?? [])
-    .filter((key) => !covered.has(key))
-    .map((key) => GAP_LABELS[key] ?? UNKNOWN_GAP_LABEL);
+  const keys = Array.isArray(readiness.missing) ? readiness.missing : [];
+  const labels: string[] = [];
+  const seen = new Set<string>();
+  for (const key of keys) {
+    if (typeof key !== "string") continue;
+    const trimmed = key.trim();
+    if (!trimmed || covered.has(trimmed)) continue;
+    const label = GAP_LABELS[trimmed] ?? UNKNOWN_GAP_LABEL;
+    if (seen.has(label)) continue;
+    seen.add(label);
+    labels.push(label);
+  }
+  return labels;
 }
 
 export interface SavedBusinessSettings {
