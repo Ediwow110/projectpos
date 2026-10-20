@@ -1,0 +1,137 @@
+import { describe, expect, it } from "vitest";
+import {
+  FIRST_SALE_CHECKS,
+  readinessGapLabels,
+  readSavedBusinessSettings,
+  saleReadinessChecks,
+  type SaleReadiness,
+} from "./sale-readiness";
+
+const baseReadiness = {
+  businessConfigured: true,
+  legacySetupReviewSteps: [] as string[],
+  hasSellableProduct: false,
+  hasActiveRegister: false,
+  hasOpenShift: false,
+  hasStaff: false,
+  canCustomizeReceipt: false,
+  readyForFirstSale: false,
+};
+
+describe("sale readiness", () => {
+  it("maps the server checks to the real product, register and shift routes", () => {
+    const checks = saleReadinessChecks({
+      ...baseReadiness,
+      missing: ["sellable_product_or_stock", "active_register", "open_shift"],
+    });
+    expect(checks.map((check) => check.href)).toEqual(["/products", "/registers", "/shifts"]);
+    expect(checks.every((check) => !check.done)).toBe(true);
+    expect(checks[0].label).toBe("Sellable product with available stock");
+    expect(checks[0].pending).toBe("No sellable product yet");
+  });
+
+  it("reports every check as satisfied when the server says the business is ready", () => {
+    const checks = saleReadinessChecks({
+      ...baseReadiness,
+      hasSellableProduct: true,
+      hasActiveRegister: true,
+      hasOpenShift: true,
+      readyForFirstSale: true,
+      missing: [],
+    });
+    expect(checks.every((check) => check.done)).toBe(true);
+    expect(checks.map((check) => check.href)).toEqual(["/products", "/registers", "/shifts"]);
+  });
+
+  it("never invents a branch prerequisite for a register", () => {
+    expect(FIRST_SALE_CHECKS.map((check) => check.href)).not.toContain("/branches");
+  });
+
+  it("names server gaps that the visible checklist does not already cover", () => {
+    expect(readinessGapLabels({ ...baseReadiness, missing: ["open_shift", "stock_at_open_register"] }))
+      .toEqual(["No stock is available at the open register."]);
+    expect(readinessGapLabels({ ...baseReadiness, missing: ["business_setup_review"] }))
+      .toEqual(["Business setup needs to be reviewed and saved."]);
+    expect(readinessGapLabels({ ...baseReadiness })).toEqual([]);
+  });
+
+  it("never shows a raw machine identifier for an unknown server gap", () => {
+    const labels = readinessGapLabels({ ...baseReadiness, missing: ["some_new_server_check"] });
+
+    expect(labels).toHaveLength(1);
+    expect(labels[0]).not.toContain("some_new_server_check");
+    expect(labels[0]).toMatch(/[a-z]/i);
+  });
+
+  it("tolerates a readiness payload that omits the legacy review steps", () => {
+    const readiness = { ...baseReadiness, legacySetupReviewSteps: undefined } as unknown as SaleReadiness;
+
+    expect(() => saleReadinessChecks(readiness)).not.toThrow();
+    expect(() => readinessGapLabels(readiness)).not.toThrow();
+    expect(saleReadinessChecks(readiness)).toHaveLength(3);
+  });
+
+  it("reads saved business settings from the server payload rather than form state", () => {
+    const saved = readSavedBusinessSettings({
+      name: "Tindahanko",
+      currency: "PHP",
+      settings: {
+        businessAddress: "123 Rizal St",
+        businessPhone: "09171234567",
+        businessTimezone: "Asia/Manila",
+        taxName: "no tax",
+        taxRateBps: 0,
+        standardReceiptConfirmed: true,
+      },
+    });
+    expect(saved.name).toBe("Tindahanko");
+    expect(saved.address).toBe("123 Rizal St");
+    expect(saved.phone).toBe("09171234567");
+    expect(saved.timezone).toBe("Asia/Manila");
+    expect(saved.currency).toBe("PHP");
+    expect(saved.taxName).toBe("no tax");
+    expect(saved.taxRateBps).toBe(0);
+    expect(saved.receiptConfirmed).toBe(true);
+  });
+
+  it("does not invent a tax rate or receipt confirmation the server has not stored", () => {
+    const saved = readSavedBusinessSettings({ name: "B", currency: "PHP", settings: {} });
+    expect(saved.taxRateBps).toBeNull();
+    expect(saved.receiptConfirmed).toBe(false);
+    expect(saved.address).toBe("");
+  });
+
+  it("collapses repeated and unknown server gaps into unique warning lines", () => {
+    const labels = readinessGapLabels({
+      ...baseReadiness,
+      missing: [
+        "business_setup_review",
+        "business_setup_review",
+        "some_new_server_check",
+        "another_unknown_check",
+        "some_new_server_check",
+        "open_shift",
+      ],
+    });
+
+    expect(labels).toEqual([
+      "Business setup needs to be reviewed and saved.",
+      "One more server-reported setup requirement is outstanding.",
+    ]);
+  });
+
+  it("ignores blank and non-string gap keys instead of rendering them", () => {
+    const readiness = {
+      ...baseReadiness,
+      missing: [null, 42, {}, "", "   ", "active_register"],
+    } as unknown as SaleReadiness;
+
+    expect(readinessGapLabels(readiness)).toEqual([]);
+  });
+
+  it("treats a non-array missing payload as no outstanding gaps", () => {
+    const readiness = { ...baseReadiness, missing: "open_shift" } as unknown as SaleReadiness;
+
+    expect(readinessGapLabels(readiness)).toEqual([]);
+  });
+});

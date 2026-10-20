@@ -2,7 +2,7 @@
 
 import type { JSX } from "react";
 import Link from "next/link";
-import { use, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { AppShell } from "../../../components/AppShell";
@@ -16,6 +16,7 @@ import { ApiError, apiFetch } from "../../../lib/api";
 import { buildProductSearch } from "../../../lib/catalog";
 import { parseMajorCurrencyToMinor } from "../../../lib/pos-sale-model";
 import { deliveryRefundRemaining, voidAuditLabel } from "../../../lib/sales";
+import { hostedPaymentReturnMessage } from "../../../lib/paymongo-return";
 
 interface Me {
   role: string;
@@ -51,6 +52,10 @@ interface RefundRow {
   deliveryFeeRefundMinor: number;
   deliveryTaxRefundMinor: number;
   items: Array<{ saleItemId: string; qty: number; amountMinor: number }>;
+}
+interface ApprovedConcern {
+  id: string; saleId: string; status: string; outcome: string; reason: string;
+  requestedRefundMinor: number; items: Array<{ saleItemId: string; qty: number }>;
 }
 
 interface GiftCardLoadRow {
@@ -153,6 +158,13 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
   const [approvalKind, setApprovalKind] = useState<"refund" | "void" | null>(null);
   const [voidOpen, setVoidOpen] = useState(false);
   const [voidReason, setVoidReason] = useState("");
+  const [concernId, setConcernId] = useState<string | null>(null);
+  const [paymentReturnMessage, setPaymentReturnMessage] = useState<string | null>(null);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setConcernId(params.get("concernId"));
+    setPaymentReturnMessage(hostedPaymentReturnMessage(params.get("paymongo")));
+  }, []);
 
   const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<Me>("/api/v1/me"), retry: false });
   const detailQuery = useQuery({
@@ -164,6 +176,20 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
       return current?.status === "PENDING_PAYMENT" ? 2_000 : false;
     },
   });
+  const approvedConcernQuery = useQuery({
+    queryKey: ["customer-concern", concernId],
+    queryFn: () => apiFetch<ApprovedConcern>(`/api/v1/customer-concerns/${encodeURIComponent(concernId!)}`),
+    enabled: Boolean(concernId), retry: false,
+  });
+  const approvedConcern = approvedConcernQuery.data?.saleId === id && approvedConcernQuery.data.status === "APPROVED" && ["REFUND", "EXCHANGE"].includes(approvedConcernQuery.data.outcome) ? approvedConcernQuery.data : null;
+  const approvedExchangeReturnQty = useMemo(() => approvedConcern?.outcome === "EXCHANGE"
+    ? Object.fromEntries(approvedConcern.items.map((item) => [item.saleItemId, String(item.qty)]))
+    : undefined, [approvedConcern]);
+  useEffect(() => {
+    if (!approvedConcern) return;
+    if (approvedConcern.outcome === "REFUND") setQtyByLine(Object.fromEntries(approvedConcern.items.map((item) => [item.saleItemId, String(item.qty)])));
+    setReason(`Customer case ${approvedConcern.id}: ${approvedConcern.reason.replaceAll("_", " ")}`);
+  }, [approvedConcern]);
   const businessQuery = useQuery({
     queryKey: ["business"],
     queryFn: () => apiFetch<BusinessPayload>("/api/v1/business"),
@@ -262,6 +288,7 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
               ? { deliveryRefundMinor: deliveryRefundRemaining(sale) }
               : {}),
             ...(reason.trim() ? { reason: reason.trim() } : {}),
+            ...(concernId ? { concernId } : {}),
           }
         : { reason: reason.trim() };
       await apiFetch(path, {
@@ -280,6 +307,7 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
       setQtyByLine({});
       setLoadAmountById({});
       setRefundDelivery(false);
+      if (concernId) setConcernId(null);
       return true;
     } catch (err) {
       if (err instanceof ApiError && err.code === "FORBIDDEN" && mode === "approve" && !approvalToken) {
@@ -338,12 +366,13 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
         init: {
           method: "POST",
           headers: { "Idempotency-Key": crypto.randomUUID() },
-          body: JSON.stringify(input),
+      body: JSON.stringify({ ...input, ...(concernId ? { concernId } : {}) }),
         },
       });
       await detailQuery.refetch();
       setExchangeOpen(false);
       setExchangeSearch("");
+      if (concernId) setConcernId(null);
       const amount = Math.abs(result.exchange.netMinor);
       setStatusMessage(
         result.exchange.direction === "COLLECT"
@@ -401,9 +430,12 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
               <Link href="/sales" className="inline-flex min-h-10 items-center rounded-[10px] border border-[#e4d9d0] bg-white px-4 text-sm font-semibold text-[#2a241f] hover:border-[#f35d3f]">← Sales</Link>
               {sale && ["DRAFT", "PENDING_PAYMENT", "PAYMENT_FAILED", "PAYMENT_UNKNOWN"].includes(sale.status) ? <DangerButton type="button" onClick={() => { setVoidReason(""); setVoidOpen(true); }}>Void sale</DangerButton> : null}
               {sale && ["COMPLETED", "PARTIALLY_REFUNDED", "REFUNDED"].includes(sale.status) ? <Link href={`/receipts/${sale.id}`} className="inline-flex min-h-10 items-center rounded-[10px] bg-[#f35d3f] px-4 text-sm font-semibold text-white hover:bg-[#d94a30]">View receipt</Link> : null}
+              {approvedConcern?.outcome === "REFUND" && refundable ? <PrimaryButton type="button" onClick={() => setRefundMode("approve")}>Process approved case refund</PrimaryButton> : null}
+              {approvedConcern?.outcome === "EXCHANGE" && canExchange ? <PrimaryButton type="button" onClick={() => setExchangeOpen(true)}>Start approved exchange</PrimaryButton> : null}
             </>
           }
         />
+        {approvedConcern?.outcome === "EXCHANGE" && !canExchange ? <p role="status" className="rounded-xl border border-[#efd6a5] bg-[#fff8eb] px-4 py-3 text-sm leading-6 text-[#775d2c]">This approved exchange is not actionable here. Existing exchange execution requires an owner or manager and a fully cash-settled sale.</p> : null}
 
         {sale ? (
           <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Sale summary">
@@ -433,6 +465,7 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
                 ? "Do not charge the customer again. PayMongo has succeeded, but NexPOS still needs to finish the local sale. The webhook will retry if a temporary inventory or database condition blocked finalization."
                 : "The sale is not complete until NexPOS receives PayMongo's signed payment webhook. Returning from checkout alone never marks a payment as paid."}
             />
+            {paymentReturnMessage ? <p role="status" className="mt-3 rounded-lg border border-[#d9e2f3] bg-white/80 p-3 text-sm leading-6 text-[#384963]">{paymentReturnMessage}</p> : null}
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <StatusPill tone={paymongoPayment.status === "SUCCEEDED" ? "warn" : "info"}>{paymongoPayment.status}</StatusPill>
               <span className="font-data text-[11px] text-[#73685f]">{methodLabel(paymongoPayment.method)} · ₱{money(paymongoPayment.amountMinor)}</span>
@@ -567,22 +600,33 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
 
       <Modal
         open={refundMode !== null && sale !== undefined}
+        variant={refundMode === "approve" ? "standard" : "atlasFlow"}
         onClose={() => !busy && setRefundMode(null)}
         title={refundMode === "request" ? "Request refund" : refundMode === "approve" ? "Approve refund" : "Reject refund request"}
         description={refundMode === "approve" ? "Choose exact merchandise quantities, gift-card load amounts, and/or the full remaining delivery charge. Gift-card loads return only to the original gift card." : "Record a clear reason so the refund decision remains auditable."}
         footer={<div className="flex justify-end gap-2"><GhostButton type="button" onClick={() => setRefundMode(null)} disabled={busy}>Cancel</GhostButton>{refundMode === "reject" ? <DangerButton type="button" disabled={busy || !reason.trim()} onClick={() => void refundAction("reject")}>{busy ? "Working…" : "Reject request"}</DangerButton> : <PrimaryButton type="button" disabled={busy || (refundMode === "request" && !reason.trim()) || (refundMode === "approve" && selectedRefundItems.length === 0 && selectedLoadRefunds.length === 0 && selectedDeliveryRefundMinor === 0)} onClick={() => refundMode && void refundAction(refundMode)}>{busy ? "Working…" : refundMode === "request" ? "Submit request" : "Approve refund"}</PrimaryButton>}</div>}
       >
         <div className="space-y-4">
-          {refundMode === "approve" && sale ? <div className="space-y-3">{sale.items.map((line) => <label key={line.id} className="grid grid-cols-[minmax(0,1fr)_120px] items-end gap-3 rounded-xl border border-[#eee4db] bg-white p-3"><span className="text-[11px] font-semibold text-[#655b53]">{line.name}<span className="mt-1 block font-normal text-[#9a8d83]">Sold {line.qty} · ₱{money(line.lineTotalMinor)}</span></span><input type="number" min={0} max={Math.max(0, line.qty - (refundedQtyByLine.get(line.id) ?? 0))} step={1} value={qtyByLine[line.id] ?? ""} onChange={(event) => setQtyByLine((previous) => ({ ...previous, [line.id]: event.target.value }))} className="field" placeholder="0" /></label>)}{sale.giftCardLoads.map((load) => <label key={load.id} className="grid grid-cols-[minmax(0,1fr)_120px] items-end gap-3 rounded-xl border border-[#f1d6a7] bg-[#fff8eb] p-3"><span className="text-[11px] font-semibold text-[#655b53]">{load.kind === "NEW" ? "New gift-card load" : "Gift-card reload"}<span className="mt-1 block font-normal text-[#8b8077]">Loaded ₱{money(load.amountMinor)} · refundable ₱{money(load.refundableMinor)}</span></span><input type="number" min={0} max={(load.refundableMinor / 100).toFixed(2)} step={0.01} value={loadAmountById[load.id] ?? ""} onChange={(event) => setLoadAmountById((previous) => ({ ...previous, [load.id]: event.target.value }))} className="field" placeholder="PHP amount" /></label>)}{deliveryRefundRemainingMinor > 0 ? <label className="flex items-center justify-between gap-3 rounded-xl border border-[#d9e6d4] bg-[#f6fbf4] p-3"><span className="text-[11px] font-semibold text-[#476141]">Delivery charge<span className="mt-1 block font-normal text-[#74836f]">Refund the full remaining fee + tax · ₱{money(deliveryRefundRemainingMinor)}</span></span><input type="checkbox" checked={refundDelivery} onChange={(event) => setRefundDelivery(event.target.checked)} className="h-4 w-4" /></label> : null}</div> : null}
+          {concernId && approvedConcernQuery.isPending && <p role="status" className="text-sm text-[#707b75]">Loading approved case…</p>}
+          {concernId && approvedConcernQuery.isError && <p role="alert" className="text-sm text-[#a34132]">The approved case could not be verified. Close this page and open the case again.</p>}
+          {approvedConcern && <p className="rounded-xl border border-[#d9e6d4] bg-[#f6fbf4] p-3 text-xs leading-5 text-[#476141]">Refund is linked to approved case {approvedConcern.id}. Only its approved item quantities can be processed; the case will be updated after the refund transaction succeeds.</p>}
+          {refundMode === "approve" && sale ? <div className="space-y-3">{sale.items.map((line) => <label key={line.id} className="grid grid-cols-[minmax(0,1fr)_120px] items-end gap-3 rounded-xl border border-[#eee4db] bg-white p-3"><span className="text-[11px] font-semibold text-[#655b53]">{line.name}<span className="mt-1 block font-normal text-[#9a8d83]">Sold {line.qty} · ₱{money(line.lineTotalMinor)}</span></span><input type="number" min={0} max={Math.max(0, line.qty - (refundedQtyByLine.get(line.id) ?? 0))} step={1} value={qtyByLine[line.id] ?? ""} disabled={Boolean(approvedConcern)} onChange={(event) => setQtyByLine((previous) => ({ ...previous, [line.id]: event.target.value }))} className="field disabled:bg-[#f2f4f1]" placeholder="0" /></label>)}{!approvedConcern && sale.giftCardLoads.map((load) => <label key={load.id} className="grid grid-cols-[minmax(0,1fr)_120px] items-end gap-3 rounded-xl border border-[#f1d6a7] bg-[#fff8eb] p-3"><span className="text-[11px] font-semibold text-[#655b53]">{load.kind === "NEW" ? "New gift-card load" : "Gift-card reload"}<span className="mt-1 block font-normal text-[#8b8077]">Loaded ₱{money(load.amountMinor)} · refundable ₱{money(load.refundableMinor)}</span></span><input type="number" min={0} max={(load.refundableMinor / 100).toFixed(2)} step={0.01} value={loadAmountById[load.id] ?? ""} onChange={(event) => setLoadAmountById((previous) => ({ ...previous, [load.id]: event.target.value }))} className="field" placeholder="PHP amount" /></label>)}{!approvedConcern && deliveryRefundRemainingMinor > 0 ? <label className="flex items-center justify-between gap-3 rounded-xl border border-[#d9e6d4] bg-[#f6fbf4] p-3"><span className="text-[11px] font-semibold text-[#476141]">Delivery charge<span className="mt-1 block font-normal text-[#74836f]">Refund the full remaining fee + tax · ₱{money(deliveryRefundRemainingMinor)}</span></span><input type="checkbox" checked={refundDelivery} onChange={(event) => setRefundDelivery(event.target.checked)} className="h-4 w-4" /></label> : null}</div> : null}
           <label className="block text-[11px] font-semibold text-[#655b53]">Reason {refundMode === "approve" ? "(optional)" : "(required)"}<textarea autoFocus={refundMode !== "approve"} value={reason} onChange={(event) => setReason(event.target.value)} rows={3} className="field mt-1.5 resize-none" placeholder="Reason for this refund decision" /></label>
           {statusMessage.includes(":") ? <p role="alert" className="rounded-xl bg-[#fff0f0] px-3 py-2.5 text-[12px] font-medium text-[#c43e3e]">{statusMessage}</p> : null}
         </div>
       </Modal>
 
-      <Modal open={voidOpen && sale !== undefined} onClose={() => !busy && setVoidOpen(false)} title="Void sale" description="Voiding prevents this unsettled sale from continuing. The reason is retained in the audit trail." footer={<div className="flex justify-end gap-2"><GhostButton type="button" onClick={() => setVoidOpen(false)} disabled={busy}>Cancel</GhostButton><DangerButton type="button" disabled={busy || voidReason.trim().length < 3} onClick={() => void voidSale()}>{busy ? "Voiding…" : "Void sale"}</DangerButton></div>}><label className="block text-[11px] font-semibold text-[#655b53]">Reason<textarea autoFocus value={voidReason} onChange={(event) => setVoidReason(event.target.value)} rows={3} className="field mt-1.5 resize-none" placeholder="Why this sale is being voided" /></label>{statusMessage.includes(":") ? <p role="alert" className="mt-3 rounded-xl bg-[#fff0f0] px-3 py-2.5 text-[12px] font-medium text-[#c43e3e]">{statusMessage}</p> : null}</Modal>
+      <Modal open={voidOpen && sale !== undefined} variant="atlasFlow" onClose={() => !busy && setVoidOpen(false)} title="Void sale" description="Voiding prevents this unsettled sale from continuing. The reason is retained in the audit trail." footer={<div className="flex justify-end gap-2"><GhostButton type="button" onClick={() => setVoidOpen(false)} disabled={busy}>Cancel</GhostButton><DangerButton type="button" className="!bg-[#b64742] !text-white hover:!bg-[#9f3530]" disabled={busy || voidReason.trim().length < 3} onClick={() => void voidSale()}>{busy ? "Voiding…" : "Void sale"}</DangerButton></div>}>
+        <div className="space-y-3">
+          <label className="block text-[11px] font-semibold text-[#655b53]">Reason<textarea autoFocus value={voidReason} onChange={(event) => setVoidReason(event.target.value)} rows={3} className="field mt-1.5 resize-none !border-[#e4e9e3] !bg-[#eff2ed]" placeholder="Why this sale is being voided" /></label>
+          <p className="rounded-[8px] bg-[#eff2ed] px-4 py-3 text-[12px] text-[#202826]">Sale: {sale?.receiptNo ?? "Unsettled sale"}</p>
+          <p className="rounded-[8px] bg-[#eff2ed] px-4 py-3 text-[12px] text-[#202826]">Audit: exact reason recorded; manager authorization is enforced when required.</p>
+          {statusMessage.includes(":") ? <p role="alert" className="mt-3 rounded-xl bg-[#fff0f0] px-3 py-2.5 text-[12px] font-medium text-[#c43e3e]">{statusMessage}</p> : null}
+        </div>
+      </Modal>
 
-      {sale && approvalKind === "refund" ? <ManagerApprovalDialog open permission={refundPermission} action={{ kind: "refund", saleId: sale.id, items: selectedRefundItems, ...(selectedLoadRefunds.length > 0 ? { loadRefunds: selectedLoadRefunds } : {}), ...(selectedDeliveryRefundMinor > 0 ? { deliveryRefundMinor: selectedDeliveryRefundMinor } : {}), ...(reason.trim() ? { reason: reason.trim() } : {}) }} title={`Manager approval · approve refund of ₱${money(selectedRefundTotalMinor)}`} description="Approving this refund requires manager authorization for the exact merchandise, gift-card load, and delivery-charge selection." summary={`${selectedRefundItems.length} item line(s) · ${selectedLoadRefunds.length} gift-card load(s) · ₱${money(selectedRefundTotalMinor)}`} onApproved={(grant) => refundAction("approve", grant.token)} onClose={() => setApprovalKind(null)} /> : null}
-      {sale && approvalKind === "void" ? <ManagerApprovalDialog open permission="sale.void" action={{ kind: "sale_void", saleId: sale.id, reason: voidReason.trim() }} title={`Manager approval · approve void of sale ${sale.receiptNo}`} description="Voiding an unsettled sale requires manager authorization for this exact sale and reason." summary={`Sale ${sale.receiptNo} · ${voidReason.trim()}`} onApproved={(grant) => voidSale(grant.token)} onClose={() => setApprovalKind(null)} /> : null}
+      {sale && approvalKind === "refund" ? <ManagerApprovalDialog open permission={refundPermission} action={{ kind: "refund", saleId: sale.id, items: selectedRefundItems, ...(selectedLoadRefunds.length > 0 ? { loadRefunds: selectedLoadRefunds } : {}), ...(selectedDeliveryRefundMinor > 0 ? { deliveryRefundMinor: selectedDeliveryRefundMinor } : {}), ...(reason.trim() ? { reason: reason.trim() } : {}) }} registerId={sale.registerId ?? undefined} queueEnabled={meQuery.data?.role === "cashier"} title={`Manager approval · approve refund of ₱${money(selectedRefundTotalMinor)}`} description="Approving this refund requires manager authorization for the exact merchandise, gift-card load, and delivery-charge selection." summary={`${selectedRefundItems.length} item line(s) · ${selectedLoadRefunds.length} gift-card load(s) · ₱${money(selectedRefundTotalMinor)}`} onApproved={(grant) => refundAction("approve", grant.token)} onClose={() => setApprovalKind(null)} /> : null}
+      {sale && approvalKind === "void" ? <ManagerApprovalDialog open permission="sale.void" action={{ kind: "sale_void", saleId: sale.id, reason: voidReason.trim() }} registerId={sale.registerId ?? undefined} queueEnabled={meQuery.data?.role === "cashier"} title={`Manager approval · approve void of sale ${sale.receiptNo}`} description="Voiding an unsettled sale requires manager authorization for this exact sale and reason." summary={`Sale ${sale.receiptNo} · ${voidReason.trim()}`} onApproved={(grant) => voidSale(grant.token)} onClose={() => setApprovalKind(null)} /> : null}
 
       {exchangeOpen && sale ? (
         <SaleExchangeDialog
@@ -593,6 +637,7 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
             lineTotalMinor: line.lineTotalMinor,
             alreadyRefundedQty: refundedQtyByLine.get(line.id) ?? 0,
           }))}
+          initialReturnQty={approvedExchangeReturnQty}
           products={exchangeProductsQuery.data?.items ?? []}
           businessTaxRateBps={businessTaxRateBps}
           search={exchangeSearch}

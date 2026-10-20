@@ -5,6 +5,39 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { PosPaymentWorkspace } from "./PosPaymentWorkspace";
 
 describe("POS payment workspace", () => {
+  it("renders the Atlas V4 light chooser while preserving the payment method and total", () => {
+    const html = renderToStaticMarkup(<PosPaymentWorkspace atlasV4
+      count={2} due={5000} changeMinor={0} registerSelected now="10:30"
+      cart={[{ productId: "p1", name: "Oat milk", priceMinor: 2500, qty: 2, lineDiscountMinor: 0 }]}
+      paymentTiles={[{ key: "cash", label: "Cash", tile: "" }, { key: "qrph", label: "QR Ph", tile: "" }]}
+      offline={false} effectiveMethod="cash" received="" paying={false} canPay methodAvailable={(key) => key === "cash"}
+      onMethodChange={() => undefined} onReceivedChange={() => undefined} onClose={() => undefined} onPay={() => undefined}
+    />);
+    expect(html).toContain('data-ui="payment-workspace"');
+    expect(html).toContain('aria-label="Payment"');
+    expect(html).toContain("Take payment");
+    expect(html).toContain("QR Ph");
+    expect(html).toContain("₱50.00");
+    expect(html).toContain("Complete Payment");
+    expect(html).toContain("Back to sale");
+    expect(html).not.toContain("Payment completed");
+  });
+  it("keeps optional tenders discoverable without overcrowding the initial V4 chooser", () => {
+    const html = renderToStaticMarkup(<PosPaymentWorkspace atlasV4
+      count={1} due={2500} changeMinor={0} registerSelected now="11:00"
+      cart={[{ productId: "p1", name: "Coffee", priceMinor: 2500, qty: 1, lineDiscountMinor: 0 }]}
+      paymentTiles={[{ key: "cash", label: "Cash", tile: "" }, { key: "card", label: "Card", tile: "" }, { key: "qrph", label: "QR Ph", tile: "" }, { key: "gcash", label: "GCash", tile: "" }]}
+      offline={false} effectiveMethod="cash" received="" paying={false} canPay methodAvailable={() => true}
+      onMethodChange={() => undefined} onReceivedChange={() => undefined} onClose={() => undefined} onPay={() => undefined}
+    />);
+    expect(html).toContain("Cash");
+    expect(html).toContain("Card");
+    expect(html).toContain("QR Ph");
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain("Other payment methods");
+    expect(html).toContain('id="additional-payment-methods" hidden=""');
+    expect(html).toContain('>GCash<');
+  });
   it("keeps the cashier's add-to-cart order in the checkout sale summary", () => {
     const html = renderToStaticMarkup(
       <PosPaymentWorkspace

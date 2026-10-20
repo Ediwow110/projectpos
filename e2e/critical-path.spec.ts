@@ -12,6 +12,7 @@ import {
   API,
   apiAuthedContext,
   clickPosPay,
+  confirmPosQuantity,
   expectOnePosCartItem,
   registerOperationalBusiness,
   seedProduct,
@@ -59,6 +60,7 @@ test("critical path: register to reconciled close", async ({ page, request }) =>
   }
   await page.getByLabel("Search product, SKU or scan barcode").fill("E2E Coke");
   await page.getByRole("button", { name: /E2E Coke ₱25\.00/ }).click();
+  await confirmPosQuantity(page);
   await expectOnePosCartItem(page);
   await clickPosPay(page, "25.00");
   await expect(page.getByRole("dialog", { name: "Payment" })).toBeVisible();
@@ -89,14 +91,17 @@ test("critical path: register to reconciled close", async ({ page, request }) =>
   page.on("pageerror", (error) => pageErrors.push(error.name));
   await page.getByRole("button", { name: "Complete Payment" }).click();
   try {
+    const confirmation = page.getByRole("dialog", { name: "Payment complete" });
+    await expect(confirmation).toBeVisible();
+    await expect(confirmation.getByText("Receipt: available")).toBeVisible();
+    await expect(confirmation.getByRole("link", { name: "View receipt" })).toBeVisible();
     if (viewportWidth < 1280) {
       await expect(page.getByRole("region", { name: "Tablet payment status" }).getByText("Sale completed.")).toBeVisible();
-      await page.getByRole("region", { name: "Tablet payment status" }).getByRole("link", { name: "View receipt" }).click();
     } else {
       const cart = page.getByRole("complementary", { name: "Cart" });
       await expect(cart.getByText("Sale completed.")).toBeVisible();
-      await cart.getByRole("link", { name: "View receipt" }).click();
     }
+    await confirmation.getByRole("link", { name: "View receipt" }).click();
   } catch (error) {
     await Promise.allSettled(checkoutResponseReads);
     console.error("Checkout failure diagnostics", {

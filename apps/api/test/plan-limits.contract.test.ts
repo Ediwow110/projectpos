@@ -21,7 +21,7 @@ function jar(h: unknown): string {
 beforeAll(async () => {
   priorPlatformKey = process.env["PLATFORM_API_KEY"];
   process.env["PLATFORM_API_KEY"] = "test-platform-key";
-  app = await createTestApp();
+  app = await createTestApp({ completedOnboardingFixture: true });
   const reg = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
     ownerName: "Ana", email: "ana-limits@example.com",
     password: "correct-horse-12", businessName: "Limits Store",
@@ -151,6 +151,7 @@ describe("phase10 plan limits HTTP contract", () => {
     }
     const settings = await request(app.getHttpServer()).get("/api/v1/business")
       .set("Cookie", receiptCookie);
+    expect(settings.body.settings.standardReceiptConfirmed).toBe(true);
     expect(settings.body.settings.receiptHeader).toBeUndefined();
     expect(settings.body.settings.receiptFooter).toBeUndefined();
     // Non-receipt settings stay available on Free.

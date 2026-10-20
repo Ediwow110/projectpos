@@ -132,8 +132,38 @@ export function GuidedTour({
   const [index, setIndex] = React.useState(0);
   const [rect, setRect] = React.useState<Rect | null>(null);
   const dialogRef = React.useRef<HTMLElement | null>(null);
+  const returnFocusRef = React.useRef<HTMLElement | null>(null);
   const steps = guidedTourStepsForRole(role);
   const step = steps[Math.min(index, steps.length - 1)];
+
+  React.useEffect(() => {
+    if (!open) {
+      returnFocusRef.current = null;
+      return;
+    }
+    const opener = document.activeElement;
+    if (opener instanceof HTMLElement && opener !== document.body) {
+      returnFocusRef.current = opener;
+    }
+  }, [open]);
+
+  const closeAndRestoreFocus = React.useCallback((): void => {
+    const returnTo = returnFocusRef.current;
+    onDismiss();
+    requestAnimationFrame(() => {
+      if (returnTo?.isConnected && returnTo.getClientRects().length > 0) {
+        returnTo.focus();
+      } else {
+        // The automatic first-run tour may not have a visible opening button.
+        // Keep keyboard users in the workspace rather than at document.body.
+        const main = document.querySelector<HTMLElement>("main");
+        if (main) {
+          main.tabIndex = -1;
+          main.focus();
+        }
+      }
+    });
+  }, [onDismiss]);
 
   React.useEffect(() => {
     if (!open) {
@@ -186,7 +216,7 @@ export function GuidedTour({
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (event.key === "Escape") {
         event.preventDefault();
-        onDismiss();
+        closeAndRestoreFocus();
         return;
       }
       if (event.key !== "Tab") return;
@@ -197,10 +227,10 @@ export function GuidedTour({
       }
       const first = items[0];
       const last = items[items.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
         event.preventDefault();
         last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
+      } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
         event.preventDefault();
         first.focus();
       }
@@ -208,7 +238,7 @@ export function GuidedTour({
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [open, index, onDismiss]);
+  }, [open, index, closeAndRestoreFocus]);
 
   if (!open) return null;
 
@@ -245,7 +275,7 @@ export function GuidedTour({
           </div>
           <button
             type="button"
-            onClick={onDismiss}
+            onClick={closeAndRestoreFocus}
             aria-label="Close tour and do not show automatically again"
             className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-[#eee4db] text-[#73685f] hover:border-[#f2b8a9] hover:text-[#d94a30]"
           >
@@ -264,7 +294,7 @@ export function GuidedTour({
         <div className="mt-5 flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={onDismiss}
+            onClick={closeAndRestoreFocus}
             className="min-h-10 rounded-[10px] px-3 text-[11px] font-semibold text-[#73685f] hover:bg-[#f7f1ea] hover:text-[#17130f]"
           >
             Skip tour
@@ -282,7 +312,7 @@ export function GuidedTour({
             <button
               type="button"
               data-tour-primary="true"
-              onClick={() => finalStep ? onDismiss() : setIndex((current) => Math.min(steps.length - 1, current + 1))}
+              onClick={() => finalStep ? closeAndRestoreFocus() : setIndex((current) => Math.min(steps.length - 1, current + 1))}
               className="min-h-10 rounded-[10px] bg-[#f35d3f] px-5 text-[11px] font-semibold text-white hover:bg-[#d94a30]"
             >
               {finalStep ? "Finish" : "Next"}

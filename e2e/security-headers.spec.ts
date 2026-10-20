@@ -18,7 +18,7 @@ test("frontend CSP is enforced without blocking the Next.js runtime", async ({ p
   expect(csp).toContain("frame-ancestors 'none'");
   expect(csp).toContain("script-src-attr 'none'");
 
-  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in to NexPOS" })).toBeVisible();
   await page.waitForTimeout(250);
   expect(cspViolations).toEqual([]);
 });

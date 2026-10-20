@@ -31,6 +31,23 @@ async function holdTransferStock(
 }
 
 describe("phase9a transfer service", () => {
+  it("filters transfers to authorized source AND destination before page counts", async () => {
+    const { db, svc, a, b, productId } = await setupTransfer();
+    const c = await db.createBranch({ businessId: "b1", name: "C", type: "store", isActive: true });
+    const local = await svc.createTransfer("b1", "u1", "page-a", {
+      fromBranchId: a, toBranchId: b, lines: [{ productId, qty: 1 }],
+    }, GRANT);
+    const excluded = await svc.createTransfer("b1", "u1", "page-b", {
+      fromBranchId: a, toBranchId: c.id, lines: [{ productId, qty: 1 }],
+    }, GRANT);
+    const page = await svc.listTransfers("b1", {
+      page: 1, pageSize: 1, allowedBranchIds: [a, b],
+    });
+    expect(page.total).toBe(1);
+    expect(page.items.map((entry) => entry.id)).toEqual([local.id]);
+    expect(page.items.find((entry) => entry.id === excluded.id)).toBeUndefined();
+    expect((await svc.listTransfers("b1", { page: 1, pageSize: 10 })).total).toBe(2);
+  });
   it("dispatches and receives with dual-location ledger entries", async () => {
     const { db, svc, a, b, productId } = await setupTransfer();
     const t = await svc.createTransfer("b1", "u1", "r1", {

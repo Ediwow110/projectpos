@@ -1,4 +1,223 @@
 import { expect, test } from "@playwright/test";
+import { DashboardPage } from "./pages/DashboardPage";
+import { OnboardingPage } from "./pages/OnboardingPage";
+
+test("incomplete owners stay in setup across dashboard deep links and browser history", async ({ page, context }) => {
+  const onboarding = new OnboardingPage(page);
+  let dashboardOverviewRequests = 0;
+  await context.route("**/api/v1/me", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      userId: "qa-owner", businessId: "qa-business", businessName: "QA Workspace",
+      role: "owner", onboardingRequired: true, workspaceTourSeen: false,
+      activeBranchId: null, activeBranchName: null,
+    }),
+  }));
+  await context.route("**/api/v1/onboarding", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      currentStep: "taxCurrency",
+      steps: {
+        businessDetails: "done", taxCurrency: "pending", receiptSetup: "pending",
+        products: "pending", employees: "pending",
+      },
+    }),
+  }));
+  await context.route("**/api/v1/business", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ name: "QA Workspace", settings: { currency: "PHP" } }),
+  }));
+  await context.route("**/api/v1/dashboard/overview**", (route) => {
+    dashboardOverviewRequests += 1;
+    const emptyKpi = { value: 0, previous: 0, deltaMinor: 0, deltaPct: 0 };
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        kpis: {
+          netRevenue: emptyKpi, orders: emptyKpi, avgOrder: emptyKpi,
+          refundTotal: emptyKpi, discountTotal: emptyKpi, expenseTotal: emptyKpi,
+        },
+        series: [], topProducts: [], attention: [], compareLabel: "previous period",
+      }),
+    });
+  });
+
+  await page.goto("/login");
+  await page.goto("/");
+  await onboarding.expectRequiredSetup();
+  await expect(page.getByRole("complementary", { name: "Workspace navigation" })).toHaveCount(0);
+  expect(dashboardOverviewRequests).toBe(0);
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/login$/);
+  await page.goForward();
+  await onboarding.expectRequiredSetup();
+
+  for (const path of ["/inventory", "/products"]) {
+    await page.goto(path);
+    await onboarding.expectRequiredSetup();
+    await page.reload();
+    await onboarding.expectRequiredSetup();
+    await expect(page.getByRole("heading", { name: path === "/inventory" ? "Inventory" : "Products", exact: true })).toHaveCount(0);
+  }
+
+  const secondTab = await context.newPage();
+  await secondTab.goto("/inventory");
+  await new OnboardingPage(secondTab).expectRequiredSetup();
+  await secondTab.close();
+  expect(dashboardOverviewRequests).toBe(0);
+});
+
+test("completed owner with no sales has no setup loop", async ({ page }) => {
+  await page.route("**/api/v1/me", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({
+      userId: "qa-owner", businessId: "qa-business", businessName: "QA Workspace",
+      role: "owner", onboardingRequired: false, workspaceTourSeen: true,
+      activeBranchId: null, activeBranchName: null,
+    }),
+  }));
+  await page.route("**/api/v1/branches", (route) => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({ items: [] }),
+  }));
+  await page.route("**/api/v1/dashboard/overview**", (route) => {
+    const emptyKpi = { value: 0, previous: 0, deltaMinor: 0, deltaPct: 0 };
+    return route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({
+        kpis: {
+          netRevenue: emptyKpi, orders: emptyKpi, avgOrder: emptyKpi,
+          refundTotal: emptyKpi, discountTotal: emptyKpi, expenseTotal: emptyKpi,
+        },
+        series: [], topProducts: [], attention: [], compareLabel: "previous period",
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await new DashboardPage(page).expectEmptyState();
+});
+
+test("signed-out onboarding returns to login", async ({ page }) => {
+  await page.route("**/api/v1/onboarding", (route) => route.fulfill({
+    status: 401, contentType: "application/json",
+    body: JSON.stringify({ code: "UNAUTHORIZED", message: "Sign in required" }),
+  }));
+  await page.goto("/onboarding");
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByRole("heading", { name: "Sign in to NexPOS" })).toBeVisible();
+});
+
+test("invalid onboarding response shows a recoverable error", async ({ page }) => {
+  await page.route("**/api/v1/onboarding", (route) => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({ currentStep: "complete" }),
+  }));
+  await page.goto("/onboarding");
+  await expect(page.getByText("Could not load setup progress.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Set up your business" })).toHaveCount(0);
+});
+
+test("stale completed profile cannot keep the dashboard after setup becomes required", async ({ page }) => {
+  let onboardingRequired = false;
+  await page.route("**/api/v1/me", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({
+      userId: "qa-owner", businessId: "qa-business", businessName: "QA Workspace",
+      role: "owner", onboardingRequired, workspaceTourSeen: true,
+      activeBranchId: null, activeBranchName: null,
+    }),
+  }));
+  await page.route("**/api/v1/onboarding", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({
+      currentStep: "receiptSetup",
+      steps: {
+        businessDetails: "done", taxCurrency: "done", receiptSetup: "pending",
+        products: "pending", employees: "pending",
+      },
+    }),
+  }));
+  await page.route("**/api/v1/business", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ name: "QA Workspace", settings: { currency: "PHP", receiptHeader: "QA Workspace" } }),
+  }));
+  await page.route("**/api/v1/branches", (route) => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({ items: [] }),
+  }));
+  await page.route("**/api/v1/dashboard/overview**", (route) => route.fulfill({
+    status: 503, contentType: "application/json",
+    body: JSON.stringify({ code: "SERVICE_UNAVAILABLE", message: "Unavailable" }),
+  }));
+
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Owner overview", exact: true })).toBeVisible();
+  const detailedAnalytics = page.locator('[data-ui="owner-detailed-analytics"]');
+  await expect(detailedAnalytics).toBeVisible();
+  await expect(detailedAnalytics).not.toHaveAttribute("open", "");
+  await detailedAnalytics.locator("summary").click();
+  await expect(page.getByText("SERVICE_UNAVAILABLE: Unavailable", { exact: true })).toBeVisible();
+  await expect(page.getByText("Getting started", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Key metrics" })).toHaveCount(0);
+  onboardingRequired = true;
+  await page.reload();
+  await new OnboardingPage(page).expectRequiredSetup();
+  await expect(page.getByRole("heading", { name: "Owner overview", exact: true })).toHaveCount(0);
+});
+
+test("owners can open the dashboard after required setup while optional steps remain", async ({ page }) => {
+  await page.route("**/api/v1/me", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      userId: "qa-owner", businessId: "qa-business", businessName: "QA Workspace",
+      role: "owner", onboardingRequired: false, workspaceTourSeen: true,
+      activeBranchId: null, activeBranchName: null,
+    }),
+  }));
+  await page.route("**/api/v1/onboarding", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      currentStep: "products",
+      steps: {
+        businessDetails: "done", taxCurrency: "done", receiptSetup: "done",
+        products: "pending", employees: "pending",
+      },
+    }),
+  }));
+  await page.route("**/api/v1/business", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ name: "QA Workspace", settings: { currency: "PHP", receiptHeader: "QA Workspace" } }),
+  }));
+  await page.route("**/api/v1/branches", (route) => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({ items: [] }),
+  }));
+  await page.route("**/api/v1/dashboard/overview**", (route) => {
+    const emptyKpi = { value: 0, previous: 0, deltaMinor: 0, deltaPct: 0 };
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        kpis: {
+          netRevenue: emptyKpi, orders: emptyKpi, avgOrder: emptyKpi,
+          refundTotal: emptyKpi, discountTotal: emptyKpi, expenseTotal: emptyKpi,
+        },
+        series: [], topProducts: [], attention: [], compareLabel: "previous period",
+      }),
+    });
+  });
+
+  await page.goto("/onboarding");
+  await expect(page.getByRole("heading", { name: "First products" })).toBeVisible();
+  await page.getByRole("link", { name: "← Back to dashboard" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole("heading", { name: "Owner overview", exact: true })).toBeVisible();
+});
 
 test("signed-out workspace routes redirect to login without rendering a fallback owner", async ({ page }) => {
   await page.route("**/api/v1/me", (route) => route.fulfill({
@@ -11,7 +230,7 @@ test("signed-out workspace routes redirect to login without rendering a fallback
   });
   await page.goto("/team");
   await expect(page).toHaveURL(/\/login$/);
-  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in to NexPOS" })).toBeVisible();
   await expect(page.getByRole("complementary", { name: "Workspace navigation" })).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => localStorage.getItem("nexpos-active-sync-scope-v1"))).toBeNull();
 });
@@ -40,7 +259,7 @@ for (const status of [401, 403]) {
     // check with a reload: route mocks and localStorage survive it.
     await page.reload();
     await expect(page).toHaveURL(/\/login$/);
-    await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Sign in to NexPOS" })).toBeVisible();
     await expect.poll(() => page.evaluate(() => localStorage.getItem("nexpos-active-sync-scope-v1"))).toBeNull();
     await expect(page.getByRole("complementary", { name: "Workspace navigation" })).toHaveCount(0);
   });

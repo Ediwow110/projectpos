@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { apiAuthedContext, registerOperationalBusiness, seedProduct } from "./helpers";
+import { apiAuthedContext, confirmPosQuantity, registerOperationalBusiness, seedProduct } from "./helpers";
 
 test("POS shell and responsive geometry match the current navigation contract", async ({ page, request }, testInfo) => {
   test.setTimeout(120_000);
@@ -35,36 +35,56 @@ test("POS shell and responsive geometry match the current navigation contract", 
   const main = page.locator('[data-ui="shell-main"]');
   const mobileNav = page.locator('[data-ui="shell-mobile-nav"]');
 
-  await expect(header).toBeVisible();
+  await expect(page.locator('[data-ui="atlas-pos-shell"]')).toBeVisible();
+  await expect(page.getByRole("heading", { name: "New sale", level: 1 })).toBeVisible();
   await expect(main).toBeVisible();
 
   if (desktop) {
+    await expect(header).toBeHidden();
     await expect(sidebar).toBeVisible();
     await expect(mobileNav).toBeHidden();
     const sidebarBox = await sidebar.boundingBox();
     const mainBox = await main.boundingBox();
     expect(sidebarBox).not.toBeNull();
     expect(mainBox).not.toBeNull();
-    expect(sidebarBox!.width).toBeGreaterThanOrEqual(215);
-    expect(sidebarBox!.width).toBeLessThanOrEqual(225);
-    expect(mainBox!.x).toBeGreaterThanOrEqual(215);
+    expect(sidebarBox!.width).toBeGreaterThanOrEqual(77);
+    expect(sidebarBox!.width).toBeLessThanOrEqual(79);
+    expect(mainBox!.x).toBeGreaterThanOrEqual(77);
     expect(mainBox!.width).toBeGreaterThan(1100);
-    await expect(page.getByRole("complementary", { name: "Cart" })).toBeVisible();
+    const v4Cart = page.locator('[data-ui="atlas-pos-cart"]');
+    await expect(v4Cart).toBeVisible();
+    await expect(v4Cart).toHaveCSS("background-color", "rgb(255, 255, 255)");
+    await expect(page.locator('[data-ui="atlas-pos-products"]')).toHaveCSS("background-color", "rgb(247, 248, 245)");
+    expect((await v4Cart.boundingBox())!.width).toBeCloseTo(456, 0);
+    expect((await product.boundingBox())!.height).toBeCloseTo(151, 0);
   } else if (tablet) {
+    await expect(header).toBeHidden();
     await expect(sidebar).toBeHidden();
+    await expect(page.locator('[data-ui="atlas-mobile-header"]')).toBeVisible();
+    await expect(mobileNav).toBeHidden();
+    await page.getByRole("button", { name: "Open workspace menu" }).click();
     await expect(mobileNav).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(mobileNav).toBeHidden();
     const mainBox = await main.boundingBox();
     expect(mainBox).not.toBeNull();
     expect(mainBox!.x).toBeCloseTo(0, 0);
     expect(mainBox!.width).toBeCloseTo(page.viewportSize()!.width, 0);
     const tabletCart = page.getByRole("region", { name: "Tablet cart" });
     await expect(tabletCart).toBeVisible();
+    await expect(tabletCart).toHaveCSS("background-color", "rgb(255, 255, 255)");
     const cartBox = await tabletCart.boundingBox();
     expect(cartBox).not.toBeNull();
     expect(cartBox!.height).toBeCloseTo(160, 0);
   } else {
+    await expect(header).toBeHidden();
     await expect(sidebar).toBeHidden();
+    await expect(page.locator('[data-ui="atlas-mobile-header"]')).toBeVisible();
+    await expect(mobileNav).toBeHidden();
+    await page.getByRole("button", { name: "Open workspace menu" }).click();
     await expect(mobileNav).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(mobileNav).toBeHidden();
     const mainBox = await main.boundingBox();
     expect(mainBox).not.toBeNull();
     expect(mainBox!.x).toBeCloseTo(0, 0);
@@ -72,12 +92,14 @@ test("POS shell and responsive geometry match the current navigation contract", 
     await expect(page.getByRole("region", { name: "Tablet cart" })).toBeHidden();
     const mobileCart = page.getByRole("region", { name: "Mobile cart" });
     await expect(mobileCart).toBeVisible();
+    await expect(mobileCart).toHaveCSS("background-color", "rgb(255, 255, 255)");
     const mobileCartBox = await mobileCart.boundingBox();
     expect(mobileCartBox).not.toBeNull();
     expect(mobileCartBox!.height).toBeGreaterThanOrEqual(100);
   }
 
   await product.click();
+  await confirmPosQuantity(page);
   if (desktop) {
     await page.getByRole("button", { name: /Pay ₱145\.00/ }).click();
   } else if (tablet) {
@@ -87,6 +109,18 @@ test("POS shell and responsive geometry match the current navigation contract", 
   }
   const paymentDialog = page.getByRole("dialog", { name: "Payment" });
   await expect(paymentDialog).toBeVisible();
-  await expect(paymentDialog.getByRole("button", { name: "QR Ph", exact: true })).toBeVisible();
-  await expect(paymentDialog.getByRole("button", { name: "QR Ph", exact: true })).toBeDisabled();
+  if (desktop) {
+    await expect(page.locator('[data-ui="atlas-pos-products"]')).toBeVisible();
+    await expect(paymentDialog.getByRole("heading", { name: "Choose a payment method" })).toBeVisible();
+    await paymentDialog.getByRole("button", { name: "Other payment methods" }).click();
+  }
+  const details = page.locator('[data-ui="payment-workspace"]');
+  await expect(details.getByRole("heading", { name: "Take payment" })).toBeVisible();
+  await expect(details.getByRole("button", { name: "Cash", exact: true })).toBeVisible();
+  const morePaymentMethods = details.getByRole("button", { name: /Other payment methods/ });
+  await expect(morePaymentMethods).toHaveAttribute("aria-expanded", "false");
+  await morePaymentMethods.click();
+  await expect(details.getByRole("button", { name: /Fewer payment methods/ })).toHaveAttribute("aria-expanded", "true");
+  await expect(details.getByRole("button", { name: "QR Ph", exact: true })).toBeVisible();
+  await expect(details.getByRole("button", { name: "QR Ph", exact: true })).toBeDisabled();
 });

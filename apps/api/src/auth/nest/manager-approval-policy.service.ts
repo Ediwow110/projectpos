@@ -258,15 +258,19 @@ export class ManagerApprovalPolicyService {
           const balance = (await this.db.listGiftCardTransactions(card.id, businessId)).reduce((sum, row) => sum + row.amountDeltaMinor, 0);
           state = { balance, version: String(card.version) };
         } else if (action.valueType === "store_credit") {
+          if (!await this.db.findCustomerById(action.targetId, businessId)) throw new Error("NOT_FOUND");
           const account = await this.db.findStoreCreditAccount(action.targetId, businessId);
-          if (!account) throw new Error("NOT_FOUND");
-          const balance = (await this.db.listStoreCreditTransactions(account.id, businessId)).reduce((sum, row) => sum + row.amountDeltaMinor, 0);
-          state = { balance, version: account.updatedAt.toISOString() };
+          const balance = account
+            ? (await this.db.listStoreCreditTransactions(account.id, businessId)).reduce((sum, row) => sum + row.amountDeltaMinor, 0)
+            : 0;
+          state = { balance, version: account?.updatedAt.toISOString() ?? "absent" };
         } else {
+          if (!await this.db.findCustomerById(action.targetId, businessId)) throw new Error("NOT_FOUND");
           const account = await this.db.findLoyaltyAccount(action.targetId, businessId);
-          if (!account) throw new Error("NOT_FOUND");
-          const balance = (await this.db.listLoyaltyTransactions(account.id, businessId)).reduce((sum, row) => sum + row.pointsDelta, 0);
-          state = { balance, version: account.updatedAt.toISOString() };
+          const balance = account
+            ? (await this.db.listLoyaltyTransactions(account.id, businessId)).reduce((sum, row) => sum + row.pointsDelta, 0)
+            : 0;
+          state = { balance, version: account?.updatedAt.toISOString() ?? "absent" };
         }
         return {
           permission,

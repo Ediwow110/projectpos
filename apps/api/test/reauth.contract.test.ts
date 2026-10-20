@@ -15,7 +15,7 @@ describe("sensitive-setting reauthentication", () => {
   beforeAll(async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-09-26T00:00:00.000Z"));
-    app = await createTestApp();
+  app = await createTestApp({ completedOnboardingFixture: true });
   });
 
   afterAll(async () => {

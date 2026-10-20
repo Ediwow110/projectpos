@@ -29,6 +29,43 @@ async function setupRefund() {
 }
 
 describe("phase6 refund service", () => {
+  it("moves an approved refund concern to executed only with its matching refund transaction", async () => {
+    const { db, svc, saleId } = await setupRefund();
+    const item = (await db.listSaleItems(saleId, "b1"))[0]!;
+    const concern = await db.createCustomerConcern({
+      businessId: "b1", saleId, receiptNo: (await db.findSaleById(saleId, "b1"))!.receiptNo,
+      branchId: "branch-1", registerId: (await db.findSaleById(saleId, "b1"))!.registerId,
+      requesterId: "cashier", reason: "DAMAGED", outcome: "REFUND", note: null,
+      items: [{ saleItemId: item.id, name: item.name, qty: 1, amountMinor: 2500 }], requestedRefundMinor: 2500,
+      status: "APPROVED", idempotencyKey: "case-refund-link", reviewedBy: "manager", reviewedAt: new Date(),
+      reviewReason: "Approved for refund", refundId: null,
+    });
+    const result = await svc.approveRefund("b1", "manager", "refund-from-case", saleId, {
+      items: [{ saleItemId: item.id, qty: 1 }], concernId: concern.id, key: "refund-from-case-key",
+    }, ALL, "manager");
+    expect(result.refund.totalMinor).toBe(2500);
+    expect(await db.findCustomerConcernById(concern.id, "b1")).toMatchObject({ status: "REFUND_EXECUTED", refundId: result.refund.id });
+    expect((await db.listAudit()).map((entry) => entry.action)).toContain("customer_concern.refund_execute");
+  });
+
+  it("rejects a refund that does not exactly match its approved concern", async () => {
+    const { db, svc, saleId } = await setupRefund();
+    const item = (await db.listSaleItems(saleId, "b1"))[0]!;
+    const concern = await db.createCustomerConcern({
+      businessId: "b1", saleId, receiptNo: (await db.findSaleById(saleId, "b1"))!.receiptNo,
+      branchId: null, registerId: (await db.findSaleById(saleId, "b1"))!.registerId,
+      requesterId: "cashier", reason: "DAMAGED", outcome: "REFUND", note: null,
+      items: [{ saleItemId: item.id, name: item.name, qty: 1, amountMinor: 2500 }], requestedRefundMinor: 2500,
+      status: "APPROVED", idempotencyKey: "case-refund-mismatch", reviewedBy: "manager", reviewedAt: new Date(),
+      reviewReason: "Approved for refund", refundId: null,
+    });
+    await expect(svc.approveRefund("b1", "manager", "refund-mismatch", saleId, {
+      items: [{ saleItemId: item.id, qty: 2 }], concernId: concern.id, key: "refund-mismatch-key",
+    }, ALL, "manager")).rejects.toThrow("CONCERN_NOT_APPROVED");
+    expect(await db.listRefundsBySale(saleId, "b1")).toEqual([]);
+    expect(await db.findCustomerConcernById(concern.id, "b1")).toMatchObject({ status: "APPROVED", refundId: null });
+  });
+
   it("refunds the discounted line amount instead of the pre-discount gross", async () => {
     const db = createMemoryDb();
     const shifts = new ShiftService(db);

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Param, Post, Req, Res, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
 import type { Request, Response } from "express";
 import {
   receiptEmailSchema,
@@ -24,8 +24,64 @@ export class ReceiptsController {
   ) {}
 
   private perms(req: Request): string[] {
-    return this.auth.rolePermissions(req.auth!.role);
+    return this.auth.permissionsForRequest(req.auth!);
   }
+
+  private mayViewReceipt(req: Request): boolean {
+    const permissions = this.perms(req);
+    return permissions.includes("customer_concern.request") || permissions.includes("customer_concern.review");
+  }
+
+  private isReceiptInScope(
+    req: Request,
+    receipt: { branchId?: string | null; registerId?: string | null },
+  ): boolean {
+    const auth = req.auth!;
+    const allowedBranchIds = auth.allowedBranchIds ?? null;
+    const allowedRegisterIds = auth.allowedRegisterIds ?? null;
+    return !((auth.activeBranchId && receipt.branchId !== auth.activeBranchId) ||
+      (allowedBranchIds !== null &&
+        (!auth.activeBranchId || !receipt.branchId ||
+          receipt.branchId !== auth.activeBranchId || !allowedBranchIds.includes(receipt.branchId))) ||
+      (allowedRegisterIds !== null &&
+        (!receipt.registerId || !allowedRegisterIds.includes(receipt.registerId))));
+  }
+
+  private async requireReceiptAccess(req: Request, saleId: string): Promise<void> {
+    if (!this.mayViewReceipt(req)) throw new Error("FORBIDDEN");
+    // Receipt IDs can be reached by deep links and API calls without using the
+    // receipt-number lookup. Enforce the same active branch/register boundary.
+    const sale = await this.db.findSaleById(saleId, req.auth!.businessId);
+    if (!sale || !this.isReceiptInScope(req, sale)) throw new Error("NOT_FOUND");
+  }
+
+  @Get("receipts/lookup")
+  async lookup(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Query("receiptNo") receiptNo?: string,
+  ): Promise<void> {
+    if (!this.mayViewReceipt(req)) {
+      fail(res, 403, "FORBIDDEN", "Receipt lookup is not available", req);
+      return;
+    }
+    const exactReceiptNo = receiptNo?.trim();
+    if (!exactReceiptNo || exactReceiptNo.length > 64) {
+      fail(res, 400, "VALIDATION", "Enter a valid receipt number", req);
+      return;
+    }
+    try {
+      const receipt = await this.sales.lookupReceipt(req.auth!.businessId, exactReceiptNo);
+      if (!this.isReceiptInScope(req, receipt)) {
+        throw new Error("NOT_FOUND");
+      }
+      res.status(200).json(receipt);
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "VALIDATION";
+      fail(res, statusFor(code), code, "Receipt lookup failed", req);
+    }
+  }
+
 @Get("receipts/:saleId")
   async receipt(
     @Req() req: Request,
@@ -33,6 +89,7 @@ export class ReceiptsController {
     @Param("saleId") saleId: string,
   ): Promise<void> {
     try {
+      await this.requireReceiptAccess(req, saleId);
       res.json(await this.sales.receiptData(req.auth!.businessId, saleId));
     } catch (e) {
       const code = e instanceof Error ? e.message : "VALIDATION";
@@ -49,6 +106,7 @@ export class ReceiptsController {
     @Param("saleId") saleId: string,
   ): Promise<void> {
     try {
+      await this.requireReceiptAccess(req, saleId);
       const { filename, text } = await this.sales.downloadReceipt(req.auth!.businessId, saleId);
       res.status(200)
         .set("Content-Type", "text/plain; charset=utf-8")
@@ -70,6 +128,7 @@ export class ReceiptsController {
     @Param("saleId") saleId: string,
   ): Promise<void> {
     try {
+      await this.requireReceiptAccess(req, saleId);
       const auth = req.auth!;
       const out = await this.sales.createShareToken(auth.businessId, auth.userId, rid(req), saleId);
       res.status(201).json(out);
@@ -98,6 +157,7 @@ export class ReceiptsController {
       return;
     }
     try {
+      await this.requireReceiptAccess(req, saleId);
       const auth = req.auth!;
       const out = await this.sales.sendReceiptEmail(
         auth.businessId,
@@ -121,6 +181,7 @@ export class ReceiptsController {
     @Param("saleId") saleId: string,
   ): Promise<void> {
     try {
+      await this.requireReceiptAccess(req, saleId);
       res.status(200).json(await this.sales.listReceiptDeliveries(req.auth!.businessId, saleId));
     } catch (e) {
       const code = e instanceof Error ? e.message : "VALIDATION";

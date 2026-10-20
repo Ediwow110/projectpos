@@ -6,6 +6,7 @@ import { SalesPaymentReconciliationService } from "./payment-reconciliation-serv
 import { OrderSaleService } from "../orders/order-sale-service";
 import { ReservationService } from "../orders/reservation-service";
 import { SalesService } from "./nest/sales.service";
+import { createMemoryOrderNotificationOutbox } from "../orders/order-notification-outbox";
 
 async function setup() {
   const db = createMemoryDb();
@@ -125,7 +126,14 @@ describe("sales payment reconciliation service", () => {
     });
     await new ReservationService(db).holdSubmittedOrder(business.id, order.id, "rec-hold", now);
     const sale = await new OrderSaleService(db).createSaleFromSubmittedOrder(business.id, "staff", "rec-sale", order.id);
-    const sales = new SalesService(db);
+    const outbox = createMemoryOrderNotificationOutbox();
+    let outboundOrderUpdates = 0;
+    const sales = new SalesService(db, undefined, {
+      async sendPasswordReset() {},
+      async sendEmailVerification() {},
+      async sendReceiptShare() {},
+      async sendOrderUpdate() { outboundOrderUpdates++; },
+    }, outbox);
     const unknown = await sales.completeSale(business.id, "staff", "rec-unknown", sale.id, {
       payments: [{ method: "card", amountMinor: sale.totalMinor, providerRef: "unknown-rec" }],
       key: "rec-unknown-key", granted: [], branchId: branch.id,
@@ -146,10 +154,19 @@ describe("sales payment reconciliation service", () => {
     ]);
     expect((await db.findBalance(product.id, business.id, branch.id))?.qtyOnHand).toBe(0);
     expect((await db.listMovements(product.id, business.id, branch.id)).filter((row) => row.type === "sale")).toHaveLength(1);
+    expect(await outbox.listForTests()).toEqual([
+      expect.objectContaining({
+        businessId: business.id, orderId: order.id, event: "CONFIRMED",
+        status: "PENDING", attempts: 0,
+      }),
+    ]);
+    expect(outboundOrderUpdates).toBe(0);
 
     await sales.reconcilePayment(business.id, "staff", "rec-replay", payment.id, "SUCCEEDED", "rec-ok-key");
     expect(await db.listFulfillmentsByOrder(order.id, business.id)).toHaveLength(1);
     expect((await db.listMovements(product.id, business.id, branch.id)).filter((row) => row.type === "sale")).toHaveLength(1);
+    expect(await outbox.listForTests()).toHaveLength(1);
+    expect(outboundOrderUpdates).toBe(0);
   });
 
   it("leaves a linked WEB reservation HELD when UNKNOWN reconciliation definitively fails", async () => {

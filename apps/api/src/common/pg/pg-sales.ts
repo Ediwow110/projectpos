@@ -97,6 +97,19 @@ export function salesFamily(ctx: PgContext) {
       }
     },
 
+    async findSaleByReceiptNo(receiptNo: string, businessId: string): Promise<DbSale | null> {
+      const c = await ctx.client();
+      try {
+        const r = await c.query(
+          `SELECT ${SALE_SELECT} FROM "Sale" WHERE "receiptNo" = $1 AND "businessId" = $2 LIMIT 1`,
+          [receiptNo, businessId],
+        );
+        return (r.rows[0] as DbSale | undefined) ?? null;
+      } finally {
+        if (ctx.owns()) c.release();
+      }
+    },
+
     async listSalesByBusiness(businessId: string): Promise<DbSale[]> {
       const c = await ctx.client();
       try {
@@ -105,6 +118,19 @@ export function salesFamily(ctx: PgContext) {
           [businessId],
         );
         return r.rows as DbSale[];
+      } finally {
+        if (ctx.owns()) c.release();
+      }
+    },
+
+    async countSalesByBusiness(businessId: string): Promise<number> {
+      const c = await ctx.client();
+      try {
+        const r = await c.query<{ count: string }>(
+          'SELECT COUNT(*)::text AS "count" FROM "Sale" WHERE "businessId" = $1',
+          [businessId],
+        );
+        return Number(r.rows[0]?.count ?? 0);
       } finally {
         if (ctx.owns()) c.release();
       }

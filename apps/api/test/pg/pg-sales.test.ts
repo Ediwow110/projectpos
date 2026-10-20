@@ -185,6 +185,9 @@ describe("phase12 pg sales: sales", () => {
     const s3 = await sales.createSale(fullSale(b1.id, uniq("rcpt")));
     const rows = await sales.listSalesByBusiness(b1.id);
     expect(rows.map((r) => r.id)).toEqual([s1.id, s3.id]);
+    expect(await sales.countSalesByBusiness(b1.id)).toBe(2);
+    expect(await sales.countSalesByBusiness(b2.id)).toBe(1);
+    expect(await sales.countSalesByBusiness("biz_empty")).toBe(0);
     expect(await sales.listSalesByBusiness("biz_empty")).toEqual([]);
   });
 

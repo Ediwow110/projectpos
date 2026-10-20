@@ -13,6 +13,7 @@ export const giftCardLoadRefundSchema = z.object({
 
 export const refundApproveSchema = z.object({
   saleId: z.string().min(1, "VALIDATION"),
+  concernId: z.string().min(1, "VALIDATION").optional(),
   items: refundItemSchema.array().max(100, "VALIDATION").default([]),
   loadRefunds: giftCardLoadRefundSchema.array().max(100, "VALIDATION").default([]),
   deliveryRefundMinor: z.number().int("AMOUNT_NOT_INTEGER").min(0, "VALIDATION").optional(),
@@ -31,6 +32,7 @@ export const refundRejectSchema = z.object({
 
 export const exchangeCreateSchema = z.object({
   saleId: z.string().min(1, "VALIDATION"),
+  concernId: z.string().min(1, "VALIDATION").optional(),
   returns: refundItemSchema.array().min(1, "VALIDATION").max(100, "VALIDATION"),
   replacements: z.object({
     productId: z.string().min(1, "VALIDATION"),

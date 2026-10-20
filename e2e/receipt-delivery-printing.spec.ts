@@ -71,6 +71,12 @@ test("completed receipt can be emailed and opened from a secure public share lin
   await page.getByRole("button", { name: "Deliver receipt" }).click();
   const delivery = page.getByRole("dialog", { name: "Deliver receipt" });
   await expect(delivery).toBeVisible();
+  await expect(delivery).toHaveAttribute("data-ui", "atlas-flow-modal");
+  await expect(delivery).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  if ((page.viewportSize()?.width ?? 0) >= 600) {
+    expect((await delivery.boundingBox())?.width).toBeCloseTo(535, 0);
+  }
+  await expect(delivery.getByText("Workflow step", { exact: true })).toBeVisible();
   await expect(delivery.getByLabel("Customer email")).toHaveValue(customerEmail);
   await delivery.getByRole("button", { name: "Email receipt", exact: true }).click();
   await expect(delivery.getByRole("status")).toContainText(`Receipt emailed to ${customerEmail}.`);

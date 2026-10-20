@@ -17,6 +17,7 @@ describe("POS manager approval dialog", () => {
       />,
     );
     expect(html).toContain("Manager approval");
+    expect(html).toContain('data-ui="atlas-flow-modal"');
     expect(html).toContain("Manager email");
     expect(html).toContain("Approval PIN");
     expect(html).toContain("Use password instead");

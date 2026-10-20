@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { canDeactivateMember, canManageApprovalPin, teamRoleLabel, type TeamMemberRow } from "./team-view";
+import { canChangeMemberRole, canDeactivateMember, canManageApprovalPin, teamRoleLabel, type TeamMemberRow } from "./team-view";
 
 const member = (overrides: Partial<TeamMemberRow> = {}): TeamMemberRow => ({
   id: "membership_1",
@@ -14,6 +14,12 @@ const member = (overrides: Partial<TeamMemberRow> = {}): TeamMemberRow => ({
 });
 
 describe("team view helpers", () => {
+  it("prevents role changes to owner accounts and self", () => {
+    expect(canChangeMemberRole("user_1", member())).toBe(true);
+    expect(canChangeMemberRole("user_1", member({ role: "owner" }))).toBe(false);
+    expect(canChangeMemberRole("user_2", member())).toBe(false);
+    expect(canChangeMemberRole("user_1", member({ deactivatedAt: "2026-09-30T00:00:00Z" }))).toBe(false);
+  });
   it("formats operational roles for display", () => {
     expect(teamRoleLabel("manager")).toBe("Manager");
     expect(teamRoleLabel("cashier")).toBe("Cashier");

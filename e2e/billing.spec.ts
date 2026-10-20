@@ -12,7 +12,7 @@ test("billing and trial UI stay absent while billing is disabled", async ({ page
   });
 
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Owner overview" })).toBeVisible();
   await expect(page.getByText(/Pro trial/i)).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Billing", exact: true })).toHaveCount(0);
 

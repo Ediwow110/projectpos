@@ -1,6 +1,6 @@
 "use client";
 
-import type { JSX } from "react";
+import { useEffect, useRef, useState, type JSX } from "react";
 import { applyCartDiscounts, posDiscountSummary } from "../../lib/pos-sale-model";
 import { ConnectivityBanner } from "../../lib/sync-ui";
 import { AppShell } from "../../components/AppShell";
@@ -10,6 +10,9 @@ import { PosDiscountDialog } from "../../components/PosDiscountDialog";
 import { PosHeldSalesDialog } from "../../components/PosHeldSalesDialog";
 import { ManagerApprovalDialog } from "../../components/ManagerApprovalDialog";
 import { PosPaymentWorkspace } from "../../components/PosPaymentWorkspace";
+import { PosPaymentMethodChooser } from "../../components/PosPaymentMethodChooser";
+import { PosSaleConfirmedDialog } from "../../components/PosSaleConfirmedDialog";
+import { PosPaymentUnknownDialog } from "../../components/PosPaymentUnknownDialog";
 import { PosProductCatalog } from "../../components/PosProductCatalog";
 import { PosResponsiveCart } from "../../components/PosResponsiveCart";
 import { GiftCardLoadDialog } from "../../components/GiftCardLoadDialog";
@@ -17,6 +20,9 @@ import { GiftCardLoadResultDialog } from "../../components/GiftCardLoadResultDia
 import { usePosPageController } from "./use-pos-page-controller";
 
 export default function PosPage(): JSX.Element {
+  const [paymentChooserOpen, setPaymentChooserOpen] = useState(false);
+  const [unknownDialogDismissedFor, setUnknownDialogDismissedFor] = useState<string | null>(null);
+  const paymentOpener = useRef<HTMLElement | null>(null);
   const {
     activeCategoryId,
     addToCart,
@@ -56,6 +62,7 @@ export default function PosPage(): JSX.Element {
     paymentTiles,
     q,
     receiptId,
+    confirmedSale,
     received,
     reconcileId,
     reconcileSaleId,
@@ -73,6 +80,7 @@ export default function PosPage(): JSX.Element {
     setCart,
     setCustomerId,
     setReceiptId,
+    setConfirmedSale,
     setCustomerQ,
     setGiftCardLoad,
     setGiftCardResult,
@@ -103,48 +111,64 @@ export default function PosPage(): JSX.Element {
     store,
   } = usePosPageController();
 
+  useEffect(() => {
+    if (!paymentChooserOpen) return;
+    const desktop = window.matchMedia("(min-width: 1280px)");
+    const followViewport = (): void => {
+      if (desktop.matches) return;
+      setPaymentChooserOpen(false);
+      setShowPay(true);
+    };
+    desktop.addEventListener("change", followViewport);
+    followViewport();
+    return () => desktop.removeEventListener("change", followViewport);
+  }, [paymentChooserOpen, setShowPay]);
+
+  function openPaymentFlow(): void {
+    const opener = document.activeElement;
+    if (opener instanceof HTMLElement) paymentOpener.current = opener;
+    setStatus("");
+    if (window.matchMedia("(min-width: 1280px)").matches) {
+      setPaymentChooserOpen(true);
+    } else {
+      setShowPay(true);
+    }
+  }
+
+  function closePaymentDetails(): void {
+    setShowPay(false);
+    requestAnimationFrame(() => {
+      const target = paymentOpener.current;
+      if (target?.isConnected && target.getClientRects().length) target.focus();
+      else document.getElementById("pos-search")?.focus();
+    });
+  }
+
   return (
     <AppShell
       businessName={meQuery.data?.businessName}
       role={role}
       offline={offline}
       posMode
-      topbar={
-        <label className="inline-flex items-center gap-1 font-data text-[8px] text-[#746960]">
-          <span>REG</span>
-          <select
-            aria-label="Register"
-            value={registerId}
-            onChange={(e) => setSaleRegister(e.target.value)}
-            disabled={resumedSaleLocked}
-            className="max-w-28 bg-transparent font-data text-[8px] font-medium text-[#746960] outline-none"
-          >
-            <option value="">—</option>
-            {scopedRegisters.map((register) => (
-                <option key={register.id} value={register.id}>{register.name}</option>
-              ))}
-          </select>
-          <span aria-hidden>·</span>
-          <span>{now}</span>
-          <span className="sr-only">Selected register: {selectedRegisterName}</span>
-        </label>
-      }
+      atlasPos
     >
-      <div className="px-3 pb-[124px] text-[#17130f] sm:px-5 lg:pb-5 lg:max-xl:px-10 xl:px-3">
+      <div className="min-w-0 pb-[124px] text-[#202826] lg:pb-5 xl:pb-0">
+        <div className="flex min-h-[80px] w-full flex-wrap items-center justify-between gap-3 border-b border-[#e5e9e3] bg-white px-4 py-3 sm:px-7 xl:px-[34px]">
+          <h1 className="font-display text-[24px] font-semibold tracking-tight text-[#202826]">New sale</h1>
+          <label className="hidden items-center gap-2 font-data text-xs font-medium text-[#267552] sm:inline-flex">
+            <span>REGISTER</span>
+            <select aria-label="Register" value={registerId} disabled={resumedSaleLocked} onChange={(e) => setSaleRegister(e.target.value)} className="max-w-[180px] rounded-lg border border-[#e5e9e3] bg-white px-2 py-2 text-xs font-medium text-[#202826]">
+              <option value="">Select register</option>
+              {scopedRegisters.map((register) => <option key={register.id} value={register.id}>{register.name}</option>)}
+            </select>
+          </label>
+          <p className="hidden max-w-[180px] truncate text-xs text-[#53615a] lg:block">{meQuery.data?.businessName || "NexPOS"}</p>
+        </div>
         <main
-          className={
-            "mx-auto grid max-w-[1212px] overflow-hidden rounded-[20px] bg-[#191816] text-white shadow-[0_14px_34px_-12px_rgb(26_18_13/0.20)] xl:ml-0 xl:mr-auto " +
-            // Fluid products track: at 1280-1440px viewports the workspace
-            // sidebar leaves less than 760+452px for this grid. Fixed tracks
-            // overflowed and main's overflow-hidden clipped cart actions
-            // (native clicks intercepted). The products pane absorbs the
-            // shrink (cards reflow via auto-fill); the 452px cart column keeps
-            // its pixel-positioned interior intact at every xl width.
-            "lg:max-xl:h-[1090px] lg:max-xl:min-h-[1090px] xl:min-h-[866px] xl:grid-cols-[minmax(0,1fr)_452px] xl:gap-0 " +
-            (showPay ? "xl:hidden" : "")
-          }
+          className="grid min-w-0 bg-[#f7f8f5] xl:min-h-[calc(100vh-80px)] xl:grid-cols-[minmax(0,1fr)_456px]"
         >
         <PosProductCatalog
+          atlasV4
           registerId={registerId}
           registers={scopedRegisters}
           query={q}
@@ -165,6 +189,7 @@ export default function PosPage(): JSX.Element {
           onAssignCustomer={openCustomerAssignment}
         />
         <PosCartPanel
+          atlasV4
           cart={cart}
           count={count}
           subtotalMinor={discountSummary.grossMinor}
@@ -187,10 +212,10 @@ export default function PosPage(): JSX.Element {
           onOpenHeldSales={openHeldSales}
           onOpenDiscounts={openDiscounts}
           onClearCart={() => { setCart([]); setOrderDiscountMinor(0); setGiftCardLoad(null); }}
-          onResetSale={() => { setCart([]); setOrderDiscountMinor(0); setGiftCardLoad(null); setStatus(''); setReceiptId(null); }}
+          onResetSale={() => { setCart([]); setOrderDiscountMinor(0); setGiftCardLoad(null); setStatus(''); setReceiptId(null); setConfirmedSale(null); }}
           onSetQty={setQty}
           onAssignCustomer={openCustomerAssignment}
-          onOpenPayment={() => { setStatus(''); setShowPay(true); }}
+          onOpenPayment={openPaymentFlow}
           giftCardLoadMinor={giftCardLoadMinor}
           onOpenGiftCardLoad={openGiftCardLoad}
           onSelectShortcut={(key) => {
@@ -202,6 +227,7 @@ export default function PosPage(): JSX.Element {
         </main>
 
         <PosResponsiveCart
+          atlasV4
           cart={cart}
           count={count}
           due={due}
@@ -236,8 +262,7 @@ export default function PosPage(): JSX.Element {
           onSetQty={setQty}
           onOpenPayment={() => {
             setShowTabletCart(false);
-            setStatus("");
-            setShowPay(true);
+            openPaymentFlow();
           }}
           onOpenGiftCardLoad={openGiftCardLoad}
         />
@@ -272,6 +297,7 @@ export default function PosPage(): JSX.Element {
             open
             permission="discount.override"
             action={{ kind: "discount", lines: cart.map((entry) => ({ productId: entry.productId, qty: entry.qty, lineDiscountMinor: entry.lineDiscountMinor })), orderDiscountMinor }}
+            registerId={registerId}
             title={`Manager approval · approve ₱${(discountSummary.totalDiscountMinor / 100).toFixed(2)} discount`}
             description={`This ${approvalRequest === "pay" ? "payment" : "held sale"} includes discounts above the cashier threshold.`}
             summary={`Discount total ₱${(discountSummary.totalDiscountMinor / 100).toFixed(2)} · exact current cart`}
@@ -317,8 +343,21 @@ export default function PosPage(): JSX.Element {
           />
         ) : null}
 
+        {paymentChooserOpen && !showPay ? (
+          <PosPaymentMethodChooser
+            returnFocusTo={paymentOpener.current}
+            effectiveMethod={effectiveMethod}
+            offline={offline}
+            methodAvailable={methodAvailable}
+            onMethodChange={setMethod}
+            onContinue={() => { setPaymentChooserOpen(false); setShowPay(true); }}
+            onMoreMethods={() => { setPaymentChooserOpen(false); setShowPay(true); }}
+            onClose={() => setPaymentChooserOpen(false)}
+          />
+        ) : null}
         {showPay ? (
           <PosPaymentWorkspace
+            atlasV4
             count={count}
             due={due}
             giftCardLoadMinor={giftCardLoadMinor}
@@ -337,12 +376,21 @@ export default function PosPage(): JSX.Element {
             internalInstrumentId={internalInstrumentId}
             onInternalInstrumentIdChange={setInternalInstrumentId}
             onReceivedChange={setReceived}
-            onClose={() => setShowPay(false)}
+            onClose={closePaymentDetails}
             onPay={() => void pay()}
           />
         ) : null}
         {showGiftCardLoad ? <GiftCardLoadDialog onClose={() => setShowGiftCardLoad(false)} onSave={(load) => { setGiftCardLoad(load); setShowGiftCardLoad(false); setMethod("cash"); setStatus("Gift-card load added. It will be funded only after payment completes."); }} /> : null}
         {giftCardResult ? <GiftCardLoadResultDialog code={giftCardResult.code} amountMinor={giftCardResult.amountMinor} onClose={() => setGiftCardResult(null)} /> : null}
+        {confirmedSale && !giftCardResult ? (
+          <PosSaleConfirmedDialog sale={confirmedSale} onClose={() => setConfirmedSale(null)} />
+        ) : null}
+        {reconcileSaleId && !showPay && !giftCardResult && unknownDialogDismissedFor !== reconcileSaleId ? (
+          <PosPaymentUnknownDialog
+            saleId={reconcileSaleId}
+            onClose={() => setUnknownDialogDismissedFor(reconcileSaleId)}
+          />
+        ) : null}
       </div>
     </AppShell>
   );

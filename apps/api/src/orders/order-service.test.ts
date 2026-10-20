@@ -74,6 +74,38 @@ describe("phase22 order service reads", () => {
     expect(full.order.email).toBe("ana@example.com");
     expect(full.order.deliveryAddress).toEqual({ line1: "Secret" });
   });
+
+  it("returns tenant-scoped delivery audit status only to order access managers", async () => {
+    const db = createMemoryDb();
+    const mine = await db.createBusiness({ name: "My shop", currency: "PHP" });
+    const other = await db.createBusiness({ name: "Other shop", currency: "PHP" });
+    const myBranch = await db.createBranch({ businessId: mine.id, name: "Main", type: "store", isActive: true });
+    const otherBranch = await db.createBranch({ businessId: other.id, name: "Main", type: "store", isActive: true });
+    const order = await seedOrder(db, mine.id, new Date(), myBranch.id);
+    const foreign = await seedOrder(db, other.id, new Date(), otherBranch.id);
+    await db.appendAudit({
+      businessId: mine.id, actorId: "system", action: "order.notification.failed",
+      entityType: "Order", entityId: order.id, requestId: "qa",
+      after: { event: "CONFIRMED", token: "never-show-a-token" },
+      at: new Date("2026-10-18T01:00:00.000Z"),
+    });
+    await db.appendAudit({
+      businessId: other.id, actorId: "system", action: "order.notification.sent",
+      entityType: "Order", entityId: foreign.id, requestId: "qa",
+      after: { event: "CONFIRMED" },
+      at: new Date("2026-10-18T02:00:00.000Z"),
+    });
+    const service = new OrderService(db);
+    const viewer = await service.getOrder(mine.id, order.id, ["order.view"]);
+    expect(viewer).not.toHaveProperty("notificationStatus");
+    const manager = await service.getOrder(mine.id, order.id, ["order.view", "order.manage_access"]);
+    expect(manager.notificationStatus).toEqual({
+      state: "FAILED", event: "CONFIRMED", lastAttemptAt: "2026-10-18T01:00:00.000Z",
+    });
+    expect(JSON.stringify(manager.notificationStatus)).not.toContain("never-show-a-token");
+    await expect(service.getOrder(mine.id, foreign.id, ["order.manage_access"]))
+      .rejects.toThrow("NOT_FOUND");
+  });
 });
 
 describe("phase22 order staff lifecycle", () => {

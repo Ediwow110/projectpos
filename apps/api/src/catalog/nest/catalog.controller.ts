@@ -38,7 +38,7 @@ export class CatalogController {
   ) {}
 
   private perms(req: Request): string[] {
-    return this.auth.rolePermissions(req.auth!.role);
+    return this.auth.permissionsForRequest(req.auth!);
   }
 
   private canWrite(req: Request): boolean {

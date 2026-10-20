@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="v1 Receipt-N">
+  <rect width="48" height="48" rx="11" fill="#F35D3F"/>
+  <rect width="48" height="20" rx="11" fill="#fff" opacity=".09"/>
+  <path d="M14 12.5h6.6L27.4 28V12.5H34v23h-6.6L20.6 20v15.5H14v-23Z" fill="#fff"/>
+  <path d="M20.6 12.5l6.8 15.5v3.2l-8.5-17.3 1.7-1.4Z" fill="#D94A30" opacity=".85"/>
+  <path d="M15.6 12.5 17.3 15 19 12.5h-3.4Z" fill="#F35D3F"/>
+  <path d="M30 12.5l1.7 2.5 1.7-2.5H30Z" fill="#F35D3F"/>
+  <circle cx="34" cy="35.5" r="3.4" fill="#fff"/><circle cx="34" cy="35.5" r="1.5" fill="#F35D3F"/>
+</svg>

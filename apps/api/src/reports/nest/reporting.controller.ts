@@ -21,7 +21,7 @@ export class ReportingController {
   ) {}
 
   private perms(req: Request): string[] {
-    return this.auth.rolePermissions(req.auth!.role);
+    return this.auth.permissionsForRequest(req.auth!);
   }
 
   @Get("dashboard/overview")
@@ -71,7 +71,7 @@ export class ReportingController {
           dateTo: parsed.data.dateTo,
           compare: parsed.data.compare,
           registerId: parsed.data.registerId,
-          branchId: parsed.data.branchId,
+          branchId: auth.allowedBranchIds ? auth.activeBranchId! : parsed.data.branchId,
           granularity: parsed.data.granularity,
         }, auth.role, this.perms(req)),
       );
@@ -122,7 +122,10 @@ export class ReportingController {
     }
     try {
       res.status(200).json(
-        await this.reports.getInventoryReport(req.auth!.businessId, parsed.data.branchId),
+        await this.reports.getInventoryReport(
+          req.auth!.businessId,
+          req.auth!.allowedBranchIds ? req.auth!.activeBranchId! : parsed.data.branchId,
+        ),
       );
     } catch (e) {
       failFromError(res, e, "Inventory report fetch failed", req);
@@ -173,7 +176,7 @@ export class ReportingController {
           dateTo: parsed.data.dateTo,
           compare: parsed.data.compare,
           registerId: parsed.data.registerId,
-          branchId: parsed.data.branchId,
+          branchId: req.auth!.allowedBranchIds ? req.auth!.activeBranchId! : parsed.data.branchId,
         }),
       );
     } catch (e) {

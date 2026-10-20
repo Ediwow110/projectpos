@@ -97,4 +97,19 @@ describe("phase9a inventory branch scope", () => {
     expect((await db.findBalance(prod.id, "b1", "br1"))!.qtyOnHand).toBe(7);
     expect(await db.findBalance(prod.id, "b1", null)).toBeNull();
   });
+
+  it("shows a new zero balance in the selected branch without exposing another branch's quantity", async () => {
+    const { svc, productId } = await setupSvc();
+    await svc.recordMovement("b1", "u1", "r1", { productId, type: "receive", qtyDelta: 7, branchId: "br1" });
+
+    const branchTwo = await svc.getBalances("b1", { page: 1, pageSize: 20, view: "all", branchId: "br2" });
+    expect(branchTwo.items).toEqual([
+      expect.objectContaining({ productId, qtyOnHand: 0, status: "out", branchId: "br2" }),
+    ]);
+
+    const branchOne = await svc.getBalances("b1", { page: 1, pageSize: 20, view: "all", branchId: "br1" });
+    expect(branchOne.items).toEqual([
+      expect.objectContaining({ productId, qtyOnHand: 7, status: "ok", branchId: "br1" }),
+    ]);
+  });
 });

@@ -145,7 +145,7 @@ test("Phase 18 count lifecycle, replenishment, RBAC, and responsive surfaces", a
   expect(row).toMatchObject({ onHand: 2, onOrderQty: 0, reorderLevel: 5, suggestedQty: 8, supplierId });
   await page.goto("/inventory/replenishment");
   await expect(page.getByRole("heading", { name: "Replenishment", exact: true })).toBeVisible();
-  await expect(page.getByText("QA Phase 18 Replenishment Product", { exact: true })).toBeVisible();
+  await expect(page.getByRole("table").getByText("QA Phase 18 Replenishment Product", { exact: true })).toBeVisible();
   await page.getByRole("checkbox", { name: "Select QA Phase 18 Replenishment Product" }).check();
   await page.getByRole("button", { name: "Create draft PO" }).click();
   await expect(page).toHaveURL(/\/purchase-orders\//);

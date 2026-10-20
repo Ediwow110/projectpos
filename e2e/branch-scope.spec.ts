@@ -1,7 +1,21 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { API, apiAuthedContext, registerOperationalBusiness } from "./helpers";
 
+async function visibleBranchSelector(page: Page) {
+  const select = page.getByRole("combobox", { name: "Active branch", exact: true });
+  const menu = page.getByRole("button", { name: "Open workspace menu" });
+  // The V4 header hydrates after page.reload(): don't mistake an
+  // initially empty DOM for mobile navigation on a 1440px desktop.
+  await expect.poll(async () => (await select.count()) + (await menu.count()), {
+    timeout: 30_000,
+  }).toBeGreaterThan(0);
+  if ((await select.count()) === 0) {
+    await menu.click();
+  }
+  await expect(select).toHaveCount(1);
+  return select;
+}
 test("active branch persists and scopes POS registers plus inventory", async ({ page, request }) => {
   const email = await registerOperationalBusiness(page, {
     ownerName: "Branch Scope Owner",
@@ -48,15 +62,15 @@ test("active branch persists and scopes POS registers plus inventory", async ({ 
   }
 
   await page.reload();
-  const branchSelect = page.locator('select[aria-label="Active branch"]:visible');
+  const branchSelect = await visibleBranchSelector(page);
   await expect(branchSelect).toHaveValue("");
   await branchSelect.selectOption(north.id);
   await expect(branchSelect).toHaveValue(north.id);
   await page.reload();
-  await expect(page.locator('select[aria-label="Active branch"]:visible')).toHaveValue(north.id);
+  await expect(await visibleBranchSelector(page)).toHaveValue(north.id);
 
   await page.goto("/pos");
-  const posBranchSelect = page.locator('select[aria-label="Active branch"]:visible');
+  const posBranchSelect = await visibleBranchSelector(page);
   await expect(posBranchSelect).toHaveCount(1);
   const registers = page.locator(
     'select[aria-label="Register"]:visible, select[aria-label="Mobile register"]:visible',
@@ -78,7 +92,7 @@ test("active branch persists and scopes POS registers plus inventory", async ({ 
   await expect(row).toBeVisible();
   await expect(row.getByRole("cell").nth(1)).toHaveText("3");
 
-  const inventoryBranchSelect = page.locator('select[aria-label="Active branch"]:visible');
+  const inventoryBranchSelect = await visibleBranchSelector(page);
   await inventoryBranchSelect.selectOption("");
   const allBranchRows = page.getByRole("row").filter({ hasText: "Scoped Coffee" });
   await expect(allBranchRows).toHaveCount(2);
@@ -94,5 +108,5 @@ test("active branch persists and scopes POS registers plus inventory", async ({ 
   expect(archived.ok()).toBe(true);
 
   await page.reload();
-  await expect(page.locator('select[aria-label="Active branch"]:visible')).toHaveValue("");
+  await expect(await visibleBranchSelector(page)).toHaveValue("");
 });

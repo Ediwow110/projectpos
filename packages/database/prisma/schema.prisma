@@ -82,6 +82,7 @@ model Business {
   cashMovements CashMovement[]
   customers   Customer[]
   refunds     Refund[]
+  customerConcerns CustomerConcern[]
   refundItems RefundItem[]
   expenses    Expense[]
   branches    Branch[]
@@ -99,6 +100,7 @@ model Business {
   corrections ShiftCorrection[]
   receiptShares ReceiptShare[]
   receiptDeliveries ReceiptDelivery[]
+  receiptCounters ReceiptCounter[]
   suppliers Supplier[]
   productSuppliers ProductSupplier[]
   purchaseOrders PurchaseOrder[]
@@ -126,6 +128,7 @@ model Business {
   fulfillments Fulfillment[]
   fulfillmentLines FulfillmentLine[]
   orderAccessTokens OrderAccessToken[]
+  orderNotificationOutbox OrderNotificationOutbox[]
   activeSessions Session[] @relation("SessionActiveBusiness")
 }
 
@@ -276,6 +279,8 @@ model Product {
   variantOptionValues ProductVariantOptionValue[]
   bundle             ProductBundle? @relation("BundleProduct")
   bundleComponents   BundleComponent[] @relation("BundleComponentProduct")
+  stockExceptions    StockException[]
+  @@unique([businessId, id])
   @@index([businessId, isActive])
   @@index([businessId, categoryId])
   @@index([businessId, familyId, isActive])
@@ -399,6 +404,60 @@ model InventoryMovement {
   @@index([businessId, productId, createdAt])
 }
 
+/// Phase C: a reported damage/expiration risk. Reporting does not alter
+/// saleable stock; a separately audited disposition writes a stock movement.
+model StockException {
+  id         String   @id @default(cuid())
+  businessId String
+  productId  String
+  branchId   String?
+  kind       String
+  quantity   Int
+  expiresOn  String?
+  reason     String
+  status     String   @default("OPEN")
+  reportKey  String
+  reportedBy String
+  createdAt  DateTime @default(now())
+  disposedBy String?
+  disposedAt DateTime?
+  movementId String?
+  product    Product @relation(fields: [businessId, productId], references: [businessId, id], onDelete: Restrict, map: "StockException_tenant_product_fkey")
+  branch     Branch? @relation(fields: [businessId, branchId], references: [businessId, id], onDelete: Restrict, map: "StockException_tenant_branch_fkey")
+  @@unique([businessId, reportKey])
+  @@index([businessId, branchId, status, createdAt])
+  @@index([businessId, productId])
+}
+
+model GuestSupportCase {
+  id             String   @id @default(cuid())
+  businessId     String
+  orderId        String
+  category       String
+  description    String
+  status         String   @default("OPEN")
+  idempotencyKey String
+  createdAt      DateTime @default(now())
+  closedAt       DateTime?
+  closedBy       String?
+  order          Order @relation(fields: [businessId, orderId], references: [businessId, id], onDelete: Restrict, map: "GuestSupportCase_tenant_order_fkey")
+  @@unique([businessId, idempotencyKey])
+  @@index([businessId, status, createdAt])
+  @@index([businessId, orderId, createdAt])
+}
+
+model PlatformOwnerConsent {
+  id        String   @id @default(cuid())
+  businessId String
+  ownerId   String
+  purpose   String
+  tokenHash String   @unique
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+  @@index([businessId, expiresAt])
+}
+
 model InventoryBalance {
   id         String   @id @default(cuid())
   businessId String
@@ -508,6 +567,7 @@ model Sale {
   updatedAt      DateTime   @updatedAt
   business       Business   @relation(fields: [businessId], references: [id])
   items          SaleItem[]
+  customerConcerns CustomerConcern[]
   payments       Payment[]
   receiptDeliveries ReceiptDelivery[]
   giftCardLoads  SaleGiftCardLoad[]
@@ -611,8 +671,6 @@ model Register {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   business   Business @relation(fields: [businessId], references: [id])
-  storeCreditAccount StoreCreditAccount?
-  loyaltyAccount LoyaltyAccount?
   shifts     Shift[]
   @@unique([businessId, name])
   @@index([businessId])
@@ -681,6 +739,8 @@ model Customer {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   business   Business @relation(fields: [businessId], references: [id])
+  storeCreditAccounts StoreCreditAccount[]
+  loyaltyAccounts LoyaltyAccount[]
   @@unique([businessId, phone])
   @@index([businessId, isActive])
   @@index([businessId, name])
@@ -705,6 +765,61 @@ model Refund {
   items             RefundItem[]
   @@index([businessId, saleId])
   @@index([businessId, createdAt])
+}
+
+model CustomerConcern {
+  id                   String   @id
+  businessId           String
+  saleId               String
+  receiptNo            String
+  branchId             String?
+  registerId           String?
+  requesterId          String
+  reason               String
+  outcome              String
+  note                 String?
+  items                Json
+  requestedRefundMinor Int
+  status               String
+  idempotencyKey       String
+  reviewedBy           String?
+  reviewedAt           DateTime?
+  reviewReason         String?
+  refundId             String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  business             Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  sale                 Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  @@unique([businessId, idempotencyKey])
+  @@index([businessId, status, createdAt])
+  @@index([businessId, saleId, createdAt])
+}
+
+model ManagerApprovalRequest {
+  id                String   @id
+  businessId        String
+  requesterId       String
+  branchId          String?
+  registerId        String?
+  kind              String
+  permission        String
+  action            Json
+  fingerprint       String
+  stateFingerprint  String?
+  status            String
+  idempotencyKey    String
+  approverId        String?
+  decidedAt         DateTime?
+  decisionReason    String?
+  tokenCiphertext   String?
+  tokenExpiresAt    DateTime?
+  tokenClaimedAt    DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([businessId, requesterId, idempotencyKey])
+  @@index([businessId, status, createdAt])
+  @@index([businessId, requesterId, createdAt])
 }
 
 model Order {
@@ -744,6 +859,9 @@ model Order {
   reservations            InventoryReservation[]
   fulfillments            Fulfillment[]
   accessTokens            OrderAccessToken[]
+  notificationOutbox      OrderNotificationOutbox[]
+  guestSupportCases        GuestSupportCase[]
+  @@unique([businessId, id])
   @@index([businessId, createdAt, id])
   @@index([businessId, status, createdAt])
   @@index([businessId, branchId, createdAt])
@@ -854,6 +972,27 @@ model OrderAccessToken {
   @@index([businessId, orderId, kind, revokedAt, expiresAt])
 }
 
+model OrderNotificationOutbox {
+  id             String   @id
+  businessId     String
+  orderId        String
+  event          String
+  dedupeKey      String
+  status         String   @default("PENDING")
+  attempts       Int      @default(0)
+  nextAttemptAt  DateTime @default(now())
+  leaseId        String?
+  lockedUntil    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  business       Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  order          Order    @relation(fields: [businessId, orderId], references: [businessId, id], onDelete: Cascade)
+  @@unique([businessId, dedupeKey])
+  @@index([businessId, orderId, status])
+  @@index([nextAttemptAt, createdAt, id])
+  @@index([lockedUntil])
+}
+
 model RefundItem {
   id          String   @id @default(cuid())
   businessId  String
@@ -925,6 +1064,8 @@ model Branch {
   purchaseOrders PurchaseOrder[]
   inventoryCounts InventoryCount[]
   activeSessions Session[] @relation("SessionActiveBranch")
+  stockExceptions StockException[]
+  @@unique([businessId, id])
   @@unique([businessId, name])
   @@index([businessId])
 }
@@ -1159,8 +1300,6 @@ model ReceiptDelivery {
   sentAt         DateTime?
   createdAt      DateTime @default(now())
   business       Business @relation(fields: [businessId], references: [id])
-  storeCreditAccount StoreCreditAccount?
-  loyaltyAccount LoyaltyAccount?
   sale           Sale     @relation(fields: [saleId], references: [id])
 
   @@unique([businessId, idempotencyKey])

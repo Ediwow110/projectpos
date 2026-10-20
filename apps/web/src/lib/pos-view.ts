@@ -6,6 +6,7 @@ export type PaymentPresentation = {
 export type CompletedSaleView = {
   id: string;
   status: string;
+  receiptNo?: string;
   payments: Array<{ id: string }>;
   giftCardCodes?: string[];
 };

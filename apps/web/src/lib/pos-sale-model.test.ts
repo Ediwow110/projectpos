@@ -15,6 +15,24 @@ import {
 } from "./pos-sale-model";
 
 describe("POS sale model", () => {
+  it("carries product photo URLs for display but excludes them from payment drafts", () => {
+    const cart = addProductToCart([], {
+      id: "p-photo", name: "Oat Milk", sku: null, categoryId: null,
+      priceMinor: 13500, isActive: true,
+      imageUrl: "https://images.example.test/oat-milk.webp",
+    });
+    expect(cart[0].imageUrl).toBe("https://images.example.test/oat-milk.webp");
+    const draft = buildDraftSaleInput(cart, "", "", "");
+    expect(JSON.stringify(draft)).not.toContain("images.example.test");
+    expect(draft.lines).toEqual([{ productId: "p-photo", qty: 1, lineDiscountMinor: 0 }]);
+  });
+  it("carries owner product photos only as cart display state, not sale or payment payload data", () => {
+    const cart = addProductToCart([], { id: "photo", name: "Milk", sku: "M", categoryId: null, priceMinor: 13500, isActive: true, imageUrl: "https://images.example.com/milk.jpg" }, 2);
+    expect(cart[0].imageUrl).toBe("https://images.example.com/milk.jpg");
+    const draft = buildDraftSaleInput(cart, "reg1", "", "");
+    expect(draft.lines).toEqual([{ productId: "photo", qty: 2, lineDiscountMinor: 0 }]);
+    expect(JSON.stringify(draft)).not.toContain("images.example.com");
+  });
   it("restores held-sale items in their saved cashier order", () => {
     expect(heldSaleToCart({
       items: [
@@ -92,6 +110,28 @@ describe("POS sale model", () => {
     expect(cart).toEqual([{ productId: "p1", name: "Coffee", priceMinor: 2500, qty: 2, lineDiscountMinor: 0 }]);
     expect(changeCartQuantity(cart, "p1", -2)).toEqual([]);
     expect(filterOfflineCatalog([coffee, tea], "cf", "c1")).toEqual([coffee]);
+  });
+
+  it("adds a chosen quantity before checkout while preserving product order and prior discounts", () => {
+    const coffee = { id: "coffee", name: "Coffee", sku: null, categoryId: null, priceMinor: 2500, isActive: true };
+    const milk = { id: "milk", name: "Milk", sku: null, categoryId: null, priceMinor: 13500, isActive: true };
+    const first = addProductToCart([], coffee, 3);
+    const discounted = applyCartDiscounts(first, { coffee: 500 });
+    const next = addProductToCart(addProductToCart(discounted, milk, 2), coffee, 4);
+    expect(next.map((line) => [line.productId, line.qty])).toEqual([["coffee", 7], ["milk", 2]]);
+    expect(next[0].lineDiscountMinor).toBe(500);
+    expect(posDiscountSummary(next, 0).grossMinor).toBe(7 * 2500 + 2 * 13500);
+    expect(addProductToCart(next, coffee, 0)).toEqual(next);
+    expect(addProductToCart(next, coffee, 1.5)).toEqual(next);
+    expect(addProductToCart(next, coffee, 1000)).toEqual(next);
+  });
+  it("adds the selected number of pieces in one operation without changing cart order", () => {
+    const coffee = { id: "p1", name: "Coffee", sku: "CF-1", categoryId: "c1", priceMinor: 2500, isActive: true };
+    const tea = { id: "p2", name: "Tea", sku: "TE-1", categoryId: "c2", priceMinor: 1500, isActive: true };
+    const first = addProductToCart([], coffee, 5);
+    expect(first[0].qty).toBe(5);
+    const updated = addProductToCart(addProductToCart(first, tea), coffee, 3);
+    expect(updated.map((entry) => [entry.productId, entry.qty])).toEqual([["p1", 8], ["p2", 1]]);
   });
 
   it("applies fixed line and order discounts in minor units and caps them to the sale value", () => {

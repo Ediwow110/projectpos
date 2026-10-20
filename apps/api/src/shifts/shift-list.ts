@@ -17,6 +17,8 @@ export interface ShiftListOptions {
   status?: string;
   registerId?: string;
   includeCloseCandidates?: boolean;
+  branchId?: string;
+  allowedRegisterIds?: string[];
 }
 
 /**
@@ -31,6 +33,8 @@ export function selectShiftList(
 ): { items: ShiftListItem[]; nextCursor: string | null } {
   const limit = Math.min(Math.max(opts.limit ?? 50, 1), 100);
   let rows = input;
+  if (opts.branchId) rows = rows.filter((s) => s.branchId === opts.branchId);
+  if (opts.allowedRegisterIds) rows = rows.filter((s) => opts.allowedRegisterIds!.includes(s.registerId));
   if (opts.status) rows = rows.filter((s) => s.status === opts.status);
   if (opts.registerId) rows = rows.filter((s) => s.registerId === opts.registerId);
   const candidateIds = new Set<string>();

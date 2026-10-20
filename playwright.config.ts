@@ -65,6 +65,8 @@ export default defineConfig({
         // the dev API the browser talks to.
         PLATFORM_API_KEY: process.env["PLATFORM_API_KEY"] ?? "test-platform-key",
         BILLING_TEST_DOUBLE_SECRET: process.env["BILLING_TEST_DOUBLE_SECRET"] ?? "test-webhook-secret",
+        // Keep direct focused Playwright runs aligned with scripts/run-e2e.mjs.
+        APPROVAL_QUEUE_ENCRYPTION_KEY: process.env["APPROVAL_QUEUE_ENCRYPTION_KEY"] ?? "a4".repeat(32),
       } as Record<string, string>,
     },
     {

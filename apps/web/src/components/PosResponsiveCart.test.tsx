@@ -36,7 +36,12 @@ describe("POS responsive cart", () => {
     expect(html).toContain('aria-label="Mobile cart"');
     expect(html).toContain('aria-label="Tablet cart"');
     expect(html).toContain('aria-label="Tablet cart details"');
+    expect(html).toContain('aria-modal="true"');
+    expect(html).toContain('aria-label="Close cart"');
+    expect(html).toContain('h-11 w-11');
     expect(html).toContain("Coffee");
+    expect(html).toContain('aria-label="Remove Coffee"');
+    expect(html).toContain("Line total ₱45.00");
     expect(html).toContain("Discounts");
     expect(html).toContain("−₱8.00");
     expect(html).toContain("/sales/sale-unknown");

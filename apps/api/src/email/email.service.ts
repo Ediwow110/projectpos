@@ -6,6 +6,9 @@ export interface MailMessage {
   subject: string;
   text: string;
   html: string;
+  // An explicit drop request applies to this individual message only.
+  // Brevo's HTTP transport recognizes it; unsupported transports fail closed.
+  sandbox?: "drop";
 }
 
 export interface MailTransport {
@@ -36,6 +39,8 @@ export type EmailRuntimeConfig =
       apiKey: string;
       from: string;
       webUrl: string;
+      sandbox?: "drop";
+      orderSandbox?: "drop";
     }
   | {
       enabled: true;
@@ -73,6 +78,12 @@ function parsePort(value: string): number {
 
 export function loadEmailConfig(source: NodeJS.ProcessEnv = process.env): EmailRuntimeConfig {
   const production = (source["NODE_ENV"] ?? "development") === "production";
+  // The sandbox switch must never silently fall through to a live send if
+  // misspelled, or when an SMTP transport is selected instead of Brevo API.
+  const sandbox = source["BREVO_SANDBOX_MODE"]?.trim() ?? "";
+  const orderSandbox = source["ORDER_NOTIFICATION_BREVO_SANDBOX"]?.trim() ?? "";
+  if (sandbox && sandbox !== "drop") throw new Error("ENV_INVALID_EMAIL_CONFIG");
+  if (orderSandbox && orderSandbox !== "drop") throw new Error("ENV_INVALID_EMAIL_CONFIG");
   const values = {
     apiKey: source["BREVO_API_KEY"]?.trim() ?? "",
     host: source["SMTP_HOST"]?.trim() ?? "",
@@ -84,6 +95,9 @@ export function loadEmailConfig(source: NodeJS.ProcessEnv = process.env): EmailR
   };
   const smtpConfigured = Boolean(values.host || values.port || values.user || values.pass || source["SMTP_SECURE"] !== undefined);
   const apiConfigured = Boolean(values.apiKey);
+  if ((sandbox === "drop" || orderSandbox === "drop") && (!apiConfigured || smtpConfigured)) {
+    throw new Error("ENV_INVALID_EMAIL_CONFIG");
+  }
   // WEB_URL is shared by the rest of the application, so it must not by
   // itself opt development into transactional email. A provider or sender
   // setting does; production still requires a complete email configuration.
@@ -116,6 +130,8 @@ export function loadEmailConfig(source: NodeJS.ProcessEnv = process.env): EmailR
       apiKey: values.apiKey,
       from: values.from,
       webUrl,
+      ...(sandbox === "drop" ? { sandbox: "drop" as const } : {}),
+      ...(orderSandbox === "drop" ? { orderSandbox: "drop" as const } : {}),
     };
   }
 
@@ -145,26 +161,36 @@ export class BrevoApiTransport implements MailTransport {
   constructor(
     private readonly apiKey: string,
     private readonly fetchImpl: typeof fetch = fetch,
+    private readonly sandbox = false,
   ) {}
 
   async send(message: MailMessage): Promise<void> {
     const sender = parseMailbox(message.from);
-    const response = await this.fetchImpl("https://api.brevo.com/v3/smtp/email", {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        "content-type": "application/json",
-        "api-key": this.apiKey,
-      },
-      body: JSON.stringify({
-        sender,
-        to: [{ email: message.to }],
-        subject: message.subject,
-        textContent: message.text,
-        htmlContent: message.html,
-      }),
-      signal: AbortSignal.timeout(10_000),
-    });
+    let response: Response;
+    try {
+      response = await this.fetchImpl("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+          "api-key": this.apiKey,
+        },
+        body: JSON.stringify({
+          sender,
+          // Per Brevo's API, X-Sib-Sandbox is a JSON payload header, NOT
+          // an HTTP header. The "drop" value guarantees no mail delivery.
+          ...(this.sandbox || message.sandbox === "drop" ? { headers: { "X-Sib-Sandbox": "drop" } } : {}),
+          to: [{ email: message.to }],
+          subject: message.subject,
+          textContent: message.text,
+          htmlContent: message.html,
+        }),
+        signal: AbortSignal.timeout(10_000),
+      });
+    } catch {
+      // Never propagate provider/network exception details to API callers.
+      throw new Error("EMAIL_DELIVERY_FAILED");
+    }
     if (!response.ok) throw new Error("EMAIL_DELIVERY_FAILED");
   }
 }
@@ -212,7 +238,7 @@ function htmlShell(input: { eyebrow: string; title: string; body: string; href: 
 export class TransactionalEmailService implements TransactionalEmailPort {
   constructor(
     private readonly transport: MailTransport,
-    private readonly config: { from: string; webUrl: string },
+    private readonly config: { from: string; webUrl: string; orderSandbox?: "drop" },
   ) {}
 
   async sendPasswordReset(input: { to: string; name: string; token: string }): Promise<void> {
@@ -280,6 +306,7 @@ export class TransactionalEmailService implements TransactionalEmailPort {
     const safeEvent = escapeHtml(input.event.replaceAll("_", " ").toLowerCase());
     await this.transport.send({
       from: this.config.from,
+      ...(this.config.orderSandbox === "drop" ? { sandbox: "drop" as const } : {}),
       to: input.to,
       subject: `NexPOS order ${input.orderId} · ${input.event}`,
       text: `Hi ${input.contactName || "there"},\n\nYour order ${input.orderId} is now ${input.event}.\nView status:\n${href}\n\nKeep this private link secure.`,
@@ -299,11 +326,14 @@ export function createTransactionalEmailFromEnv(source: NodeJS.ProcessEnv = proc
   const config = loadEmailConfig(source);
   if (!config.enabled) return NOOP_TRANSACTIONAL_EMAIL;
   if (config.provider === "brevo-api") {
-    return new TransactionalEmailService(new BrevoApiTransport(config.apiKey), {
+    return new TransactionalEmailService(new BrevoApiTransport(config.apiKey, fetch, config.sandbox === "drop"), {
       from: config.from,
       webUrl: config.webUrl,
+      ...(config.orderSandbox === "drop" ? { orderSandbox: "drop" as const } : {}),
     });
   }
+  // Every sandbox mode requires Brevo API. SMTP cannot be trusted to honor
+  // per-message sandbox metadata; loadEmailConfig rejects that combination.
   const transporter = nodemailer.createTransport({
     host: config.host,
     port: config.port,

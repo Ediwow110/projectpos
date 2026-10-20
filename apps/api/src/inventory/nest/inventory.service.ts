@@ -141,7 +141,7 @@ export class InventoryService {
       ? balances
       : balances.filter((b) => (b.branchId ?? null) === (opts.branchId ?? null));
     const byId = new Map(products.map((p) => [p.id, p]));
-    let rows: BalanceRow[] = scoped
+    const rowsWithBalance: BalanceRow[] = scoped
       .map((b: DbBalance): BalanceRow | null => {
         const p = byId.get(b.productId);
         if (!p) return null;
@@ -160,6 +160,19 @@ export class InventoryService {
         };
       })
       .filter((r): r is BalanceRow => r !== null);
+    const productsWithBalance = new Set(scoped.map((balance) => balance.productId));
+    const rowsWithoutMovement: BalanceRow[] = products
+      .filter((product) => product.isActive && product.trackInventory && !productsWithBalance.has(product.id))
+      .map((product) => ({
+        productId: product.id,
+        productName: product.name,
+        qtyOnHand: 0,
+        reorderLevel: product.reorderLevel,
+        trackInventory: true,
+        status: deriveStockStatus({ qtyOnHand: 0, reorderLevel: product.reorderLevel, trackInventory: true }),
+        branchId: opts.branchId ?? null,
+      }));
+    let rows: BalanceRow[] = [...rowsWithBalance, ...rowsWithoutMovement];
     if (opts.view === "low") rows = rows.filter((r) => r.status === "low" || r.status === "out");
     if (opts.view === "out") rows = rows.filter((r) => r.status === "out");
     rows = [...rows].sort((a, b) => a.productName.localeCompare(b.productName));

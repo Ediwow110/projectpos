@@ -24,14 +24,84 @@ export interface OnboardingState {
 
 export function defaultOnboardingState(): OnboardingState {
   return {
-    currentStep: "taxCurrency",
+    currentStep: "businessDetails",
     steps: {
-      businessDetails: "done",
+      businessDetails: "pending",
       taxCurrency: "pending",
       receiptSetup: "pending",
       products: "pending",
       employees: "pending",
     },
+  };
+}
+
+// A progress flag is not evidence that the business was configured.
+// Reconcile legacy flags when loading a saved setup and at the session boundary.
+export function isRequiredSetupConfigured(step: OnboardingStep, settings: Record<string, unknown>): boolean {
+  switch (step) {
+    case "businessDetails":
+      return typeof settings["businessAddress"] === "string" &&
+        settings["businessAddress"].trim().length >= 5 &&
+        typeof settings["businessTimezone"] === "string" &&
+        settings["businessTimezone"].trim().length >= 3;
+    case "taxCurrency":
+      return typeof settings["currency"] === "string" && settings["currency"].length === 3 &&
+        typeof settings["taxName"] === "string" && settings["taxName"].trim().length > 0 &&
+        typeof settings["taxRateBps"] === "number" &&
+        Number.isInteger(settings["taxRateBps"]) &&
+        settings["taxRateBps"] >= 0 && settings["taxRateBps"] <= 10000;
+    case "receiptSetup":
+      // The standard merchant-name receipt is available to every plan.
+      // Saving optional custom text does not acknowledge receipt review.
+      return settings["standardReceiptConfirmed"] === true;
+    default:
+      return true;
+  }
+}
+
+export function configuredOnboardingState(settings: Record<string, unknown>): OnboardingState {
+  const state = normalizeOnboardingState(settings["onboarding"]);
+  // Existing businesses that finished the legacy wizard must not be
+  // unexpectedly locked out during deployment. Any unfinished setup
+  // still needs the new server-validated configuration.
+  if (settings["onboardingSchemaVersion"] !== 2 &&
+      REQUIRED_STEPS.every((step) => state.steps[step] === "done")) {
+    return state;
+  }
+  const steps = { ...state.steps };
+  for (const step of REQUIRED_STEPS) {
+    if (steps[step] === "done" && !isRequiredSetupConfigured(step, settings)) {
+      steps[step] = "pending";
+    }
+  }
+  return { steps, currentStep: ONBOARDING_ORDER.find((step) => steps[step] === "pending") ?? "complete" };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isStepState(value: unknown): value is StepState {
+  return value === "done" || value === "skipped" || value === "pending";
+}
+
+export function normalizeOnboardingState(value: unknown): OnboardingState {
+  const fallback = defaultOnboardingState();
+  if (!isRecord(value)) return fallback;
+
+  const storedSteps = isRecord(value["steps"]) ? value["steps"] : {};
+  const steps = Object.fromEntries(
+    ONBOARDING_ORDER.map((step) => [
+      step,
+      isStepState(storedSteps[step]) && !(REQUIRED_STEPS.includes(step) && storedSteps[step] === "skipped")
+        ? storedSteps[step]
+        : fallback.steps[step],
+    ]),
+  ) as Record<OnboardingStep, StepState>;
+
+  return {
+    currentStep: ONBOARDING_ORDER.find((step) => steps[step] === "pending") ?? "complete",
+    steps,
   };
 }
 
@@ -48,7 +118,8 @@ export function applyOnboardingPatch(
 }
 
 export function isOnboardingComplete(state: OnboardingState): boolean {
-  return REQUIRED_STEPS.every((s) => state.steps[s] === "done");
+  const steps = normalizeOnboardingState(state).steps;
+  return REQUIRED_STEPS.every((s) => steps[s] === "done");
 }
 
 export function mergeSettings(

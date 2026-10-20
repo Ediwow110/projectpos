@@ -34,7 +34,7 @@ export class SalesController {
   ) {}
 
   private perms(req: Request): string[] {
-    return this.auth.rolePermissions(req.auth!.role);
+    return this.auth.permissionsForRequest(req.auth!);
   }
 @Post("sales/discount-approval")
   @UseGuards(CsrfGuard)
@@ -225,6 +225,8 @@ export class SalesController {
         customerId: parsed.data.customerId,
         dateFrom: parsed.data.dateFrom,
         dateTo: parsed.data.dateTo,
+        ...(req.auth!.allowedBranchIds ? { branchId: req.auth!.activeBranchId! } : {}),
+        ...(req.auth!.allowedRegisterIds ? { allowedRegisterIds: req.auth!.allowedRegisterIds } : {}),
       });
       res.json(page);
     } catch (e) {
@@ -276,7 +278,16 @@ export class SalesController {
       return;
     }
     try {
-      res.json(await this.sales.listHeldSales(req.auth!.businessId, req.auth!.userId));
+      const held = await this.sales.listHeldSales(req.auth!.businessId, req.auth!.userId);
+      const allowed = req.auth!.allowedBranchIds;
+      const registers = req.auth!.allowedRegisterIds;
+      res.json(allowed ? {
+        ...held,
+        items: held.items.filter((item) =>
+          Boolean(item.sale.branchId && allowed.includes(item.sale.branchId)) &&
+          (registers === null || registers === undefined ||
+            Boolean(item.sale.registerId && registers.includes(item.sale.registerId)))),
+      } : held);
     } catch (e) {
       const code = e instanceof Error ? e.message : "VALIDATION";
       fail(res, statusFor(code), code, "Held sales fetch failed", req);

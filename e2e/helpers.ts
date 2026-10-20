@@ -1,6 +1,6 @@
 import { expect, type Page, type APIRequestContext, type Locator } from "@playwright/test";
 
-export const API = "http://localhost:3101";
+export const API = `http://localhost:${process.env.E2E_API_PORT ?? "3101"}`;
 
 export function posCartRegion(page: Page): Locator {
   const width = page.viewportSize()?.width ?? 1440;
@@ -17,6 +17,20 @@ export async function clickPosPay(page: Page, amount: string): Promise<void> {
     return;
   }
   await cart.getByRole("button", { name: new RegExp("Pay ₱" + amount.replace(".", "\\.")) }).click();
+  // Atlas V4 desktops deliberately show method selection before the detailed
+  // payment workspace. Do not bypass this user-facing step in E2E checkout.
+  const chooser = page.getByRole("dialog", { name: "Payment" });
+  await expect(chooser).toHaveAttribute("data-ui", "atlas-v4-payment-chooser");
+  await chooser.getByRole("button", { name: "Continue" }).click();
+}
+
+/** Confirm the quantity picker shown by a product tile before adding it to the cart. */
+export async function confirmPosQuantity(page: Page, pieces = 1): Promise<void> {
+  const dialog = page.getByRole("dialog", { name: "Choose pieces" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("spinbutton", { name: "Pieces" }).fill(String(pieces));
+  await dialog.getByRole("button", { name: "Add to sale" }).click();
+  await expect(dialog).toBeHidden();
 }
 
 export async function expectOnePosCartItem(page: Page): Promise<void> {
@@ -25,7 +39,9 @@ export async function expectOnePosCartItem(page: Page): Promise<void> {
     await expect(posCartRegion(page).getByText("1 item in cart", { exact: true })).toBeVisible();
     return;
   }
-  await expect(page.getByRole("heading", { name: "Cart (1)" })).toBeVisible();
+  const cart = posCartRegion(page);
+  await expect(cart.getByRole("heading", { name: "Cart (1)" })).toBeVisible();
+  await expect(cart.locator("ul > li").first()).not.toContainText("Cart is empty.");
 }
 
 export async function registerBusiness(
@@ -58,7 +74,17 @@ export async function registerOperationalBusiness(
     const csrfResponse = await fetch("/api/v1/auth/csrf", { credentials: "include" });
     if (!csrfResponse.ok) return { ok: false, status: csrfResponse.status };
     const csrf = (await csrfResponse.json()) as { csrfToken: string };
-    for (const step of ["taxCurrency", "receiptSetup"] as const) {
+    for (const [step, settings] of [
+      ["businessDetails", { businessAddress: "123 Test Street, Manila", businessTimezone: "Asia/Manila" }],
+      ["taxCurrency", { currency: "PHP", taxName: "No tax", taxRateBps: 0 }],
+      ["receiptSetup", { standardReceiptConfirmed: true }],
+    ] as const) {
+      const configured = await fetch("/api/v1/business/settings", {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf.csrfToken },
+        body: JSON.stringify(settings),
+      });
+      if (!configured.ok) return { ok: false, status: configured.status };
       const response = await fetch("/api/v1/onboarding", {
         method: "PATCH",
         credentials: "include",
@@ -66,7 +92,10 @@ export async function registerOperationalBusiness(
           "Content-Type": "application/json",
           "X-CSRF-Token": csrf.csrfToken,
         },
-        body: JSON.stringify({ step, state: "done" }),
+        body: JSON.stringify({
+          step, state: "done",
+          ...(step === "receiptSetup" ? { receiptPreviewConfirmed: true } : {}),
+        }),
       });
       if (!response.ok) return { ok: false, status: response.status };
     }
@@ -173,13 +202,27 @@ export async function signIn(page: Page, email: string, password: string): Promi
   await page.getByRole("button", { name: "Sign in securely" }).click();
   await expect(page).toHaveURL(/\/$/, { timeout: 30_000 });
   const tour = page.getByRole("dialog", { name: "Welcome to NexPOS" });
-  await expect(tour).toBeVisible({ timeout: 30_000 });
-  await tour.getByRole("button", { name: "Skip tour" }).click();
-  await expect(tour).toBeHidden();
+  const tourVisible = await tour.waitFor({ state: "visible", timeout: 5_000 }).then(() => true).catch(() => false);
+  if (tourVisible) {
+    await tour.getByRole("button", { name: "Skip tour" }).click();
+    await expect(tour).toBeHidden();
+  }
 }
 
 export async function signOut(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Sign out" }).click();
+  // Atlas V4 mobile keeps session actions in the accessible workspace menu.
+  // Atlas V4 desktop keeps them in the role-specific rail, not a hidden header.
+  const mobileHeader = page.locator('[data-ui="atlas-mobile-header"]');
+  const sidebar = page.locator('[data-ui="shell-sidebar"]');
+  if (await mobileHeader.isVisible()) {
+    await mobileHeader.getByRole("button", { name: "Open workspace menu" }).click();
+    await page.locator('[data-ui="shell-mobile-more"]').getByRole("button", { name: "Sign out" }).click();
+  } else if (await sidebar.isVisible() &&
+      await sidebar.getByRole("button", { name: "Sign out" }).count() > 0) {
+    await sidebar.getByRole("button", { name: "Sign out" }).click();
+  } else {
+    await page.getByRole("banner").getByRole("button", { name: "Sign out" }).click();
+  }
   await expect(page).toHaveURL(/\/login/, { timeout: 30_000 });
 }
 
@@ -256,11 +299,16 @@ export async function completePosSale(
   await selectPosRegister(page, input.register);
   await page.getByLabel("Search product, SKU or scan barcode").fill(input.productName);
   await page.getByRole("button", { name: `${input.productName} ₱${input.productPriceLabel}` }).click();
+  await confirmPosQuantity(page);
   await expectOnePosCartItem(page);
   await clickPosPay(page, input.payAmount);
   await expect(page.getByRole("dialog", { name: "Payment" })).toBeVisible();
   await page.getByRole("button", { name: "Complete Payment" }).click();
   await expectPosStatus(page, "Sale completed.");
+  const confirmation = page.getByRole("dialog", { name: "Payment complete" });
+  await expect(confirmation).toBeVisible();
+  await confirmation.getByRole("button", { name: "OK", exact: true }).click();
+  await expect(confirmation).toBeHidden();
 
   const sales = await request.get(`${API}/api/v1/sales?limit=20`, { headers });
   expect(sales.ok()).toBe(true);

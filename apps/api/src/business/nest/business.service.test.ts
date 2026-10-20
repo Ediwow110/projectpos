@@ -3,6 +3,47 @@ import { createMemoryDb } from "../../common/memory.db";
 import { BusinessService } from "./business.service";
 
 describe("phase11 settings gate and audit context", () => {
+  it("reports unsaved legacy onboarding steps without locking a completed business", async () => {
+    const db = createMemoryDb();
+    const business = await db.createBusiness({ name: "Legacy Shop", currency: "PHP" });
+    const svc = new BusinessService(db);
+    await db.saveSettings(business.id, {
+      onboarding: {
+        currentStep: "complete",
+        steps: {
+          businessDetails: "done", taxCurrency: "done", receiptSetup: "done",
+          products: "skipped", employees: "skipped",
+        },
+      },
+      currency: "PHP",
+    });
+    await expect(svc.getSaleReadiness(business.id)).resolves.toMatchObject({
+      businessConfigured: true,
+      legacySetupReviewSteps: ["businessDetails", "taxCurrency", "receiptSetup"],
+      readyForFirstSale: false,
+      missing: expect.arrayContaining(["business_setup_review"]),
+    });
+    await svc.patchSettings(business.id, "owner", {
+      businessAddress: "123 Market St, Manila", businessTimezone: "Asia/Manila",
+      taxName: "No tax", taxRateBps: 0, standardReceiptConfirmed: true,
+    }, "legacy-review", ["settings.write"]);
+    await expect(svc.getSaleReadiness(business.id)).resolves.toMatchObject({
+      businessConfigured: true,
+      legacySetupReviewSteps: [],
+      missing: expect.not.arrayContaining(["business_setup_review"]),
+    });
+  });
+  it("persists the refund threshold used by existing owner-approval policy", async () => {
+    const db = createMemoryDb();
+    const biz = await db.createBusiness({ name: "Financial Rules", currency: "PHP" });
+    const service = new BusinessService(db);
+    await service.patchSettings(biz.id, "owner", { refundApprovalThresholdMinor: 250000 }, "financial-rule", ["settings.write"]);
+    expect((await db.getSettings(biz.id))["refundApprovalThresholdMinor"]).toBe(250000);
+    const events = await db.listAudit();
+    expect(events.some((entry) => entry.action === "settings.write" && entry.requestId === "financial-rule")).toBe(true);
+    await expect(service.patchSettings(biz.id, "cashier", { refundApprovalThresholdMinor: 0 }, "blocked", []))
+      .rejects.toThrow("FORBIDDEN");
+  });
   it("denies settings writes without settings.write and allows the owner", async () => {
     const db = createMemoryDb();
     const biz = await db.createBusiness({ name: "S", currency: "PHP" });
@@ -15,6 +56,23 @@ describe("phase11 settings gate and audit context", () => {
     ).resolves.toBeTruthy();
   });
 
+  it("rejects a currency setting that differs from the registered business currency", async () => {
+    const db = createMemoryDb();
+    const biz = await db.createBusiness({ name: "Currency Integrity", currency: "PHP" });
+    const service = new BusinessService(db);
+
+    await expect(service.patchSettings(
+      biz.id, "owner", { currency: "USD", taxName: "No tax", taxRateBps: 0 },
+      "mismatched-currency", ["settings.write"],
+    )).rejects.toThrow("VALIDATION");
+    expect((await db.getSettings(biz.id))["currency"]).toBeUndefined();
+
+    await expect(service.patchSettings(
+      biz.id, "owner", { currency: "PHP", taxName: "No tax", taxRateBps: 0 },
+      "correct-currency", ["settings.write"],
+    )).resolves.toMatchObject({ currency: "PHP" });
+  });
+
   it("audits the settings patch with before and after snapshots", async () => {
     const db = createMemoryDb();
     const biz = await db.createBusiness({ name: "S", currency: "PHP" });
@@ -25,6 +83,24 @@ describe("phase11 settings gate and audit context", () => {
     expect(row.before).toEqual({});
     expect(row.after).toEqual(expect.objectContaining({ receiptFooter: "x" }));
     expect(row.at).toBeInstanceOf(Date);
+  });
+
+  it("recovers safely when persisted onboarding settings have a malformed shape", async () => {
+    const db = createMemoryDb();
+    const biz = await db.createBusiness({ name: "S", currency: "PHP" });
+    await db.saveSettings(biz.id, { onboarding: { currentStep: "complete" } });
+
+    const svc = new BusinessService(db);
+    await expect(svc.getOnboarding(biz.id)).resolves.toEqual({
+      currentStep: "businessDetails",
+      steps: {
+        businessDetails: "pending",
+        taxCurrency: "pending",
+        receiptSetup: "pending",
+        products: "pending",
+        employees: "pending",
+      },
+    });
   });
 
   it("protects onboarding mutations with the same settings.write permission as business setup", async () => {
@@ -42,6 +118,14 @@ describe("phase11 settings gate and audit context", () => {
       ),
     ).rejects.toThrow("FORBIDDEN");
 
+    await db.saveSettings(biz.id, {
+      businessAddress: "123 Test Street, Manila",
+      businessTimezone: "Asia/Manila",
+      currency: "PHP",
+      taxName: "No tax",
+      taxRateBps: 0,
+      onboardingSchemaVersion: 2,
+    });
     await expect(
       svc.patchOnboarding(
         biz.id,
@@ -50,8 +134,225 @@ describe("phase11 settings gate and audit context", () => {
         "r4",
         ["settings.write"],
       ),
-    ).resolves.toMatchObject({ currentStep: "receiptSetup" });
+    ).resolves.toMatchObject({ steps: { taxCurrency: "done", receiptSetup: "pending" } });
   });
+
+  it("reports real missing products, registers and shifts for an empty business", async () => {
+    const db = createMemoryDb();
+    const biz = await db.createBusiness({ name: "Empty Shop", currency: "PHP" });
+    const svc = new BusinessService(db);
+    await expect(svc.getSaleReadiness(biz.id)).resolves.toMatchObject({
+      businessConfigured: false,
+      hasSellableProduct: false,
+      hasActiveRegister: false,
+      hasOpenShift: false,
+      readyForFirstSale: false,
+      missing: ["business_setup", "sellable_product_or_stock", "active_register", "open_shift"],
+    });
+  });
+
+  it.each([undefined, false, "true"])(
+    "does not infer receipt confirmation from a custom header when acknowledgement is %s",
+    async (acknowledgement) => {
+      const db = createMemoryDb();
+      const biz = await db.createBusiness({ name: "Unconfirmed Receipt", currency: "PHP" });
+      const svc = new BusinessService(db);
+      const settings = {
+        onboardingSchemaVersion: 2,
+        businessAddress: "123 Test Street, Manila",
+        businessTimezone: "Asia/Manila",
+        currency: "PHP",
+        taxName: "No tax",
+        taxRateBps: 0,
+        receiptHeader: "Custom merchant header",
+        standardReceiptConfirmed: acknowledgement,
+        onboarding: {
+          steps: {
+            businessDetails: "done", taxCurrency: "done", receiptSetup: "pending",
+            products: "skipped", employees: "skipped",
+          },
+        },
+      };
+      await db.saveSettings(biz.id, settings);
+
+      await expect(svc.patchOnboarding(
+        biz.id, "owner", { step: "receiptSetup", state: "done" },
+        "unconfirmed-receipt", ["settings.write"],
+      )).rejects.toThrow("ONBOARDING_CONFIGURATION_REQUIRED");
+      expect(await db.getSettings(biz.id)).toEqual(settings);
+      expect((await db.listAudit()).filter((entry) => entry.action === "onboarding.update"))
+        .toHaveLength(0);
+
+      await svc.patchSettings(
+        biz.id, "owner", { standardReceiptConfirmed: true },
+        "explicit-receipt-confirmation", ["settings.write"],
+      );
+      await expect(svc.patchOnboarding(
+        biz.id, "owner", { step: "receiptSetup", state: "done" },
+        "no-preview-acknowledgement", ["settings.write"],
+      )).rejects.toThrow("ONBOARDING_CONFIGURATION_REQUIRED");
+      await expect(svc.patchOnboarding(
+        biz.id, "owner", { step: "receiptSetup", state: "done", receiptPreviewConfirmed: true },
+        "confirmed-receipt", ["settings.write"],
+      )).resolves.toMatchObject({ currentStep: "complete", steps: { receiptSetup: "done" } });
+      expect((await db.getSettings(biz.id))["taxRateBps"]).toBe(0);
+    },
+  );
+
+  it("reopens an unconfirmed V2 receipt step even when a custom header and done flag were saved", async () => {
+    const db = createMemoryDb();
+    const biz = await db.createBusiness({ name: "Reconciled Receipt", currency: "PHP" });
+    await db.saveSettings(biz.id, {
+      onboardingSchemaVersion: 2,
+      businessAddress: "123 Test Street, Manila",
+      businessTimezone: "Asia/Manila",
+      currency: "PHP",
+      taxName: "No tax",
+      taxRateBps: 0,
+      receiptHeader: "Custom merchant header",
+      onboarding: {
+        steps: {
+          businessDetails: "done", taxCurrency: "done", receiptSetup: "done",
+          products: "skipped", employees: "skipped",
+        },
+      },
+    });
+    const svc = new BusinessService(db);
+
+    await expect(svc.getOnboarding(biz.id)).resolves.toMatchObject({
+      currentStep: "receiptSetup", steps: { receiptSetup: "pending" },
+    });
+    await expect(svc.getSaleReadiness(biz.id)).resolves.toMatchObject({
+      businessConfigured: false, readyForFirstSale: false,
+    });
+  });
+
+  it("allows a Free-plan owner to confirm a standard receipt without granting paid customization", async () => {
+    const db = createMemoryDb();
+    const biz = await db.createBusiness({ name: "Free Shop", currency: "PHP" });
+    const free = await db.findPlanByKey("free");
+    expect(free).toBeTruthy();
+    await db.upsertSubscription({
+      businessId: biz.id, planId: free!.id, status: "active",
+      trialEndsAt: null, currentPeriodEnd: new Date("2030-01-01T00:00:00.000Z"),
+    });
+    const svc = new BusinessService(db);
+    await db.saveSettings(biz.id, {
+      businessAddress: "123 Test St, Manila", businessTimezone: "Asia/Manila",
+      currency: "PHP", taxName: "No tax", taxRateBps: 0,
+    });
+    await svc.patchOnboarding(biz.id, "owner", { step: "businessDetails", state: "done" }, "free-business", ["settings.write"]);
+    await svc.patchOnboarding(biz.id, "owner", { step: "taxCurrency", state: "done" }, "free-tax", ["settings.write"]);
+    const settings = await svc.patchSettings(
+      biz.id, "owner", { standardReceiptConfirmed: true }, "standard-free", ["settings.write"],
+    );
+    expect(settings["standardReceiptConfirmed"]).toBe(true);
+    const next = await svc.patchOnboarding(
+      biz.id, "owner", { step: "receiptSetup", state: "done", receiptPreviewConfirmed: true }, "receipt-free", ["settings.write"],
+    );
+    expect(next.steps.receiptSetup).toBe("done");
+    const readiness = await svc.getSaleReadiness(biz.id);
+    expect(readiness.canCustomizeReceipt).toBe(false);
+    await expect(svc.patchSettings(
+      biz.id, "owner", { receiptHeader: "Premium Only" }, "custom-denied", ["settings.write"],
+    )).rejects.toThrow("PLAN_LIMIT");
+  });
+
+  it("does not complete tax and currency onboarding until real settings are saved", async () => {
+    const db = createMemoryDb();
+    const biz = await db.createBusiness({ name: "Tax setup", currency: "PHP" });
+    const svc = new BusinessService(db);
+    await db.saveSettings(biz.id, {
+      businessAddress: "123 Test St, Manila", businessTimezone: "Asia/Manila", currency: "PHP",
+    });
+    await svc.patchOnboarding(biz.id, "owner", { step: "businessDetails", state: "done" }, "tax-business", ["settings.write"]);
+
+    await expect(svc.patchOnboarding(
+      biz.id, "owner", { step: "taxCurrency", state: "done" }, "no-tax-config", ["settings.write"],
+    )).rejects.toThrow("ONBOARDING_CONFIGURATION_REQUIRED");
+    expect((await svc.getOnboarding(biz.id)).steps.taxCurrency).toBe("pending");
+
+    await db.saveSettings(biz.id, {
+      ...(await db.getSettings(biz.id)),
+      businessAddress: "123 Test St, Manila", businessTimezone: "Asia/Manila",
+      currency: "USD", taxName: "No tax", taxRateBps: 0,
+    });
+    await expect(svc.patchOnboarding(
+      biz.id, "owner", { step: "taxCurrency", state: "done" }, "mismatched-currency", ["settings.write"],
+    )).rejects.toThrow("ONBOARDING_SETTINGS_REQUIRED");
+    await db.saveSettings(biz.id, {
+      ...(await db.getSettings(biz.id)),
+      businessAddress: "123 Test St, Manila", businessTimezone: "Asia/Manila",
+      currency: "PHP", taxName: "No tax", taxRateBps: 0,
+    });
+    await expect(svc.patchOnboarding(
+      biz.id, "owner", { step: "taxCurrency", state: "done" }, "with-tax-config", ["settings.write"],
+    )).resolves.toMatchObject({ currentStep: "receiptSetup" });
+  });
+
+  it("rejects business details completion until the owner saves a real business address", async () => {
+    const db = createMemoryDb();
+    const biz = await db.createBusiness({ name: "New merchant", currency: "PHP" });
+    const svc = new BusinessService(db);
+    await expect(svc.patchOnboarding(
+      biz.id, "owner", { step: "businessDetails", state: "done" }, "missing-address", ["settings.write"],
+    )).rejects.toThrow("ONBOARDING_CONFIGURATION_REQUIRED");
+    await db.saveSettings(biz.id, { businessAddress: "  " });
+    await expect(svc.patchOnboarding(
+      biz.id, "owner", { step: "businessDetails", state: "done" }, "blank-address", ["settings.write"],
+    )).rejects.toThrow("ONBOARDING_CONFIGURATION_REQUIRED");
+    await db.saveSettings(biz.id, { businessAddress: "123 Test St, Manila", businessTimezone: "Asia/Manila" });
+    await expect(svc.patchOnboarding(
+      biz.id, "owner", { step: "businessDetails", state: "done" }, "real-address", ["settings.write"],
+    )).resolves.toMatchObject({ steps: { businessDetails: "done" } });
+  });
+
+  it("requires a reviewed receipt configuration and completed tax setup before receipt signoff", async () => {
+    const db = createMemoryDb();
+    const biz = await db.createBusiness({ name: "Receipt Store", currency: "PHP" });
+    const svc = new BusinessService(db);
+    const confirmed = { step: "receiptSetup" as const, state: "done" as const, receiptPreviewConfirmed: true };
+
+    await expect(svc.patchOnboarding(
+      biz.id, "owner", confirmed, "premature", ["settings.write"],
+    )).rejects.toThrow("ONBOARDING_CONFIGURATION_REQUIRED");
+    await db.saveSettings(biz.id, {
+      businessAddress: "123 Test St, Manila", businessTimezone: "Asia/Manila",
+      currency: "PHP", taxName: "No tax", taxRateBps: 0,
+    });
+    await svc.patchOnboarding(biz.id, "owner", { step: "businessDetails", state: "done" }, "business", ["settings.write"]);
+    await svc.patchOnboarding(biz.id, "owner", { step: "taxCurrency", state: "done" }, "tax", ["settings.write"]);
+
+    await expect(svc.patchOnboarding(
+      biz.id, "owner", { step: "receiptSetup", state: "done" }, "unreviewed", ["settings.write"],
+    )).rejects.toThrow("ONBOARDING_CONFIGURATION_REQUIRED");
+    expect((await svc.getOnboarding(biz.id)).steps.receiptSetup).toBe("pending");
+
+    await svc.patchSettings(biz.id, "owner", { standardReceiptConfirmed: true }, "reviewed-settings", ["settings.write"]);
+    await expect(svc.patchOnboarding(
+      biz.id, "owner", confirmed, "reviewed", ["settings.write"],
+    )).resolves.toMatchObject({ steps: { receiptSetup: "done" } });
+  });
+
+  it.each(["businessDetails", "taxCurrency", "receiptSetup"] as const)(
+    "rejects direct attempts to skip required onboarding step %s",
+    async (step) => {
+      const db = createMemoryDb();
+      const biz = await db.createBusiness({ name: "S", currency: "PHP" });
+      const svc = new BusinessService(db);
+      const before = await svc.getOnboarding(biz.id);
+
+      await expect(svc.patchOnboarding(
+        biz.id,
+        "u-owner",
+        { step, state: "skipped" },
+        `skip-${step}`,
+        ["settings.write"],
+      )).rejects.toThrow("ONBOARDING_REQUIRED_STEP");
+
+      await expect(svc.getOnboarding(biz.id)).resolves.toEqual(before);
+    },
+  );
 
   it("validates online-order branches in-tenant and active", async () => {
     const db = createMemoryDb();

@@ -5,12 +5,13 @@ import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "../../../components/AppShell";
+import { AtlasInventorySafeguards } from "../../../components/AtlasInventorySafeguards";
 import { DataTableFrame, PageHeader, Panel, SectionHeader } from "../../../components/premium";
 import { GhostButton, PrimaryButton, StatusPill } from "../../../components/ui";
 import { ApiError, apiFetch } from "../../../lib/api";
 import { countTone, type InventoryCount } from "../../../lib/inventory-counts";
 
-interface Me { role: string; businessName?: string; activeBranchId: string | null; activeBranchName: string | null; }
+interface Me { role: string; businessName?: string; activeBranchId: string | null; activeBranchName: string | null; permissions: string[]; }
 interface CountPage { items: InventoryCount[]; total: number; page: number; pageSize: number; }
 interface BalancePage { items: Array<{ productId: string; productName: string; qtyOnHand: number }>; }
 
@@ -30,7 +31,7 @@ export default function StockCountsPage(): JSX.Element {
   const query = useQuery({ queryKey: ["inventory-counts", status, me.data?.activeBranchId], queryFn: () => apiFetch<CountPage>(`/api/v1/inventory/counts?status=${status}${me.data?.activeBranchId ? `&branchId=${encodeURIComponent(me.data.activeBranchId)}` : ""}`), enabled: me.data !== undefined, retry: false });
   const balances = useQuery({ queryKey: ["count-products", me.data?.activeBranchId], queryFn: () => apiFetch<BalancePage>(`/api/v1/inventory/balances?page=1&pageSize=100${me.data?.activeBranchId ? `&branchId=${encodeURIComponent(me.data.activeBranchId)}` : ""}`), enabled: me.data !== undefined && scopeType === "PARTIAL", retry: false });
   const role = me.data?.role ?? "cashier";
-  const canCreate = ["owner", "manager", "inventory"].includes(role);
+  const canCreate = me.data?.permissions.includes("inventory.adjust") ?? false;
 
   async function scanProduct(): Promise<void> {
     if (!barcode.trim()) return;
@@ -52,7 +53,14 @@ export default function StockCountsPage(): JSX.Element {
     } catch (err) { setError(err instanceof ApiError ? `${err.code}: ${err.message}` : "Count creation failed."); }
   }
 
-  return <AppShell businessName={me.data?.businessName} role={role}><main className="mx-auto max-w-[1240px] space-y-5 px-4 pb-10 pt-3 sm:px-6">
+  return <AppShell businessName={me.data?.businessName} role={role} atlasInventory><main className="mx-auto w-full max-w-none space-y-5 px-4 pb-10 pt-8 sm:px-7">
+    <AtlasInventorySafeguards title="Scan & count" description="Scan product barcodes, record observed units and review count differences before posting stock." rules={["Scan or manually select products for a partial count.", "Expected quantities are frozen when a count starts.", "Variances need an authorized review before stock is posted."]}>
+      <h3 className="font-display text-[22px] font-semibold text-[#202826]">Cycle counts</h3>
+      <p className="mt-2 text-sm text-[#748078]">Open a count to record quantities. New counts and posting use your existing inventory permissions.</p>
+      {query.isPending ? <p role="status" className="mt-4 text-sm">Loading counts…</p> : query.isError ? <p role="alert" className="mt-4 text-sm text-[#a34132]">Counts could not be loaded.</p> : (query.data?.items.length ?? 0) === 0 ? <p className="mt-4 rounded-lg bg-[#f0f3ef] p-4 text-sm">No counts match the current filter.</p> : <div className="mt-4 space-y-2">{query.data?.items.slice(0, 3).map((count) => <Link key={count.id} href={`/inventory/counts/${count.id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[#f7f8f5] p-4 hover:bg-[#e9f4ec] focus-visible:outline-2 focus-visible:outline-[#267552]"><span className="text-sm font-semibold text-[#202826]">{count.countNumber} · {count.name}</span><StatusPill tone={countTone(count.status)}>{count.status}</StatusPill></Link>)}</div>}
+      <a href="#count-workflow" className="mt-5 inline-flex min-h-11 items-center justify-center rounded-lg bg-[#29332d] px-5 text-sm font-semibold text-white hover:bg-[#35423d]">{canCreate ? "Create or scan a count" : "Review count history"}</a>
+    </AtlasInventorySafeguards>
+    <div id="count-workflow" className="scroll-mt-24" />
     <PageHeader eyebrow="Inventory / Stock counts" title="Stock counts" description={me.data?.activeBranchName ? `Physical counts for ${me.data.activeBranchName}. Expected quantities are frozen when counting starts.` : "Create full or partial physical counts with server-verified snapshots before any stock correction."} actions={<Link href="/inventory" className="inline-flex min-h-10 items-center rounded-[10px] border border-[#e4d9d0] bg-white px-4 text-sm font-semibold text-[#2a241f] hover:border-[#f35d3f]">Inventory balances</Link>} />
     {canCreate ? <Panel className="p-5"><SectionHeader title="Start a count" description="Full counts include every active tracked product. Use a partial count for a cycle count." /><form onSubmit={(event) => void createCount(event)} className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px_auto]"><label className="text-[11px] font-semibold text-[#655b53]">Count name<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Morning floor count" className="field mt-1.5" /></label><label className="text-[11px] font-semibold text-[#655b53]">Scope<select value={scopeType} onChange={(event) => { const next = event.target.value as "FULL" | "PARTIAL"; setScopeType(next); if (next === "FULL") setSelectedProductIds([]); }} className="field mt-1.5"><option value="FULL">Full count</option><option value="PARTIAL">Partial count</option></select></label><PrimaryButton type="submit" className="self-end">Create count</PrimaryButton></form>{scopeType === "PARTIAL" ? <fieldset className="mt-4 rounded-xl border border-[#eee4db] bg-[#fcf8f3] p-3"><legend className="px-1 text-[11px] font-semibold text-[#655b53]">Products to count</legend><div className="mb-3 flex gap-2"><input aria-label="Scan product barcode" value={barcode} onChange={(event) => setBarcode(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void scanProduct(); } }} placeholder="Scan barcode and press Enter" className="field" /><GhostButton type="button" onClick={() => void scanProduct()}>Add scan</GhostButton></div>{scanMessage ? <p className="mb-3 text-xs text-[#1f8a5b]">{scanMessage}</p> : null}<div className="grid max-h-44 gap-2 overflow-y-auto sm:grid-cols-2">{(balances.data?.items ?? []).map((product) => <label key={product.productId} className="flex items-center gap-2 text-xs text-[#4d443d]"><input type="checkbox" checked={selectedProductIds.includes(product.productId)} onChange={(event) => setSelectedProductIds((current) => event.target.checked ? [...current, product.productId] : current.filter((id) => id !== product.productId))} />{product.productName}</label>)}</div></fieldset> : null}{error ? <p role="alert" className="mt-3 rounded-xl bg-[#fff0f0] px-3 py-2 text-sm font-medium text-[#c43e3e]">{error}</p> : null}</Panel> : <Panel className="bg-[#fff4df] p-4 text-sm font-medium text-[#8a5606]">Your role can review count history. Count creation and posting are restricted to inventory operators.</Panel>}
     <Panel className="p-5"><div className="flex flex-wrap items-center justify-between gap-3"><SectionHeader title="Count history" description="Posted counts are immutable. Stale counts never change inventory." /><label className="text-[11px] font-semibold text-[#655b53]">Status<select value={status} onChange={(event) => setStatus(event.target.value)} className="field mt-1.5"><option value="all">All statuses</option>{["DRAFT", "COUNTING", "SUBMITTED", "APPROVED", "POSTED", "CANCELLED"].map((item) => <option key={item} value={item}>{item}</option>)}</select></label></div></Panel>

@@ -149,12 +149,16 @@ export class SalesPaymentReconciliationService {
       const updated =
         (await this.db.updateSale(sale.id, businessId, { status, completedAt })) ?? sale;
       await this.orderSales.settleLinkedSaleLocked(this.db, businessId, sale.id, completedAt);
+      if (shouldNotify && this.notifications?.hasOutbox()) {
+        await this.notifications.enqueueEvent(businessId, linkedOrder!.id, "CONFIRMED",
+          "payment-reconcile:" + payment.id);
+      }
       await this.ops.recordSale(businessId, completedAt);
       recordPaymentHandoff("reconciled");
       recordSaleChannel(linkedOrder?.channel === "WEB" ? "WEB" : "POS");
       return { sale: await this.ops.embedSale(updated), payment: updatedPayment, confirmedOrderId: shouldNotify ? linkedOrder!.id : null };
     }));
-    if (result.confirmedOrderId && this.notifications) {
+    if (result.confirmedOrderId && this.notifications && !this.notifications.hasOutbox()) {
       await this.notifications.sendEvent(businessId, result.confirmedOrderId, "CONFIRMED");
     }
     return { sale: result.sale, payment: result.payment };

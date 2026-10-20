@@ -159,7 +159,7 @@ describe("phase8 load cohorts", () => {
   // Fresh app per test: isolates rate-limiter windows and databases
   // between cohorts so each measurement stands alone.
   it("baseline cohort stays within budgets", async () => {
-    app = await createTestApp();
+  app = await createTestApp({ completedOnboardingFixture: true });
     try {
       if (process.env["LOAD"] !== "1") {
         console.log("skipping baseline cohort (set LOAD=1 to run)");
@@ -187,7 +187,7 @@ describe("phase8 load cohorts", () => {
       expect(true).toBe(true);
       return;
     }
-    app = await createTestApp();
+    app = await createTestApp({ completedOnboardingFixture: true });
     try {
       const { cookie, csrf, productIds } = await seed(500);
     const { lat, errors, total, samples } = await runMix(cookie, csrf, productIds, 50, 60_000);

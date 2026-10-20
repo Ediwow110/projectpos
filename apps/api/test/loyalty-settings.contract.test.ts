@@ -15,7 +15,7 @@ function jar(headers: unknown): string {
 
 beforeAll(async () => {
   const { createTestApp } = await import("../src/app.module");
-  app = await createTestApp();
+  app = await createTestApp({ completedOnboardingFixture: true });
   const owner = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
     ownerName: "Loyalty Settings Owner",
     email: "loyalty-settings-owner@example.com",
@@ -31,9 +31,9 @@ beforeAll(async () => {
     .send({ email: "loyalty-settings-cashier@example.com", password: invitation.body.tempPassword });
   cashierCookie = jar(cashier.headers["set-cookie"]);
   cashierCsrf = cashier.body.csrfToken as string;
-});
+}, 30_000);
 
-afterAll(async () => { await app.close(); });
+afterAll(async () => { await app?.close(); });
 
 describe("loyalty settings contract", () => {
   it("returns an explicit no-program state and persists the owner configuration", async () => {

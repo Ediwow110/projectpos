@@ -1,0 +1,78 @@
+import { describe, expect, it } from "vitest";
+import { withPg } from "./helpers";
+import { GuestSupportService, PlatformConsentService } from "../../src/orders/guest-support.service";
+import { OrderAccessService } from "../../src/orders/order-access-service";
+
+describe("Phase D guest support and owner consent PostgreSQL persistence", () => {
+  it("persists tenant-scoped case, one-use report key, read-only consent and audited revocation", async () => {
+    await withPg(async (db, ctx) => {
+      const business = await db.createBusiness({ name: "Phase D PG", currency: "PHP" });
+      const other = await db.createBusiness({ name: "Other Phase D PG", currency: "PHP" });
+      const now = new Date();
+      const order = await db.createOrder({
+        businessId: business.id, channel: "WEB", fulfillmentMode: "PICKUP", paymentMode: "PAY_AT_PICKUP",
+        branchId: null, customerId: null, contactName: "Guest", email: "guest@example.com", phone: "+639171234567",
+        deliveryAddress: null, fulfillmentInstructions: null, currency: "PHP", subtotalMinor: 0,
+        discountMinor: 0, taxMinor: 0, deliveryFeeMinor: 0, deliveryTaxMinor: 0, totalMinor: 0, saleId: null,
+        status: "SUBMITTED", version: 1, checkoutAt: now, submittedAt: now, confirmedAt: null,
+        completedAt: null, cancelledAt: null, actorId: "public", requestId: "pg-d", createdAt: now, updatedAt: now,
+      });
+      // Bypass the service's tenant guard: the database must reject this too.
+      const invariantClient = await ctx.client();
+      try {
+        await expect(invariantClient.query(
+          `INSERT INTO "GuestSupportCase"
+           ("id","businessId","orderId","category","description","idempotencyKey")
+           VALUES ($1,$2,$3,'ORDER','Invalid tenant case',$4)`,
+          ["case-cross-tenant", other.id, order.id, "case-fk-test"],
+        )).rejects.toMatchObject({ code: "23503" });
+        const fk = await invariantClient.query(
+          `SELECT convalidated FROM pg_constraint
+           WHERE conrelid='"GuestSupportCase"'::regclass AND conname='GuestSupportCase_tenant_order_fkey'`,
+        );
+        expect(fk.rows).toEqual([{ convalidated: true }]);
+      } finally { if (ctx.owns()) invariantClient.release(); }
+      await expect(db.createGuestSupportCase({
+        businessId: other.id, orderId: order.id, category: "ORDER",
+        description: "Cross-tenant order attempt", status: "OPEN",
+        idempotencyKey: "invalid-parent", closedAt: null, closedBy: null,
+      })).rejects.toThrow("NOT_FOUND");
+      const token = (await new OrderAccessService(db).mintStatusToken(business.id, order.id)).token;
+      const svc = new GuestSupportService(db);
+      const input = { statusToken: token, category: "ORDER" as const, description: "Please check pickup availability" };
+      const first = await svc.submit(input, "pg-d-case", "r1");
+      expect(first.replayed).toBe(false);
+      expect((await svc.submit(input, "pg-d-case", "r2")).replayed).toBe(true);
+      expect(await svc.listForBusiness(other.id)).toEqual([]);
+      expect((await svc.guestHistory(token)).map((row) => row.caseId)).toEqual([first.caseId]);
+      expect((await db.listGuestSupportCasesForOrder(business.id, order.id)).map((row) => row.id)).toEqual([first.caseId]);
+      expect(await db.countOpenGuestSupportCases(business.id)).toBe(1);
+      expect(await db.countOpenGuestSupportCases(other.id)).toBe(0);
+      expect(await db.listGuestSupportCasesForOrder(other.id, order.id)).toEqual([]);
+      expect((await db.findGuestSupportCaseById(first.caseId, business.id))?.id).toBe(first.caseId);
+      expect(await db.findGuestSupportCaseById(first.caseId, other.id)).toBeNull();
+      await svc.close(business.id, "owner", first.caseId, "r3");
+      expect(await db.countOpenGuestSupportCases(business.id)).toBe(0);
+      expect((await svc.listForBusiness(business.id))[0]?.status).toBe("CLOSED");
+
+      const consents = new PlatformConsentService(db);
+      const issued = await consents.issue(business.id, "owner", "Investigate support incident", 15, "r4");
+      expect((await db.findPlatformConsentById(issued.id, business.id))?.id).toBe(issued.id);
+      expect(await db.findPlatformConsentById(issued.id, other.id)).toBeNull();
+      expect((await consents.list(business.id)).map((row) => row.id)).toContain(issued.id);
+      expect(await consents.diagnostics(business.id, issued.token, "r5")).toMatchObject({
+        businessId: business.id, openSupportCases: 0,
+      });
+      await expect(consents.diagnostics(other.id, issued.token, "cross")).rejects.toThrow("FORBIDDEN");
+      await consents.revoke(business.id, "owner", issued.id, "r6");
+      await expect(consents.diagnostics(business.id, issued.token, "revoked")).rejects.toThrow("FORBIDDEN");
+      const c = await ctx.client();
+      try {
+        for (const table of ["GuestSupportCase", "PlatformOwnerConsent"]) {
+          const r = await c.query('SELECT "relrowsecurity" FROM pg_class WHERE "relname"=$1', [table]);
+          expect(r.rows[0]?.relrowsecurity).toBe(true);
+        }
+      } finally { if (ctx.owns()) c.release(); }
+    });
+  });
+});

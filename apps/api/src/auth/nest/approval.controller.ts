@@ -46,7 +46,7 @@ export class ApprovalController {
         fail(res, 403, "FORBIDDEN", "Manager approval is not available for this action", req);
         return;
       }
-      const granted = this.auth.rolePermissions(actor.role);
+      const granted = this.auth.permissionsForRequest(actor);
       if (granted.includes(requirement.permission) && !requirement.requireDistinctApprover) {
         fail(res, 403, "FORBIDDEN", "Manager approval is not available for this session", req);
         return;

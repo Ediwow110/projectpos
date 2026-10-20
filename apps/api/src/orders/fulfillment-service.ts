@@ -238,10 +238,15 @@ export class FulfillmentService {
         if (status === "COLLECTED" || status === "DELIVERED") {
           await this.completeOrderIfFullyHandedOffLocked(tx, businessId, order.id);
         }
-        return { row: next, notify: ["READY", "DISPATCHED", "DELIVERY_FAILED"].includes(status) };
+        const notify = ["READY", "DISPATCHED", "DELIVERY_FAILED"].includes(status);
+        if (notify && this.notifications?.hasOutbox?.()) {
+          await this.notifications.enqueueEvent(businessId, order.id, status,
+            "fulfillment:" + current.id + ":" + next.version);
+        }
+        return { row: next, notify };
       }),
     );
-    if (result.notify && this.notifications) {
+    if (result.notify && this.notifications && !this.notifications.hasOutbox?.()) {
       await this.notifications.sendEvent(businessId, orderId, result.row.status);
     }
     recordFulfillmentOutcome(

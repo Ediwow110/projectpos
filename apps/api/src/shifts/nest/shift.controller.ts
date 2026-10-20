@@ -38,7 +38,7 @@ export class ShiftController {
   ) {}
 
   private perms(req: Request): string[] {
-    return this.auth.rolePermissions(req.auth!.role);
+    return this.auth.permissionsForRequest(req.auth!);
   }
 
   private manageGuard(req: Request, res: Response): boolean {
@@ -52,7 +52,14 @@ export class ShiftController {
   @Get("registers")
   async listRegisters(@Req() req: Request, @Res() res: Response): Promise<void> {
     try {
-      res.status(200).json({ items: await this.shifts.listRegisters(req.auth!.businessId) });
+      const items = await this.shifts.listRegisters(req.auth!.businessId);
+      const allowed = req.auth!.allowedBranchIds;
+      const registers = req.auth!.allowedRegisterIds;
+      res.status(200).json({
+        items: items.filter((register) =>
+          (!allowed || Boolean(register.branchId && allowed.includes(register.branchId))) &&
+          (registers === null || registers === undefined || registers.includes(register.id))),
+      });
     } catch (e) {
       failFromError(res, e, "Register fetch failed", req);
     }
@@ -161,6 +168,8 @@ export class ShiftController {
           status: parsed.data.status,
           registerId: parsed.data.registerId,
           includeCloseCandidates: parsed.data.includeCloseCandidates,
+          ...(auth.allowedBranchIds ? { branchId: auth.activeBranchId! } : {}),
+          ...(auth.allowedRegisterIds ? { allowedRegisterIds: auth.allowedRegisterIds } : {}),
         }, auth.role, auth.userId),
       );
     } catch (e) {

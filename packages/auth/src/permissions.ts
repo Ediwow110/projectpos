@@ -4,6 +4,8 @@ export const SENSITIVE_ACTIONS = [
   "discount.override",
   "sale.void",
   "sale.refund",
+  "customer_concern.request",
+  "customer_concern.review",
   "stored_value.adjust",
   "gift_card.manage",
   "loyalty.manage",

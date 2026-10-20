@@ -13,6 +13,7 @@ export function useProductsPageState() {
   const [name, setName] = useState("");
   const [sku, setSku] = useState("");
   const [barcode, setBarcode] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [price, setPrice] = useState("");
   const [cost, setCost] = useState("");
@@ -28,7 +29,7 @@ export function useProductsPageState() {
     q, setQ, active, setActive, page, setPage,
     createOpen, setCreateOpen, createError, setCreateError,
     createSuccess, setCreateSuccess, saving, setSaving,
-    name, setName, sku, setSku, barcode, setBarcode, categoryId, setCategoryId,
+    name, setName, sku, setSku, barcode, setBarcode, imageUrl, setImageUrl, categoryId, setCategoryId,
     price, setPrice, cost, setCost, unit, setUnit,
     reorderLevel, setReorderLevel, trackInventory, setTrackInventory,
     importOpen, setImportOpen, importText, setImportText,

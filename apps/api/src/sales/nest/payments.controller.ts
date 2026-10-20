@@ -27,7 +27,7 @@ export class PaymentsController {
   ) {}
 
   private perms(req: Request): string[] {
-    return this.auth.rolePermissions(req.auth!.role);
+    return this.auth.permissionsForRequest(req.auth!);
   }
 @Post("sales/:id/paymongo/checkout")
   @UseGuards(CsrfGuard)

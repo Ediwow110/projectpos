@@ -30,8 +30,8 @@ test("privacy-first login routes a new business into onboarding without exposing
   expect(registered.ok()).toBe(true);
 
   await page.goto("/login");
-  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
-  await expect(page.getByText("Private workspace")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in to NexPOS" })).toBeVisible();
+  await expect(page.getByText("Security and simplicity for every shift.")).toBeVisible();
   await expect(page.locator("body")).not.toContainText("₱");
   await expect(page.locator("body")).not.toContainText(businessName);
 

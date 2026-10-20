@@ -13,7 +13,7 @@ import type { DbMovement } from "../../src/common/db.port";
 // paging, same cross-tenant null/[] returns. Direct PgContext construction —
 // no withPg/PgDbPort; the coordinator wires families into the facade later.
 const BASE_URL = process.env["PGTEST_BASE"] ?? "postgres://pos:pos@localhost:5433";
-const TEST_URL = `${BASE_URL}/pos_test_pg`;
+const TEST_URL = `${BASE_URL}/${process.env["PGTEST_DB"] ?? "pos_test_pg"}`;
 const MIGRATIONS_DIR = join(__dirname, "../../../../packages/database/prisma/migrations");
 
 let admin: Client;

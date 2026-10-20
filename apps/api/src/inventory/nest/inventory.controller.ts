@@ -34,7 +34,7 @@ export class InventoryController {
   ) {}
 
   private canAdjust(req: Request): boolean {
-    return this.auth.rolePermissions(req.auth!.role).includes("inventory.adjust");
+    return this.auth.permissionsForRequest(req.auth!).includes("inventory.adjust");
   }
 
   private adjustGuard(req: Request, res: Response): boolean {

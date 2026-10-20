@@ -21,6 +21,7 @@ import type { AppliedManagerApproval } from "../../auth/nest/manager-approval-po
 import { SalesPayMongoWebhookService } from "../paymongo-webhook-service";
 import { OrderSaleService } from "../../orders/order-sale-service";
 import { OrderNotificationService } from "../../orders/order-notification-service";
+import type { OrderNotificationOutboxStore } from "../../orders/order-notification-outbox";
 import { SalesPaymentProviderService } from "../payment-provider-service";
 import { SalesPaymentReconciliationService } from "../payment-reconciliation-service";
 import { SalesReceiptService } from "../receipt-service";
@@ -51,6 +52,7 @@ export class SalesService {
     @Inject("DbPort") private readonly db: DbPort,
     private readonly paymongo: PayMongoPort = new DisabledPayMongo(),
     private readonly email: TransactionalEmailPort = NOOP_TRANSACTIONAL_EMAIL,
+    private readonly notificationOutbox: OrderNotificationOutboxStore | null = null,
   ) {
     // Same-DbPort instance (not Nest DI) to avoid a Sales<->Shift DI cycle.
     this.shifts = new ShiftService(db);
@@ -58,7 +60,7 @@ export class SalesService {
     this.drafts = new SalesDraftService(db, this.stock);
     this.completion = new SalesCompletionService(db, this.stock, this.shifts);
     this.lifecycle = new SalesLifecycleService(db);
-    this.orderNotifications = new OrderNotificationService(db, email);
+    this.orderNotifications = new OrderNotificationService(db, email, notificationOutbox);
     this.paymongoWebhooks = new SalesPayMongoWebhookService(db, paymongo, this.stock, this.orderNotifications);
     this.orderSales = new OrderSaleService(db);
     this.receipts = new SalesReceiptService(db, email);
@@ -382,10 +384,12 @@ export class SalesService {
 
   async listSales(
     businessId: string,
-    opts: { cursor?: string; limit: number; status?: string; customerId?: string; dateFrom?: string; dateTo?: string },
+    opts: { cursor?: string; limit: number; status?: string; customerId?: string; dateFrom?: string; dateTo?: string; branchId?: string; allowedRegisterIds?: string[] },
   ): Promise<{ items: DbSale[]; nextCursor: string | null }> {
     withScope(businessId, {});
     let rows = await this.db.listSalesByBusiness(businessId);
+    if (opts.branchId) rows = rows.filter((s) => s.branchId === opts.branchId);
+    if (opts.allowedRegisterIds) rows = rows.filter((s) => Boolean(s.registerId && opts.allowedRegisterIds!.includes(s.registerId)));
     if (opts.status) rows = rows.filter((s) => s.status === opts.status);
     if (opts.customerId) rows = rows.filter((s) => s.customerId === opts.customerId);
     let from: number | null = null;
@@ -449,6 +453,11 @@ export class SalesService {
   }> {
     withScope(businessId, {});
     return this.receipts.receiptData(businessId, saleId);
+  }
+
+  async lookupReceipt(businessId: string, receiptNo: string) {
+    withScope(businessId, {});
+    return this.receipts.lookupReceipt(businessId, receiptNo);
   }
 
   // FR-RECEIPT-01: the downloadable form of the receipt.

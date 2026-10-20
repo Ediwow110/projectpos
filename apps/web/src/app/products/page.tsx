@@ -2,7 +2,7 @@
 
 import type { JSX } from "react";
 import Link from "next/link";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AppShell } from "../../components/AppShell";
@@ -13,6 +13,7 @@ import { ApiError, apiFetch } from "../../lib/api";
 import { buildProductSearch, canEditCatalog, canSeeCost } from "../../lib/catalog";
 import { parseProductCsv, productRowsToCsv } from "../../lib/catalog-io";
 import { formatMoneyMinor } from "../../lib/money";
+import { validProductImageUrl } from "../../lib/product-image";
 import { createCatalogProductRequest, importCatalogProductsRequest } from "../../lib/products-api";
 import { useProductsPageState } from "./use-products-page-state";
 
@@ -51,11 +52,12 @@ function toMinor(value: string): number | null {
 
 export default function ProductsPage(): JSX.Element {
   const queryClient = useQueryClient();
+  const [newProductId, setNewProductId] = useState<string | null>(null);
   const {
     q, setQ, active, setActive, page, setPage,
     createOpen, setCreateOpen, createError, setCreateError,
     createSuccess, setCreateSuccess, saving, setSaving,
-    name, setName, sku, setSku, barcode, setBarcode, categoryId, setCategoryId,
+    name, setName, sku, setSku, barcode, setBarcode, imageUrl, setImageUrl, categoryId, setCategoryId,
     price, setPrice, cost, setCost, unit, setUnit,
     reorderLevel, setReorderLevel, trackInventory, setTrackInventory,
     importOpen, setImportOpen, importText, setImportText,
@@ -91,6 +93,7 @@ export default function ProductsPage(): JSX.Element {
   async function createProduct(event: React.FormEvent): Promise<void> {
     event.preventDefault();
     setCreateError("");
+    setNewProductId(null);
     if (!name.trim()) {
       setCreateError("VALIDATION: Product name is required.");
       return;
@@ -114,6 +117,10 @@ export default function ProductsPage(): JSX.Element {
       setCreateError("VALIDATION: Reorder level must be a whole number of 0 or more.");
       return;
     }
+    if (!validProductImageUrl(imageUrl)) {
+      setCreateError("VALIDATION: Image must be a valid HTTP(S) URL of 500 characters or fewer.");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -121,6 +128,7 @@ export default function ProductsPage(): JSX.Element {
         name: name.trim(),
         ...(sku.trim() ? { sku: sku.trim() } : {}),
         ...(barcode.trim() ? { barcode: barcode.trim() } : {}),
+        ...(imageUrl.trim() ? { imageUrl: imageUrl.trim() } : {}),
         ...(categoryId ? { categoryId } : {}),
         unit: unit.trim() || "pc",
         priceMinor,
@@ -131,6 +139,7 @@ export default function ProductsPage(): JSX.Element {
       setName("");
       setSku("");
       setBarcode("");
+      setImageUrl("");
       setCategoryId("");
       setPrice("");
       setCost("");
@@ -138,6 +147,7 @@ export default function ProductsPage(): JSX.Element {
       setReorderLevel("0");
       setTrackInventory(true);
       setCreateSuccess(`${created.name} was added to the catalog.`);
+      setNewProductId(created.id);
       setCreateOpen(false);
       if (typeof window !== "undefined" && window.location.search.includes("create=1")) {
         window.history.replaceState(null, "", "/products");
@@ -242,6 +252,7 @@ export default function ProductsPage(): JSX.Element {
                   onClick={() => {
                     setCreateError("");
                     setCreateSuccess("");
+                    setNewProductId(null);
                     setCreateOpen(true);
                   }}
                   className="inline-flex min-h-10 items-center rounded-[10px] bg-[#f35d3f] px-4 text-sm font-semibold text-white shadow-[0_8px_20px_-8px_rgb(243_93_63/0.55)] hover:bg-[#d94a30]"
@@ -255,7 +266,7 @@ export default function ProductsPage(): JSX.Element {
 
         {createSuccess ? (
           <div role="status" className="rounded-xl border border-[#cfe9dc] bg-[#eaf7f0] px-4 py-3 text-sm font-medium text-[#1f8a5b]">
-            {createSuccess}
+            {createSuccess} {newProductId && role === "owner" ? <Link href={`/products/${newProductId}`} className="ml-2 underline">Open product to upload a photo →</Link> : null}
           </div>
         ) : null}
 
@@ -374,6 +385,11 @@ export default function ProductsPage(): JSX.Element {
               <label className="text-[11px] font-semibold text-[#655b53]">
                 Barcode
                 <input value={barcode} onChange={(event) => setBarcode(event.target.value)} maxLength={64} placeholder="Optional" className="field mt-1.5" />
+              </label>
+              <label className="text-[11px] font-semibold text-[#655b53] sm:col-span-2">
+                Product image URL (optional)
+                <input type="url" value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} maxLength={500} placeholder="https://images.example.com/product.jpg" className="field mt-1.5" />
+                <span className="mt-1 block font-normal text-[#8b8077]">Use a publicly accessible HTTP(S) image link. It appears on POS product tiles.</span>
               </label>
               <label className="text-[11px] font-semibold text-[#655b53]">
                 Category

@@ -29,7 +29,7 @@ async function makeCompletedSale(key: string, qty: number, reg?: string): Promis
 }
 
 beforeAll(async () => {
-  app = await createTestApp();
+  app = await createTestApp({ completedOnboardingFixture: true });
   db = app.get("DbPort");
   const reg = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
     ownerName: "Ana", email: "ana-ref@example.com",

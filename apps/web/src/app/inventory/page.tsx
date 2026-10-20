@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { AppShell } from "../../components/AppShell";
+import { AtlasInventoryWorkbench } from "../../components/AtlasInventoryWorkbench";
 import { ManagerApprovalDialog } from "../../components/ManagerApprovalDialog";
 import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "../../components/premium";
 import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
@@ -38,6 +39,14 @@ interface Me {
 
 interface Csrf {
   csrfToken: string;
+}
+
+function movementDelta(type: string, quantity: string): number | null {
+  const parsed = Number(quantity);
+  if (!Number.isInteger(parsed) || parsed === 0) return null;
+  if (["opening_stock", "receive", "return"].includes(type)) return Math.abs(parsed);
+  if (type === "damage") return -Math.abs(parsed);
+  return parsed;
 }
 
 export default function InventoryPage(): JSX.Element {
@@ -84,12 +93,12 @@ export default function InventoryPage(): JSX.Element {
   }
 
   async function submitMovement(approvalToken?: string): Promise<boolean> {
-    const delta = Number(qty);
+    const delta = movementDelta(type, qty);
     if (!productId.trim()) {
       setError("VALIDATION: product id is required");
       return false;
     }
-    if (!Number.isInteger(delta) || delta === 0) {
+    if (delta === null) {
       setError("VALIDATION: quantity must be a non-zero integer");
       return false;
     }
@@ -132,7 +141,7 @@ export default function InventoryPage(): JSX.Element {
 
   if (meQuery.isLoading || balancesQuery.isPending) {
     return (
-      <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role}>
+      <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role} atlasInventory>
         <main className="mx-auto max-w-[1240px] p-6"><Panel className="p-6 text-sm text-[#73685f]">Loading inventory…</Panel></main>
       </AppShell>
     );
@@ -140,7 +149,7 @@ export default function InventoryPage(): JSX.Element {
 
   if (meQuery.isError || balancesQuery.isError) {
     return (
-      <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role}>
+      <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role} atlasInventory>
         <main className="mx-auto max-w-[1240px] p-6">
           <Panel className="border-[#efb9b9] bg-[#fff0f0] p-6">
             <p role="alert" className="text-sm font-medium text-[#9d3030]">
@@ -166,11 +175,14 @@ export default function InventoryPage(): JSX.Element {
   const visibleUnits = data.items.reduce((sum, item) => sum + Math.max(0, item.qtyOnHand), 0);
 
   return (
-    <AppShell businessName={meQuery.data?.businessName} role={role}>
+    <AppShell businessName={meQuery.data?.businessName} role={role} atlasInventory>
       <main className="mx-auto max-w-[1240px] space-y-5 px-4 pb-10 pt-3 sm:px-6">
+        {role === "inventory" ? (
+          <AtlasInventoryWorkbench items={data.items} total={data.total} branchName={meQuery.data?.activeBranchName ?? null} />
+        ) : null}
         <PageHeader
-          eyebrow="Inventory / Stock control"
-          title="Inventory"
+          eyebrow={role === "inventory" ? "INVENTORY / STOCK CONTROL" : "Inventory / Stock control"}
+          title={role === "inventory" ? "Stock levels" : "Inventory"}
           description={
             meQuery.data?.activeBranchName
               ? "Viewing stock for " + meQuery.data.activeBranchName + ". Track on-hand inventory and audited movement within this branch."
@@ -208,6 +220,7 @@ export default function InventoryPage(): JSX.Element {
           </div>
         </Panel>
 
+        <div id="inventory-balances" className="scroll-mt-24">
         <DataTableFrame>
           <div className="flex items-center justify-between gap-3 px-5 py-4">
             <div>
@@ -246,6 +259,7 @@ export default function InventoryPage(): JSX.Element {
             <GhostButton type="button" disabled={page >= pages} onClick={() => setPage((current) => current + 1)}>Next</GhostButton>
           </div>
         </DataTableFrame>
+        </div>
 
         {adjustable ? (
           <Panel className="p-5">
@@ -261,18 +275,15 @@ export default function InventoryPage(): JSX.Element {
                 <select value={type} onChange={(event) => setType(event.target.value)} className="field mt-1.5">
                   <option value="opening_stock">Opening stock</option>
                   <option value="receive">Receive</option>
-                  <option value="sale">Sale</option>
                   <option value="return">Return</option>
                   <option value="damage">Damage</option>
                   <option value="adjustment">Adjustment</option>
-                  <option value="transfer_in">Transfer in</option>
-                  <option value="transfer_out">Transfer out</option>
                   <option value="stock_count">Stock count</option>
                 </select>
               </label>
               <label className="text-[11px] font-semibold text-[#655b53]">
-                Quantity
-                <input value={qty} onChange={(event) => setQty(event.target.value)} placeholder="10 or -2" inputMode="numeric" className="field mt-1.5 font-data" />
+                Quantity {type === "adjustment" || type === "stock_count" ? "delta (signed)" : ""}
+                <input value={qty} onChange={(event) => setQty(event.target.value)} placeholder={type === "adjustment" || type === "stock_count" ? "10 or -2" : "10"} inputMode="numeric" className="field mt-1.5 font-data" />
               </label>
               <label className="text-[11px] font-semibold text-[#655b53]">
                 Reason
@@ -287,7 +298,7 @@ export default function InventoryPage(): JSX.Element {
       <ManagerApprovalDialog
         open={approvalOpen}
         permission="inventory.adjust"
-        action={{ kind: "inventory_movement", productId: productId.trim(), movementType: type, qtyDelta: Number(qty), ...(reason.trim() ? { reason: reason.trim() } : {}), ...(meQuery.data?.activeBranchId ? { branchId: meQuery.data.activeBranchId } : {}) }}
+        action={{ kind: "inventory_movement", productId: productId.trim(), movementType: type, qtyDelta: movementDelta(type, qty) ?? 0, ...(reason.trim() ? { reason: reason.trim() } : {}), ...(meQuery.data?.activeBranchId ? { branchId: meQuery.data.activeBranchId } : {}) }}
         title={`Manager approval · approve ${type.replaceAll("_", " ")} of ${Math.abs(Number(qty) || 0)} units`}
         description="This stock movement requires manager authorization before it is written to the inventory ledger."
         summary={`${approvalProductName ?? "Selected product"} · ${type.replaceAll("_", " ")} · ${qty || "0"} units${reason.trim() ? ` · Reason: ${reason.trim()}` : ""}`}

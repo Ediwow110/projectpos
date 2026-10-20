@@ -18,6 +18,11 @@ describe("manager approval dialog", () => {
       />,
     );
     expect(html).toContain("Manager approval required");
+    expect(html).toContain('data-ui="atlas-flow-modal"');
+    expect(html).toContain("Workflow step");
+    expect(html).toContain("max-w-[535px]");
+    expect(html).toContain("sm:h-[min(585px,calc(100vh-3rem))]");
+    expect(html).toMatch(/aria-describedby="[^"]+"/);
     expect(html).toContain("exact action");
     expect(html).toContain("Manager email");
     expect(html).toContain("Approval PIN");

@@ -35,6 +35,6 @@ ENV NODE_ENV=production
 EXPOSE 3001
 USER node
 WORKDIR /app/apps/api
-# Apply pending migrations before boot. The final `exec` replaces the shell
-# with Node so SIGTERM reaches the process that owns Nest's shutdown hooks.
-CMD ["/bin/sh", "-c", "cd /app && node scripts/apply-migrations.mjs && cd apps/api && exec node --import tsx src/main.ts"]
+# Migrations MUST be applied by a separate, explicitly approved release step.
+# Never mutate the database as a side effect of an API restart or health recovery.
+CMD ["node", "--import", "tsx", "src/main.ts"]

@@ -26,6 +26,7 @@ const MANAGER_PIN = "482615";
 interface Roster {
   ownerEmail: string;
   managerEmail: string;
+  managerPassword: string;
   cashierEmail: string;
   cashierPassword: string;
 }
@@ -60,7 +61,7 @@ async function seedRoster(
     email: cashierEmail, name: "Approval Cashier", role: "cashier",
   });
 
-  return { ownerEmail, managerEmail, cashierEmail, cashierPassword: cashier.tempPassword };
+  return { ownerEmail, managerEmail, managerPassword: manager.tempPassword, cashierEmail, cashierPassword: cashier.tempPassword };
 }
 
 function approvalDialog(page: Page) {
@@ -99,6 +100,11 @@ test("inventory: cashier stock adjustment requires manager approval and writes t
   // The cashier role has no inventory.adjust permission, so the write is held
   // until an owner or manager authorizes this exact movement.
   await expect(approvalDialog(page)).toBeVisible();
+  await expect(approvalDialog(page)).toHaveAttribute("data-ui", "atlas-flow-modal");
+  await expect(approvalDialog(page)).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  if ((page.viewportSize()?.width ?? 0) >= 600) {
+    expect((await approvalDialog(page).boundingBox())?.width).toBeCloseTo(535, 0);
+  }
   // The reason is part of the fingerprint the manager authorizes, so it must be
   // visible; the summary must name the product rather than echo its internal id.
   await expect(approvalDialog(page)).toContainText("broken during stock count");
@@ -165,6 +171,8 @@ test("void: manager approval voids an unsettled sale once and a second attempt i
 
   await page.getByRole("button", { name: "Void sale" }).first().click();
   const voidDialog = page.getByRole("dialog", { name: "Void sale" });
+  await expect(voidDialog).toHaveAttribute("data-ui", "atlas-flow-modal");
+  await expect(voidDialog.getByText("Audit: exact reason recorded; manager authorization is enforced when required.")).toBeVisible();
   await voidDialog.getByLabel("Reason").fill("customer walked away");
   await voidDialog.getByRole("button", { name: "Void sale" }).click();
 
@@ -191,7 +199,59 @@ test("void: manager approval voids an unsettled sale once and a second attempt i
   expect(replay.status()).not.toBe(401);
 });
 
-test("refund: manager approval records the refund once and the grant cannot be reused", async ({ page, request }) => {
+test("void: manager inbox authorizes an unsettled sale without executing it before approval", async ({ page, request, browser }) => {
+  test.setTimeout(240_000);
+  const stamp = Date.now();
+  const roster = await seedRoster(page, request, stamp);
+  const { headers: ownerHeaders } = await apiAuthedContext(request, roster.ownerEmail, OWNER_PASSWORD, page);
+  const productId = await seedProduct(request, ownerHeaders, { name: `Queued Void ${stamp}`, priceMinor: 1500, stock: 5 });
+  const registerName = `Void Queue Counter ${stamp}`;
+  await createCounterWithOpenShift(page, registerName);
+  const registersResponse = await request.get(`${API}/api/v1/registers`, { headers: ownerHeaders });
+  expect(registersResponse.ok()).toBe(true);
+  const registersPayload = await registersResponse.json() as {
+    registers?: Array<{ id: string; name: string }>;
+    items?: Array<{ id: string; name: string }>;
+  };
+  const registerId = (registersPayload.registers ?? registersPayload.items ?? []).find((row) => row.name === registerName)?.id;
+  expect(registerId, "created register is returned by the register API").toBeTruthy();
+
+  const draft = await request.post(`${API}/api/v1/sales/drafts`, {
+    headers: ownerHeaders,
+    data: { lines: [{ productId, qty: 1 }], registerId },
+  });
+  expect(draft.ok()).toBe(true);
+  const sale = await draft.json() as { id: string };
+
+  await signOut(page);
+  await signIn(page, roster.cashierEmail, roster.cashierPassword);
+  await page.goto(`/sales/${sale.id}`);
+  await page.getByRole("button", { name: "Void sale" }).first().click();
+  const voidDialog = page.getByRole("dialog", { name: "Void sale" });
+  await voidDialog.getByLabel("Reason").fill("customer walked away");
+  await voidDialog.getByRole("button", { name: "Void sale" }).click();
+
+  const approval = page.getByRole("dialog", { name: /Manager approval · approve void/ });
+  await expect(approval).toBeVisible();
+  await approval.getByRole("button", { name: "Send to manager inbox" }).click();
+  await expect(approval.getByRole("status")).toContainText("Request sent");
+
+  const managerPage = await browser.newPage();
+  await signIn(managerPage, roster.managerEmail, roster.managerPassword);
+  await managerPage.goto("/customer-concerns");
+  await expect(managerPage.getByRole("heading", { name: "Manager approvals" })).toBeVisible();
+  await managerPage.getByLabel("Approval action type").selectOption("sale_void");
+  const voidCard = managerPage.locator("article").filter({ hasText: "Sale void" });
+  await expect(voidCard).toContainText("Sale status: DRAFT");
+  await voidCard.getByLabel("Your manager email").fill(roster.managerEmail);
+  await voidCard.getByLabel("Approval PIN (instead)").fill(MANAGER_PIN);
+  await voidCard.getByRole("button", { name: "Authorize sale void" }).click();
+  await expect(page.getByText("VOIDED", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(approval).toBeHidden({ timeout: 30_000 });
+  await managerPage.close();
+});
+
+test("refund: manager inbox authorizes the existing refund once and the grant cannot be reused", async ({ page, request, browser }) => {
   test.setTimeout(240_000);
   const stamp = Date.now();
   const roster = await seedRoster(page, request, stamp);
@@ -221,14 +281,35 @@ test("refund: manager approval records the refund once and the grant cannot be r
   await approveDialog.locator('input[type="number"]').first().fill("1");
   await approveDialog.getByRole("button", { name: "Approve refund" }).click();
 
-  // A non-member address must not be able to approve the request the cashier
-  // just raised.
-  await expect(approvalDialog(page)).toBeVisible();
-  await fillApproval(page, `outsider-${stamp}@example.com`, "482615");
-  await expect(approvalDialog(page).getByRole("alert")).toContainText("Manager credentials could not be verified");
+  const approvalDialog = page.getByRole("dialog", { name: /Manager approval · approve refund/ });
+  await expect(approvalDialog).toBeVisible();
+  await approvalDialog.getByRole("button", { name: "Send to manager inbox" }).click();
+  await expect(approvalDialog.getByRole("status")).toContainText("Request sent");
 
-  await fillApproval(page, roster.managerEmail, MANAGER_PIN);
-  await expect(approvalDialog(page)).toBeHidden({ timeout: 30_000 });
+  const managerPage = await browser.newPage();
+  await signIn(managerPage, roster.managerEmail, roster.managerPassword);
+  await managerPage.goto("/customer-concerns");
+  await expect(managerPage.getByRole("heading", { name: "Manager approvals" })).toBeVisible();
+  await managerPage.getByLabel("Approval action type").selectOption("refund");
+  const refundCard = managerPage.locator("article").filter({ hasText: productName });
+  await expect(refundCard).toContainText("Refund approval");
+  await expect(refundCard).toContainText("₱25.00");
+  await refundCard.getByLabel("Your manager email").fill(roster.managerEmail);
+  await refundCard.getByLabel("Approval PIN (instead)").fill("000000");
+  const invalidDecisionResponse = managerPage.waitForResponse((response) =>
+    response.url().includes("/api/v1/approvals/requests/") && response.url().endsWith("/decision") && response.request().method() === "POST",
+  );
+  await refundCard.getByRole("button", { name: "Authorize refund" }).click();
+  const invalidDecision = await invalidDecisionResponse;
+  const invalidDecisionBody = await invalidDecision.json() as { code?: string };
+  expect(invalidDecisionBody).toMatchObject({ code: "AUTH_INVALID_CREDENTIALS" });
+  expect(invalidDecision.status()).toBe(401);
+  await expect(refundCard.getByRole("alert")).toContainText("credentials could not be verified");
+  await refundCard.getByLabel("Approval PIN (instead)").fill(MANAGER_PIN);
+  await refundCard.getByRole("button", { name: "Authorize refund" }).click();
+  await expect(page.getByText("Refund approved and recorded.")).toBeVisible({ timeout: 30_000 });
+  await expect(approvalDialog).toBeHidden({ timeout: 30_000 });
+  await managerPage.close();
   await expect(page.getByText("Refund approved and recorded.")).toBeVisible({ timeout: 30_000 });
 
   // Fresh owner session (signOut revoked the captured one) and an unconditional

@@ -144,3 +144,89 @@ Voice is operational, concise, and specific. Unknown/pending/offline states are 
 - Don't: reintroduce generic blue/navy SaaS chrome.
 - Don't: use random decorative trend strokes, fake metrics, gradients, or color-only status.
 - Don't: expose business financial, customer, employee, or inventory figures before authentication.
+
+## Atlas V4 owner product media
+
+- Product photo upload/crop/replace/remove is restricted to signed-in owners, and disabled until secure storage is provisioned.
+- Public-read, server-write-only Supabase product photos use business-scoped immutable keys with 200 MiB active quota.
+- No sample Figma assets should be added to the real catalog; existing POS/payment calculations stay authoritative.
+
+## Atlas 2026 V4 operational surfaces
+
+### Atlas V4 owner product media
+
+- The product detail page implements owner-only image upload, replacement, square crop/zoom preview and confirmed removal (Figma Atlas owner product editor `63:239`). The controls are feature-gated, use real catalog images or initials fallback, and are hidden from cashiers/other roles.
+- Product media uses public-read/server-write-only Supabase Storage, an immutable tenant/product key per image, and 200 MiB active-image quota per business. Never embed Figma's example products/assets into the business catalog. The backend app's own session/CSRF/tenant authorization remains the authority; public object URLs are only for displaying photos.
+- A separate staging rollout must provision the bucket and secret, apply migration `0040_product_media`, run isolated cross-tenant/upload tests and only then set `PRODUCT_MEDIA_ENABLED=1`. This code is not a production rollout approval.
+
+### Atlas V4 cashier sale workspace
+
+- The active `/pos` route now opts into the light Atlas cashier treatment
+  (Figma 66:3): 78px dark `#252E2B` sale rail at desktop widths, coral
+  NexPOS mark, light `#F7F8F5` product surface, white editable current-sale
+  panel and `#DA614C` payment CTA. The payment-method chooser uses the
+  light modal treatment from Figma 66:964; disabled tender methods remain
+  disabled if the server/provider has not enabled them.
+- Product imagery must come from the owner's real catalog `imageUrl` data;
+  use accessible name/initials fallbacks when missing. Never ship Figma's
+  example photos, product names, inventory quantities or demo monetary
+  values as actual business data. The UI must never fake stock availability.
+- Existing POS sale creation, hold/resume, discounts, manager approvals,
+  PayMongo webhook settlement, offline handling, cart order and receipt
+  totals remain authoritative and separate from visual presentation.
+- On smaller screens the cashier retains the accessible V4 mobile header
+  and navigation, with a light cart tray/drawer and a keyboard-accessible
+  payment method modal. Test 390 / 820 / 1024 / 1280 / 1440px.
+- **P5 accessibility refinement:** Keep Figma's coral `#DA614C` as a
+  decorative accent where appropriate, but use darkened `#B84F3C` for
+  normal-sized white-on-coral POS action labels (at least 4.5:1 contrast).
+  Use `#53615A` instead of lighter `#71807A` / `#748078` for small text
+  on white or `#F7F8F5` POS surfaces. Payment workflow labels on white
+  use `#B04A39` rather than light coral. Contrast is measured from browser
+  computed styles, not accepted solely from design-token names.
+
+Figma Atlas V4 is an **additional, role-specific operational layout** within NexPOS,
+not permission to replace the existing POS transaction engine or invent example
+transactions. The older cream/coral direction above still applies to routes not
+yet designated as Atlas V4. The source file is
+`xr66O7yTaG0bhMhDI2UI7R` (Owner 95:2, Approvals 97:2, Inventory 98:273,
+Guest/Platform 99:2, Responsive QA 100:2).
+
+- **Tokens:** V4 canvas `#F7F8F5`, white surfaces, primary text `#202826`,
+  dark action `#29332D`, subdued text `#748078`, lines `#E5E9E3`,
+  owner/approvals accent `#DA614C`, inventory/verified accent `#267552`.
+  Heading font is Sora; operational text uses IBM Plex Sans; data/receipts
+  use IBM Plex Mono. Status still needs a text label in addition to color.
+- **Desktop shells:** owner sidebar 239px; approvals sidebar 230px; inventory
+  sidebar 226px; platform sidebar 233px. Major desktop headers are approximately
+  78–80px high; content is fluid rather than a scaled 1440px screenshot.
+- **Manager administration (Atlas P4):** `/admin` uses a 228px manager
+  workspace rail, V4 canvas and accessible task cards for real approvals,
+  sales, inventory, procurement, shifts and reporting. Owners retain their
+  239px control shell and broader account shortcuts. Do not display the sample
+  financial figures in Figma frame 63:62 as live metrics. Manager and
+  non-management roles must not receive owner-only links or grants.
+- **Atlas mobile shell:** 77px white header, 42px dark square NexPOS mark,
+  visible role badge and a minimum 44px menu disclosure. Navigation,
+  active-branch selection, tour controls and sign-out are reachable from the
+  expanded menu. Escape closes it and returns focus to the disclosure.
+  The mobile concept frames are 100:3 (employee access), 100:34 (approvals),
+  100:64 (receipt complaint), and 100:88 (guest support).
+- **Real workflow states:** employee access uses actual role/branch/register
+  restrictions, not fabricated permission labels. Approvals display scoped
+  queued records, or an explicit empty/error state. Receipt complaints use
+  verified purchases, eligible quantities and idempotent manager review.
+  Guest support uses an authenticated-by-token order-status link; never
+  substitute a typed reference number for verification. Mobile submit/review
+  actions use a reachable, minimum 53px control, without covering content.
+- **Implementation boundaries:** reuse existing server-approved grants,
+  sales/refunds, stock counts, purchase/receiving and guest order status.
+  Separate design-only inventory lot/expiry and platform controls from
+  backend capabilities that actually exist; do not display mock data as live
+  truth or silently add APIs. Approval must not execute a protected action.
+  Never change financial or inventory authority, PayMongo settlement rules,
+  or cross-tenant isolation merely to reproduce a Figma frame.
+- **Acceptance:** verify role-aware access, privacy, keyboard/focus, reduced
+  motion, loading/empty/error/retry states and 390/820/1024/1280/1440px
+  viewport behavior. Operational content may be taller than a fixed Figma
+  example because valid product lines and customer cases cannot be truncated.

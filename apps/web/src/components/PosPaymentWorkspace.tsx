@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 
 import { minorToMajorFixed } from "../lib/money";
 import type { PosCartEntry } from "../lib/pos-sale-model";
@@ -10,6 +10,7 @@ export interface PosPaymentTile {
 }
 
 interface PosPaymentWorkspaceProps {
+  atlasV4?: boolean;
   count: number;
   due: number;
   giftCardLoadMinor?: number;
@@ -37,6 +38,7 @@ function money(minor: number): string {
 }
 
 export function PosPaymentWorkspace({
+  atlasV4 = false,
   count,
   due,
   giftCardLoadMinor = 0,
@@ -58,7 +60,16 @@ export function PosPaymentWorkspace({
   onClose,
   onPay,
 }: PosPaymentWorkspaceProps) {
+  const desktopHeading = useRef<HTMLHeadingElement>(null);
+  const mobileHeading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    const desktop = window.matchMedia("(min-width: 1280px)").matches;
+    (atlasV4 || desktop ? desktopHeading : mobileHeading).current?.focus();
+  }, [atlasV4]);
   const availableTiles = paymentTiles.filter((method) => !offline || method.key === "cash");
+  const prominentMethods = availableTiles.filter((method) => ["cash", "card", "qrph"].includes(method.key));
+  const additionalMethods = availableTiles.filter((method) => !["cash", "card", "qrph"].includes(method.key));
+  const [showAdditionalMethods, setShowAdditionalMethods] = React.useState(!["cash", "card", "qrph"].includes(effectiveMethod));
   const cashTender = effectiveMethod === "cash";
   const payMongoTender = ["card", "gcash", "maya", "qrph"].includes(effectiveMethod);
   const selectedMethodLabel = paymentTiles.find((method) => method.key === effectiveMethod)?.label ?? effectiveMethod;
@@ -67,13 +78,70 @@ export function PosPaymentWorkspace({
       ? "Configure PayMongo to enable this method"
       : undefined;
 
+  const paymentDialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = paymentDialogRef.current;
+    if (!atlasV4 || !dialog || dialog.open) return;
+    dialog.showModal();
+  }, [atlasV4]);
+
+  if (atlasV4) return (
+    <dialog ref={paymentDialogRef} aria-label="Payment" onClose={onClose}
+      className="m-auto w-[min(94vw,540px)] max-h-[calc(100dvh-24px)] overflow-y-auto rounded-[14px] border border-[#e5e9e3] bg-white p-0 text-[#202826] shadow-[0_24px_80px_rgba(20,30,25,0.22)] backdrop:bg-[#202826]/40"
+      data-ui="payment-workspace">
+      <div className="px-5 pt-6 sm:px-7">
+        <p className="font-data text-[10px] uppercase tracking-widest text-[#b04a39]">Workflow step</p>
+        <h2 ref={desktopHeading} tabIndex={-1} className="font-display mt-4 text-[21px] font-semibold outline-none">Take payment</h2>
+        <p className="mt-2 text-xs leading-5 text-[#53615a]">Cash is local. Card and QR Ph use hosted payment when configured.</p>
+        <p className="mt-4 border-b border-[#e5e9e3] pb-4 font-data text-[12px] text-[#53615a]">Total due <strong className="ml-2 font-display text-[18px] text-[#202826]">₱{money(due)}</strong> · {count} unit{count === 1 ? "" : "s"}</p>
+        <fieldset className="mt-5 space-y-2.5">
+          <legend className="sr-only">Payment methods</legend>
+          {prominentMethods.map((method) => <button key={method.key} type="button" onClick={() => onMethodChange(method.key)} disabled={!methodAvailable(method.key)} title={title(method.key)}
+            aria-pressed={effectiveMethod === method.key}
+            className={"flex min-h-[46px] w-full items-center justify-between rounded-[8px] border px-3 text-left text-[13px] text-[#202826] transition-colors disabled:cursor-not-allowed disabled:opacity-40 " + (effectiveMethod === method.key ? "border-[#267552] bg-[#eaf7f0] font-semibold" : "border-transparent bg-[#eff2ed] hover:border-[#dce3dc]")}>{method.label}{effectiveMethod === method.key ? <span aria-hidden className="text-[#267552]">✓</span> : null}</button>)}
+        </fieldset>
+        {additionalMethods.length > 0 ? <>
+          <button type="button" aria-expanded={showAdditionalMethods} aria-controls="additional-payment-methods" onClick={() => setShowAdditionalMethods((open) => !open)}
+            className="mt-3 min-h-11 w-full rounded-[8px] border border-[#e5e9e3] text-xs font-medium text-[#53615a] hover:bg-[#eff2ed]">{showAdditionalMethods ? "Fewer payment methods" : "Other payment methods"} {showAdditionalMethods ? "−" : "+"}</button>
+          <div id="additional-payment-methods" hidden={!showAdditionalMethods} className="mt-2 max-h-36 space-y-2 overflow-y-auto pb-1">
+            {additionalMethods.map((method) => <button key={method.key} type="button" onClick={() => onMethodChange(method.key)} disabled={!methodAvailable(method.key)} title={title(method.key)} aria-pressed={effectiveMethod === method.key}
+              className={"flex min-h-11 w-full items-center justify-between rounded-[8px] border px-3 text-left text-xs disabled:opacity-40 " + (effectiveMethod === method.key ? "border-[#267552] bg-[#eaf7f0] font-semibold text-[#202826]" : "border-[#e5e9e3] bg-[#f7f8f5] text-[#53615a]")}>{method.label}{effectiveMethod === method.key ? <span aria-hidden>✓</span> : null}</button>)}
+          </div>
+        </> : null}
+        {offline ? <p className="mt-3 text-xs text-[#946c31]">Offline sales accept cash only.</p> : null}
+        {giftCardLoadMinor > 0 ? <p className="mt-3 text-xs text-[#a34132]">Includes gift-card load ₱{money(giftCardLoadMinor)} · external tender only.</p> : null}
+        {cashTender ? <div className="mt-5 grid grid-cols-2 gap-3">
+          <label className="text-[12px] font-medium text-[#53615a]">Amount Received
+            <input inputMode="decimal" value={received} onChange={(event) => onReceivedChange(event.target.value)} placeholder={money(due)} className="font-data mt-1.5 h-12 w-full rounded-[8px] border border-[#dce3dc] bg-white px-3 text-sm text-[#202826] focus-visible:outline-2 focus-visible:outline-[#267552]" />
+          </label>
+          <div className="text-[12px] font-medium text-[#53615a]">Change
+            <p className="font-data mt-1.5 flex h-12 items-center rounded-[8px] bg-[#eff2ed] px-3 text-sm text-[#267552]">₱{money(changeMinor)}</p>
+          </div>
+        </div> : null}
+        {payMongoTender ? <p className="mt-4 rounded-[8px] bg-[#eff2ed] p-3 text-xs leading-5 text-[#53615a]">Continue in PayMongo secure checkout. NexPOS only completes this sale after verified payment confirmation; returning to this page alone never confirms payment.</p> : null}
+        {["gift_card", "store_credit", "loyalty"].includes(effectiveMethod) ? <label className="mt-4 block text-xs text-[#53615a]">{effectiveMethod === "gift_card" ? "Gift card ID" : effectiveMethod === "store_credit" ? "Customer-bound credit" : "Loyalty account"}
+          <input value={internalInstrumentId} onChange={(e) => onInternalInstrumentIdChange(e.target.value)} placeholder="Scan or enter ID" className="mt-1.5 h-12 w-full rounded-lg border border-[#dce3dc] px-3 text-sm text-[#202826]" />
+        </label> : null}
+        <div className="mt-5 border-t border-[#e5e9e3] pt-3">
+          <h3 className="text-[12px] font-semibold text-[#202826]">Sale summary</h3>
+          <p className="font-data mt-1 text-[10px] uppercase text-[#53615a]">{registerSelected ? "Register selected" : "No register selected"} · {now || "Current"}</p>
+          <ul className="mt-2 max-h-24 overflow-y-auto text-[12px] text-[#53615a]">{cart.map((item) => <li key={item.productId} className="flex justify-between gap-3 py-1"><span className="min-w-0 truncate">{item.qty} × {item.name}</span><span className="shrink-0 font-data">₱{money(Math.max(0, item.qty * item.priceMinor - item.lineDiscountMinor))}</span></li>)}</ul>
+        </div>
+      </div>
+      <div className="sticky bottom-0 z-10 mt-5 flex gap-3 border-t border-[#e5e9e3] bg-white px-5 py-4 sm:px-7">
+        <button type="button" onClick={onClose} className="min-h-11 flex-1 rounded-[8px] text-[13px] font-medium text-[#202826] hover:bg-[#eff2ed]">Back to sale</button>
+        <button type="button" onClick={onPay} disabled={paying || !canPay} className="min-h-11 flex-1 rounded-[8px] bg-[#202826] px-3 text-[13px] font-semibold text-white hover:bg-[#35413b] disabled:opacity-40">{paying ? "Processing…" : payMongoTender ? "Continue to PayMongo" : "Complete Payment"}</button>
+      </div>
+    </dialog>
+  );
+
   return (
     <>
       <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 xl:hidden" role="dialog" aria-modal="true" aria-label="Payment">
         <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-white/10 bg-[#171614] shadow-2xl animate-[rise_0.3s_ease_both]">
           <div className="flex items-center justify-between px-5 pt-4">
             <div>
-              <h2 className="text-[15px] font-bold">Payment</h2>
+              <h2 ref={mobileHeading} tabIndex={-1} className="text-[15px] font-bold outline-none">Payment</h2>
               <p className="text-[11.5px] text-white/40">Current sale · {count} item{count === 1 ? "" : "s"}</p>
             </div>
             <button onClick={onClose} aria-label="Close payment" className="grid h-8 w-8 place-items-center rounded-lg bg-white/[0.07] text-white/60 hover:text-white">✕</button>
@@ -143,7 +211,7 @@ export function PosPaymentWorkspace({
           <p className="font-data text-[9px] font-medium uppercase tracking-[0.05em] text-[#ff765a]">
             PAYMENT / {registerSelected ? "REGISTER SELECTED" : "NO REGISTER"}
           </p>
-          <h2 className="font-display mt-5 text-[34px] font-bold">Take payment</h2>
+          <h2 ref={desktopHeading} tabIndex={-1} className="font-display mt-5 text-[34px] font-bold outline-none">Take payment</h2>
           <p className="font-data mt-4 text-[9px] font-medium uppercase tracking-[0.05em] text-[#9e948c]">Amount due</p>
           {giftCardLoadMinor > 0 ? <p className="mt-2 text-[10px] text-[#ffb7a4]">Gift-card load ₱{money(giftCardLoadMinor)} · external tender only</p> : null}
           <p className="money mt-1 text-[50px] font-bold leading-none">₱{money(due)}</p>

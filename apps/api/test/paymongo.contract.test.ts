@@ -59,7 +59,7 @@ async function draftSale(qty = 1): Promise<{ id: string; receiptNo: string; tota
 
 beforeAll(async () => {
   process.env["WEB_URL"] = "https://pos.example.com";
-  app = await createTestApp({ paymongo });
+  app = await createTestApp({ paymongo, completedOnboardingFixture: true });
   db = app.get<DbPort>("DbPort");
   const registration = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
     ownerName: "PayMongo Owner",

@@ -32,7 +32,7 @@ export class TransferController {
   ) {}
 
   private perms(req: Request): string[] {
-    return this.auth.rolePermissions(req.auth!.role);
+    return this.auth.permissionsForRequest(req.auth!);
   }
 
   @Get("transfers")
@@ -52,6 +52,7 @@ export class TransferController {
           status: parsed.data.status,
           page: parsed.data.page,
           pageSize: parsed.data.pageSize,
+          ...(req.auth!.allowedBranchIds ? { allowedBranchIds: req.auth!.allowedBranchIds } : {}),
         }),
       );
     } catch (e) {

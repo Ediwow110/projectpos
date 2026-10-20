@@ -1,4 +1,8 @@
-import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbDevice, DbDisplayToken, DbExchange, DbFeatureFlag, DbFulfillment, DbFulfillmentLine, DbInvoice, DbMembership, DbMovement, DbOrder, DbOrderAccessToken, DbOrderLine, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbProductFamily, DbProductOption, DbProductOptionValue, DbProductVariantOptionValue, DbProductBundle, DbBundleComponent, DbSaleItemBundleComponent, DbReceiptDelivery, DbResetToken, DbSession, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine, DbInventoryCount, DbInventoryCountLine, DbInventoryReservation, DbGiftCard, DbGiftCardTransaction, DbStoreCreditAccount, DbStoreCreditTransaction, DbLoyaltyProgram, DbLoyaltyAccount, DbLoyaltyTransaction, DbSaleGiftCardLoad, DbSaleLoyalty, DbSaleItemLoyaltyAllocation } from "./db.port";
+import type { AuditEntry, DbApiToken, DbBalance, DbBranch, DbBusiness, DbCategory, DbCustomerConcern, DbCustomerConcernCreate, DbManagerApprovalRequest, DbManagerApprovalRequestCreate, DbDevice, DbDisplayToken, DbExchange, DbFeatureFlag, DbFulfillment, DbFulfillmentLine, DbInvoice, DbMembership, DbMovement, DbOrder, DbOrderAccessToken, DbOrderLine, DbPlan, DbPort, DbPrinter, DbPrintJob, DbProduct, DbProductFamily, DbProductOption, DbProductOptionValue, DbProductVariantOptionValue, DbProductBundle, DbBundleComponent, DbSaleItemBundleComponent, DbReceiptDelivery, DbResetToken, DbSession, DbShiftCorrection, DbStockTransfer, DbStockTransferLine, DbSubscription, DbUsageCounter, DbUser, DbSale, DbSaleItem, DbPayment, DbHeldSale, DbIdempotency, DbRegister, DbShift, DbCashMovement, DbCustomer, DbRefund, DbRefundItem, DbExpense, DbWebhookEvent, DbSupplier, DbProductSupplier, DbPurchaseOrder, DbPurchaseOrderLine, DbPurchaseReceipt, DbPurchaseReceiptLine, DbSupplierReturn, DbSupplierReturnLine, DbInventoryCount, DbInventoryCountLine, DbInventoryReservation, DbGiftCard, DbGiftCardTransaction, DbStoreCreditAccount, DbStoreCreditTransaction, DbLoyaltyProgram, DbLoyaltyAccount, DbLoyaltyTransaction, DbSaleGiftCardLoad, DbSaleLoyalty, DbSaleItemLoyaltyAllocation } from "./db.port";
+
+import type { DbStockException } from "./db.port";
+import type { DbGuestSupportCase, DbPlatformConsent } from "./db.port";
+import { PRODUCT_MEDIA_ACTIVE_QUOTA_BYTES, type DbProductMediaAsset } from "./db.port";
 
 let n = 0;
 const nid = (p: string): string => `${p}_${Date.now().toString(36)}_${(n += 1)}`;
@@ -12,6 +16,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const settings = new Map<string, Record<string, unknown>>();
   const categories = new Map<string, DbCategory>();
   const products = new Map<string, DbProduct>();
+  const productMedia = new Map<string, DbProductMediaAsset>();
   const productFamilies = new Map<string, DbProductFamily>();
   const productOptions = new Map<string, DbProductOption>();
   const productOptionValues = new Map<string, DbProductOptionValue>();
@@ -20,6 +25,9 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const bundleComponents = new Map<string, DbBundleComponent>();
   const saleItemBundleComponents = new Map<string, DbSaleItemBundleComponent>();
   const movements = new Map<string, DbMovement>();
+  const stockExceptions = new Map<string, DbStockException>();
+  const guestSupportCases = new Map<string, DbGuestSupportCase>();
+  const platformConsents = new Map<string, DbPlatformConsent>();
   const balances = new Map<string, DbBalance>();
   const inventoryCounts = new Map<string, DbInventoryCount>();
   const inventoryCountLines = new Map<string, DbInventoryCountLine>();
@@ -51,6 +59,8 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
   const saleLoyalty = new Map<string, DbSaleLoyalty>();
   const saleItemLoyaltyAllocations = new Map<string, DbSaleItemLoyaltyAllocation>();
   const refunds = new Map<string, DbRefund>();
+  const customerConcerns = new Map<string, DbCustomerConcern>();
+  const managerApprovalRequests = new Map<string, DbManagerApprovalRequest>();
   const refundItems = new Map<string, DbRefundItem>();
   const exchanges = new Map<string, DbExchange>();
   const expenses = new Map<string, DbExpense>();
@@ -125,11 +135,12 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       if (transactionDepth > 0) return fn(memoryDb);
       transactionDepth += 1;
       const snapshot = {
+        products: new Map(products), productMedia: new Map(productMedia),
         purchaseOrders: new Map(purchaseOrders), purchaseOrderLines: new Map(purchaseOrderLines),
         purchaseReceipts: new Map(purchaseReceipts), purchaseReceiptLines: new Map(purchaseReceiptLines),
         supplierReturns: new Map(supplierReturns), supplierReturnLines: new Map(supplierReturnLines),
-        movements: new Map(movements), balances: new Map(balances), idempotency: new Map(idempotency),
-        sales: new Map(sales), saleItems: new Map(saleItems), payments: new Map(payments), refunds: new Map(refunds), refundItems: new Map(refundItems),
+        movements: new Map(movements), balances: new Map(balances), stockExceptions: new Map(stockExceptions), guestSupportCases: new Map(guestSupportCases), platformConsents: new Map(platformConsents), idempotency: new Map(idempotency),
+        sales: new Map(sales), saleItems: new Map(saleItems), payments: new Map(payments), refunds: new Map(refunds), customerConcerns: new Map(customerConcerns), refundItems: new Map(refundItems),
         orders: new Map(orders), orderLines: new Map(orderLines), inventoryReservations: new Map(inventoryReservations),
         fulfillments: new Map(fulfillments), fulfillmentLines: new Map(fulfillmentLines), orderAccessTokens: new Map(orderAccessTokens),
         giftCards: new Map(giftCards), giftCardTransactions: new Map(giftCardTransactions),
@@ -138,16 +149,18 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
         saleGiftCardLoads: new Map(saleGiftCardLoads), saleLoyalty: new Map(saleLoyalty), saleItemLoyaltyAllocations: new Map(saleItemLoyaltyAllocations),
         inventoryCounts: new Map(inventoryCounts), inventoryCountLines: new Map(inventoryCountLines), inventoryCountSeq: new Map(inventoryCountSeq),
         audit: [...audit], poSeq: new Map(poSeq), purchaseReceiptSeq: new Map(purchaseReceiptSeq), supplierReturnSeq: new Map(supplierReturnSeq),
+        webhookEvents: new Map(webhookEvents),
       };
       try {
         return await fn(memoryDb);
       } catch (error) {
         const restore = <T>(target: Map<string, T>, source: Map<string, T>): void => { target.clear(); for (const [id, row] of source) target.set(id, row); };
         restore(purchaseOrders, snapshot.purchaseOrders); restore(purchaseOrderLines, snapshot.purchaseOrderLines);
+        restore(products, snapshot.products); restore(productMedia, snapshot.productMedia);
         restore(purchaseReceipts, snapshot.purchaseReceipts); restore(purchaseReceiptLines, snapshot.purchaseReceiptLines);
         restore(supplierReturns, snapshot.supplierReturns); restore(supplierReturnLines, snapshot.supplierReturnLines);
-        restore(movements, snapshot.movements); restore(balances, snapshot.balances); restore(idempotency, snapshot.idempotency);
-        restore(sales, snapshot.sales); restore(saleItems, snapshot.saleItems); restore(payments, snapshot.payments); restore(refunds, snapshot.refunds); restore(refundItems, snapshot.refundItems);
+        restore(movements, snapshot.movements); restore(balances, snapshot.balances); restore(stockExceptions, snapshot.stockExceptions); restore(guestSupportCases, snapshot.guestSupportCases); restore(platformConsents, snapshot.platformConsents); restore(idempotency, snapshot.idempotency);
+        restore(sales, snapshot.sales); restore(saleItems, snapshot.saleItems); restore(payments, snapshot.payments); restore(refunds, snapshot.refunds); restore(customerConcerns, snapshot.customerConcerns); restore(refundItems, snapshot.refundItems);
         restore(orders, snapshot.orders); restore(orderLines, snapshot.orderLines); restore(inventoryReservations, snapshot.inventoryReservations);
         restore(fulfillments, snapshot.fulfillments); restore(fulfillmentLines, snapshot.fulfillmentLines); restore(orderAccessTokens, snapshot.orderAccessTokens);
         restore(giftCards, snapshot.giftCards); restore(giftCardTransactions, snapshot.giftCardTransactions);
@@ -156,6 +169,7 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
         restore(saleGiftCardLoads, snapshot.saleGiftCardLoads); restore(saleLoyalty, snapshot.saleLoyalty); restore(saleItemLoyaltyAllocations, snapshot.saleItemLoyaltyAllocations);
         restore(inventoryCounts, snapshot.inventoryCounts); restore(inventoryCountLines, snapshot.inventoryCountLines); restore(inventoryCountSeq, snapshot.inventoryCountSeq);
         restore(poSeq, snapshot.poSeq); restore(purchaseReceiptSeq, snapshot.purchaseReceiptSeq); restore(supplierReturnSeq, snapshot.supplierReturnSeq);
+        restore(webhookEvents, snapshot.webhookEvents);
         audit.splice(0, audit.length, ...snapshot.audit);
         throw error;
       } finally { transactionDepth -= 1; }
@@ -422,6 +436,78 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       products.set(id, next);
       return next;
     },
+    async getActiveProductMedia(businessId, productId) {
+      return [...productMedia.values()].find((asset) =>
+        asset.businessId === businessId && asset.productId === productId && asset.state === "ACTIVE") ?? null;
+    },
+    async replaceProductMediaAtomic(businessId, productId, expectedAssetId, input, requestId) {
+      return withLock(`product-media-quota:${businessId}`, () => memoryDb.withTransaction(async () => {
+        const current = products.get(productId);
+        if (!current || current.businessId !== businessId) throw new Error("NOT_FOUND");
+        if (input.businessId !== businessId || input.productId !== productId ||
+          input.contentType !== "image/webp" || !Number.isSafeInteger(input.bytes) ||
+          input.bytes <= 0 || input.bytes > 1024 * 1024 ||
+          !Number.isInteger(input.width) || input.width < 1 || input.width > 1600 ||
+          !Number.isInteger(input.height) || input.height < 1 || input.height > 1600 ||
+          !input.storagePath.startsWith(`businesses/${businessId}/products/${productId}/`) ||
+          !input.storagePath.endsWith(".webp") ||
+          [...productMedia.values()].some((asset) => asset.storagePath === input.storagePath)) {
+          throw new Error("PRODUCT_MEDIA_INVALID");
+        }
+        const oldAsset = await memoryDb.getActiveProductMedia(businessId, productId);
+        if ((oldAsset?.id ?? null) !== expectedAssetId) throw new Error("PRODUCT_MEDIA_CONFLICT");
+        const total = [...productMedia.values()].filter((asset) =>
+          asset.businessId === businessId && asset.state === "ACTIVE")
+          .reduce((sum, asset) => sum + asset.bytes, 0);
+        if (total - (oldAsset?.bytes ?? 0) + input.bytes > PRODUCT_MEDIA_ACTIVE_QUOTA_BYTES) {
+          throw new Error("PRODUCT_MEDIA_QUOTA");
+        }
+        const now = new Date();
+        if (oldAsset) productMedia.set(oldAsset.id, { ...oldAsset, state: "SUPERSEDED", updatedAt: now });
+        const asset: DbProductMediaAsset = {
+          ...input, id: nid("media"), state: "ACTIVE", cleanupAttempts: 0,
+          lastCleanupAt: null, createdAt: now, updatedAt: now,
+        };
+        productMedia.set(asset.id, asset);
+        const product = { ...current, imageUrl: input.publicUrl };
+        products.set(productId, product);
+        if (requestId) await memoryDb.appendAudit({
+          businessId, actorId: input.actorId, action: "product.media.upload",
+          entityType: "Product", entityId: productId, requestId,
+        });
+        return { product, asset, oldAsset };
+      }));
+    },
+    async detachProductMediaAtomic(businessId, productId, expectedAssetId, actorId, requestId) {
+      return withLock(`product-media-quota:${businessId}`, () => memoryDb.withTransaction(async () => {
+        const current = products.get(productId);
+        if (!current || current.businessId !== businessId) throw new Error("NOT_FOUND");
+        const oldAsset = await memoryDb.getActiveProductMedia(businessId, productId);
+        if ((oldAsset?.id ?? null) !== expectedAssetId) throw new Error("PRODUCT_MEDIA_CONFLICT");
+        if (oldAsset) productMedia.set(oldAsset.id, {
+          ...oldAsset, state: "PENDING_DELETE", updatedAt: new Date(),
+        });
+        const product = { ...current, imageUrl: null };
+        products.set(productId, product);
+        if (actorId && requestId) await memoryDb.appendAudit({
+          businessId, actorId, action: "product.media.remove",
+          entityType: "Product", entityId: productId, requestId,
+        });
+        return { product, oldAsset };
+      }));
+    },
+    async listProductMediaCleanupCandidates(limit) {
+      return [...productMedia.values()].filter((asset) => asset.state !== "ACTIVE")
+        .sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime())
+        .slice(0, Math.max(0, Math.min(100, limit)));
+    },
+    async markProductMediaCleanupResult(businessId, assetId, succeeded) {
+      const asset = productMedia.get(assetId);
+      if (!asset || asset.businessId !== businessId || asset.state === "ACTIVE") return;
+      if (succeeded) productMedia.delete(assetId);
+      else productMedia.set(assetId, { ...asset, cleanupAttempts: asset.cleanupAttempts + 1,
+        lastCleanupAt: new Date(), updatedAt: new Date() });
+    },
     async createProductFamily(f) {
       const now = new Date(); const row = { ...f, id: nid("pfam"), createdAt: now, updatedAt: now };
       productFamilies.set(row.id, row); return row;
@@ -487,6 +573,86 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
     async listBalances(businessId) {
       return [...balances.values()].filter((b) => b.businessId === businessId);
     },
+    async createStockException(input) {
+      const product = products.get(input.productId);
+      if (!product || product.businessId !== input.businessId) throw new Error("NOT_FOUND");
+      const row: DbStockException = { ...input, id: nid("risk"), createdAt: new Date() };
+      if ([...stockExceptions.values()].some((value) => value.businessId === input.businessId && value.reportKey === input.reportKey)) throw new Error("CONFLICT");
+      stockExceptions.set(row.id, row);
+      return row;
+    },
+    async findStockExceptionById(id, businessId) {
+      const row = stockExceptions.get(id);
+      return row?.businessId === businessId ? row : null;
+    },
+    async findStockExceptionByKey(businessId, key) {
+      return [...stockExceptions.values()].find((row) => row.businessId === businessId && row.reportKey === key) ?? null;
+    },
+    async listStockExceptions(businessId) {
+      return [...stockExceptions.values()].filter((row) => row.businessId === businessId);
+    },
+    async disposeStockException(id, businessId, actorId, movementId) {
+      const row = stockExceptions.get(id);
+      if (!row || row.businessId !== businessId || row.status !== "OPEN") return null;
+      const next: DbStockException = { ...row, status: "DISPOSED", disposedBy: actorId, disposedAt: new Date(), movementId };
+      stockExceptions.set(id, next);
+      return next;
+    },
+    async createGuestSupportCase(input) {
+      const order = orders.get(input.orderId);
+      if (!order || order.businessId !== input.businessId) throw new Error("NOT_FOUND");
+      if ([...guestSupportCases.values()].some((row) => row.businessId === input.businessId && row.idempotencyKey === input.idempotencyKey)) throw new Error("CONFLICT");
+      const row: DbGuestSupportCase = { ...input, id: nid("gsc"), createdAt: new Date() };
+      guestSupportCases.set(row.id, row); return row;
+    },
+    async findGuestSupportCaseById(id, businessId) {
+      const row = guestSupportCases.get(id);
+      return row?.businessId === businessId ? row : null;
+    },
+    async findGuestSupportCaseByKey(businessId, key) {
+      return [...guestSupportCases.values()].find((row) => row.businessId === businessId && row.idempotencyKey === key) ?? null;
+    },
+    async listGuestSupportCases(businessId) {
+      return [...guestSupportCases.values()].filter((row) => row.businessId === businessId);
+    },
+    async countOpenGuestSupportCases(businessId) {
+      let count = 0;
+      for (const row of guestSupportCases.values()) {
+        if (row.businessId === businessId && row.status === "OPEN") count++;
+      }
+      return count;
+    },
+    async listGuestSupportCasesForOrder(businessId, orderId) {
+      return [...guestSupportCases.values()]
+        .filter((row) => row.businessId === businessId && row.orderId === orderId)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id));
+    },
+    async closeGuestSupportCase(id, businessId, actorId) {
+      const row = guestSupportCases.get(id);
+      if (!row || row.businessId !== businessId || row.status !== "OPEN") return null;
+      const next: DbGuestSupportCase = { ...row, status: "CLOSED", closedAt: new Date(), closedBy: actorId };
+      guestSupportCases.set(id, next); return next;
+    },
+    async createPlatformConsent(input) {
+      const row: DbPlatformConsent = { ...input, id: nid("consent"), createdAt: new Date() };
+      platformConsents.set(row.id, row); return row;
+    },
+    async findPlatformConsentById(id, businessId) {
+      const row = platformConsents.get(id);
+      return row?.businessId === businessId ? row : null;
+    },
+    async findPlatformConsentByHash(businessId, hash) {
+      return [...platformConsents.values()].find((row) => row.businessId === businessId && row.tokenHash === hash) ?? null;
+    },
+    async listPlatformConsents(businessId) {
+      return [...platformConsents.values()].filter((row) => row.businessId === businessId);
+    },
+    async revokePlatformConsent(id, businessId) {
+      const row = platformConsents.get(id);
+      if (!row || row.businessId !== businessId) return null;
+      const next: DbPlatformConsent = { ...row, revokedAt: row.revokedAt ?? new Date() };
+      platformConsents.set(id, next); return next;
+    },
     async nextInventoryCountNo(businessId) {
       const year = new Date().getUTCFullYear();
       const seq = (inventoryCountSeq.get(businessId) ?? 0) + 1;
@@ -550,8 +716,16 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       if (!s || s.businessId !== businessId) return null;
       return s;
     },
+    async findSaleByReceiptNo(receiptNo, businessId) {
+      return [...sales.values()].find((s) => s.businessId === businessId && s.receiptNo === receiptNo) ?? null;
+    },
     async listSalesByBusiness(businessId) {
       return [...sales.values()].filter((s) => s.businessId === businessId);
+    },
+    async countSalesByBusiness(businessId) {
+      let count = 0;
+      for (const row of sales.values()) if (row.businessId === businessId) count++;
+      return count;
     },
     async listSalesPage(businessId, afterId, limit) {
       const rows = [...sales.values()]
@@ -1002,6 +1176,66 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       const row: DbRefund = { deliveryFeeRefundMinor: 0, deliveryTaxRefundMinor: 0, ...r, id: nid("ref") };
       refunds.set(row.id, row);
       return row;
+    },
+    async createCustomerConcern(c: DbCustomerConcernCreate) {
+      if ([...customerConcerns.values()].some((row) => row.businessId === c.businessId && row.idempotencyKey === c.idempotencyKey)) {
+        throw new Error("IDEMPOTENCY_MISMATCH");
+      }
+      const now = new Date();
+      const row: DbCustomerConcern = { ...c, reviewedAt: c.reviewedAt ?? null, items: c.items.map((item) => ({ ...item })), id: nid("concern"), createdAt: now, updatedAt: now };
+      customerConcerns.set(row.id, row);
+      return row;
+    },
+    async findCustomerConcernById(id, businessId) {
+      const row = customerConcerns.get(id) ?? null;
+      return row?.businessId === businessId ? row : null;
+    },
+    async findCustomerConcernByIdempotency(businessId, idempotencyKey) {
+      return [...customerConcerns.values()].find((row) => row.businessId === businessId && row.idempotencyKey === idempotencyKey) ?? null;
+    },
+    async listCustomerConcernsByBusiness(businessId) {
+      return [...customerConcerns.values()].filter((row) => row.businessId === businessId)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id));
+    },
+    async transitionCustomerConcern(id, businessId, expectedStatus, patch) {
+      const row = customerConcerns.get(id);
+      if (!row || row.businessId !== businessId || row.status !== expectedStatus) return null;
+      const updated: DbCustomerConcern = { ...row, ...patch, updatedAt: new Date() };
+      customerConcerns.set(id, updated);
+      return updated;
+    },
+    async createManagerApprovalRequest(input: DbManagerApprovalRequestCreate) {
+      if ([...managerApprovalRequests.values()].some((row) => row.businessId === input.businessId && row.requesterId === input.requesterId && row.idempotencyKey === input.idempotencyKey)) throw new Error("IDEMPOTENCY_MISMATCH");
+      const now = new Date();
+      const row: DbManagerApprovalRequest = { ...input, action: { ...input.action }, id: nid("approval"), createdAt: now, updatedAt: now };
+      managerApprovalRequests.set(row.id, row);
+      return row;
+    },
+    async findManagerApprovalRequest(id, businessId) {
+      const row = managerApprovalRequests.get(id) ?? null;
+      return row?.businessId === businessId ? row : null;
+    },
+    async findManagerApprovalRequestByIdempotency(businessId, requesterId, idempotencyKey) {
+      return [...managerApprovalRequests.values()].find((row) => row.businessId === businessId && row.requesterId === requesterId && row.idempotencyKey === idempotencyKey) ?? null;
+    },
+    async listManagerApprovalRequests(businessId) {
+      return [...managerApprovalRequests.values()].filter((row) => row.businessId === businessId)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id));
+    },
+    async transitionManagerApprovalRequest(id, businessId, expectedStatus, patch) {
+      const row = managerApprovalRequests.get(id);
+      if (!row || row.businessId !== businessId || row.status !== expectedStatus) return null;
+      const updated: DbManagerApprovalRequest = { ...row, ...patch, updatedAt: new Date() };
+      managerApprovalRequests.set(id, updated);
+      return updated;
+    },
+    async claimManagerApprovalRequestToken(id, businessId, requesterId, now) {
+      const row = managerApprovalRequests.get(id);
+      if (!row || row.businessId !== businessId || row.requesterId !== requesterId || row.status !== "APPROVED" || row.tokenClaimedAt || !row.tokenCiphertext || !row.tokenExpiresAt || row.tokenExpiresAt <= now) return null;
+      const encryptedToken = row.tokenCiphertext;
+      const request: DbManagerApprovalRequest = { ...row, tokenCiphertext: null, tokenExpiresAt: null, tokenClaimedAt: now, updatedAt: now };
+      managerApprovalRequests.set(id, request);
+      return { request, encryptedToken, tokenExpiresAt: row.tokenExpiresAt };
     },
     async listRefundsByBusiness(businessId) {
       return [...refunds.values()].filter((r) => r.businessId === businessId);

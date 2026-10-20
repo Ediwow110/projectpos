@@ -15,6 +15,7 @@ export const ROLE_SEED: Record<"owner" | "manager" | "cashier" | "inventory", st
       p !== "cost.view" &&
       p !== "discount.override" &&
       p !== "sale.refund" &&
+      p !== "customer_concern.review" &&
       p !== "stored_value.adjust" &&
       p !== "gift_card.manage" &&
       p !== "loyalty.manage" &&
@@ -43,6 +44,8 @@ export const ROLE_SEED: Record<"owner" | "manager" | "cashier" | "inventory", st
   inventory: ALL_PERMISSIONS.filter(
     (p) =>
       p !== "sale.refund" &&
+      p !== "customer_concern.request" &&
+      p !== "customer_concern.review" &&
       p !== "refund.override" &&
       p !== "user.manage" &&
       p !== "settings.write" &&
@@ -88,6 +91,7 @@ export async function buildRegistrationSeed(input: RegistrationInput): Promise<R
     allPermissions: ALL_PERMISSIONS,
     defaultSettings: [
       { key: "currency", value: "PHP" },
+      { key: "onboardingSchemaVersion", value: 2 },
       // FR-PAY-01: methods are data; every new business starts with the
       // plan's initial methods and can reconfigure them.
       { key: "paymentMethods", value: DEFAULT_PAYMENT_METHODS },
@@ -97,9 +101,9 @@ export async function buildRegistrationSeed(input: RegistrationInput): Promise<R
       { key: "deliveryFlatFeeMinor", value: 0 },
     ],
     onboarding: {
-      currentStep: "taxCurrency",
+      currentStep: "businessDetails",
       steps: {
-        businessDetails: "done",
+        businessDetails: "pending",
         taxCurrency: "pending",
         receiptSetup: "pending",
         products: "pending",

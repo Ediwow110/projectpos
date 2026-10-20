@@ -210,7 +210,7 @@ export function tenantsFamily(ctx: PgContext) {
     async updateMembership(
       id: string,
       businessId: string,
-      patch: { deactivatedAt?: Date | null; approvalPinHash?: string | null },
+      patch: { deactivatedAt?: Date | null; approvalPinHash?: string | null; role?: "manager" | "cashier" | "inventory" },
     ): Promise<void> {
       const c = await ctx.client();
       try {
@@ -223,6 +223,17 @@ export function tenantsFamily(ctx: PgContext) {
         if (Object.prototype.hasOwnProperty.call(patch, "approvalPinHash")) {
           values.push(patch.approvalPinHash ?? null);
           updates.push(`"approvalPinHash" = $${values.length}`);
+        }
+        if (patch.role !== undefined) {
+          // Role names are restricted by the typed patch and membership API.
+          // Reference only a role belonging to this business.
+          const role = await c.query(
+            'INSERT INTO "Role" ("id", "businessId", "name") VALUES ($1, $2, $3)' +
+              ' ON CONFLICT ("businessId", "name") DO UPDATE SET "name" = EXCLUDED."name" RETURNING "id"',
+            [nid("role"), businessId, patch.role],
+          );
+          values.push(role.rows[0].id as string);
+          updates.push(`"roleId" = $${values.length}`);
         }
         if (updates.length === 0) return;
         values.push(id, businessId);

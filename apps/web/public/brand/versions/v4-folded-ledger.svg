@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="v4 Folded Ledger">
+  <rect width="48" height="48" rx="11" fill="#FCF8F3"/>
+  <rect x="1" y="1" width="46" height="46" rx="10" fill="none" stroke="#EEE4DB" stroke-width="2"/>
+  <path d="M12 32 12 16l12-4 12 4v16l-12 4-12-4Z" fill="#17130F"/>
+  <path d="M12 16l12-4 12 4-12 4-12-4Z" fill="#252422"/>
+  <path d="M18 18.5h3.4l5 7.2v-7.2H30v11h-3.4l-5-7.2v7.2H18v-11Z" fill="#fff"/>
+  <rect x="12" y="30" width="24" height="5" rx="1.5" fill="#F35D3F"/>
+</svg>

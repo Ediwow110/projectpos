@@ -10,7 +10,7 @@ import type { DbCategory, DbProduct } from "../../src/common/db.port";
 // insertion ordering, null for missing/cross-tenant rows, [] for empty lists.
 // Same disposable database as helpers.ts; PGTEST_BASE lets CI point at its
 // own service container.
-const URL = `${process.env["PGTEST_BASE"] ?? "postgres://pos:pos@localhost:5433"}/pos_test_pg`;
+const URL = `${process.env["PGTEST_BASE"] ?? "postgres://pos:pos@localhost:5433"}/${process.env["PGTEST_DB"] ?? "pos_test_pg"}`;
 const uniq = (p: string) => `${p}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 

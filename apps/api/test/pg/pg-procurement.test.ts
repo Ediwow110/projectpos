@@ -7,7 +7,7 @@ import { inventoryFamily } from "../../src/common/pg/pg-inventory";
 import { procurementFamily } from "../../src/common/pg/pg-procurement";
 import { tenantsFamily } from "../../src/common/pg/pg-tenants";
 
-const URL = `${process.env["PGTEST_BASE"] ?? "postgres://pos:pos@localhost:5433"}/pos_test_pg`;
+const URL = `${process.env["PGTEST_BASE"] ?? "postgres://pos:pos@localhost:5433"}/${process.env["PGTEST_DB"] ?? "pos_test_pg"}`;
 const uniq = (prefix: string): string => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 let admin: Client;

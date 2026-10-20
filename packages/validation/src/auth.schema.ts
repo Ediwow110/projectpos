@@ -55,10 +55,21 @@ const ONBOARDING_STEPS = [
 export const onboardingPatchSchema = z.object({
   step: z.enum(ONBOARDING_STEPS),
   state: z.enum(["done", "skipped"]),
+  receiptPreviewConfirmed: z.boolean().optional(),
 });
 
 export const businessSettingsSchema = z.object({
   currency: z.string().length(3).optional(),
+  standardReceiptConfirmed: z.boolean().optional(),
+  businessAddress: z.string().trim().min(5).max(240).optional(),
+  businessPhone: z.string().trim().max(40).optional(),
+  businessTimezone: z.string().trim().min(3).max(80).refine(
+    (value) => {
+      try { new Intl.DateTimeFormat("en-US", { timeZone: value }); return true; }
+      catch { return false; }
+    },
+    "VALIDATION",
+  ).optional(),
   taxName: z.string().max(80).optional(),
   taxRateBps: z.number().int().min(0).max(10000).optional(),
   receiptHeader: z.string().max(200).optional(),
@@ -67,4 +78,7 @@ export const businessSettingsSchema = z.object({
   onlinePickupBranchIds: z.array(z.string().min(1, "VALIDATION")).max(100, "VALIDATION").optional(),
   onlineFulfillmentBranchId: z.string().min(1, "VALIDATION").nullable().optional(),
   deliveryFlatFeeMinor: z.number().int().min(0, "VALIDATION").max(Number.MAX_SAFE_INTEGER, "VALIDATION").optional(),
+  refundApprovalThresholdMinor: z.number().int().min(0, "VALIDATION").max(100_000_000, "VALIDATION").optional(),
+  orderDiscountApprovalPercent: z.number().int().min(0, "VALIDATION").max(100, "VALIDATION").optional(),
+  lineDiscountApprovalPercent: z.number().int().min(0, "VALIDATION").max(100, "VALIDATION").optional(),
 });

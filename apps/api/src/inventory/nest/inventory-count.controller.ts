@@ -20,13 +20,18 @@ export class InventoryCountController {
     @Inject(AuthService) private readonly auth: AuthService,
     @Inject(ManagerApprovalPolicyService) private readonly approvalPolicy: ManagerApprovalPolicyService,
   ) {}
-  private perms(req: Request): string[] { return this.auth.rolePermissions(req.auth!.role); }
+  private perms(req: Request): string[] { return this.auth.permissionsForRequest(req.auth!); }
   private key(req: Request, res: Response): string | null { const key = idemKey(req); if (!key) { fail(res, 400, "VALIDATION", "Idempotency-Key header required", req); return null; } return key; }
 
   @Get("counts")
   async list(@Req() req: Request, @Res() res: Response, @Query() query: Record<string, string>): Promise<void> {
     const parsed = inventoryCountListSchema.safeParse(query); if (!parsed.success) { fail(res, 400, "VALIDATION", "Invalid count query", req); return; }
-    try { res.json(await this.counts.listCounts(req.auth!.businessId, parsed.data)); } catch (e) { failFromError(res, e, "Count fetch failed", req); }
+    try {
+      const auth = req.auth!;
+      res.json(await this.counts.listCounts(auth.businessId, {
+        ...parsed.data, ...(auth.allowedBranchIds ? { branchId: auth.activeBranchId! } : {}),
+      }));
+    } catch (e) { failFromError(res, e, "Count fetch failed", req); }
   }
 
   @Post("counts")

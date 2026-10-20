@@ -280,6 +280,36 @@ describe("POS operations", () => {
     });
   });
 
+  it("does not promote a pending server response into a completed receipt", async () => {
+    const api: PosApiCall = async <T>(path: string) => {
+      if (path === "/api/v1/auth/csrf") return { csrfToken: "csrf" } as T;
+      if (path === "/api/v1/sales/drafts") return { id: "sale-pending", totalMinor: 5000 } as T;
+      if (path === "/api/v1/sales/complete") {
+        return { id: "sale-pending", status: "PENDING_PAYMENT", receiptNo: "2026-000040", payments: [] } as T;
+      }
+      throw new Error("unexpected path " + path);
+    };
+    const result = await completePosSale({
+      cart, registerId: "", customerId: "", walkIn: "", received: "50", method: "cash", orderDiscountMinor: 0,
+    }, { api, uuid: () => "pending-complete" });
+    expect(result).toEqual({ kind: "unknown", saleId: "sale-pending", paymentId: null });
+  });
+
+  it("returns an authoritative receipt number only when the sale is completed", async () => {
+    const api: PosApiCall = async <T>(path: string) => {
+      if (path === "/api/v1/auth/csrf") return { csrfToken: "csrf" } as T;
+      if (path === "/api/v1/sales/drafts") return { id: "sale-ok", totalMinor: 5000 } as T;
+      if (path === "/api/v1/sales/complete") {
+        return { sale: { id: "sale-ok", status: "COMPLETED", receiptNo: "2026-000041", payments: [] } } as T;
+      }
+      throw new Error("unexpected path " + path);
+    };
+    const result = await completePosSale({
+      cart, registerId: "", customerId: "", walkIn: "", received: "50", method: "cash", orderDiscountMinor: 0,
+    }, { api, uuid: () => "completed" });
+    expect(result).toEqual({ kind: "completed", saleId: "sale-ok", receiptNo: "2026-000041" });
+  });
+
   it("completes an existing resumed draft without creating a replacement", async () => {
     const calls: string[] = [];
     const api: PosApiCall = async <T>(path: string) => {

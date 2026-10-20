@@ -64,14 +64,19 @@ describe("premium POS shell", () => {
     // The xl catalog reflows 4-to-3 columns so the two-pane grid never
     // overflows the content column at 1280-1440px viewports (see
     // e2e/pos-responsive.spec.ts for the native-click regression).
-    expect(productSource).toContain("xl:grid-cols-[repeat(auto-fill,minmax(164px,1fr))]");
-    expect(productSource).toContain("xl:gap-2");
+    expect(productSource).toContain("xl:grid-cols-[repeat(auto-fill,minmax(215px,1fr))]");
+    expect(productSource).toContain("xl:gap-3");
   });
 
   it("keeps the xl two-pane grid fluid so the cart column never overflows", () => {
     const posSource = readFileSync(resolve(process.cwd(), "src/app/pos/page.tsx"), "utf8");
 
-    expect(posSource).toContain("xl:grid-cols-[minmax(0,1fr)_452px]");
+    expect(posSource).toContain("xl:grid-cols-[minmax(0,1fr)_456px]");
+    expect(posSource).not.toContain('(showPay ? "xl:hidden"');
+    expect(posSource).toContain("atlasPos");
+    expect(posSource).toContain("atlasV4");
+    expect(posSource).toContain("bg-[#f7f8f5]");
+    expect(readFileSync(resolve(process.cwd(), "src/components/AtlasPosRail.tsx"), "utf8")).toContain("bg-[#252e2b]");
     expect(posSource).not.toContain("xl:grid-cols-[760px_452px]");
   });
 
@@ -116,5 +121,20 @@ describe("premium POS shell", () => {
     expect(cartSource).toContain("grid grid-cols-4 gap-2");
     expect(cartSource).toContain("Clear sale");
     expect(cartSource).toContain("Totals are server-validated before commit");
+  });
+
+  it("uses Atlas V4's compact desktop register rail and light workspace", () => {
+    const shell = readFileSync(resolve(process.cwd(), "src/components/AppShell.tsx"), "utf8");
+    const pos = readFileSync(resolve(process.cwd(), "src/app/pos/page.tsx"), "utf8");
+    const rail = readFileSync(resolve(process.cwd(), "src/components/AtlasPosRail.tsx"), "utf8");
+    const catalog = readFileSync(resolve(process.cwd(), "src/components/PosProductCatalog.tsx"), "utf8");
+    const cart = readFileSync(resolve(process.cwd(), "src/components/PosCartPanel.tsx"), "utf8");
+    expect(shell).toContain("xl:grid-cols-[78px_minmax(0,1fr)]");
+    expect(shell).toContain("<AtlasPosRail");
+    expect(shell).toContain('data-ui="atlas-pos-title"');
+    expect(rail).toContain("bg-[#252e2b]");
+    expect(pos).toContain("bg-[#f7f8f5]");
+    expect(catalog).toContain('data-ui="atlas-pos-products"');
+    expect(cart).toContain('data-ui="atlas-pos-cart"');
   });
 });

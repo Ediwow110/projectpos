@@ -435,7 +435,7 @@ export class ShiftService {
 
   async listShifts(
     businessId: string,
-    opts: { cursor?: string; limit?: number; status?: string; registerId?: string; includeCloseCandidates?: boolean },
+    opts: { cursor?: string; limit?: number; status?: string; registerId?: string; includeCloseCandidates?: boolean; branchId?: string; allowedRegisterIds?: string[] },
     role: string,
     actorId: string,
   ): Promise<{ items: ShiftListItem[]; nextCursor: string | null }> {

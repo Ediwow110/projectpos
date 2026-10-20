@@ -244,6 +244,9 @@ export class ReportingBreakdownService {
     let adjusted = 0;
     let supplierReturned = 0;
     for (const movement of movements) {
+      // Branch-scoped reports must not aggregate movement volumes from
+      // another branch. The balance projection above already uses branchId.
+      if (branchId && (movement.branchId ?? null) !== branchId) continue;
       if (
         movement.type === "opening_stock" ||
         movement.type === "receive" ||

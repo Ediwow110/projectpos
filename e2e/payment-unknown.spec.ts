@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { API, registerOperationalBusiness, apiAuthedContext, clickPosPay, seedProduct } from "./helpers";
+import { API, registerOperationalBusiness, apiAuthedContext, clickPosPay, confirmPosQuantity, seedProduct } from "./helpers";
 
 test("unknown provider outcome stays visibly unresolved and blocks false success", async ({ page, request }) => {
   const stamp = Date.now();
@@ -19,7 +19,9 @@ test("unknown provider outcome stays visibly unresolved and blocks false success
   await page.goto("/pos");
   await page.getByLabel("Search product, SKU or scan barcode").fill("Unknown Cola");
   await page.getByRole("button", { name: /Unknown Cola ₱25\.00/ }).click();
+  await confirmPosQuantity(page);
   await clickPosPay(page, "25.00");
+  await page.getByRole("dialog", { name: "Payment" }).getByRole("button", { name: /Other payment methods/ }).click();
   await expect(page.getByRole("button", { name: "GCash", exact: true })).toBeDisabled();
 
   // PAYMENT_UNKNOWN remains available as a privileged recovery path for
@@ -30,7 +32,7 @@ test("unknown provider outcome stays visibly unresolved and blocks false success
     data: { lines: [{ productId, qty: 1 }] },
   });
   expect(draft.ok()).toBe(true);
-  const draftBody = await draft.json() as { id: string; totalMinor: number };
+  const draftBody = await draft.json() as { id: string; receiptNo: string; totalMinor: number };
   const unknown = await request.post(`${API}/api/v1/sales/complete`, {
     headers: { ...headers, "Idempotency-Key": `unknown-e2e-${stamp}` },
     data: {
@@ -44,6 +46,13 @@ test("unknown provider outcome stays visibly unresolved and blocks false success
   await expect(page.getByRole("heading", { name: "Payment outcome is unknown" })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("region", { name: "Sale summary" }).getByText("PAYMENT_UNKNOWN", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "View receipt" })).toHaveCount(0);
+
+  await page.goto("/receipts/lookup");
+  await page.getByLabel("Receipt number").fill(draftBody.receiptNo);
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Do not retry payment.");
+  await expect(page.getByRole("button", { name: "Report an item concern" })).toHaveCount(0);
+  await page.goto(`/sales/${draftBody.id}`);
 
   await page.getByRole("button", { name: "Mark succeeded", exact: true }).click();
   const reconcileDialog = page.getByRole("dialog", { name: "Mark payment as succeeded?" });

@@ -14,7 +14,7 @@ function jar(h: unknown): string {
 }
 
 beforeAll(async () => {
-  app = await createTestApp();
+  app = await createTestApp({ completedOnboardingFixture: true });
   const reg = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
     ownerName: "Ana", email: "ana-inv@example.com",
     password: "correct-horse-12", businessName: "Sari Store",
@@ -30,6 +30,15 @@ beforeAll(async () => {
 afterAll(async () => { await app.close(); });
 
 describe("phase3 inventory HTTP contract", () => {
+  it("shows a tracked product with zero on hand before its first stock movement", async () => {
+    const bal = await request(app.getHttpServer()).get("/api/v1/inventory/balances")
+      .set("Cookie", cookie);
+    expect(bal.status).toBe(200);
+    expect(bal.body.items.some((b: { productId: string; qtyOnHand: number; status: string }) =>
+      b.productId === productId && b.qtyOnHand === 0 && b.status === "out",
+    )).toBe(true);
+  });
+
   it("records opening stock and reads it back in balances", async () => {
     const mov = await request(app.getHttpServer()).post("/api/v1/inventory/movements")
       .set("Cookie", cookie).set("X-CSRF-Token", csrf)
@@ -76,7 +85,10 @@ describe("phase3 inventory permissions and rebuild", () => {
     const { InventoryController } = await import("../src/inventory/nest/inventory.controller");
     const { InventoryService } = await import("../src/inventory/nest/inventory.service");
     const { createMemoryDb } = await import("../src/common/memory.db");
-    const fakeAuth = { rolePermissions: (_r: string) => [] as string[] };
+    const fakeAuth = {
+      rolePermissions: (_r: string) => [] as string[],
+      permissionsForRequest: (_auth: { role: string }) => [] as string[],
+    };
     const ctrl = new InventoryController(new InventoryService(createMemoryDb()), fakeAuth as never, {} as never);
     let status = 0;
     let body: unknown = null;

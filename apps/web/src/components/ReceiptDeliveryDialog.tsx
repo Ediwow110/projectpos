@@ -54,6 +54,7 @@ export function ReceiptDeliveryDialog({
   return (
     <Modal
       open
+      variant="atlasFlow"
       title="Deliver receipt"
       description={`Send or share receipt ${receiptNo} without changing the completed sale.`}
       onClose={onClose}
@@ -77,7 +78,7 @@ export function ReceiptDeliveryDialog({
               placeholder="customer@example.com"
             />
           </label>
-          <PrimaryButton type="submit" disabled={busy}>{busy ? "Sending…" : "Email receipt"}</PrimaryButton>
+          <PrimaryButton type="submit" className="!bg-[#202826] !shadow-none hover:!bg-[#36443c]" disabled={busy}>{busy ? "Sending…" : "Email receipt"}</PrimaryButton>
         </form>
 
         <div className="rounded-xl border border-[#eee4db] bg-[#fcf8f3] p-4">

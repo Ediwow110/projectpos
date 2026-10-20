@@ -53,7 +53,11 @@ export function requiresDiscountOverride(input: {
   orderDiscountMinor: number;
   subtotalMinor: number;
   lines: Array<{ lineDiscountMinor: number; qty: number; priceMinor: number }>;
+  orderDiscountApprovalPercent?: number;
+  lineDiscountApprovalPercent?: number;
 }): boolean {
-  if (input.subtotalMinor > 0 && input.orderDiscountMinor * 10 > input.subtotalMinor) return true;
-  return input.lines.some((l) => l.lineDiscountMinor * 5 > l.qty * l.priceMinor);
+  const orderLimit = input.orderDiscountApprovalPercent ?? 10;
+  const lineLimit = input.lineDiscountApprovalPercent ?? 20;
+  if (input.subtotalMinor > 0 && input.orderDiscountMinor * 100 > input.subtotalMinor * orderLimit) return true;
+  return input.lines.some((l) => l.lineDiscountMinor * 100 > l.qty * l.priceMinor * lineLimit);
 }

@@ -56,6 +56,11 @@ interface OrderDetail {
   reservations: Reservation[];
   fulfillments: Fulfillment[];
   paymentStatus: PublicPaymentStatus;
+  notificationStatus?: {
+    state: "NOT_ATTEMPTED" | "ACCEPTED" | "FAILED" | "NOT_SENT";
+    event: string | null;
+    lastAttemptAt: string | null;
+  };
 }
 interface Register { id: string; name: string; isActive: boolean; branchId: string | null }
 interface Customer { id: string; name: string; email?: string | null; phone?: string | null }
@@ -179,7 +184,30 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
   async function accessAction(action: "resend" | "revoke"): Promise<void> {
     if (!order) return;
-    await mutate("/api/v1/orders/" + order.id + "/access/" + action, {}, action === "resend" ? "Resend status link" : "Revoke status links");
+    if (action === "revoke") {
+      await mutate("/api/v1/orders/" + order.id + "/access/revoke", {}, "Revoke status links");
+      return;
+    }
+    setBusy("Resend status link"); setError(""); setMessage("");
+    try {
+      const csrf = await apiFetch<{ csrfToken: string }>("/api/v1/auth/csrf");
+      const result = await apiFetch<{ sent: boolean; replayed: boolean }>(
+        "/api/v1/orders/" + order.id + "/access/resend", {
+          csrfToken: csrf.csrfToken,
+          init: { method: "POST", headers: { "Idempotency-Key": newOrderIdempotencyKey() }, body: "{}" },
+        },
+      );
+      await detailQuery.refetch();
+      if (result.sent) {
+        setMessage("Status link accepted by the email provider. Inbox delivery is not guaranteed.");
+      } else {
+        setError("Status link was not sent. Check the order email and delivery configuration before retrying.");
+      }
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : "Resend status link failed.");
+    } finally {
+      setBusy("");
+    }
   }
 
   async function linkCustomer(customerId: string): Promise<void> {
@@ -233,6 +261,25 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
               <Panel className="p-5">
                 <SectionHeader title="Order actions" description="Every mutation is versioned, idempotent, audited, and server-authorized." />
+                {capabilities.manageAccess && detail.notificationStatus ? (
+                  <section aria-label="Status-link delivery history" className="mt-4 rounded-xl border border-[#e5e9e3] bg-[#f8faf7] p-4">
+                    <p className="text-[12px] font-semibold text-[#202826]">Status-link delivery</p>
+                    <p className="mt-2 text-[12px] text-[#53615a]">
+                      {detail.notificationStatus.state === "ACCEPTED"
+                        ? "Accepted by the email provider; inbox delivery is not confirmed."
+                        : detail.notificationStatus.state === "FAILED"
+                          ? "Last recorded notification attempt failed."
+                          : detail.notificationStatus.state === "NOT_SENT"
+                            ? "Last resend did not send a status link."
+                            : "No notification attempt is recorded."}
+                    </p>
+                    {detail.notificationStatus.lastAttemptAt ? (
+                      <p className="mt-2 text-[11px] text-[#71807a]">
+                        Last recorded attempt: {new Date(detail.notificationStatus.lastAttemptAt).toLocaleString()}
+                      </p>
+                    ) : null}
+                  </section>
+                ) : null}
                 <label className="mt-4 block text-[11px] font-semibold text-[#655b53]">Action reason <span className="font-normal text-[#9a8d83]">(optional)</span><input className="field mt-2" value={reason} onChange={(event) => setReason(event.target.value)} /></label>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {orderDetailActions({ role: meQuery.data?.role, orderStatus: order.status, paymentMode: order.paymentMode, fulfillment: null }).includes("accept") ? <PrimaryButton type="button" disabled={Boolean(busy)} onClick={() => void orderAction("accept")}>Accept order</PrimaryButton> : null}

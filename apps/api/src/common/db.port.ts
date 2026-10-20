@@ -243,6 +243,33 @@ export interface DbProduct {
   imageUrl: string | null;
 }
 
+export const PRODUCT_MEDIA_ACTIVE_QUOTA_BYTES = 200 * 1024 * 1024;
+
+export interface DbProductMediaAsset {
+  id: string;
+  businessId: string;
+  productId: string;
+  actorId: string;
+  storagePath: string;
+  publicUrl: string;
+  contentType: "image/webp";
+  bytes: number;
+  width: number;
+  height: number;
+  state: "ACTIVE" | "SUPERSEDED" | "PENDING_DELETE";
+  cleanupAttempts: number;
+  lastCleanupAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type DbProductMediaInput = Omit<DbProductMediaAsset, "id" | "state" | "cleanupAttempts" | "lastCleanupAt" | "createdAt" | "updatedAt">;
+
+export interface DbProductMediaChange {
+  product: DbProduct;
+  oldAsset: DbProductMediaAsset | null;
+}
+
 export interface DbProductFamily {
   id: string;
   businessId: string;
@@ -342,6 +369,51 @@ export interface DbBalance {
   updatedAt?: Date;
   // Phase 9a: nullable branch scope; null/undefined = legacy head-office scope.
   branchId?: string | null;
+}
+
+/** Damaged/dated stock observation. Reporting does NOT decrement inventory. */
+export interface DbStockException {
+  id: string;
+  businessId: string;
+  productId: string;
+  branchId: string | null;
+  kind: "DAMAGE" | "EXPIRY";
+  quantity: number;
+  expiresOn: string | null;
+  reason: string;
+  status: "OPEN" | "DISPOSED";
+  reportKey: string;
+  reportedBy: string;
+  createdAt: Date;
+  disposedBy: string | null;
+  disposedAt: Date | null;
+  movementId: string | null;
+}
+
+/** Guest-submitted, token-verified support request. No bearer token is stored. */
+export interface DbGuestSupportCase {
+  id: string;
+  businessId: string;
+  orderId: string;
+  category: "ORDER" | "PAYMENT" | "FULFILLMENT" | "OTHER";
+  description: string;
+  status: "OPEN" | "CLOSED";
+  idempotencyKey: string;
+  createdAt: Date;
+  closedAt: Date | null;
+  closedBy: string | null;
+}
+
+/** Owner-issued consent; operator still requires their separate platform key. */
+export interface DbPlatformConsent {
+  id: string;
+  businessId: string;
+  ownerId: string;
+  purpose: string;
+  tokenHash: string;
+  createdAt: Date;
+  expiresAt: Date;
+  revokedAt: Date | null;
 }
 
 export type InventoryCountStatus = "DRAFT" | "COUNTING" | "SUBMITTED" | "APPROVED" | "POSTED" | "CANCELLED";
@@ -846,6 +918,61 @@ export interface DbRefundItem {
   restocked: boolean;
 }
 
+export interface DbCustomerConcernItem {
+  saleItemId: string;
+  name: string;
+  qty: number;
+  amountMinor: number;
+}
+
+export interface DbCustomerConcern {
+  id: string;
+  businessId: string;
+  saleId: string;
+  receiptNo: string;
+  branchId: string | null;
+  registerId: string | null;
+  requesterId: string;
+  reason: string;
+  outcome: string;
+  note: string | null;
+  items: DbCustomerConcernItem[];
+  requestedRefundMinor: number;
+  status: string;
+  idempotencyKey: string;
+  reviewedBy: string | null;
+  reviewReason: string | null;
+  refundId: string | null;
+  reviewedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+export type DbCustomerConcernCreate = Omit<DbCustomerConcern, "id" | "createdAt" | "updatedAt" | "reviewedAt"> & { reviewedAt?: Date | null };
+
+export interface DbManagerApprovalRequest {
+  id: string;
+  businessId: string;
+  requesterId: string;
+  branchId: string | null;
+  registerId: string | null;
+  kind: string;
+  permission: string;
+  action: Record<string, unknown>;
+  fingerprint: string;
+  stateFingerprint: string | null;
+  status: "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED";
+  idempotencyKey: string;
+  approverId: string | null;
+  decidedAt: Date | null;
+  decisionReason: string | null;
+  tokenCiphertext: string | null;
+  tokenExpiresAt: Date | null;
+  tokenClaimedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+export type DbManagerApprovalRequestCreate = Omit<DbManagerApprovalRequest, "id" | "createdAt" | "updatedAt">;
+
 export interface DbExchange {
   id: string;
   businessId: string;
@@ -1075,7 +1202,7 @@ export interface DbPort {
   updateMembership(
     id: string,
     businessId: string,
-    patch: { deactivatedAt?: Date | null; approvalPinHash?: string | null },
+    patch: { deactivatedAt?: Date | null; approvalPinHash?: string | null; role?: "manager" | "cashier" | "inventory" },
   ): Promise<void>;
   createSession(s: Omit<DbSession, "id">): Promise<DbSession>;
   findSessionByTokenHash(tokenHash: string): Promise<DbSession | null>;
@@ -1113,7 +1240,7 @@ export interface DbPort {
   getSettings(businessId: string): Promise<Record<string, unknown>>;
   saveSettings(businessId: string, settings: Record<string, unknown>): Promise<void>;
   appendAudit(e: AuditEntry): Promise<void>;
-  listAudit(): Promise<AuditEntry[]>;
+  listAudit(businessId?: string): Promise<AuditEntry[]>;
   createCategory(c: Omit<DbCategory, "id">): Promise<DbCategory>;
   listCategories(businessId: string): Promise<DbCategory[]>;
   findCategoryById(id: string, businessId: string): Promise<DbCategory | null>;
@@ -1122,6 +1249,11 @@ export interface DbPort {
   listProducts(businessId: string): Promise<DbProduct[]>;
   findProductById(id: string, businessId: string): Promise<DbProduct | null>;
   updateProduct(id: string, businessId: string, patch: Partial<Omit<DbProduct, "id" | "businessId">>): Promise<DbProduct | null>;
+  getActiveProductMedia(businessId: string, productId: string): Promise<DbProductMediaAsset | null>;
+  replaceProductMediaAtomic(businessId: string, productId: string, expectedAssetId: string | null, input: DbProductMediaInput, requestId?: string): Promise<DbProductMediaChange & { asset: DbProductMediaAsset }>;
+  detachProductMediaAtomic(businessId: string, productId: string, expectedAssetId: string | null, actorId?: string, requestId?: string): Promise<DbProductMediaChange>;
+  listProductMediaCleanupCandidates(limit: number): Promise<DbProductMediaAsset[]>;
+  markProductMediaCleanupResult(businessId: string, assetId: string, succeeded: boolean): Promise<void>;
   createProductFamily(f: Omit<DbProductFamily, "id" | "createdAt" | "updatedAt">): Promise<DbProductFamily>;
   listProductFamilies(businessId: string): Promise<DbProductFamily[]>;
   findProductFamilyById(id: string, businessId: string): Promise<DbProductFamily | null>;
@@ -1151,6 +1283,23 @@ export interface DbPort {
   upsertBalance(b: Omit<DbBalance, "id">): Promise<DbBalance>;
   findBalance(productId: string, businessId: string, branchId?: string | null): Promise<DbBalance | null>;
   listBalances(businessId: string): Promise<DbBalance[]>;
+  createStockException(input: Omit<DbStockException, "id" | "createdAt">): Promise<DbStockException>;
+  findStockExceptionById(id: string, businessId: string): Promise<DbStockException | null>;
+  findStockExceptionByKey(businessId: string, key: string): Promise<DbStockException | null>;
+  listStockExceptions(businessId: string): Promise<DbStockException[]>;
+  disposeStockException(id: string, businessId: string, actorId: string, movementId: string): Promise<DbStockException | null>;
+  createGuestSupportCase(row: Omit<DbGuestSupportCase, "id" | "createdAt">): Promise<DbGuestSupportCase>;
+  findGuestSupportCaseById(id: string, businessId: string): Promise<DbGuestSupportCase | null>;
+  findGuestSupportCaseByKey(businessId: string, key: string): Promise<DbGuestSupportCase | null>;
+  listGuestSupportCases(businessId: string): Promise<DbGuestSupportCase[]>;
+  countOpenGuestSupportCases(businessId: string): Promise<number>;
+  listGuestSupportCasesForOrder(businessId: string, orderId: string): Promise<DbGuestSupportCase[]>;
+  closeGuestSupportCase(id: string, businessId: string, actorId: string): Promise<DbGuestSupportCase | null>;
+  createPlatformConsent(row: Omit<DbPlatformConsent, "id" | "createdAt">): Promise<DbPlatformConsent>;
+  findPlatformConsentById(id: string, businessId: string): Promise<DbPlatformConsent | null>;
+  findPlatformConsentByHash(businessId: string, tokenHash: string): Promise<DbPlatformConsent | null>;
+  listPlatformConsents(businessId: string): Promise<DbPlatformConsent[]>;
+  revokePlatformConsent(id: string, businessId: string): Promise<DbPlatformConsent | null>;
   nextInventoryCountNo(businessId: string): Promise<string>;
   createInventoryCount(c: Omit<DbInventoryCount, "id" | "createdAt" | "updatedAt">): Promise<DbInventoryCount>;
   findInventoryCountById(id: string, businessId: string): Promise<DbInventoryCount | null>;
@@ -1162,7 +1311,9 @@ export interface DbPort {
   deleteInventoryCountLines(countId: string, businessId: string): Promise<void>;
   createSale(s: DbSaleCreate): Promise<DbSale>;
   findSaleById(id: string, businessId: string): Promise<DbSale | null>;
+  findSaleByReceiptNo(receiptNo: string, businessId: string): Promise<DbSale | null>;
   listSalesByBusiness(businessId: string): Promise<DbSale[]>;
+  countSalesByBusiness(businessId: string): Promise<number>;
   listSalesPage(businessId: string, afterId: string | null, limit: number): Promise<DbSale[]>;
   updateSale(id: string, businessId: string, patch: Partial<Omit<DbSale, "id" | "businessId">>): Promise<DbSale | null>;
   createOrder(o: Omit<DbOrder, "id">): Promise<DbOrder>;
@@ -1254,6 +1405,17 @@ export interface DbPort {
   createSaleItemLoyaltyAllocation(a: Omit<DbSaleItemLoyaltyAllocation, "id" | "createdAt">): Promise<DbSaleItemLoyaltyAllocation>;
   listSaleItemLoyaltyAllocations(saleLoyaltyId: string, businessId: string): Promise<DbSaleItemLoyaltyAllocation[]>;
   createRefund(r: DbRefundCreate): Promise<DbRefund>;
+  createCustomerConcern(c: DbCustomerConcernCreate): Promise<DbCustomerConcern>;
+  findCustomerConcernById(id: string, businessId: string): Promise<DbCustomerConcern | null>;
+  findCustomerConcernByIdempotency(businessId: string, idempotencyKey: string): Promise<DbCustomerConcern | null>;
+  listCustomerConcernsByBusiness(businessId: string): Promise<DbCustomerConcern[]>;
+  transitionCustomerConcern(id: string, businessId: string, expectedStatus: string, patch: Partial<Omit<DbCustomerConcern, "id" | "businessId" | "createdAt" | "updatedAt">>): Promise<DbCustomerConcern | null>;
+  createManagerApprovalRequest(request: DbManagerApprovalRequestCreate): Promise<DbManagerApprovalRequest>;
+  findManagerApprovalRequest(id: string, businessId: string): Promise<DbManagerApprovalRequest | null>;
+  findManagerApprovalRequestByIdempotency(businessId: string, requesterId: string, idempotencyKey: string): Promise<DbManagerApprovalRequest | null>;
+  listManagerApprovalRequests(businessId: string): Promise<DbManagerApprovalRequest[]>;
+  transitionManagerApprovalRequest(id: string, businessId: string, expectedStatus: DbManagerApprovalRequest["status"], patch: Partial<Pick<DbManagerApprovalRequest, "status" | "approverId" | "decidedAt" | "decisionReason" | "tokenCiphertext" | "tokenExpiresAt">>): Promise<DbManagerApprovalRequest | null>;
+  claimManagerApprovalRequestToken(id: string, businessId: string, requesterId: string, now: Date): Promise<{ request: DbManagerApprovalRequest; encryptedToken: string; tokenExpiresAt: Date } | null>;
   listRefundsBySale(saleId: string, businessId: string): Promise<DbRefund[]>;
   // Phase 12 bulk read: reporting maps refund items to sales in one round-trip.
   listRefundsByBusiness(businessId: string): Promise<DbRefund[]>;

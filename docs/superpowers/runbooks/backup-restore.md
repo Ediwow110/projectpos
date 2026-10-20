@@ -35,3 +35,151 @@ For a real drill, export `DATABASE_URL` only in the shell environment and use an
 > Container stopped and removed (`docker stop pos-db-phase8; docker rm pos-db-phase8`).
 
 (The drill database held schema only, so absolute row counts are N/A. The next drill with production-like seed data must record pre/post row counts.)
+
+## H5 encrypted backup: isolated Windows PostgreSQL 17 verification
+
+**Scope:** Verify an already-created H5 Windows DPAPI CurrentUser archive
+*offline*. This does **not** fetch, create, or replace a current H5 backup.
+Do not mistake a passing old-archive restore for a current-schema recovery gate.
+
+Use `scripts/h5-verify-encrypted-restore.ps1` with the encrypted archive and
+its matching `.manifest.json` saved outside the repository:
+
+```powershell
+$archive = Join-Path $env:USERPROFILE 'Documents\NexPOS\H5-Backups\<timestamped-file>.pgdump.dpapi'
+./scripts/h5-verify-encrypted-restore.ps1 -EncryptedArchivePath $archive -ExpectedProjectId '<H5-project-id>'
+```
+
+Safety contract:
+
+- Requires the **same Windows user** that encrypted the dump, an unchanged
+  archive and matching SHA-256 manifest, plus an existing local
+  `postgres:17-alpine` Docker image. It fails closed on mismatch.
+- Decrypts only locally and temporarily under the signed-in user's TEMP
+  directory. That plaintext file is removed in a `finally` block. Do not
+  share, sync, attach, or commit any plaintext dump. Never leave an interrupted
+  drill's plaintext file in TEMP; inspect and securely handle temporary files.
+- Creates a uniquely named **throwaway container with `--network none`**,
+  publishes **no ports**, and mounts **no host business data**. Only that
+  container's fresh `public` schema is dropped before restoring.
+- Imports with `pg_restore --no-owner --no-privileges --exit-on-error`. Dummy
+  Supabase compatibility roles exist *only in the network-disabled container*.
+  The restore is of the dump's `public` scope, **not** Supabase managed
+  schemas, Storage object bytes, or provider-managed identities/settings.
+- Verifies PostgreSQL **major version 17** and compares actual restored
+  migration/business/sale/public-table counts with the manifest. Logs
+  counts and archive hash, never data rows or credentials. The container
+  is stopped and removed by the `finally` block.
+- Rejected tampered archives must **never** reach the decryption/restore step.
+  Before using this against any other backup, review its provenance and
+  source project. Never run a restore against H5 or production remotely.
+
+**Current-schema release gate:** After obtaining a newly authorized
+`pg_dump -Fc` of the actual H5 staging `public` schema through an approved,
+secret-safe access channel, encrypt and hash it into a new archive + manifest.
+Run the offline verification against that new archive. Confirm the number and
+names of applied migrations, public tables, constraints, row counts, source
+timestamps and offsite encrypted-copy restore. A successful restore of an
+older snapshot proves **only that older snapshot**.
+
+If the H5 connection secret is unavailable to the authorized execution
+environment, **stop**. Do not fake a fresh backup using local migrations,
+Supabase metadata APIs or a schema-only export. Do not paste a database URL
+into a chat or commit it to the repository.
+
+### Prepare a fresh H5 public-schema backup (requires authorized connection)
+
+The isolated Windows worktree also includes:
+`scripts/h5-create-fresh-encrypted-backup.ps1`
+
+By default this command **only checks local readiness**; it does not connect,
+export, create files, or use provider secrets:
+
+```powershell
+./scripts/h5-create-fresh-encrypted-backup.ps1
+```
+
+Expected gate as of the 2026-10-19 read-only H5 review:
+`43` applied migrations and `94` `public` tables, including
+`0040_product_media`, `0048_h4r9_tenant_integrity`, and
+`0049_order_notification_outbox`.
+Reconfirm if the source has changed before running a later export.
+
+Once an authorized operator has provided `H5_DATABASE_URL` to the Windows
+**process environment** using an approved secret manager (not command-line
+arguments, source files or chat), the operator can explicitly run:
+
+```powershell
+./scripts/h5-create-fresh-encrypted-backup.ps1 -Execute
+```
+
+Never copy the database URI into this repository, a shell transcript,
+PowerShell history, CI logs, or chat. Clear the process environment on
+completion. This command refuses a missing variable, other Supabase project
+host/user identities, insecure SSL flags, a non-PostgreSQL-17 source, and
+schema counts/migration names that do not match the release baseline.
+The reviewed 43/94 baseline cannot be weakened by passing alternative
+count arguments. If H5 advances, update the source gate through review and
+rerun tests before attempting the next export. Ordinary partial publication
+failures clean up incomplete archive/manifest pairs. An abnormal process
+termination still requires manual inspection and cleanup.
+
+The export client runs as a short-lived `postgres:17-alpine` container using
+an inherited environment-variable **name**, never a literal URI in a Docker
+command argument. **Docker administrators can inspect container environment
+variables while the client exists**, so use only a trusted local Docker
+machine. The client uses TLS and a read-only transaction default and creates
+no remote database objects. It saves a custom-format `public` dump briefly
+in the Docker container and Windows TEMP, encrypts with CurrentUser DPAPI,
+then verifies a disposable `--network none` PostgreSQL 17 restore before
+publishing a newly named encrypted archive and its manifest. Temporary
+plaintext and incomplete staging files are cleaned by a `finally` block;
+check manually after a forcibly terminated or crashed process. Never
+overwrite the 2026-10-17 backup.
+
+The new backup remains a `public`-only export, not a full Supabase disaster
+recovery solution. Verify and separately back up Storage object bytes, managed
+authentication configuration, provider settings, offsite encrypted copies and
+an independent restore before changing the H5 release from HOLD / NO-GO.
+
+**Execution validation status:** On 2026-10-19, the safe preflight confirmed
+the reviewed 43/94 gate but reported `SOURCE_ENV_SET=False`; no new remote
+export was attempted. An existing encrypted H5 public-schema snapshot dated
+2026-10-17 23:26 UTC passed a fresh isolated PostgreSQL 17 restore on the
+original Windows user account, with restored counts `43|2|0|94` and all
+three required migrations present. The older 42/93 synthetic exercise below
+is historical test evidence, **not** the current release gate. Do not present
+the fresh-export or independent offsite-recovery paths as verified until a
+newly authorized source export and portable offsite restore are completed.
+
+### Historical offline rehearsal of the older 42-migration / 93-table gate
+
+`scripts/h5-rehearse-current-schema-export.ps1` is an explicitly **synthetic
+offline test**, NOT a way to obtain or reconstruct the actual current H5
+backup. It starts with the *previously verified* 41-migration/92-table
+encrypted public-schema archive and runs entirely in network-disabled
+disposable PostgreSQL 17 containers. It adds one placeholder migration
+(`0040_product_media`) and one placeholder `ProductMediaAsset` table
+**only to its synthetic database**, then tests:
+
+1. PostgreSQL 17 `pg_dump -Fc` of the synthetic 42/93 database.
+2. Windows DPAPI CurrentUser encryption and a temporary checksum manifest.
+3. The independent PostgreSQL 17 restore verifier requiring both
+   `0040_product_media` and `0048_h4r9_tenant_integrity`, with restored
+   counts `42|1|0|93`.
+4. Removal of all rehearsal files and containers. No new H5 archive is
+   published and no staging/prod database is contacted.
+
+Default safe preflight and explicit local synthetic drill:
+
+```powershell
+$archive = Join-Path $env:USERPROFILE 'Documents\NexPOS\H5-Backups\NexPOS-H5-public-20261017-083151.pgdump.dpapi'
+./scripts/h5-rehearse-current-schema-export.ps1 -ExistingEncryptedArchive $archive
+./scripts/h5-rehearse-current-schema-export.ps1 -ExistingEncryptedArchive $archive -Execute
+```
+
+This test proves the offline dump/encryption/manifest/restore toolchain can
+handle a **simulated shape** resembling the 2026-10-18 H5 metadata, but does
+not prove that the actual latest DDL, constraints, RLS, media assets, or
+live data can be recovered. Keep the H5 release HOLD / NO-GO until a genuine
+fresh encrypted source archive is independently restored and approved.

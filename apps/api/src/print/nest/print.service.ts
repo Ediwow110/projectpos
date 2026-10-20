@@ -3,6 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { withScope } from "@pos/database";
 import type { DbPort, DbPrinter, DbPrintJob } from "../../common/db.port";
 import { SalesService } from "../../sales/nest/sales.service";
+import { BillingService } from "../../billing/nest/billing.service";
 import { escposReceipt } from "../escpos";
 
 const PRINT_MANAGERS = new Set(["owner", "manager"]);
@@ -168,6 +169,7 @@ export class PrintService {
     if (!PRINT_MANAGERS.has(role)) throw new Error("FORBIDDEN");
     const printer = await this.db.findPrinterById(printerId, businessId);
     if (!printer) throw new Error("NOT_FOUND");
+    return this.db.withLock(`business-settings:${businessId}`, async () => {
     const settings = await this.db.getSettings(businessId);
     await this.db.saveSettings(businessId, { ...settings, defaultPrinterId: printer.id });
     await this.db.appendAudit({
@@ -175,6 +177,7 @@ export class PrintService {
       entityId: printer.id, requestId, after: { defaultPrinterId: printer.id },
     });
     return printerView(printer, printer.id);
+    });
   }
 
   async queueJob(
@@ -207,8 +210,11 @@ export class PrintService {
       // Receipt customization is a paid feature the business can store; the
       // printed receipt must actually show it.
       const settings = await this.db.getSettings(businessId);
-      const header = typeof settings["receiptHeader"] === "string" ? settings["receiptHeader"] : null;
-      const footer = typeof settings["receiptFooter"] === "string" ? settings["receiptFooter"] : null;
+      // Existing custom text must not leak through after a plan downgrade.
+      // Standard merchant-name receipts remain available on Free.
+      const custom = await new BillingService(this.db).checkFeature(businessId, "receipt_customization");
+      const header = custom && typeof settings["receiptHeader"] === "string" ? settings["receiptHeader"] : null;
+      const footer = custom && typeof settings["receiptFooter"] === "string" ? settings["receiptFooter"] : null;
       const bytes = escposReceipt({
         businessName: business.name,
         receiptNo: receipt.receiptNo,

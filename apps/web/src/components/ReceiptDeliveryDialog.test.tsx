@@ -29,6 +29,10 @@ describe("receipt delivery dialog", () => {
     );
 
     expect(html).toContain("Deliver receipt");
+    expect(html).toContain('data-ui="atlas-flow-modal"');
+    expect(html).toContain("Workflow step");
+    expect(html).toContain("max-w-[535px]");
+    expect(html).toMatch(/aria-describedby="[^"]+"/);
     expect(html).toContain("ana@example.com");
     expect(html).toContain("Email receipt");
     expect(html).toContain("Create secure share link");
