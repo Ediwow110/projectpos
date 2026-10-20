@@ -1,5 +1,6 @@
 import { Controller, Get, Inject, Optional, Req, Res } from "@nestjs/common";
 import type { Request, Response } from "express";
+import { resolveBuildIdentity } from "./build-identity";
 import { fail } from "./http-helpers";
 import type { PgContext } from "./pg/context";
 
@@ -15,6 +16,17 @@ export class HealthController {
   @Get("healthz")
   live(@Res() res: Response): void {
     res.status(200).json({ ok: true });
+  }
+
+  // Which build is actually serving requests. A deploy state on a hosting
+  // dashboard is not something an auditor can read from the product, and
+  // the 2026-10-20 frontend audit had to reconstruct the running build
+  // from outside. This reports the commit, branch, service and public
+  // hostname of the current deploy, and reports null for anything the
+  // platform does not publish rather than a plausible-looking value.
+  @Get("version")
+  version(@Res() res: Response): void {
+    res.status(200).json({ ok: true, build: resolveBuildIdentity() });
   }
 
   @Get("readyz")

@@ -1,5 +1,6 @@
 import type { JSX, ReactNode } from "react";
 import type { Metadata } from "next";
+import { DeployBanner } from "../components/DeployBanner";
 import { Providers } from "./providers";
 import "./globals.css";
 
@@ -17,6 +18,7 @@ export default function RootLayout({ children }: { children: ReactNode }): JSX.E
   return (
     <html lang="en">
       <body>
+        <DeployBanner />
         <Providers>{children}</Providers>
       </body>
     </html>
