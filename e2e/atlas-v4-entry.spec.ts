@@ -38,10 +38,20 @@ test("Atlas V4 login keeps secure sign-in and mobile layout usable", async ({ pa
   await expect(entry).toHaveCSS("background-color", "rgb(247, 248, 245)");
   await expect(entry.getByRole("button", { name: "Sign in securely" })).toHaveCSS("background-color", "rgb(32, 40, 38)");
   if (page.viewportSize()?.width === 1440) {
+    // The auth card enters with a 0.55s scale/translate animation. Sampling
+    // mid-flight makes the geometry platform/timing dependent; settle the
+    // animation and assert the design anchor (82px inset from the 535px
+    // identity column's right edge) with a bounded tolerance instead of a
+    // fragile absolute pixel.
+    await entry.locator(".animate-auth-card").evaluate(async (element) => {
+      await Promise.all(element.getAnimations().map((animation) => animation.finished));
+    });
     const identity = await entry.locator('[data-ui="atlas-v4-auth-identity"]').boundingBox();
     const email = await entry.getByLabel("Email address").boundingBox();
-    expect(identity?.width).toBeCloseTo(535, 0);
-    expect(email?.x).toBeCloseTo(617, 0);
+    expect(identity).not.toBeNull();
+    expect(email).not.toBeNull();
+    expect(identity!.width).toBeCloseTo(535, 0);
+    expect(Math.abs(email!.x - (identity!.x + identity!.width) - 82)).toBeLessThanOrEqual(1);
   }
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThan(3);
   await entry.getByRole("link", { name: "Create account" }).click();
