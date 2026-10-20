@@ -1,0 +1,55 @@
+name: db-keepalive
+on:
+  schedule:
+    # Daily. 05:23 UTC = 13:23 Asia/Manila. Off the hour so it does not
+    # collide with other scheduled jobs on the platform.
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-keepalive
+  cancel-in-progress: false
+
+jobs:
+  keepalive:
+    name: Touch each database-backed environment
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Supabase pauses a Free-plan project after 1 week of low database
+      # activity, and paid projects are never paused. Both NexPOS databases
+      # live on a Free-plan organisation. The documented mitigation is "a few
+      # user requests to the database each day over the previous week".
+      #
+      # GET /readyz is a public, unauthenticated probe that runs `SELECT 1`
+      # against the real database (apps/api/src/common/health.controller.ts),
+      # so a request to it is a genuine user query against that project's
+      # Postgres - and it needs no credential, because it touches no
+      # application data.
+      #
+      # A free-tier Render service spins down when idle, so the first request
+      # of the day pays a cold start. The timeout below allows for that.
+      - name: Probe each readiness endpoint
+        env:
+          ENDPOINTS: |
+            h5-staging-api|https://nexpos-h5-staging-api.onrender.com/readyz
+            production-api|https://nexpos-api-sf1n.onrender.com/readyz
+        run: |
+          set -uo pipefail
+          failures=0
+          while IFS='|' read -r name url; do
+            [ -n "${name:-}" ] || continue
+            code=$(curl -sS -o /dev/null -m 300 -w '%{http_code}' "$url" 2>/dev/null || echo "000")
+            echo "${name} -> HTTP ${code}  ${url}"
+            if [ "${code}" != "200" ]; then
+              failures=$((failures + 1))
+            fi
+          done <<< "${ENDPOINTS}"
+          if [ "${failures}" -ne 0 ]; then
+            echo "::error::${failures} database-backed environment(s) did not answer 200 on /readyz"
+            exit 1
+          fi
+          echo "all database-backed environments answered 200 on /readyz"
