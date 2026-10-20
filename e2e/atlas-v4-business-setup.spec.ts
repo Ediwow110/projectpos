@@ -101,6 +101,23 @@ test("owner can reach saved business settings and first-sale readiness without l
   // prerequisite for the first sale.
   await expect(readiness.getByRole("link", { name: "Branches" })).toHaveCount(0);
 
+  // Readiness links are standalone actions, not inline prose: their clickable
+  // box, not just their text height, must meet the 44px owner target.
+  for (const name of ["Sellable product with available stock", "Active register", "Open shift"]) {
+    const box = await readiness.getByRole("link", { name }).boundingBox();
+    expect(box, `${name} must render`).not.toBeNull();
+    expect(box!.height, `${name} hit target`).toBeGreaterThanOrEqual(44);
+  }
+
+  // Secondary owner labels must pass WCAG AA against their rendered surfaces.
+  for (const label of ["Net sales in selected period", "Sales in selected period", "Reported attention items"]) {
+    const metricLabel = overview.getByText(label, { exact: true });
+    await expect(metricLabel).toBeVisible();
+    expect(await renderedContrast(metricLabel), `${label} contrast`).toBeGreaterThanOrEqual(4.5);
+  }
+  const reportFootnote = overview.getByText(/Report values reflect the selected period/);
+  expect(await renderedContrast(reportFootnote), "owner report footnote contrast").toBeGreaterThanOrEqual(4.5);
+
   const reviewLink = readiness.getByRole("link", { name: "Review business setup" });
   await expect(reviewLink).toHaveAttribute("href", "/onboarding");
 
@@ -119,6 +136,7 @@ test("owner can reach saved business settings and first-sale readiness without l
   await expect(page.getByRole("heading", { name: "Business details" })).toBeVisible();
   await expect(page.getByText("STEP 01 / 05")).toBeVisible();
   await expect(page.getByText("This step is complete")).toBeVisible();
+  await expect(page.getByRole("link", { name: "NexPOS home" })).toHaveAttribute("href", "/");
 
   // Reviewing a saved step must not write anything.
   await page.waitForLoadState("networkidle");
@@ -132,7 +150,11 @@ test("owner can reach saved business settings and first-sale readiness without l
   await page.waitForLoadState("networkidle");
   expect(writes, `the review journey issued writes: ${writes.join(", ")}`).toEqual([]);
 
-  await page.getByRole("link", { name: "← Back to dashboard" }).click();
+  const backLink = page.getByRole("link", { name: "← Back to dashboard" });
+  const backBox = await backLink.boundingBox();
+  expect(backBox, "back to dashboard must render").not.toBeNull();
+  expect(backBox!.height, "back to dashboard hit target").toBeGreaterThanOrEqual(44);
+  await backLink.click();
   await expect(page).toHaveURL(/\/$/);
   await expect(overview.getByRole("heading", { name: "Owner overview" })).toBeVisible();
 
@@ -154,6 +176,11 @@ test("owner can reach saved business settings and first-sale readiness without l
   // xl breakpoint, where the mobile header takes over and the readiness card
   // link is the owner path to business setup.
   await page.goto("/");
+  await page.getByText("Detailed analytics, trends and operational reports").click();
+  const greeting = page.getByText(/^Good (morning|afternoon|evening)$/).first();
+  await expect(greeting).toBeVisible();
+  expect(await renderedContrast(greeting), "page eyebrow greeting contrast").toBeGreaterThanOrEqual(4.5);
+
   if (testInfo.project.name === "desktop") {
     const nav = page.getByRole("navigation", { name: "Owner navigation" });
     const setupLink = nav.getByRole("link", { name: "Business setup", exact: true });
@@ -202,6 +229,22 @@ test("business setup review stays readable and free of horizontal overflow", asy
     }));
     expect(widths.documentWidth, `horizontal overflow at ${width}px`).toBeLessThanOrEqual(widths.viewportWidth + 2);
   }
+
+  // The desktop project owns the full owner-overview width sweep as well: the
+  // rail appears at xl (1280px), so the 1024/1280 boundary needs explicit proof.
+  if (testInfo.project.name === "desktop") {
+    for (const width of [390, 820, 1024, 1280, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/");
+      await expect(page.getByRole("heading", { name: "Owner overview" })).toBeVisible();
+      const viewport = await page.evaluate(() => ({
+        documentWidth: document.documentElement.scrollWidth,
+        viewportWidth: document.documentElement.clientWidth,
+      }));
+      expect(viewport.documentWidth, `owner horizontal overflow at ${width}px`)
+        .toBeLessThanOrEqual(viewport.viewportWidth + 2);
+    }
+  }
 });
 
 test("the business setup link is reachable by keyboard", async ({ page }, testInfo) => {
@@ -245,6 +288,15 @@ test("the below-xl workspace menu offers owners the business setup destination",
   await page.getByRole("button", { name: "Open workspace menu" }).click();
   const menu = page.getByRole("navigation", { name: "More workspace navigation" });
   await expect(menu).toBeVisible();
+
+  const sectionHeadings = menu.locator("section > p");
+  const sectionCount = await sectionHeadings.count();
+  expect(sectionCount, "drawer section headings must render").toBeGreaterThan(0);
+  for (let index = 0; index < sectionCount; index += 1) {
+    expect(await renderedContrast(sectionHeadings.nth(index)), `drawer heading ${index} contrast`)
+      .toBeGreaterThanOrEqual(4.5);
+  }
+
   const setupLink = menu.getByRole("link", { name: "Business setup", exact: true });
   await expect(setupLink).toHaveAttribute("href", "/onboarding");
   const setupBox = await setupLink.boundingBox();

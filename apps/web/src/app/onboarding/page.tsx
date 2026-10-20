@@ -229,7 +229,7 @@ export default function OnboardingPage(): JSX.Element {
     <main data-ui="atlas-v4-onboarding" className="atlas-entry min-h-screen p-4 sm:p-6 lg:p-8">
 
       <header className="mx-auto flex min-h-[77px] max-w-[1360px] flex-wrap items-center gap-3 rounded-xl border border-[#e5e9e3] bg-white px-5 py-3">
-        <AtlasEntryBrand compact />
+        <AtlasEntryBrand compact href={requiredDone ? "/" : "/login"} />
         <div className="ml-auto flex items-center gap-3">
           <span className="font-data text-[11px] text-[#748078]">STEP {String(currentIndex + 1).padStart(2, "0")} / 05</span>
           <span role="status" className="rounded-md bg-[#e8f4ec] px-3 py-1.5 text-[11px] font-semibold text-[#267552]">Setup progress</span>
@@ -503,7 +503,7 @@ export default function OnboardingPage(): JSX.Element {
 
           <div className="mt-8 flex items-center justify-between gap-3 border-t border-[#eee6de] pt-5">
             {requiredDone
-              ? <Link href="/" className="text-[11px] font-semibold text-[#73685f] hover:text-[var(--color-atlas-accent-strong)]">← Back to dashboard</Link>
+              ? <Link href="/" className="inline-flex min-h-11 items-center text-[11px] font-semibold text-[#73685f] hover:text-[var(--color-atlas-accent-strong)]">← Back to dashboard</Link>
               : <p className="text-[11px] font-medium text-[#73685f]">Save your required business, tax and receipt settings to open the dashboard.</p>}
             <p className="font-data text-[9px] text-[#9a8d83]">Progress is saved by the onboarding endpoint</p>
           </div>

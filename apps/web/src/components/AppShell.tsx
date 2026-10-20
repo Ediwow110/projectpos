@@ -236,7 +236,7 @@ export function AppShell({
           <p role="status" className="text-sm font-medium text-[#73685f]">
             Connecting to your workspace…
           </p>
-          <p className="mt-2 text-xs text-[#8b8077]">
+          <p className="mt-2 text-xs text-[var(--color-atlas-muted-strong)]">
             The service is starting. We will retry automatically.
           </p>
           <button
@@ -363,7 +363,7 @@ export function AppShell({
                 </span>
               ) : null}
               <span className="hidden text-[10px] font-medium text-[#5d534b] lg:inline">▣ Today</span>
-              <span className="hidden text-[9px] text-[#8b8077] xl:inline">{today}</span>
+              <span className="hidden text-[9px] text-[var(--color-atlas-muted-strong)] xl:inline">{today}</span>
             </div>
 
             {posMode ? (
@@ -497,7 +497,7 @@ export function AppShell({
             <nav aria-label="More workspace navigation" className="mx-auto grid w-full max-w-[920px] gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {secondaryNavigationGroups.map((group) => (
                 <section key={group.label} aria-label={group.label}>
-                  <p className="px-2 pb-1.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-[#a0948b]">{group.label}</p>
+                  <p className="px-2 pb-1.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-[var(--color-atlas-muted-strong)]">{group.label}</p>
                   <div className="space-y-1">
                     {group.items.map((item) => (
                       <NavLink
@@ -559,7 +559,7 @@ export function AppShell({
             <nav className="space-y-4" aria-label="Primary navigation">
               {navigationGroups.map((group) => (
                 <div key={group.label}>
-                  <p className="px-2 pb-1.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-[#a0948b]">
+                  <p className="px-2 pb-1.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-[var(--color-atlas-muted-strong)]">
                     {group.label}
                   </p>
                   <div className="space-y-1">
@@ -618,7 +618,7 @@ export function AppShell({
         data-ui="shell-footer"
         className={"relative z-20 border-t border-[#eadfd6] bg-white/80 px-4 py-4 backdrop-blur sm:px-6 " + (atlasPos ? "xl:hidden" : "")}
       >
-        <div className="mx-auto flex w-full max-w-[1480px] flex-wrap items-center justify-between gap-2 text-[9px] text-[#8b8077]">
+        <div className="mx-auto flex w-full max-w-[1480px] flex-wrap items-center justify-between gap-2 text-[9px] text-[var(--color-atlas-muted-strong)]">
           <p><span className="font-display font-semibold text-[#3b342e]">NEXPOS</span> · Retail operations workspace</p>
           <p className="font-data">© {year} · Secure session workspace</p>
         </div>

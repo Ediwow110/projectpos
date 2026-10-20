@@ -43,6 +43,13 @@ describe("Atlas navigation contrast", () => {
       .toBeGreaterThanOrEqual(4.5);
   });
 
+  it("keeps muted owner labels readable on white and canvas surfaces", () => {
+    expect(contrastRatio(token("atlas-muted-strong"), token("atlas-surface")))
+      .toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(token("atlas-muted-strong"), token("atlas-canvas")))
+      .toBeGreaterThanOrEqual(4.5);
+  });
+
   it("documents that the plain accent is only safe for non-text indicators", () => {
     const plain = contrastRatio(token("atlas-accent"), token("atlas-surface"));
     expect(plain).toBeGreaterThanOrEqual(3);

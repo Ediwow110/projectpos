@@ -163,7 +163,7 @@ describe("onboarding navigation", () => {
     expect(html).not.toContain("Owner-only stores can skip employee setup.");
   });
 
-  it("keeps a single dashboard link when a completed owner reviews saved settings", () => {
+  it("keeps the dashboard reachable from the setup brand and the review footer", () => {
     fixture.data.currentStep = "complete";
     fixture.data.steps.businessDetails = "done";
     fixture.data.steps.taxCurrency = "done";
@@ -172,9 +172,19 @@ describe("onboarding navigation", () => {
     fixture.data.steps.employees = "skipped";
 
     const html = renderToStaticMarkup(<OnboardingPage />);
+    const brand = html.match(/<a[^>]*aria-label="NexPOS home"[^>]*>/)?.[0] ?? "";
 
-    expect(html.match(/href="\/"/g) ?? []).toHaveLength(1);
+    expect(html.match(/href="\/"/g) ?? []).toHaveLength(2);
+    expect(brand).toContain('href="/"');
     expect(html).toContain("← Back to dashboard");
+  });
+
+  it("keeps the setup brand on the sign-in entry while required setup is incomplete", () => {
+    const html = renderToStaticMarkup(<OnboardingPage />);
+    const brand = html.match(/<a[^>]*aria-label="NexPOS home"[^>]*>/)?.[0] ?? "";
+
+    expect(brand).toContain('href="/login"');
+    expect(html).not.toContain("← Back to dashboard");
   });
 
   it("renders the first-sale checklist from the shared readiness contract", () => {

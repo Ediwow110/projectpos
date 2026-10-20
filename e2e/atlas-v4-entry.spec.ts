@@ -32,6 +32,7 @@ test("Atlas V4 login keeps secure sign-in and mobile layout usable", async ({ pa
   await expect(entry).toBeVisible();
   await expect(entry.getByRole("heading", { name: "Sign in to NexPOS" })).toBeVisible();
   await expect(entry.getByRole("link", { name: "NexPOS home" })).toBeVisible();
+  await expect(entry.getByRole("link", { name: "NexPOS home" })).toHaveAttribute("href", "/login");
   await expect(entry.getByLabel("Email")).toBeVisible();
   await expect(entry.getByLabel("Password")).toBeVisible();
   await expect(entry.getByRole("button", { name: "Sign in securely" })).toBeVisible();
