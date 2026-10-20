@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { ApiError } from "../../lib/api";
+import { tagPosSaleAttempt, type PosCheckoutFailure } from "../../lib/pos-checkout-feedback";
 import { MemorySyncStore } from "../../lib/sync-store";
 import { queueOfflinePosSale } from "../../lib/pos-operations";
 import {
@@ -30,8 +32,10 @@ function effects() {
   const approvals: Array<["pay" | "hold", boolean]> = [];
   const carts: unknown[] = [];
   const flags: boolean[] = [];
+  const failures: Array<PosCheckoutFailure | null> = [];
   const values: PosCheckoutEffects = {
     setStatus: (status) => { statuses.push(status); },
+    setCheckoutFailure: (failure) => { failures.push(failure); },
     setReceiptId: (id) => { receipts.push(id); },
     setConfirmedSale: (value) => { confirmations.push(value); },
     setReconcileId: (id) => { reconciles.push(id); },
@@ -46,7 +50,7 @@ function effects() {
     setPaying: (value) => { flags.push(value); },
     requireManagerApproval: (action, retrying) => { approvals.push([action, retrying]); },
   };
-  return { values, statuses, receipts, confirmations, reconciles, reconciliationSales, giftCards, approvals, carts, flags };
+  return { values, statuses, receipts, confirmations, reconciles, reconciliationSales, giftCards, approvals, carts, flags, failures };
 }
 
 describe("POS checkout flow", () => {
@@ -152,6 +156,103 @@ describe("POS checkout flow", () => {
     });
     expect(result).toBe(false);
     expect(state.approvals).toEqual([]);
-    expect(state.statuses.at(-1)).toBe("Payment failed");
+    expect(state.statuses.at(-1)).toContain("Payment failed");
+  });
+});
+
+describe("POS checkout failure feedback", () => {
+  it("surfaces a stock failure for the open payment dialog and keeps raw codes out of the copy", async () => {
+    const state = effects();
+    const result = await runPosCheckout(input(), state.values, {
+      complete: async () => { throw new ApiError("INSUFFICIENT_STOCK", "Not enough stock.", "corr-9", 409); },
+    });
+
+    expect(result).toBe(false);
+    const failure = state.failures.at(-1);
+    expect(failure?.kind).toBe("stock");
+    expect(failure?.retryable).toBe(true);
+    expect(failure?.action.kind).toBe("adjust_cart");
+    expect(state.statuses.at(-1)).toContain("Not enough stock");
+    expect(state.statuses.at(-1)).not.toContain("INSUFFICIENT_STOCK");
+    expect(state.flags).toEqual([true, false]);
+  });
+
+  it("blocks blind retry and points at the sale when a drop follows the completion request", async () => {
+    const state = effects();
+    const result = await runPosCheckout(input(), state.values, {
+      complete: async () => {
+        throw tagPosSaleAttempt(
+          new ApiError("NETWORK_ERROR", "Could not reach the API.", "", 0),
+          { phase: "complete", saleId: "sale-9" },
+        );
+      },
+    });
+
+    expect(result).toBe(false);
+    const failure = state.failures.at(-1);
+    expect(failure?.kind).toBe("unknown_outcome");
+    expect(failure?.retryable).toBe(false);
+    expect(failure?.action).toEqual({ kind: "check_sale", label: "Check sale status", href: "/sales/sale-9" });
+    expect(state.reconciliationSales.at(-1)).toBe("sale-9");
+    expect(state.statuses.at(-1)).toContain("Do not retry payment");
+  });
+
+  it("keeps a pre-sale connection failure retryable without pinning a reconciliation sale", async () => {
+    const state = effects();
+    await runPosCheckout(input(), state.values, {
+      complete: async () => { throw new ApiError("NETWORK_ERROR", "Could not reach the API.", "", 0); },
+    });
+
+    const failure = state.failures.at(-1);
+    expect(failure?.kind).toBe("connectivity");
+    expect(failure?.retryable).toBe(true);
+    expect(state.reconciliationSales.at(-1)).toBeNull();
+  });
+
+  it("asks for manager approval on a discounted FORBIDDEN without showing a payment failure", async () => {
+    const state = effects();
+    const result = await runPosCheckout(input({ discountTotalMinor: 100 }), state.values, {
+      complete: async () => { throw new ApiError("FORBIDDEN", "Forbidden", "", 403); },
+    });
+
+    expect(result).toBe(false);
+    expect(state.approvals).toEqual([["pay", false]]);
+    expect(state.failures.every((failure) => failure === null)).toBe(true);
+  });
+
+  it("clears the previous failure when a later attempt succeeds", async () => {
+    const state = effects();
+    await runPosCheckout(input(), state.values, {
+      complete: async () => { throw new ApiError("FORBIDDEN", "Forbidden", "", 403); },
+    });
+    expect(state.failures.at(-1)?.kind).toBe("permission");
+
+    const result = await runPosCheckout(input(), state.values, {
+      complete: async () => ({ kind: "completed", saleId: "sale-ok" }),
+    });
+
+    expect(result).toBe(true);
+    expect(state.failures.at(-1)).toBeNull();
+    expect(state.statuses.at(-1)).toBe("Sale completed.");
+  });
+
+  it("surfaces the pre-sale PayMongo configuration gap through the same contract", async () => {
+    const state = effects();
+    await runPosCheckout(input({ method: "qrph", methodAvailable: () => false }), state.values, {});
+
+    expect(state.failures.at(-1)?.kind).toBe("config");
+    expect(state.failures.at(-1)?.retryable).toBe(false);
+    expect(state.statuses.at(-1)).toBe("PayMongo is not configured for this payment method yet.");
+  });
+
+  it("surfaces an offline queue failure through the same contract", async () => {
+    const state = effects();
+    await runPosCheckout(input({ offline: true, store: new MemorySyncStore() }), state.values, {
+      queue: async () => { throw new Error("storage failed"); },
+    });
+
+    expect(state.failures.at(-1)?.kind).toBe("connectivity");
+    expect(state.failures.at(-1)?.retryable).toBe(true);
+    expect(state.statuses.at(-1)).toBe("Could not queue the offline sale.");
   });
 });

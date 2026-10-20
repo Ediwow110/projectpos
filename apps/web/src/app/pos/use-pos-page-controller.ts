@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { apiFetch, ApiError } from "../../lib/api";
 import { cartTotal } from "../../lib/sales";
 import { canPresentPayAction, paymentPresentation, posSaleErrorMessage } from "../../lib/pos-view";
+import { shouldClearCheckoutFailureForNewAttempt, type PosCheckoutFailure } from "../../lib/pos-checkout-feedback";
 import {
   addProductToCart,
   changeCartQuantity,
@@ -45,6 +46,7 @@ export function usePosPageController() {
   const [received, setReceived] = useState("");
   const [internalInstrumentId, setInternalInstrumentId] = useState("");
   const [status, setStatus] = useState("");
+  const [checkoutFailure, setCheckoutFailure] = useState<PosCheckoutFailure | null>(null);
   const [receiptId, setReceiptId] = useState<string | null>(null);
   const [confirmedSale, setConfirmedSale] = useState<{ saleId: string; receiptNo?: string; amountMinor: number } | null>(null);
   const [reconcileId, setReconcileId] = useState<string | null>(null);
@@ -64,6 +66,9 @@ export function usePosPageController() {
   // after a cancellation. Without this flag the cancel message would overwrite
   // the real "Sale completed."/"Sale held." status the sale just produced.
   const discountApprovedRef = useRef(false);
+  // Synchronous guard: a double Enter/click can fire before React disables the
+  // payment button, and a duplicate completion call is financially unsafe.
+  const payingRef = useRef(false);
   const [paying, setPaying] = useState(false);
   const [resumingSaleId, setResumingSaleId] = useState<string | null>(null);
   const [activeDraft, setActiveDraft] = useState<{ id: string; totalMinor: number } | null>(null);
@@ -313,17 +318,27 @@ export function usePosPageController() {
   }
 
   async function pay(approvalToken?: string): Promise<boolean> {
-    return runPosCheckout({
-      cart, registerId, customerId, walkIn, received, due, orderDiscountMinor,
-      discountTotalMinor: discountSummary.totalDiscountMinor,
-      method, internalInstrumentId, offline, identityLoading: meQuery.isLoading,
-      store, activeDraft, giftCardLoad, methodAvailable,
-    }, {
-      setStatus, setReceiptId, setConfirmedSale, setReconcileId, setReconcileSaleId,
-      setCart, setActiveDraft, setOrderDiscountMinor, setReceived,
-      setShowPay, setGiftCardLoad, setGiftCardResult, setPaying,
-      requireManagerApproval,
-    }, {}, approvalToken);
+    if (payingRef.current || !shouldClearCheckoutFailureForNewAttempt(checkoutFailure)) return false;
+    payingRef.current = true;
+    try {
+      return await runPosCheckout({
+        cart, registerId, customerId, walkIn, received, due, orderDiscountMinor,
+        discountTotalMinor: discountSummary.totalDiscountMinor,
+        method, internalInstrumentId, offline, identityLoading: meQuery.isLoading,
+        store, activeDraft, giftCardLoad, methodAvailable,
+      }, {
+        setStatus, setCheckoutFailure, setReceiptId, setConfirmedSale, setReconcileId, setReconcileSaleId,
+        setCart, setActiveDraft, setOrderDiscountMinor, setReceived,
+        setShowPay, setGiftCardLoad, setGiftCardResult, setPaying,
+        requireManagerApproval,
+      }, {}, approvalToken);
+    } finally {
+      payingRef.current = false;
+    }
+  }
+
+  function clearCheckoutFailure(): void {
+    setCheckoutFailure(null);
   }
 
   async function approveDiscount(token: string): Promise<boolean> {
@@ -343,7 +358,7 @@ export function usePosPageController() {
     : (searchQuery.data?.items ?? []);
   const count = cart.reduce((n, c) => n + c.qty, 0);
   const statusView = paymentPresentation(status);
-  const canPay = canPresentPayAction(cart.length, canSell) && due > 0 && reconcileId === null && reconcileSaleId === null && !(offline && resumedSaleLocked);
+  const canPay = canPresentPayAction(cart.length, canSell) && due > 0 && reconcileId === null && reconcileSaleId === null && checkoutFailure?.kind !== "unknown_outcome" && !(offline && resumedSaleLocked);
   const selectedRegisterName =
     scopedRegisters.find((register) => register.id === registerId)?.name ?? "—";
 
@@ -358,6 +373,8 @@ export function usePosPageController() {
     canSell,
     categoriesQuery,
     changeMinor,
+    checkoutFailure,
+    clearCheckoutFailure,
     count,
     customerId,
     customerQ,
@@ -393,6 +410,7 @@ export function usePosPageController() {
     received,
     reconcileId,
     reconcileSaleId,
+    setReconcileSaleId,
     registerId,
     resumedSaleLocked,
     resumingSaleId,

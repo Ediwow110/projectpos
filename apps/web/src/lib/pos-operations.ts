@@ -1,4 +1,5 @@
 import { apiFetch } from "./api";
+import { tagPosSaleAttempt } from "./pos-checkout-feedback";
 import { buildCompletePayload } from "./sales";
 import {
   buildDraftSaleInput,
@@ -172,15 +173,19 @@ export async function completePosSale(
   });
   const key = uuid();
   if (isPayMongoMethodKey(input.method)) {
-    const checkout = await api<{ checkoutUrl: string }>(`/api/v1/sales/${draft.id}/paymongo/checkout`, {
-      csrfToken: csrf.csrfToken,
-      init: {
-        method: "POST",
-        body: JSON.stringify({ method: input.method }),
-        headers: { "Idempotency-Key": key },
-      },
-    });
-    return { kind: "redirect", checkoutUrl: checkout.checkoutUrl };
+    try {
+      const checkout = await api<{ checkoutUrl: string }>(`/api/v1/sales/${draft.id}/paymongo/checkout`, {
+        csrfToken: csrf.csrfToken,
+        init: {
+          method: "POST",
+          body: JSON.stringify({ method: input.method }),
+          headers: { "Idempotency-Key": key },
+        },
+      });
+      return { kind: "redirect", checkoutUrl: checkout.checkoutUrl };
+    } catch (error) {
+      throw tagPosSaleAttempt(error, { phase: "checkout", saleId: draft.id });
+    }
   }
   const tendered = resolveTenderedMinor(input.received, draft.totalMinor);
   const payments =
@@ -188,14 +193,21 @@ export async function completePosSale(
       ? [{ method: input.method, amountMinor: tendered, ...(input.internalInstrumentId ? { internalInstrumentId: input.internalInstrumentId } : {}) }]
       : [{ method: input.method, amountMinor: draft.totalMinor, ...(input.internalInstrumentId ? { internalInstrumentId: input.internalInstrumentId } : {}) }];
   const payload = buildCompletePayload(draft.id, payments, key);
-  const response = await api<CompleteSaleResponse>("/api/v1/sales/complete", {
-    csrfToken: csrf.csrfToken,
-    init: {
-      method: "POST",
-      body: JSON.stringify(input.registerId !== "" ? { ...payload, registerId: input.registerId } : payload),
-      headers: { "Idempotency-Key": key },
-    },
-  });
+  let response: CompleteSaleResponse;
+  try {
+    response = await api<CompleteSaleResponse>("/api/v1/sales/complete", {
+      csrfToken: csrf.csrfToken,
+      init: {
+        method: "POST",
+        body: JSON.stringify(input.registerId !== "" ? { ...payload, registerId: input.registerId } : payload),
+        headers: { "Idempotency-Key": key },
+      },
+    });
+  } catch (error) {
+    // The draft exists and the completion request was sent. A lost response
+    // may hide a committed sale, so the UI must reconcile instead of retrying.
+    throw tagPosSaleAttempt(error, { phase: "complete", saleId: draft.id });
+  }
   const sale = saleFromCompleteResponse(response);
   if (sale.status !== "COMPLETED") {
     return { kind: "unknown", saleId: sale.id, paymentId: sale.payments[0]?.id ?? null };

@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from "react";
+import Link from "next/link";
 
 import { minorToMajorFixed } from "../lib/money";
+import { isRetryBlocked, type PosCheckoutFailure } from "../lib/pos-checkout-feedback";
 import type { PosCartEntry } from "../lib/pos-sale-model";
 
 export interface PosPaymentTile {
@@ -31,10 +33,71 @@ interface PosPaymentWorkspaceProps {
   onReceivedChange: (received: string) => void;
   onClose: () => void;
   onPay: () => void;
+  /** Failure scoped to the open payment transaction, never rendered in the cart behind it. */
+  failure?: PosCheckoutFailure | null;
 }
 
 function money(minor: number): string {
   return minorToMajorFixed(minor);
+}
+
+type FailureSurface = "atlas" | "mobile" | "desktop";
+
+function PaymentFailureAlert({
+  failure,
+  surface,
+  onAdjustCart,
+}: {
+  failure: PosCheckoutFailure;
+  surface: FailureSurface;
+  onAdjustCart: () => void;
+}) {
+  const alertRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    alertRef.current?.focus();
+  }, [failure]);
+
+  const id = `payment-failure-${surface}`;
+  const action = failure.action;
+  const atlas = surface === "atlas";
+  const surfaceClass =
+    atlas
+      ? "mt-5 rounded-[8px] border border-[#e8b4a8] bg-[#fff0eb] px-4 py-3 text-[12px] leading-5 text-[#7a2f22]"
+      : surface === "desktop"
+        ? "mt-[30px] w-[556px] rounded-xl border border-red-400/40 bg-red-500/15 px-5 py-4 text-[11px] leading-5 text-red-100"
+        : "mx-5 mt-3 rounded-xl border border-red-400/40 bg-red-500/15 px-4 py-3 text-[11px] leading-5 text-red-100";
+  const actionClass = atlas
+    ? "mt-2 font-semibold underline"
+    : "mt-2 font-semibold text-white underline";
+
+  return (
+    <div
+      ref={alertRef}
+      id={id}
+      role="alert"
+      aria-live="assertive"
+      tabIndex={-1}
+      data-ui="payment-failure"
+      data-failure-kind={failure.kind}
+      className={`${surfaceClass} outline-none`}
+    >
+      <p className="font-semibold">{failure.title}</p>
+      <p className="mt-1">{failure.message}</p>
+      {action.kind === "adjust_cart" ? (
+        <button type="button" onClick={onAdjustCart} className={actionClass}>
+          {action.label}
+        </button>
+      ) : null}
+      {action.kind === "open_shift" || action.kind === "sign_in" || action.kind === "check_sale" ? (
+        <Link href={action.href} className={`${actionClass} inline-flex`}>
+          {action.label}
+        </Link>
+      ) : null}
+      {failure.correlationId ? (
+        <p className="mt-2 text-[10px] opacity-70">Reference: {failure.correlationId}</p>
+      ) : null}
+    </div>
+  );
 }
 
 export function PosPaymentWorkspace({
@@ -59,7 +122,9 @@ export function PosPaymentWorkspace({
   onReceivedChange,
   onClose,
   onPay,
+  failure = null,
 }: PosPaymentWorkspaceProps) {
+  const retryBlocked = isRetryBlocked(failure);
   const desktopHeading = useRef<HTMLHeadingElement>(null);
   const mobileHeading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
@@ -127,10 +192,11 @@ export function PosPaymentWorkspace({
           <p className="font-data mt-1 text-[10px] uppercase text-[#53615a]">{registerSelected ? "Register selected" : "No register selected"} · {now || "Current"}</p>
           <ul className="mt-2 max-h-24 overflow-y-auto text-[12px] text-[#53615a]">{cart.map((item) => <li key={item.productId} className="flex justify-between gap-3 py-1"><span className="min-w-0 truncate">{item.qty} × {item.name}</span><span className="shrink-0 font-data">₱{money(Math.max(0, item.qty * item.priceMinor - item.lineDiscountMinor))}</span></li>)}</ul>
         </div>
+        {failure ? <PaymentFailureAlert failure={failure} surface="atlas" onAdjustCart={onClose} /> : null}
       </div>
       <div className="sticky bottom-0 z-10 mt-5 flex gap-3 border-t border-[#e5e9e3] bg-white px-5 py-4 sm:px-7">
         <button type="button" onClick={onClose} className="min-h-11 flex-1 rounded-[8px] text-[13px] font-medium text-[#202826] hover:bg-[#eff2ed]">Back to sale</button>
-        <button type="button" onClick={onPay} disabled={paying || !canPay} className="min-h-11 flex-1 rounded-[8px] bg-[#202826] px-3 text-[13px] font-semibold text-white hover:bg-[#35413b] disabled:opacity-40">{paying ? "Processing…" : payMongoTender ? "Continue to PayMongo" : "Complete Payment"}</button>
+        <button type="button" onClick={onPay} disabled={paying || !canPay || retryBlocked} aria-describedby={failure ? "payment-failure-atlas" : undefined} className="min-h-11 flex-1 rounded-[8px] bg-[#202826] px-3 text-[13px] font-semibold text-white hover:bg-[#35413b] disabled:opacity-40">{paying ? "Processing…" : payMongoTender ? "Continue to PayMongo" : "Complete Payment"}</button>
       </div>
     </dialog>
   );
@@ -192,9 +258,10 @@ export function PosPaymentWorkspace({
               <input value={internalInstrumentId} onChange={(event) => onInternalInstrumentIdChange(event.target.value)} placeholder={effectiveMethod === "gift_card" ? "Scan or enter card ID" : "Optional account ID"} className="field-dark mt-1.5" />
             </label>
           ) : null}
+          {failure ? <PaymentFailureAlert failure={failure} surface="mobile" onAdjustCart={onClose} /> : null}
           <div className="grid grid-cols-2 gap-2 p-5">
             <button onClick={onClose} className="rounded-xl border border-white/15 py-2.5 text-sm font-semibold text-white/70 hover:text-white">Cancel</button>
-            <button onClick={onPay} disabled={paying || !canPay} className="rounded-xl bg-[#f35d3f] py-2.5 text-sm font-bold shadow-[0_8px_20px_-8px_rgb(243_93_63/0.55)] hover:bg-[#d94a30] disabled:opacity-50">
+            <button onClick={onPay} disabled={paying || !canPay || retryBlocked} aria-describedby={failure ? "payment-failure-mobile" : undefined} className="rounded-xl bg-[#f35d3f] py-2.5 text-sm font-bold shadow-[0_8px_20px_-8px_rgb(243_93_63/0.55)] hover:bg-[#d94a30] disabled:opacity-50">
               {paying ? "Processing…" : payMongoTender ? "Continue to PayMongo" : "Complete Payment"}
             </button>
           </div>
@@ -268,10 +335,12 @@ export function PosPaymentWorkspace({
             </label>
           ) : null}
 
+          {failure ? <PaymentFailureAlert failure={failure} surface="desktop" onAdjustCart={onClose} /> : null}
           <button
             type="button"
             onClick={onPay}
-            disabled={paying || !canPay}
+            disabled={paying || !canPay || retryBlocked}
+            aria-describedby={failure ? "payment-failure-desktop" : undefined}
             className="mt-[30px] h-16 w-[556px] rounded-xl bg-[#f35d3f] font-display text-[13px] font-semibold text-white shadow-[0_8px_20px_-8px_rgb(243_93_63/0.55)] hover:bg-[#d94a30] disabled:opacity-50"
           >
             {paying ? "Processing…" : payMongoTender ? "Continue to PayMongo   ENTER" : "Complete payment   ENTER"}
