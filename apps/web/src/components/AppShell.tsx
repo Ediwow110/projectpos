@@ -57,13 +57,13 @@ function NavLink({
       data-tour={item.tour}
       className={
         compact
-          ? "group relative flex min-h-[40px] items-center gap-2.5 rounded-xl px-3 text-[12px] font-medium transition " +
+          ? "group relative flex min-h-11 items-center gap-2.5 rounded-xl px-3 text-[12px] font-medium transition " +
             (active
-              ? "bg-[#fff0ea] font-semibold text-[#e44e34]"
+              ? "bg-[#fff0ea] font-semibold text-[var(--color-atlas-accent-strong)]"
               : "text-[#4d443d] hover:bg-[#f7f1ea] hover:text-[#17130f]")
           : "group relative inline-flex h-11 shrink-0 items-center gap-2 border-b-2 px-3 text-[11px] font-semibold transition " +
             (active
-              ? "border-[#f35d3f] text-[#e44e34]"
+              ? "border-[#f35d3f] text-[var(--color-atlas-accent-strong)]"
               : "border-transparent text-[#665b53] hover:border-[#ead7cd] hover:text-[#17130f]")
       }
     >
@@ -72,7 +72,7 @@ function NavLink({
         className={
           "grid place-items-center rounded-lg font-data " +
           (compact ? "h-7 w-7 text-[11px] " : "h-6 w-6 text-[10px] ") +
-          (active ? "bg-[#ffe3d8] text-[#e44e34]" : "bg-[#f4f0ea] text-[#635950]")
+          (active ? "bg-[#ffe3d8] text-[var(--color-atlas-accent-strong)]" : "bg-[#f4f0ea] text-[#635950]")
         }
       >
         {item.icon}
@@ -236,7 +236,7 @@ export function AppShell({
           <p role="status" className="text-sm font-medium text-[#73685f]">
             Connecting to your workspace…
           </p>
-          <p className="mt-2 text-xs text-[#8b8077]">
+          <p className="mt-2 text-xs text-[var(--color-atlas-muted-strong)]">
             The service is starting. We will retry automatically.
           </p>
           <button
@@ -363,7 +363,7 @@ export function AppShell({
                 </span>
               ) : null}
               <span className="hidden text-[10px] font-medium text-[#5d534b] lg:inline">▣ Today</span>
-              <span className="hidden text-[9px] text-[#8b8077] xl:inline">{today}</span>
+              <span className="hidden text-[9px] text-[var(--color-atlas-muted-strong)] xl:inline">{today}</span>
             </div>
 
             {posMode ? (
@@ -405,7 +405,7 @@ export function AppShell({
                   type="button"
                   data-tour="tour-restart"
                   onClick={() => setShowTour(true)}
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[#eadfd6] bg-white text-[11px] font-bold text-[#665b53] hover:border-[#f2b8a9] hover:text-[#d94a30]"
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[#eadfd6] bg-white text-[11px] font-bold text-[#665b53] hover:border-[#f2b8a9] hover:text-[var(--color-atlas-accent-strong)]"
                   aria-label="Restart system tour"
                   title="Restart system tour"
                 >
@@ -424,7 +424,7 @@ export function AppShell({
                   type="button"
                   onClick={() => void signOut()}
                   disabled={signingOut}
-                  className="min-h-8 shrink-0 rounded-lg border border-[#eadfd6] bg-white px-2.5 text-[9px] font-semibold text-[#665b53] transition hover:border-[#f2b8a9] hover:text-[#d94a30] disabled:cursor-wait disabled:opacity-60"
+                  className="min-h-8 shrink-0 rounded-lg border border-[#eadfd6] bg-white px-2.5 text-[9px] font-semibold text-[#665b53] transition hover:border-[#f2b8a9] hover:text-[var(--color-atlas-accent-strong)] disabled:cursor-wait disabled:opacity-60"
                 >
                   {signingOut ? "Signing out…" : "Sign out"}
                 </button>
@@ -461,7 +461,7 @@ export function AppShell({
                 className={
                   "relative inline-flex h-11 shrink-0 items-center gap-2 border-b-2 px-3 text-[11px] font-semibold transition " +
                   (activeSecondaryItem || showMobileMenu
-                    ? "border-[#f35d3f] text-[#e44e34]"
+                    ? "border-[#f35d3f] text-[var(--color-atlas-accent-strong)]"
                     : "border-transparent text-[#665b53] hover:border-[#ead7cd] hover:text-[#17130f]")
                 }
               >
@@ -497,7 +497,7 @@ export function AppShell({
             <nav aria-label="More workspace navigation" className="mx-auto grid w-full max-w-[920px] gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {secondaryNavigationGroups.map((group) => (
                 <section key={group.label} aria-label={group.label}>
-                  <p className="px-2 pb-1.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-[#a0948b]">{group.label}</p>
+                  <p className="px-2 pb-1.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-[var(--color-atlas-muted-strong)]">{group.label}</p>
                   <div className="space-y-1">
                     {group.items.map((item) => (
                       <NavLink
@@ -559,7 +559,7 @@ export function AppShell({
             <nav className="space-y-4" aria-label="Primary navigation">
               {navigationGroups.map((group) => (
                 <div key={group.label}>
-                  <p className="px-2 pb-1.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-[#a0948b]">
+                  <p className="px-2 pb-1.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-[var(--color-atlas-muted-strong)]">
                     {group.label}
                   </p>
                   <div className="space-y-1">
@@ -575,7 +575,7 @@ export function AppShell({
               <button
                 type="button"
                 onClick={() => setShowTour(true)}
-                className="mb-3 flex w-full items-center justify-between rounded-xl border border-[#eee4db] bg-white px-3 py-2.5 text-left text-[10px] font-semibold text-[#655b53] hover:border-[#f2b8a9] hover:text-[#d94a30]"
+                className="mb-3 flex w-full items-center justify-between rounded-xl border border-[#eee4db] bg-white px-3 py-2.5 text-left text-[10px] font-semibold text-[#655b53] hover:border-[#f2b8a9] hover:text-[var(--color-atlas-accent-strong)]"
               >
                 <span>Help · Restart tour</span>
                 <span aria-hidden>?</span>
@@ -618,7 +618,7 @@ export function AppShell({
         data-ui="shell-footer"
         className={"relative z-20 border-t border-[#eadfd6] bg-white/80 px-4 py-4 backdrop-blur sm:px-6 " + (atlasPos ? "xl:hidden" : "")}
       >
-        <div className="mx-auto flex w-full max-w-[1480px] flex-wrap items-center justify-between gap-2 text-[9px] text-[#8b8077]">
+        <div className="mx-auto flex w-full max-w-[1480px] flex-wrap items-center justify-between gap-2 text-[9px] text-[var(--color-atlas-muted-strong)]">
           <p><span className="font-display font-semibold text-[#3b342e]">NEXPOS</span> · Retail operations workspace</p>
           <p className="font-data">© {year} · Secure session workspace</p>
         </div>

@@ -4,6 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fixture = vi.hoisted(() => ({
   legacyReviewSteps: [] as string[],
+  readiness: {} as Record<string, unknown>,
+  settings: {} as Record<string, unknown>,
+  readinessError: false,
   data: {
     currentStep: "receiptSetup",
     steps: {
@@ -20,11 +23,24 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@tanstack/react-query", () => ({
   useQuery: ({ queryKey }: { queryKey: string[] }) => ({
     data: queryKey[0] === "onboarding-sale-readiness"
-      ? { legacySetupReviewSteps: fixture.legacyReviewSteps, canCustomizeReceipt: false }
+      ? (fixture.readinessError ? undefined : {
+          businessConfigured: true,
+          legacySetupReviewSteps: fixture.legacyReviewSteps,
+          hasSellableProduct: false,
+          hasActiveRegister: false,
+          hasOpenShift: false,
+          hasStaff: false,
+          canCustomizeReceipt: false,
+          readyForFirstSale: false,
+          missing: [],
+          ...fixture.readiness,
+        })
       : queryKey[0] === "onboarding-business"
-        ? { name: "QA Business", currency: "PHP", settings: {} }
+        ? { name: "QA Business", currency: "PHP", settings: fixture.settings }
         : fixture.data,
-    isLoading: false, isError: false, refetch: vi.fn(),
+    isLoading: false,
+    isError: queryKey[0] === "onboarding-sale-readiness" ? fixture.readinessError : false,
+    refetch: vi.fn(),
   }),
   useQueryClient: () => ({ invalidateQueries: vi.fn().mockResolvedValue(undefined) }),
 }));
@@ -35,6 +51,9 @@ describe("onboarding navigation", () => {
   beforeEach(() => {
     vi.stubGlobal("React", React);
     fixture.legacyReviewSteps = [];
+    fixture.readiness = {};
+    fixture.settings = {};
+    fixture.readinessError = false;
     fixture.data.currentStep = "receiptSetup";
     fixture.data.steps.businessDetails = "done";
     fixture.data.steps.taxCurrency = "pending";
@@ -113,5 +132,160 @@ describe("onboarding navigation", () => {
     expect(html).toContain('href="/"');
     expect(html).toContain("← Back to dashboard");
     expect(html).not.toContain("Complete required setup to open the dashboard.");
+  });
+
+  it("lands a completed owner on the first required step and shows the saved business settings", () => {
+    fixture.data.currentStep = "complete";
+    fixture.data.steps.businessDetails = "done";
+    fixture.data.steps.taxCurrency = "done";
+    fixture.data.steps.receiptSetup = "done";
+    fixture.data.steps.products = "skipped";
+    fixture.data.steps.employees = "skipped";
+    fixture.settings = {
+      businessAddress: "123 Rizal St, Manila",
+      businessPhone: "09171234567",
+      businessTimezone: "Asia/Manila",
+      taxName: "no tax",
+      taxRateBps: 0,
+      standardReceiptConfirmed: true,
+    };
+
+    const html = renderToStaticMarkup(<OnboardingPage />);
+
+    expect(html).toContain('aria-label="Saved business settings"');
+    expect(html).toContain("123 Rizal St, Manila");
+    expect(html).toContain("Asia/Manila");
+    expect(html).toContain("PHP");
+    expect(html).toContain("no tax");
+    expect(html).toContain("0%");
+    expect(html).toContain("Standard receipt confirmed");
+    expect(html).toContain("This step is complete");
+    expect(html).not.toContain("Owner-only stores can skip employee setup.");
+  });
+
+  it("keeps the dashboard reachable from the setup brand and the review footer", () => {
+    fixture.data.currentStep = "complete";
+    fixture.data.steps.businessDetails = "done";
+    fixture.data.steps.taxCurrency = "done";
+    fixture.data.steps.receiptSetup = "done";
+    fixture.data.steps.products = "skipped";
+    fixture.data.steps.employees = "skipped";
+
+    const html = renderToStaticMarkup(<OnboardingPage />);
+    const brand = html.match(/<a[^>]*aria-label="NexPOS home"[^>]*>/)?.[0] ?? "";
+
+    expect(html.match(/href="\/"/g) ?? []).toHaveLength(2);
+    expect(brand).toContain('href="/"');
+    expect(html).toContain("← Back to dashboard");
+  });
+
+  it("keeps the setup brand on the sign-in entry while required setup is incomplete", () => {
+    const html = renderToStaticMarkup(<OnboardingPage />);
+    const brand = html.match(/<a[^>]*aria-label="NexPOS home"[^>]*>/)?.[0] ?? "";
+
+    expect(brand).toContain('href="/login"');
+    expect(html).not.toContain("← Back to dashboard");
+  });
+
+  it("renders the first-sale checklist from the shared readiness contract", () => {
+    fixture.data.currentStep = "complete";
+    fixture.data.steps.businessDetails = "done";
+    fixture.data.steps.taxCurrency = "done";
+    fixture.data.steps.receiptSetup = "done";
+    fixture.data.steps.products = "skipped";
+    fixture.data.steps.employees = "skipped";
+
+    const html = renderToStaticMarkup(<OnboardingPage />);
+
+    // The onboarding checklist and the owner overview checklist must come from
+    // one contract, so the labels and destinations cannot drift apart.
+    expect(html).toContain("Sellable product with available stock");
+    expect(html).toContain('href="/products"');
+    expect(html).toContain('href="/registers"');
+    expect(html).toContain('href="/shifts"');
+    expect(html).not.toContain("At least one sellable product with available stock (if tracked)");
+  });
+
+  it("does not show a stale instruction on a step that is already complete", () => {
+    fixture.data.currentStep = "complete";
+    fixture.data.steps.businessDetails = "done";
+    fixture.data.steps.taxCurrency = "done";
+    fixture.data.steps.receiptSetup = "done";
+    fixture.data.steps.products = "skipped";
+    fixture.data.steps.employees = "skipped";
+
+    const html = renderToStaticMarkup(<OnboardingPage />);
+
+    expect(html).not.toContain("Save your operating address, optional phone and timezone before continuing.");
+    expect(html).toContain("This step is complete");
+  });
+
+  it("states that the setup review status is unavailable when readiness cannot be read", () => {
+    fixture.data.currentStep = "complete";
+    fixture.data.steps.businessDetails = "done";
+    fixture.data.steps.taxCurrency = "done";
+    fixture.data.steps.receiptSetup = "done";
+    fixture.data.steps.products = "skipped";
+    fixture.data.steps.employees = "skipped";
+    fixture.readinessError = true;
+
+    const html = renderToStaticMarkup(<OnboardingPage />);
+
+    // The step flag itself genuinely says "done" (GET /api/v1/onboarding
+    // succeeded), so it is not suppressed; what must not happen is the owner
+    // believing the setup was cross-checked. The unavailable status is stated.
+    expect(html).toContain("Setup review status is unavailable");
+    expect(html).toContain("Could not load sale readiness");
+  });
+
+  it("ignores an unrecognised legacy review step instead of blanking setup", () => {
+    fixture.data.currentStep = "complete";
+    fixture.data.steps.businessDetails = "done";
+    fixture.data.steps.taxCurrency = "done";
+    fixture.data.steps.receiptSetup = "done";
+    fixture.data.steps.products = "skipped";
+    fixture.data.steps.employees = "skipped";
+    fixture.legacyReviewSteps = ["bogus"];
+
+    const html = renderToStaticMarkup(<OnboardingPage />);
+
+    expect(html).toContain("Set up your business");
+    expect(html).toContain("Business details");
+  });
+
+  it("tolerates a non-array legacy review payload", () => {
+    fixture.data.currentStep = "complete";
+    fixture.data.steps.businessDetails = "done";
+    fixture.data.steps.taxCurrency = "done";
+    fixture.data.steps.receiptSetup = "done";
+    fixture.data.steps.products = "skipped";
+    fixture.data.steps.employees = "skipped";
+    fixture.legacyReviewSteps = "businessDetails" as unknown as string[];
+
+    const html = renderToStaticMarkup(<OnboardingPage />);
+
+    expect(html).toContain("Set up your business");
+  });
+
+  it("shows an outstanding server readiness gap even when all three visible checks pass", () => {
+    fixture.data.currentStep = "complete";
+    fixture.data.steps.businessDetails = "done";
+    fixture.data.steps.taxCurrency = "done";
+    fixture.data.steps.receiptSetup = "done";
+    fixture.data.steps.products = "skipped";
+    fixture.data.steps.employees = "skipped";
+    fixture.readiness = {
+      hasSellableProduct: true,
+      hasActiveRegister: true,
+      hasOpenShift: true,
+      readyForFirstSale: false,
+      missing: ["stock_at_open_register"],
+    };
+
+    const html = renderToStaticMarkup(<OnboardingPage />);
+
+    expect(html.match(/✓/g) ?? []).toHaveLength(3);
+    expect(html).toContain("No stock is available at the open register.");
+    expect(html).toContain("Not ready for first sale");
   });
 });

@@ -10,6 +10,13 @@ import { Panel } from "../../components/premium";
 import { AtlasEntryBrand } from "../../components/AtlasEntryBrand";
 import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { ApiError, apiFetch } from "../../lib/api";
+import {
+  formatTaxRate,
+  readinessGapLabels,
+  readSavedBusinessSettings,
+  saleReadinessChecks,
+  type SaleReadiness,
+} from "../../lib/sale-readiness";
 
 const ORDER = ["businessDetails", "taxCurrency", "receiptSetup", "products", "employees"] as const;
 type Step = (typeof ORDER)[number];
@@ -54,17 +61,6 @@ interface BusinessDetails {
   name: string;
   currency: string;
   settings: Record<string, unknown>;
-}
-
-interface SaleReadiness {
-  businessConfigured: boolean;
-  legacySetupReviewSteps: Step[];
-  hasSellableProduct: boolean;
-  hasActiveRegister: boolean;
-  hasOpenShift: boolean;
-  hasStaff: boolean;
-  canCustomizeReceipt: boolean;
-  readyForFirstSale: boolean;
 }
 
 async function loadOnboarding(): Promise<OnboardingState> {
@@ -201,29 +197,39 @@ export default function OnboardingPage(): JSX.Element {
       <main className="atlas-entry grid min-h-screen place-items-center p-6 text-center">
         <div>
           <p role="alert" className="text-sm text-[#c43e3e]">Could not load setup progress.</p>
-          <button type="button" onClick={() => void query.refetch()} className="mt-4 text-sm font-semibold text-[#d94a30]">Try again</button>
+          <button type="button" onClick={() => void query.refetch()} className="mt-4 text-sm font-semibold text-[var(--color-atlas-accent-strong)]">Try again</button>
         </div>
       </main>
     );
   }
 
   const steps = query.data!.steps;
-  const legacyReview = readiness.data?.legacySetupReviewSteps ?? [];
+  // Readiness is a server payload, not a typed contract at runtime. Ignore
+  // malformed values so an unexpected step cannot blank the setup page.
+  const legacyReview: Step[] = Array.isArray(readiness.data?.legacySetupReviewSteps)
+    ? readiness.data.legacySetupReviewSteps.filter((step): step is Step =>
+        (ORDER as readonly string[]).includes(step))
+    : [];
   const progressStep =
     (legacyReview[0] ??
       ORDER.find((step) => step === query.data!.currentStep) ??
       ORDER.find((step) => steps[step] === "pending") ??
-      ORDER[ORDER.length - 1]) as Step;
+      // A completed setup has no pending step: land on the first required step
+      // so the owner reviews saved business settings instead of a skipped
+      // optional step that says nothing.
+      (REQUIRED.every((step) => steps[step] === "done") ? REQUIRED[0] : ORDER[ORDER.length - 1])) as Step;
   const current = editingStep ?? progressStep;
   const editingCompletedStep = (editingStep === current || legacyReview.includes(current)) && steps[current] === "done";
   const currentIndex = ORDER.indexOf(current);
   const currentMeta = STEP_META[current];
+  const saved = readSavedBusinessSettings(business.data!);
+  const readinessGaps = readiness.data ? readinessGapLabels(readiness.data) : [];
 
   return (
     <main data-ui="atlas-v4-onboarding" className="atlas-entry min-h-screen p-4 sm:p-6 lg:p-8">
 
       <header className="mx-auto flex min-h-[77px] max-w-[1360px] flex-wrap items-center gap-3 rounded-xl border border-[#e5e9e3] bg-white px-5 py-3">
-        <AtlasEntryBrand compact />
+        <AtlasEntryBrand compact href={requiredDone ? "/" : "/login"} />
         <div className="ml-auto flex items-center gap-3">
           <span className="font-data text-[11px] text-[#748078]">STEP {String(currentIndex + 1).padStart(2, "0")} / 05</span>
           <span role="status" className="rounded-md bg-[#e8f4ec] px-3 py-1.5 text-[11px] font-semibold text-[#267552]">Setup progress</span>
@@ -252,7 +258,7 @@ export default function OnboardingPage(): JSX.Element {
                     className={
                       "font-data grid h-9 w-9 shrink-0 place-items-center rounded-[9px] text-[11px] " +
                       (state === "done" || active
-                        ? "bg-[#da614c] text-white"
+                        ? "bg-[var(--color-atlas-accent-strong)] text-white"
                         : state === "skipped"
                           ? "bg-[#fff4df] text-[#b56d0c]"
                           : "bg-[#f7f8f5] text-[#748078]")
@@ -264,7 +270,7 @@ export default function OnboardingPage(): JSX.Element {
                     disabled={state !== "done" || savingStep !== null}
                     onClick={() => setEditingStep(step)}>
                     <p className={"text-[13px] " + (active ? "font-semibold text-[#202826]" : "font-medium text-[#526159]")}>{STEP_META[step].title}</p>
-                    <p className={"font-data mt-1 text-[10px] " + (state === "done" ? "text-[#267552]" : active ? "text-[#da614c]" : state === "skipped" ? "text-[#9a6e32]" : "text-[#748078]")}>
+                    <p className={"font-data mt-1 text-[10px] " + (state === "done" ? "text-[#267552]" : active ? "text-[var(--color-atlas-accent-strong)]" : state === "skipped" ? "text-[#9a6e32]" : "text-[#748078]")}>
                       {legacyReview.includes(step) ? "Review required · Missing saved settings" : state === "done" ? "Done · Select to review" : state === "skipped" ? "Skipped" : active ? "Current" : "Next"}
                     </p>
                   </button>
@@ -285,13 +291,53 @@ export default function OnboardingPage(): JSX.Element {
           </p>
           <h2 className="font-display mt-5 max-w-3xl text-[30px] font-semibold text-[#202826]">{currentMeta.title}</h2>
           <p className="mt-3 max-w-3xl text-[14px] leading-6 text-[#748078]">{currentMeta.description}</p>
-          {editingCompletedStep ? <button type="button" className="mt-3 text-xs font-semibold text-[#e44e34]"
+          {editingCompletedStep ? <button type="button" className="mt-3 text-xs font-semibold text-[var(--color-atlas-accent-strong)]"
             onClick={() => setEditingStep(null)}>← Return to current setup</button> : null}
+
+          {requiredDone ? (
+            <section aria-label="Saved business settings" className="mt-6 rounded-xl border border-[#e5e9e3] bg-white p-5">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h3 className="font-display text-[17px] font-semibold text-[#202826]">Saved business settings</h3>
+                <p className="font-data text-[10px] tracking-wide text-[#53615a]">SAVED ON THE SERVER</p>
+              </div>
+              <dl className="mt-4 grid gap-4 sm:grid-cols-3">
+                <div>
+                  <dt className="text-[11px] font-medium text-[#53615a]">Business details</dt>
+                  <dd className="mt-1 text-[13px] font-semibold text-[#202826]">{saved.name}</dd>
+                  <dd className="mt-1 text-[12px] leading-5 text-[#53615a]">{saved.address || "No address saved"}</dd>
+                  {saved.phone ? <dd className="text-[12px] leading-5 text-[#53615a]">{saved.phone}</dd> : null}
+                  <dd className="text-[12px] leading-5 text-[#53615a]">{saved.timezone || "No timezone saved"}</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] font-medium text-[#53615a]">Currency &amp; tax</dt>
+                  <dd className="mt-1 text-[13px] font-semibold text-[#202826]">
+                    {saved.currency} · {saved.taxName || "No tax name saved"}
+                  </dd>
+                  <dd className="mt-1 text-[12px] leading-5 text-[#53615a]">{formatTaxRate(saved.taxRateBps)} tax rate</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] font-medium text-[#53615a]">Receipt setup</dt>
+                  <dd className="mt-1 text-[13px] font-semibold text-[#202826]">
+                    {saved.receiptConfirmed ? "Standard receipt confirmed" : "Standard receipt not confirmed"}
+                  </dd>
+                  {readiness.data?.canCustomizeReceipt && (saved.receiptHeader || saved.receiptFooter) ? (
+                    <dd className="mt-1 text-[12px] leading-5 text-[#53615a]">
+                      {saved.receiptHeader ? `Header: ${saved.receiptHeader}` : "No custom header saved"}
+                      <br />
+                      {saved.receiptFooter ? `Footer: ${saved.receiptFooter}` : "No custom footer saved"}
+                    </dd>
+                  ) : null}
+                </div>
+              </dl>
+            </section>
+          ) : null}
 
           <div className="mt-8 grid gap-4 xl:grid-cols-[minmax(0,1fr)_220px]">
             <div className="rounded-xl border border-[#e5e9e3] bg-[#fbfcfa] p-5 sm:p-7">
               <h3 className="font-display text-lg font-semibold text-[#202826]">Configuration</h3>
-              <p className="mt-2 text-[13px] leading-5 text-[#748078]">{currentMeta.note}</p>
+              {steps[current] === "done" && !editingCompletedStep ? null : (
+                <p className="mt-2 text-[13px] leading-5 text-[#748078]">{currentMeta.note}</p>
+              )}
 
               {current === "businessDetails" && (steps[current] === "pending" || editingCompletedStep) ? (
                 <div className="mt-5 grid gap-4">
@@ -371,13 +417,13 @@ export default function OnboardingPage(): JSX.Element {
                 <div className="mt-4 rounded-xl bg-white p-4">
                   <p className="text-[11px] font-semibold text-[#2a241f]">Catalog work is available now</p>
                   <p className="mt-2 text-[10px] leading-4 text-[#73685f]">Add real product records in the catalog, then return here when you are ready to resolve this step.</p>
-                  <Link href="/products" className="mt-3 inline-flex text-[11px] font-semibold text-[#e44e34]">Open products →</Link>
+                  <Link href="/products" className="mt-3 inline-flex text-[11px] font-semibold text-[var(--color-atlas-accent-strong)]">Open products →</Link>
                 </div>
               ) : null}
               {current === "employees" ? (
                 <div className="mt-4 rounded-xl bg-white p-4">
                   <p className="text-xs font-semibold">Owner-only stores can skip employee setup.</p>
-                  <Link href="/team" className="mt-2 inline-block text-xs font-semibold text-[#e44e34]">Open team management →</Link>
+                  <Link href="/team" className="mt-2 inline-block text-xs font-semibold text-[var(--color-atlas-accent-strong)]">Open team management →</Link>
                 </div>
               ) : null}
 
@@ -405,7 +451,11 @@ export default function OnboardingPage(): JSX.Element {
                   ) : null}
                 </div>
               ) : (
-                <p className="mt-6 text-[11px] font-medium text-[#1f8a5b]">This step is already resolved.</p>
+                <p className="mt-6 text-[11px] font-medium text-[#1f8a5b]">
+                  {steps[current] === "done"
+                    ? "This step is complete. Saved values are shown above; use the list to change them."
+                    : "This step is already resolved."}
+                </p>
               )}
             </div>
 
@@ -423,12 +473,29 @@ export default function OnboardingPage(): JSX.Element {
               <h3 className="text-sm font-semibold text-[#17130f]">Before your first sale</h3>
               <p className="mt-2 text-xs text-[#73685f]">Business setup and operational readiness are separate. These checks come from the server; stock and checkout rules are validated again when you sell.</p>
               {readiness.data ? (
-                <ul className="mt-3 space-y-2 text-xs">
-                  <li>{readiness.data.hasSellableProduct ? "✓" : "○"} <Link className="underline" href="/products">At least one sellable product with available stock (if tracked)</Link></li>
-                  <li>{readiness.data.hasActiveRegister ? "✓" : "○"} <Link className="underline" href="/registers">Active register</Link></li>
-                  <li>{readiness.data.hasOpenShift ? "✓" : "○"} <Link className="underline" href="/shifts">Open shift</Link></li>
-                </ul>
+                <>
+                  <ul className="mt-3 space-y-2 text-xs">
+                    {saleReadinessChecks(readiness.data).map((check) => (
+                      <li key={check.key}>
+                        {check.done ? "✓" : "○"} <Link className="underline" href={check.href}>{check.label}</Link>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className={"mt-3 text-[11px] font-semibold " + (readiness.data.readyForFirstSale ? "text-[#267552]" : "text-[#8a5a06]")}>
+                    {readiness.data.readyForFirstSale ? "Ready for first sale" : "Not ready for first sale"}
+                  </p>
+                  {readinessGaps.length > 0 ? (
+                    <ul className="mt-2 space-y-1 text-[11px] font-medium text-[#8a5a06]">
+                      {readinessGaps.map((gap) => <li key={gap}>{gap}</li>)}
+                    </ul>
+                  ) : null}
+                </>
               ) : <p className="mt-3 text-xs" role="status">{readiness.isError ? "Could not load sale readiness; retry after refresh." : "Checking sale readiness…"}</p>}
+              {readiness.isError ? (
+                <p role="status" className="mt-3 text-xs text-[#8a5a06]">
+                  Setup review status is unavailable, so the saved settings above could not be cross-checked against the completed steps. Reopen this page to confirm them.
+                </p>
+              ) : null}
             </div>
           ) : null}
 
@@ -436,7 +503,7 @@ export default function OnboardingPage(): JSX.Element {
 
           <div className="mt-8 flex items-center justify-between gap-3 border-t border-[#eee6de] pt-5">
             {requiredDone
-              ? <Link href="/" className="text-[11px] font-semibold text-[#73685f] hover:text-[#d94a30]">← Back to dashboard</Link>
+              ? <Link href="/" className="inline-flex min-h-11 items-center text-[11px] font-semibold text-[#73685f] hover:text-[var(--color-atlas-accent-strong)]">← Back to dashboard</Link>
               : <p className="text-[11px] font-medium text-[#73685f]">Save your required business, tax and receipt settings to open the dashboard.</p>}
             <p className="font-data text-[9px] text-[#9a8d83]">Progress is saved by the onboarding endpoint</p>
           </div>

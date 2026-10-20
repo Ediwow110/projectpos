@@ -61,4 +61,17 @@ describe("workspace navigation", () => {
     const hrefs = flattenedWorkspaceNavigation(role).map((item) => item.href);
     expect(new Set(hrefs).size).toBe(hrefs.length);
   });
+
+  it("keeps the business setup review surface owner-only in the shared workspace navigation", () => {
+    const ownerItems = workspaceNavigationForRole("owner").flatMap((group) => group.items);
+    const ownerSetup = ownerItems.filter((item) => item.href === "/onboarding");
+
+    expect(ownerSetup).toHaveLength(1);
+    expect(ownerSetup[0].label).toBe("Business setup");
+
+    for (const role of ["manager", "cashier", "inventory"]) {
+      const hrefs = flattenedWorkspaceNavigation(role).map((item) => item.href);
+      expect(hrefs, `${role} must not be offered the business setup surface`).not.toContain("/onboarding");
+    }
+  });
 });

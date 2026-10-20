@@ -21,6 +21,9 @@ test-results/
 test-results-*/
 playwright-report/
 .playwright-mcp/
+# scripts/run-e2e.mjs takes a repo-root lock while a run is active and removes
+# it on every exit path. It is a transient runner artifact, never a source file.
+.e2e-run.lock
 
 # Local AI/tool state and one-off audit probes.
 .freebuff/

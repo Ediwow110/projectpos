@@ -36,9 +36,13 @@
   --color-atlas-ink: #202826;
   --color-atlas-action: #29332d;
   --color-atlas-muted: #748078;
+  /* Text-safe muted: 6.5:1 on white and 6.2:1 on canvas (WCAG AA). */
+  --color-atlas-muted-strong: #53615a;
   --color-atlas-line: #e5e9e3;
   --color-atlas-accent: #da614c;
   --color-atlas-accent-soft: #fff0eb;
+  /* Text-safe accent: 5.31:1 on accent-soft and 5.90:1 on white (WCAG AA). */
+  --color-atlas-accent-strong: #a8452f;
   --color-atlas-verified: #267552;
 
   --color-navy-950: #17130f;
@@ -169,7 +173,7 @@
   font-weight: 500;
   letter-spacing: .08em;
   text-transform: uppercase;
-  color: var(--color-atlas-accent);
+  color: var(--color-atlas-accent-strong);
 }
 .atlas-entry .atlas-step-action {
   background: var(--color-atlas-action);

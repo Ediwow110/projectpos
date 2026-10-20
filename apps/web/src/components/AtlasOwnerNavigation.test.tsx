@@ -26,4 +26,29 @@ describe("Atlas owner navigation", () => {
     expect(matchingLink).toContain('aria-current="page"');
     expect(markup.match(/aria-current="page"/g)).toHaveLength(1);
   });
+
+  it("exposes the real business setup review surface to owners", () => {
+    const markup = renderToStaticMarkup(
+      <AtlasOwnerNavigation pathname="/" onNavigate={() => {}} onSignOut={() => {}} signingOut={false} />,
+    );
+    const setupLinks = [...markup.matchAll(/<a\b[^>]*>/g)]
+      .map(([anchor]) => anchor)
+      .filter((anchor) => anchor.includes('href="/onboarding"'));
+
+    expect(setupLinks).toHaveLength(1);
+    expect(markup).toContain("Business setup");
+  });
+
+  it("marks the business setup destination as active while reviewing setup", () => {
+    const markup = renderToStaticMarkup(
+      <AtlasOwnerNavigation pathname="/onboarding" onNavigate={() => {}} onSignOut={() => {}} signingOut={false} />,
+    );
+    const matchingLink = [...markup.matchAll(/<a\b[^>]*>/g)]
+      .map(([anchor]) => anchor)
+      .find((anchor) => anchor.includes('href="/onboarding"') && anchor.includes("min-h-[48px]"));
+
+    expect(matchingLink).toBeDefined();
+    expect(matchingLink).toContain('aria-current="page"');
+    expect(markup.match(/aria-current="page"/g)).toHaveLength(1);
+  });
 });

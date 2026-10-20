@@ -6,6 +6,7 @@ import { AtlasWorkspaceDestinations } from "./AtlasWorkspaceDestinations";
 
 const OWNER_SECTIONS = [
   { href: "/", label: "Overview" },
+  { href: "/onboarding", label: "Business setup" },
   { href: "/admin/owner-controls", label: "Owner controls" },
   { href: "/team", label: "Team & permissions" },
   { href: "/branches", label: "Branches & registers" },
@@ -49,7 +50,7 @@ export function AtlasOwnerNavigation({
               }}
               className={
                 "relative flex min-h-[48px] items-center rounded-lg px-[18px] text-[14px] transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#da614c] " +
-                (active ? "bg-[#fff0eb] font-semibold text-[#da614c] before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:rounded-full before:bg-[#da614c]" : "font-normal text-[#202826] hover:bg-[#f0f3ef]")
+                (active ? "bg-[#fff0eb] font-semibold text-[var(--color-atlas-accent-strong)] before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:rounded-full before:bg-[#da614c]" : "font-normal text-[#202826] hover:bg-[#f0f3ef]")
               }
             >
               {section.label}
