@@ -39,12 +39,16 @@ test("Atlas V4 login keeps secure sign-in and mobile layout usable", async ({ pa
   await expect(entry).toHaveCSS("background-color", "rgb(247, 248, 245)");
   await expect(entry.getByRole("button", { name: "Sign in securely" })).toHaveCSS("background-color", "rgb(32, 40, 38)");
   if (page.viewportSize()?.width === 1440) {
-    // Cross-platform Figma regression check: the identity panel keeps its
-    // 535px column, the form keeps its 684px content column behind the fixed
-    // gutter, and the submit action stays aligned with the email field. A
-    // single sub-pixel x value drifts between Windows and Linux font/scrollbar
+    // The auth card enters with a 0.55s scale/translate animation. Sampling
+    // mid-flight makes the geometry platform/timing dependent, so settle the
+    // animation first. The identity panel keeps its 535px column and the form
+    // keeps its 684px content column behind the fixed gutter; a single
+    // sub-pixel x value drifts between Windows and Linux font/scrollbar
     // metrics (617 vs ~618.3) without any visual regression, so assert the
     // design bounds instead of one OS-specific coordinate.
+    await entry.locator(".animate-auth-card").evaluate(async (element) => {
+      await Promise.all(element.getAnimations().map((animation) => animation.finished));
+    });
     const identity = await entry.locator('[data-ui="atlas-v4-auth-identity"]').boundingBox();
     const email = await entry.getByLabel("Email address").boundingBox();
     const submit = await entry.getByRole("button", { name: "Sign in securely" }).boundingBox();

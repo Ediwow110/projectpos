@@ -31,7 +31,7 @@ export function AtlasWorkspaceDestinations({
             <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[#758078]">{group.label}</p>
             {group.items.map((item) => (
               <Link key={item.href} href={item.href} onClick={() => onNavigate(item.href)}
-                className="block min-h-10 rounded-lg px-3 py-2.5 text-[12px] text-[#202826] hover:bg-white focus-visible:outline-2 focus-visible:outline-[#da614c]">
+                className="block min-h-11 rounded-lg px-3 py-2.5 text-[12px] text-[#202826] hover:bg-white focus-visible:outline-2 focus-visible:outline-[#da614c]">
                 {item.label}
               </Link>
             ))}
