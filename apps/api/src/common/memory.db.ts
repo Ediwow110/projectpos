@@ -393,8 +393,11 @@ export function createMemoryDb(): DbPort & { audit: AuditEntry[] } {
       // when the caller does not supply one.
       audit.push({ ...e, at: e.at ?? new Date() });
     },
-    async listAudit() {
-      return audit;
+    async listAudit(businessId?: string) {
+      // The port advertises tenant scoping; an unscoped read of every
+      // business's audit rows (snapshots included) is never what a caller
+      // asking about one business wants.
+      return businessId === undefined ? audit : audit.filter((entry) => entry.businessId === businessId);
     },
     async createCategory(c) {
       const row = { ...c, id: nid("cat") };

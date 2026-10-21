@@ -79,7 +79,7 @@ export class SalesService {
         await this.shifts.postCashSale(businessId, actorId, requestId, registerId, saleId, amountMinor);
       },
       recordSale: (businessId, completedAt) => new BillingService(this.db).recordSale(businessId, completedAt),
-    }, this.orderNotifications);
+    }, this.providers, this.orderNotifications);
   }
 
   private async requireSale(businessId: string, saleId: string): Promise<DbSale> {

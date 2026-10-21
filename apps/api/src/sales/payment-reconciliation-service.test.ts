@@ -7,6 +7,23 @@ import { OrderSaleService } from "../orders/order-sale-service";
 import { ReservationService } from "../orders/reservation-service";
 import { SalesService } from "./nest/sales.service";
 import { createMemoryOrderNotificationOutbox } from "../orders/order-notification-outbox";
+import type { PayMongoCheckoutResult, PayMongoCheckoutSnapshot, PayMongoPort } from "../payments/paymongo";
+
+/**
+ * A hosted leg the provider has actually paid. Reconciliation completes it on
+ * the provider's word, never on the caller's - so a test that wants a completed
+ * hosted sale must supply this rather than assert success at the request.
+ */
+class ProviderConfirmsPayment implements PayMongoPort {
+  configured(): boolean { return true; }
+  async createCheckout(): Promise<PayMongoCheckoutResult> {
+    throw new Error("reconciliation never creates a checkout");
+  }
+  async retrieveCheckout(sessionId: string): Promise<PayMongoCheckoutSnapshot> {
+    return { sessionId, checkoutUrl: null, status: "active", paid: true };
+  }
+  verifyWebhook(): boolean { return true; }
+}
 
 async function setup() {
   const db = createMemoryDb();
@@ -61,14 +78,37 @@ async function setup() {
     items: await db.listSaleItems(row.id, row.businessId),
     payments: await db.listPaymentsBySale(row.id, row.businessId),
   });
+  // The provider is authoritative for a hosted leg: a reconcile request that
+  // claims success must not be able to complete a sale the provider has not
+  // confirmed. Tests set providerVerdict before calling reconcilePayment.
+  let providerVerdict: "SUCCEEDED" | "FAILED" | "UNKNOWN" = "SUCCEEDED";
+  let providerQueries = 0;
   const service = new SalesPaymentReconciliationService(db, {
     requireSale,
     embedSale,
     applyStockEffect: async () => { stockApplications += 1; },
     postCashSale: async () => undefined,
     recordSale: async () => { metered += 1; },
+  }, {
+    queryProvider: async (businessId, paymentId) => {
+      providerQueries += 1;
+      expect(businessId).toBe("b1");
+      expect(typeof paymentId).toBe("string");
+      return { status: providerVerdict };
+    },
   });
-  return { db, sale, first, second, service, effects: () => ({ stockApplications, metered }) };
+  return {
+    db,
+    sale,
+    first,
+    second,
+    service,
+    effects: () => ({ stockApplications, metered }),
+    provider: {
+      get queries() { return providerQueries; },
+      setVerdict: (v: "SUCCEEDED" | "FAILED" | "UNKNOWN") => { providerVerdict = v; },
+    },
+  };
 }
 
 describe("sales payment reconciliation service", () => {
@@ -100,6 +140,47 @@ describe("sales payment reconciliation service", () => {
     expect(effects()).toEqual({ stockApplications: 0, metered: 0 });
   });
 
+  it("refuses to complete a hosted leg the provider has not confirmed", async () => {
+    const { db, first, service, effects, provider } = await setup();
+    provider.setVerdict("UNKNOWN");
+
+    await expect(
+      service.reconcilePayment("b1", "u1", "r2", first.id, "SUCCEEDED", "rec-unconfirmed"),
+    ).rejects.toThrow("PAYMENT_UNKNOWN");
+
+    expect(provider.queries).toBe(1);
+    expect((await db.findPaymentById(first.id, "b1"))?.status).toBe("UNKNOWN");
+    expect(effects()).toEqual({ stockApplications: 0, metered: 0 });
+  });
+
+  it("follows the provider when it contradicts a client-claimed success", async () => {
+    const { db, first, service, provider } = await setup();
+    provider.setVerdict("FAILED");
+
+    const out = await service.reconcilePayment("b1", "u1", "r2", first.id, "SUCCEEDED", "rec-contradicted");
+
+    expect(out.payment.status).toBe("FAILED");
+    expect((await db.findPaymentById(first.id, "b1"))?.status).toBe("FAILED");
+  });
+
+  it("does not ask the provider about a local cash leg", async () => {
+    const { db, sale, service, provider } = await setup();
+    const cash = await db.createPayment({
+      businessId: "b1",
+      saleId: sale.id,
+      method: "cash",
+      amountMinor: 100,
+      status: "UNKNOWN",
+      providerRef: null,
+      idempotencyKey: "cash-leg",
+    });
+
+    const out = await service.reconcilePayment("b1", "u1", "r9", cash.id, "SUCCEEDED", "rec-cash");
+
+    expect(provider.queries).toBe(0);
+    expect(out.payment.status).toBe("SUCCEEDED");
+  });
+
   it("commits a linked WEB reservation once when UNKNOWN reconciliation succeeds", async () => {
     const db = createMemoryDb();
     const business = await db.createBusiness({ name: "Reconcile web", currency: "PHP" });
@@ -128,7 +209,7 @@ describe("sales payment reconciliation service", () => {
     const sale = await new OrderSaleService(db).createSaleFromSubmittedOrder(business.id, "staff", "rec-sale", order.id);
     const outbox = createMemoryOrderNotificationOutbox();
     let outboundOrderUpdates = 0;
-    const sales = new SalesService(db, undefined, {
+    const sales = new SalesService(db, new ProviderConfirmsPayment(), {
       async sendPasswordReset() {},
       async sendEmailVerification() {},
       async sendReceiptShare() {},
