@@ -216,3 +216,35 @@ describe("phase5 shift permissions and immutability", () => {
     expect(got.body.code).toBe("NOT_FOUND");
   });
 });
+
+describe("phase11 shift correction HTTP contract", () => {
+  it("returns the corrections the shift report already computes", async () => {
+    const reg = await request(app.getHttpServer()).post("/api/v1/registers")
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ name: "Correction Counter" });
+    expect(reg.status).toBe(201);
+    const opened = await request(app.getHttpServer()).post(`/api/v1/registers/${reg.body.id}/open`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ registerId: reg.body.id, openingFloatMinor: 5000 });
+    expect(opened.status).toBe(201);
+    const shiftId = opened.body.id;
+    const closed = await request(app.getHttpServer()).post(`/api/v1/shifts/${shiftId}/close`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ countedCashMinor: 5000 });
+    expect(closed.status).toBe(200);
+
+    const corrected = await request(app.getHttpServer()).post(`/api/v1/shifts/${shiftId}/corrections`)
+      .set("Cookie", cookie).set("X-CSRF-Token", csrf)
+      .send({ amountMinor: -1234, reason: "Till audit variance" });
+    expect(corrected.status).toBe(201);
+
+    const report = await request(app.getHttpServer()).get(`/api/v1/shifts/${shiftId}`)
+      .set("Cookie", cookie);
+    expect(report.status).toBe(200);
+    expect(report.body.corrections).toHaveLength(1);
+    expect(report.body.corrections[0]).toMatchObject({ amountMinor: -1234, reason: "Till audit variance" });
+    expect(report.body.correctedExpectedCash).toBe(3766);
+    // The closed record itself stays immutable.
+    expect(report.body.components.expectedCash).toBe(5000);
+  });
+});

@@ -7,13 +7,16 @@ import { useQuery } from "@tanstack/react-query";
 
 import { AppShell } from "../../../components/AppShell";
 import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "../../../components/premium";
+import { ShiftCorrectionsPanel } from "../../../components/ShiftCorrectionsPanel";
 import { StatusPill } from "../../../components/ui";
 import { ApiError, apiFetch } from "../../../lib/api";
 import { money, varianceLabel } from "../../../lib/shifts";
+import type { CorrectionRow } from "../../../lib/shift-corrections";
 
 interface Me {
   role: string;
   businessName?: string;
+  permissions?: string[];
 }
 
 interface MovementRow {
@@ -47,6 +50,8 @@ interface ShiftReport {
     variance: number | null;
   };
   movements: MovementRow[];
+  corrections: CorrectionRow[];
+  correctedExpectedCash: number | null;
 }
 
 function movementLabel(type: string): string {
@@ -81,6 +86,8 @@ export default function ShiftDetailPage({ params }: { params: Promise<{ id: stri
   const shift = report?.shift;
   const c = report?.components;
   const movements = report?.movements ?? [];
+  const corrections = report?.corrections ?? [];
+  const permissions = meQuery.data?.permissions ?? [];
 
   return (
     <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role}>
@@ -121,6 +128,15 @@ export default function ShiftDetailPage({ params }: { params: Promise<{ id: stri
                 ))}
               </div>
             </Panel>
+
+            <ShiftCorrectionsPanel
+              shiftId={shift.id}
+              status={shift.status}
+              corrections={corrections}
+              correctedExpectedCashMinor={report?.correctedExpectedCash ?? null}
+              permissions={permissions}
+              onRecorded={() => void reportQuery.refetch()}
+            />
 
             <DataTableFrame>
               <div className="px-5 py-4"><SectionHeader title="Cash movements" description="Each movement preserves its type, amount, actor and reference where available." /></div>
