@@ -57,7 +57,8 @@ vi.mock("@tanstack/react-query", () => ({
   },
 }));
 
-import ApiTokensPage, { PlanGateNotice, SecretShowOnce } from "./page";
+import ApiTokensPage from "./page";
+import { PlanGateNotice, SecretShowOnce } from "../../../components/ApiTokenPanels";
 
 Object.assign(globalThis, { React });
 
