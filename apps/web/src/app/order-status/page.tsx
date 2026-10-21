@@ -7,6 +7,7 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { NexposLogo } from "../../components/brand/NexposLogo";
 import { GuestSupportForm } from "../../components/GuestSupportForm";
+import { OrderPaymentRetry } from "../../components/OrderPaymentRetry";
 import { ApiError, apiFetch } from "../../lib/api";
 import { consumeStatusTokenFromLocation } from "../../lib/order-status-token";
 import { formatOrderMoney, paymentStatusCopy, type PublicOrderStatus } from "../../lib/orders";
@@ -146,6 +147,7 @@ function OrderStatusExperience(): JSX.Element {
                     {status.paymentStatus.replaceAll("_", " ")}
                   </p>
                   <p className="mt-1 text-[11px] leading-5 text-[#73685f]">{paymentStatusCopy(status.paymentStatus)}</p>
+                  <OrderPaymentRetry order={status} />
                 </div>
                 <div className="rounded-[10px] bg-[#f7f1ea] px-4 py-3 text-right">
                   <span className="font-data text-[9px] uppercase tracking-[0.08em] text-[var(--color-atlas-muted-strong)]">Total</span>

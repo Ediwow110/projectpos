@@ -6,11 +6,13 @@ import { useQuery } from "@tanstack/react-query";
 
 import { AppShell } from "../../components/AppShell";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { DisplayLinkCard, type DisplayTicket } from "../../components/DisplayLinkCard";
 import { Modal } from "../../components/Modal";
 import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "../../components/premium";
 import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { apiFetch } from "../../lib/api";
 import { errorText } from "../../lib/billing";
+import { canPairCustomerDisplay, displayLink, displayPairFailureCopy } from "../../lib/display-token";
 import { canManageRegisters } from "../../lib/shifts";
 
 interface Me {
@@ -43,6 +45,8 @@ export default function RegistersPage(): JSX.Element {
   const [createOpen, setCreateOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [archiveTarget, setArchiveTarget] = useState<RegisterRow | null>(null);
+  const [ticket, setTicket] = useState<DisplayTicket | null>(null);
+  const [pairing, setPairing] = useState(false);
 
   const meQuery = useQuery({ queryKey: ["me"], queryFn: () => apiFetch<Me>("/api/v1/me"), retry: false });
   const branchesQuery = useQuery({
@@ -57,6 +61,7 @@ export default function RegistersPage(): JSX.Element {
   });
 
   const manageable = canManageRegisters(meQuery.data?.role ?? "cashier");
+  const canPairDisplay = canPairCustomerDisplay(meQuery.data?.role ?? "cashier");
   const items = listQuery.data?.items ?? [];
   const activeCount = items.filter((register) => register.isActive).length;
   const assignedCount = items.filter((register) => register.branchId !== null).length;
@@ -110,6 +115,29 @@ export default function RegistersPage(): JSX.Element {
     }
   }
 
+  async function pairDisplay(register: RegisterRow): Promise<void> {
+    setError("");
+    setSuccess("");
+    setPairing(true);
+    try {
+      const csrf = await apiFetch<Csrf>("/api/v1/auth/csrf");
+      const issued = await apiFetch<{ token: string; expiresAt: string }>("/api/v1/display/tokens", {
+        csrfToken: csrf.csrfToken,
+        init: { method: "POST", body: JSON.stringify({ registerId: register.id }) },
+      });
+      setTicket({
+        registerId: register.id,
+        registerName: register.name,
+        link: displayLink(window.location.origin, register.id, issued.token),
+        expiresAt: issued.expiresAt,
+      });
+    } catch (cause) {
+      setError(displayPairFailureCopy(cause));
+    } finally {
+      setPairing(false);
+    }
+  }
+
   return (
     <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role}>
       <main className="mx-auto max-w-[1240px] space-y-5 px-4 pb-10 pt-3 sm:px-6">
@@ -153,7 +181,11 @@ export default function RegistersPage(): JSX.Element {
                     <td className="px-5 py-3 text-[#73685f]">{register.branchName ?? "No branch"}</td>
                     <td className="px-5 py-3 text-right"><StatusPill tone={register.isActive ? "ok" : "warn"}>{register.isActive ? "Active" : "Archived"}</StatusPill></td>
                     <td className="px-5 py-3 text-right">
-                      {manageable && register.isActive ? <GhostButton type="button" onClick={() => setArchiveTarget(register)}>Archive</GhostButton> : <span className="text-[11px] text-[var(--color-atlas-muted-strong)]">—</span>}
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        {canPairDisplay && register.isActive ? <GhostButton type="button" disabled={pairing} onClick={() => void pairDisplay(register)}>Customer display</GhostButton> : null}
+                        {manageable && register.isActive ? <GhostButton type="button" onClick={() => setArchiveTarget(register)}>Archive</GhostButton> : null}
+                        {!register.isActive ? <span className="text-[11px] text-[var(--color-atlas-muted-strong)]">—</span> : null}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -164,6 +196,16 @@ export default function RegistersPage(): JSX.Element {
 
         {!manageable ? <Panel className="bg-[#fff4df] p-4 text-[11px] font-medium text-[#8a5606]">Only owners and managers can create or archive registers.</Panel> : null}
       </main>
+
+      <Modal
+        open={ticket !== null}
+        onClose={() => setTicket(null)}
+        title="Customer display link"
+        description="The pairing token is issued for one register and is not stored by NexPOS after this dialog closes."
+        footer={<div className="flex justify-end"><GhostButton type="button" onClick={() => setTicket(null)}>Close</GhostButton></div>}
+      >
+        <DisplayLinkCard ticket={ticket} />
+      </Modal>
 
       <Modal
         open={createOpen && manageable}
