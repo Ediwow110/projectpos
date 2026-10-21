@@ -26,6 +26,41 @@ function contrastRatio(foreground: string, background: string): number {
 }
 
 /**
+ * Primary buttons carry the brand coral. The label is small semibold text, so
+ * WCAG AA needs 4.5:1 on the resting fill AND on hover - white on coral measures
+ * 3.26:1, which is why the label is an ink tone here rather than white.
+ */
+describe("primary action label", () => {
+  const uiSource = readFileSync(new URL("../components/ui.tsx", import.meta.url), "utf8");
+  const buttonClass = uiSource.split("export function PrimaryButton")[1]?.split("export function")[0] ?? "";
+
+  function paint(pattern: RegExp): string | undefined {
+    const match = pattern.exec(buttonClass);
+    if (!match) return undefined;
+    if (match[1]) return token(match[1]);
+    return match[2] ? `#${match[2]}` : undefined;
+  }
+
+  const fill = paint(/(?:^| )bg-\[(?:var\(--color-([a-z0-9-]+)\)|#([0-9a-fA-F]{6}))\]/);
+  const hover = paint(/hover:bg-\[(?:var\(--color-([a-z0-9-]+)\)|#([0-9a-fA-F]{6}))\]/);
+  const label = paint(/(?:^| )text-\[(?:var\(--color-([a-z0-9-]+)\)|#([0-9a-fA-F]{6}))\]/);
+
+  it("states its own colours so the gate cannot pass by matching nothing", () => {
+    expect(fill, "primary fill must be a hex or a --color-* token").toBeTruthy();
+    expect(hover, "hover fill must be a hex or a --color-* token").toBeTruthy();
+    expect(label, "label colour must be a hex or a --color-* token").toBeTruthy();
+  });
+
+  it("keeps the label readable on the resting and hover fills", () => {
+    expect(fill).toBeTruthy();
+    expect(hover).toBeTruthy();
+    expect(label).toBeTruthy();
+    expect(contrastRatio(label!, fill!)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(label!, hover!)).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+/**
  * Active navigation and eyebrow labels are small text (10-14px), so WCAG AA
  * requires 4.5:1. The plain accent is 3.26:1 on the accent-soft row; the
  * strong accent is the documented token for text on light Atlas surfaces.

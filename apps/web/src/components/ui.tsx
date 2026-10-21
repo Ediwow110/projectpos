@@ -48,11 +48,14 @@ export function StatusPill({ tone, children }: { tone: "ok" | "warn" | "bad" | "
   return <span data-tone={tone} className={"inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold " + tones[tone]}>{children}</span>;
 }
 
+// The label is ink, not white: white on --color-coral measures 3.26:1 and the
+// small semibold text needs 4.5:1. Hover therefore lifts to a lighter coral -
+// darkening to --color-coral-hover would drop the ink label to 4.38:1.
 export function PrimaryButton(props: React.ButtonHTMLAttributes<HTMLButtonElement>): JSX.Element {
   const { className = "", ...rest } = props;
   return React.createElement("button", {
     ...rest,
-    className: "inline-flex min-h-11 items-center justify-center gap-2 rounded-[10px] bg-[#f35d3f] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_-8px_rgb(243_93_63/0.55)] transition-[transform,background-color,box-shadow,opacity] duration-150 hover:bg-[#d94a30] active:scale-[0.98] motion-reduce:transform-none disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 " + className,
+    className: "inline-flex min-h-11 items-center justify-center gap-2 rounded-[10px] bg-[var(--color-coral)] px-4 py-2.5 text-sm font-semibold text-[#17130f] shadow-[0_8px_20px_-8px_rgb(243_93_63/0.55)] transition-[transform,background-color,box-shadow,opacity] duration-150 hover:bg-[#ff8061] active:scale-[0.98] motion-reduce:transform-none disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 " + className,
   });
 }
 
