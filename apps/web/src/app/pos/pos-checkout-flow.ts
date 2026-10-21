@@ -1,7 +1,11 @@
 import { ApiError } from "../../lib/api";
+import {
+  checkoutFailureFromError,
+  preconditionFailures,
+  type PosCheckoutFailure,
+} from "../../lib/pos-checkout-feedback";
 import { completePosSale, queueOfflinePosSale } from "../../lib/pos-operations";
 import { isPayMongoMethodKey, type PosCartEntry, type PosGiftCardLoad } from "../../lib/pos-sale-model";
-import { posSaleErrorMessage } from "../../lib/pos-view";
 import type { SyncStore } from "../../lib/sync-store";
 
 export interface PosCheckoutInput {
@@ -25,6 +29,11 @@ export interface PosCheckoutInput {
 
 export interface PosCheckoutEffects {
   setStatus: (message: string) => void;
+  /**
+   * Scoped to the open payment transaction. The payment dialog renders this in
+   * a focusable alert so a failure can never be hidden behind the dialog.
+   */
+  setCheckoutFailure: (failure: PosCheckoutFailure | null) => void;
   setReceiptId: (id: string | null) => void;
   setConfirmedSale: (sale: { saleId: string; receiptNo?: string; amountMinor: number } | null) => void;
   setReconcileId: (id: string | null) => void;
@@ -48,10 +57,24 @@ interface CheckoutDependencies {
 
 function clearPaymentResult(effects: PosCheckoutEffects): void {
   effects.setStatus("");
+  effects.setCheckoutFailure(null);
   effects.setReceiptId(null);
   effects.setConfirmedSale(null);
   effects.setReconcileId(null);
   effects.setReconcileSaleId(null);
+}
+
+function fail(
+  effects: PosCheckoutEffects,
+  failure: PosCheckoutFailure,
+  status: string = failure.message,
+): false {
+  effects.setCheckoutFailure(failure);
+  effects.setStatus(status);
+  if (failure.kind === "unknown_outcome" && failure.saleId) {
+    effects.setReconcileSaleId(failure.saleId);
+  }
+  return false;
 }
 
 export async function runPosOfflineCheckout(
@@ -61,19 +84,35 @@ export async function runPosOfflineCheckout(
 ): Promise<void> {
   clearPaymentResult(effects);
   if (state.cart.length === 0) {
-    effects.setStatus("Cart is empty.");
+    fail(effects, preconditionFailures.cartEmpty(), "Cart is empty.");
     return;
   }
   if (state.identityLoading) {
-    effects.setStatus("Confirming the signed-in workspace before offline checkout.");
+    fail(
+      effects,
+      preconditionFailures.workspaceUnconfirmed(),
+      "Confirming the signed-in workspace before offline checkout.",
+    );
     return;
   }
   if (!state.store) {
-    effects.setStatus("Offline selling is unavailable until this signed-in workspace is identified.");
+    fail(
+      effects,
+      preconditionFailures.reconnectRequired(
+        "Offline selling is unavailable until this signed-in workspace is identified.",
+      ),
+      "Offline selling is unavailable until this signed-in workspace is identified.",
+    );
     return;
   }
   if (state.discountTotalMinor > 0) {
-    effects.setStatus("Reconnect before completing a discounted sale. Discount authorization must be checked by the server.");
+    fail(
+      effects,
+      preconditionFailures.reconnectRequired(
+        "Reconnect before completing a discounted sale. Discount authorization must be checked by the server.",
+      ),
+      "Reconnect before completing a discounted sale. Discount authorization must be checked by the server.",
+    );
     return;
   }
   try {
@@ -95,7 +134,13 @@ export async function runPosOfflineCheckout(
       `Sale queued offline. Provisional receipt ${queued.provisionalReceipt} — pending sync, not yet final. Review it on the sync page.`,
     );
   } catch {
-    effects.setStatus("Could not queue the offline sale.");
+    fail(
+      effects,
+      preconditionFailures.reconnectRequired(
+        "Could not queue the offline sale. Check this device's storage and try again.",
+      ),
+      "Could not queue the offline sale.",
+    );
   }
 }
 
@@ -107,24 +152,34 @@ export async function runPosCheckout(
 ): Promise<boolean> {
   clearPaymentResult(effects);
   if (state.cart.length === 0) {
-    effects.setStatus("Cart is empty.");
-    return false;
+    return fail(effects, preconditionFailures.cartEmpty(), "Cart is empty.");
   }
   if (state.offline) {
     if (state.activeDraft) {
-      effects.setStatus("Reconnect before completing this resumed held sale.");
-      return false;
+      return fail(
+        effects,
+        preconditionFailures.reconnectRequired("Reconnect before completing this resumed held sale."),
+        "Reconnect before completing this resumed held sale.",
+      );
     }
     await runPosOfflineCheckout(state, effects, deps);
     return true;
   }
   if (isPayMongoMethodKey(state.method) && !state.methodAvailable(state.method)) {
-    effects.setStatus("PayMongo is not configured for this payment method yet.");
-    return false;
+    return fail(
+      effects,
+      preconditionFailures.providerSetupRequired(
+        "PayMongo is not configured for this payment method yet.",
+      ),
+      "PayMongo is not configured for this payment method yet.",
+    );
   }
   if (state.giftCardLoad && ["gift_card", "store_credit", "loyalty"].includes(state.method)) {
-    effects.setStatus("Gift-card loads must be paid with an external tender.");
-    return false;
+    return fail(
+      effects,
+      preconditionFailures.internalTenderRequired(),
+      "Gift-card loads must be paid with an external tender.",
+    );
   }
   effects.setPaying(true);
   try {
@@ -169,16 +224,11 @@ export async function runPosCheckout(
     effects.setStatus("Sale completed.");
     return true;
   } catch (error) {
-    if (error instanceof ApiError) {
-      if (error.code === "FORBIDDEN" && state.discountTotalMinor > 0) {
-        effects.requireManagerApproval("pay", Boolean(approvalToken));
-      } else {
-        effects.setStatus(posSaleErrorMessage(error.code, error.message, state.discountTotalMinor > 0));
-      }
-    } else {
-      effects.setStatus("Payment failed");
+    if (error instanceof ApiError && error.code === "FORBIDDEN" && state.discountTotalMinor > 0) {
+      effects.requireManagerApproval("pay", Boolean(approvalToken));
+      return false;
     }
-    return false;
+    return fail(effects, checkoutFailureFromError(error));
   } finally {
     effects.setPaying(false);
   }
