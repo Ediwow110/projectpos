@@ -194,7 +194,12 @@ export default function PrintersPage(): JSX.Element {
 
             <Panel className="p-5">
               <SectionHeader title="Paired printers" description="Online means the paired agent checked in within the last two minutes. Offline printers can still receive queued jobs and will pick them up when the agent reconnects." />
-              {printersQuery.isLoading ? <p className="mt-4 text-sm text-[#73685f]">Loading printers…</p> : printers.length === 0 ? (
+              {printersQuery.isLoading ? <p className="mt-4 text-sm text-[#73685f]">Loading printers…</p> : printersQuery.isError ? (
+                <div className="mt-4 rounded-xl border border-[#efb9b9] bg-[#fff0f0] p-6">
+                  <p role="alert" className="text-[12px] font-medium text-[#c43e3e]">Paired printers could not be loaded, so this list is unknown rather than empty.</p>
+                  <GhostButton type="button" className="mt-3" onClick={() => void printersQuery.refetch()}>Retry</GhostButton>
+                </div>
+              ) : printers.length === 0 ? (
                 <div className="mt-4 rounded-xl border border-dashed border-[#ddd0c6] bg-[#fcf8f3] p-6 text-center text-[12px] text-[#73685f]">No printers enrolled yet.</div>
               ) : (
                 <div className="mt-4 grid gap-3 lg:grid-cols-2">
@@ -229,7 +234,12 @@ export default function PrintersPage(): JSX.Element {
 
             <Panel className="p-5">
               <SectionHeader title="Print queue" description="QUEUED waits for the agent. SENT means the agent claimed the job; NexPOS does not yet receive a physical-print acknowledgement." />
-              {jobs.length === 0 ? <p className="mt-4 rounded-xl border border-dashed border-[#ddd0c6] p-5 text-center text-[11px] text-[#73685f]">No print jobs yet.</p> : (
+              {jobsQuery.isError ? (
+                <div className="mt-4 rounded-xl border border-[#efb9b9] bg-[#fff0f0] p-5">
+                  <p role="alert" className="text-[11px] font-medium text-[#c43e3e]">The print queue could not be loaded, so queued jobs are unknown rather than absent.</p>
+                  <GhostButton type="button" className="mt-3" onClick={() => void jobsQuery.refetch()}>Retry</GhostButton>
+                </div>
+              ) : jobs.length === 0 ? <p className="mt-4 rounded-xl border border-dashed border-[#ddd0c6] p-5 text-center text-[11px] text-[#73685f]">No print jobs yet.</p> : (
                 <div className="mt-4 overflow-x-auto rounded-xl border border-[#eee4db]">
                   <table className="min-w-full text-left text-[11px]">
                     <thead className="bg-[#fcf8f3] text-[#73685f]"><tr><th className="px-4 py-3">Job</th><th className="px-4 py-3">Printer</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Created</th><th className="px-4 py-3 text-right">Action</th></tr></thead>

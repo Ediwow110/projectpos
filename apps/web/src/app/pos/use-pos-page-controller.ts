@@ -101,12 +101,18 @@ export function usePosPageController() {
     heldSalesQuery,
   } = usePosData(q, activeCategoryId, customerQ);
 
-  const { store, offline, catalogAt, cachedItems, now } = usePosOffline(
+  const { store, offline, catalogAt, cachedItems, catalogError, now } = usePosOffline(
     meQuery.data ? { userId: meQuery.data.userId, businessId: meQuery.data.businessId } : undefined,
     meQuery.error,
     meQuery.isLoading,
     searchQuery.data?.items,
   );
+
+  // A device whose offline store cannot be read must say so: otherwise the
+  // cashier sees an empty product list and concludes the catalogue is empty.
+  useEffect(() => {
+    if (catalogError) setStatus(`The saved product catalog could not be read on this device (${catalogError}). Products may be missing until it syncs again.`);
+  }, [catalogError]);
 
   const role = meQuery.data?.role ?? "cashier";
   const scopedRegisters = registersForBranch(

@@ -8,8 +8,11 @@ import { useRouter } from "next/navigation";
 import { TurnstileWidget } from "../../components/TurnstileWidget";
 import { NexposLogo } from "../../components/brand/NexposLogo";
 import { ApiError, apiFetch } from "../../lib/api";
-
-type ChallengeConfig = { enabled: boolean; siteKey?: string };
+import {
+  resolveChallengeLookup,
+  type ChallengeConfig,
+  type ChallengeLookup,
+} from "./challenge-lookup";
 
 export default function VerifyEmailPage(): JSX.Element {
   const router = useRouter();
@@ -21,16 +24,14 @@ export default function VerifyEmailPage(): JSX.Element {
   const [verifying, setVerifying] = useState(false);
   const [sending, setSending] = useState(false);
   const [cooldown, setCooldown] = useState(0);
-  const [challenge, setChallenge] = useState<ChallengeConfig | null>(null);
+  const [challenge, setChallenge] = useState<ChallengeLookup | null>(null);
+  const [challengeEpoch, setChallengeEpoch] = useState(0);
   const [captchaToken, setCaptchaToken] = useState("");
   const [captchaEpoch, setCaptchaEpoch] = useState(0);
 
   useEffect(() => {
     const remembered = window.sessionStorage.getItem("nexpos-verification-email") ?? "";
     setEmail(remembered);
-    void apiFetch<ChallengeConfig>("/api/v1/auth/verify-email/challenge")
-      .then((config) => setChallenge(config))
-      .catch(() => setChallenge({ enabled: false }));
 
     const token = new URLSearchParams(window.location.search).get("token");
     if (!token || started.current) return;
@@ -54,6 +55,21 @@ export default function VerifyEmailPage(): JSX.Element {
   }, [router]);
 
   useEffect(() => {
+    let alive = true;
+    setChallenge(null);
+    void resolveChallengeLookup(() => apiFetch<ChallengeConfig>("/api/v1/auth/verify-email/challenge"))
+      .then((lookup) => {
+        if (alive) setChallenge(lookup);
+      })
+      .catch(() => {
+        if (alive) setChallenge({ status: "error" });
+      });
+    return () => {
+      alive = false;
+    };
+  }, [challengeEpoch]);
+
+  useEffect(() => {
     if (cooldown <= 0) return;
     const timer = window.setInterval(() => setCooldown((value) => Math.max(0, value - 1)), 1000);
     return () => window.clearInterval(timer);
@@ -68,7 +84,7 @@ export default function VerifyEmailPage(): JSX.Element {
     e.preventDefault();
     if (sending || cooldown > 0) return;
     setError("");
-    if (challenge?.enabled && !captchaToken) {
+    if (challenge?.status === "ready" && challenge.enabled && !captchaToken) {
       setError("Complete the human verification challenge before resending.");
       return;
     }
@@ -92,7 +108,11 @@ export default function VerifyEmailPage(): JSX.Element {
     }
   }
 
-  const resendDisabled = sending || cooldown > 0 || challenge === null || Boolean(challenge?.enabled && !captchaToken);
+  const resendDisabled = sending
+    || cooldown > 0
+    || challenge === null
+    || challenge.status === "error"
+    || Boolean(challenge.status === "ready" && challenge.enabled && !captchaToken);
 
   return (
     <main className="min-h-screen overflow-hidden bg-[#fcf8f3] text-[#211814] lg:grid lg:grid-cols-[1.08fr_.92fr]">
@@ -180,6 +200,17 @@ export default function VerifyEmailPage(): JSX.Element {
 
               {challenge === null ? (
                 <div className="h-[72px] animate-pulse rounded-xl bg-[#f7f1ea]" aria-label="Loading human verification" />
+              ) : challenge.status === "error" ? (
+                <div className="rounded-xl border border-[#eee4db] bg-[#fff0f0] px-4 py-3 text-[11px] text-[#9d2f1e]">
+                  <p role="alert">Human verification status could not be confirmed, so resend is unavailable.</p>
+                  <button
+                    type="button"
+                    onClick={() => setChallengeEpoch((value) => value + 1)}
+                    className="auth-interactive mt-2 min-h-8 rounded-[8px] border border-[#e4d9d0] bg-white px-3 text-[11px] font-semibold text-[#b94029] hover:bg-[#fff8f5]"
+                  >
+                    Retry verification check
+                  </button>
+                </div>
               ) : challenge.enabled && challenge.siteKey ? (
                 <div className="rounded-xl border border-[#eee4db] bg-[#fcf8f3] p-3 transition-all duration-300">
                   <p className="mb-2 text-[10px] font-medium text-[#73685f]">Human verification</p>

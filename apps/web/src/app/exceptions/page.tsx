@@ -85,6 +85,14 @@ export default function OperationalExceptionsPage(): JSX.Element {
     !["COMPLETED", "REJECTED", "CANCELLED", "EXPIRED"].includes(row.status)
       && olderThan40Minutes(row.submittedAt ?? row.createdAt));
   const exceptionCount = unknownPayments.length + countVariances.length + staleHeld.length + delayedOrders.length;
+  // A failed query is an unknown count, not a zero: the visible total must never be
+  // presented as "clear" while one of these categories could not be checked.
+  const uncheckedCategories = [
+    { label: "payment status unknown", query: sales },
+    { label: "stock count variances", query: counts },
+    { label: "open held sales", query: held },
+    { label: "web order handoffs", query: orders },
+  ].filter((category) => category.query.isError).map((category) => category.label);
   const role = me.data?.role ?? "";
 
   return <AppShell role={role} businessName={me.data?.businessName} atlasApprovals={canReview}>
@@ -93,7 +101,8 @@ export default function OperationalExceptionsPage(): JSX.Element {
       {!me.isPending && !canReview ? <Panel className="p-6"><h2 className="font-semibold text-[#202826]">Manager access required</h2><p className="mt-2 text-sm text-[#748078]">Operational exceptions are available to managers and owners.</p></Panel> :
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_270px]">
           <Panel className="space-y-3 p-4 sm:p-5">
-            <div className="flex flex-wrap items-end justify-between gap-2 pb-2"><div><h2 className="font-display text-xl font-semibold text-[#202826]">Review by urgency and ownership</h2><p className="mt-1 text-xs text-[#748078]">{me.data?.activeBranchName ? `Active scope: ${me.data.activeBranchName}` : "Active authorized workspace scope"} · {exceptionCount} open exception{exceptionCount === 1 ? "" : "s"}</p></div><StatusPill tone={exceptionCount ? "warn" : "ok"}>{exceptionCount ? "Review needed" : "Clear"}</StatusPill></div>
+            <div className="flex flex-wrap items-end justify-between gap-2 pb-2"><div><h2 className="font-display text-xl font-semibold text-[#202826]">Review by urgency and ownership</h2><p className="mt-1 text-xs text-[#748078]">{me.data?.activeBranchName ? `Active scope: ${me.data.activeBranchName}` : "Active authorized workspace scope"} · {uncheckedCategories.length > 0 ? "exception count incomplete" : `${exceptionCount} open exception${exceptionCount === 1 ? "" : "s"}`}</p></div><StatusPill tone={uncheckedCategories.length > 0 ? "bad" : exceptionCount ? "warn" : "ok"}>{uncheckedCategories.length > 0 ? "Incomplete" : exceptionCount ? "Review needed" : "Clear"}</StatusPill></div>
+            {uncheckedCategories.length > 0 && <p role="alert" className="rounded-lg bg-[#fafbf9] p-4 text-sm text-[#8c4337]">{`${uncheckedCategories.length} categor${uncheckedCategories.length === 1 ? "y" : "ies"} could not be checked (${uncheckedCategories.join(", ")}). Their records are unknown, not clear — the count above only covers the categories that answered.`}</p>}
             <CategoryState pending={sales.isPending} error={sales.error} empty={!unknownPayments.length}>
               {unknownPayments.map((row) => <ExceptionRow key={row.id} index={1} title="Payment status unknown" detail={`${row.receiptNo} · ${money(row.totalMinor)} · ${formatDate(row.createdAt)} · confirm before retry`} priority="HIGH" owner="Finance" href={`/sales/${encodeURIComponent(row.id)}`} />)}
             </CategoryState>
