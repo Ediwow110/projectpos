@@ -87,6 +87,9 @@ const apiEnv = {
   PLATFORM_API_KEY: process.env.PLATFORM_API_KEY ?? "test-platform-key",
   BILLING_TEST_DOUBLE_SECRET: process.env.BILLING_TEST_DOUBLE_SECRET ?? "test-webhook-secret",
   APPROVAL_QUEUE_ENCRYPTION_KEY: process.env.APPROVAL_QUEUE_ENCRYPTION_KEY ?? "a4".repeat(32),
+  // Gift-card issuance fails closed without a code secret, so an e2e run could
+  // never reach any stored-value surface without one.
+  GIFT_CARD_CODE_SECRET: process.env.GIFT_CARD_CODE_SECRET ?? "a1".repeat(32),
 };
 
 async function waitForServer(url, child, label, timeoutMs = 120_000) {

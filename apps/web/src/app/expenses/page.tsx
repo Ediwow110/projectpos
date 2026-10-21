@@ -5,17 +5,20 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { AppShell } from "../../components/AppShell";
+import { ExportCsvLink } from "../../components/ExportCsvLink";
 import { Modal } from "../../components/Modal";
 import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "../../components/premium";
 import { DangerButton, GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
-import { apiBase, apiFetch } from "../../lib/api";
+import { apiFetch } from "../../lib/api";
 import { RequestError } from "../../lib/billing-ui";
+import { canExport, expensesDownloadUrl, EXPENSES_ROW_WINDOW } from "../../lib/exports";
 import { canVoidExpense } from "../../lib/expenses";
 import { formatMoneyMinor } from "../../lib/money";
 
 interface Me {
   role: string;
   businessName?: string;
+  permissions?: string[];
 }
 
 interface Csrf {
@@ -69,7 +72,7 @@ export default function ExpensesPage(): JSX.Element {
 
   const items = listQuery.data?.items ?? [];
   const voidable = canVoidExpense(meQuery.data?.role ?? "cashier");
-  const exportable = meQuery.data !== undefined && ["owner", "manager", "inventory"].includes(meQuery.data.role);
+  const exportable = canExport(meQuery.data?.permissions ?? []);
   const activeItems = items.filter((expense) => expense.voidedAt === null);
   const visibleTotal = activeItems.reduce((sum, expense) => sum + expense.amountMinor, 0);
   const cashTotal = activeItems.filter((expense) => expense.method === "cash").reduce((sum, expense) => sum + expense.amountMinor, 0);
@@ -151,7 +154,13 @@ export default function ExpensesPage(): JSX.Element {
           description="Record operational spend separately from sales so cash movement and reporting stay auditable."
           actions={
             <>
-              {exportable ? <a href={`${apiBase()}/api/v1/expenses/export?format=csv`} className="inline-flex min-h-10 items-center rounded-[10px] border border-[#e4d9d0] bg-white px-4 text-sm font-semibold text-[#2a241f] hover:border-[#f35d3f]">Export CSV</a> : null}
+              {exportable ? (
+                <ExportCsvLink
+                  href={expensesDownloadUrl()}
+                  label="Export CSV"
+                  bounds={`Latest ${EXPENSES_ROW_WINDOW.toLocaleString("en-US")} expenses, voided ones included.`}
+                />
+              ) : null}
               <PrimaryButton type="button" onClick={() => { setError(null); setSuccess(""); setCreateOpen(true); }}>+ Record expense</PrimaryButton>
             </>
           }

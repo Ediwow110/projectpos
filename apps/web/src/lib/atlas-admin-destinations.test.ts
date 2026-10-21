@@ -23,4 +23,22 @@ describe("Atlas V4 role-specific administration", () => {
     expect(atlasAdminDestinationsForRole("cashier")).toEqual([]);
     expect(atlasAdminDestinationsForRole("inventory")).toEqual([]);
   });
+
+  it("advertises the ledger extract and the stored-value liability to the roles that can request them", () => {
+    const owner = atlasAdminDestinationsForRole("owner").map((item) => item.href);
+    const manager = atlasAdminDestinationsForRole("manager").map((item) => item.href);
+    expect(owner).toContain("/reports/ledger");
+    expect(owner).toContain("/reports/stored-value");
+    expect(manager).toContain("/reports/ledger");
+    expect(manager).toContain("/reports/stored-value");
+  });
+
+  it("advertises the workspace switcher and the credential surfaces", () => {
+    const owner = atlasAdminDestinationsForRole("owner").map((item) => item.href);
+    const manager = atlasAdminDestinationsForRole("manager").map((item) => item.href);
+    expect(owner).toContain("/businesses");
+    expect(manager).toContain("/businesses");
+    expect(owner).toContain("/admin/api-tokens");
+    expect(manager).toContain("/admin/api-tokens");
+  });
 });

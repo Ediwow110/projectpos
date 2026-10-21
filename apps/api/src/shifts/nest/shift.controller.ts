@@ -185,10 +185,10 @@ export class ShiftController {
   ): Promise<void> {
     try {
       const auth = req.auth!;
-      const { shift, components, movements } = await this.shifts.getShift(
+      const { shift, components, movements, corrections, correctedExpectedCash } = await this.shifts.getShift(
         auth.businessId, id, auth.role, auth.userId,
       );
-      res.status(200).json({ shift, components, movements });
+      res.status(200).json({ shift, components, movements, corrections, correctedExpectedCash });
     } catch (e) {
       failFromError(res, e, "Shift fetch failed", req);
     }

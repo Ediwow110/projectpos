@@ -356,6 +356,30 @@ export class AuthService {
     });
   }
 
+  /**
+   * The switcher may only offer businesses this user can actually work in, so
+   * a deactivated membership is dropped here rather than sent as a dead option.
+   */
+  async listBusinesses(
+    userId: string,
+    activeBusinessId: string,
+  ): Promise<Array<{ businessId: string; name: string; role: string; active: boolean }>> {
+    const memberships = await this.db.listMembershipsByUser(userId);
+    const items: Array<{ businessId: string; name: string; role: string; active: boolean }> = [];
+    for (const membership of memberships) {
+      if (membership.deactivatedAt) continue;
+      const business = await this.db.findBusinessById(membership.businessId);
+      if (!business) continue;
+      items.push({
+        businessId: business.id,
+        name: business.name,
+        role: membership.role,
+        active: business.id === activeBusinessId,
+      });
+    }
+    return items;
+  }
+
   async switchBusiness(userId: string, businessId: string, sessionId: string, requestId: string): Promise<void> {
     const memberships = await this.db.listMembershipsByUser(userId);
     resolveActiveBusiness(memberships.map((m) => m.businessId), businessId);

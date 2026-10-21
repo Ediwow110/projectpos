@@ -169,6 +169,13 @@ export class AuthController {
     });
   }
 
+  @Get("businesses")
+  @UseGuards(SessionGuard)
+  async businesses(@Req() req: Request, @Res() res: Response): Promise<void> {
+    const auth = req.auth!;
+    res.json({ items: await this.auth.listBusinesses(auth.userId, auth.businessId) });
+  }
+
   @Delete("sessions/:id")
   @UseGuards(SessionGuard, CsrfGuard)
   async revoke(@Req() req: Request, @Res() res: Response, @Param("id") id: string): Promise<void> {

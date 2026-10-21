@@ -158,3 +158,50 @@ describe("phase11 session active business (FR-TENANT-02)", () => {
     expect(persistedClear.body.activeBranchId).toBeNull();
   });
 });
+
+describe("business list for the active-business switcher", () => {
+  it("lists every live membership of the caller, with its name, role and which one is active", async () => {
+    const ownerEmail = `switch-list-owner-${Date.now()}@example.com`;
+    const memberEmail = `switch-list-member-${Date.now()}@example.com`;
+    const owner = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
+      ownerName: "List Owner", email: ownerEmail,
+      password: "correct-horse-12", businessName: "Listed Store",
+    });
+    const ownerJar = jar(owner.headers["set-cookie"]);
+    const member = await request(app.getHttpServer()).post("/api/v1/auth/register").send({
+      ownerName: "List Member", email: memberEmail,
+      password: "correct-horse-12", businessName: "Member Home",
+    });
+    const memberJar = jar(member.headers["set-cookie"]);
+
+    const invite = await request(app.getHttpServer()).post("/api/v1/memberships")
+      .set("Cookie", ownerJar).set("X-CSRF-Token", owner.body.csrfToken)
+      .send({ email: memberEmail, name: "List Member", role: "cashier" });
+    expect(invite.status).toBe(201);
+
+    const listed = await request(app.getHttpServer()).get("/api/v1/auth/businesses").set("Cookie", memberJar);
+    expect(listed.status).toBe(200);
+    const items = listed.body.items as Array<{ businessId: string; name: string; role: string; active: boolean }>;
+    expect(items).toHaveLength(2);
+    const home = items.find((item) => item.name === "Member Home");
+    const listedStore = items.find((item) => item.name === "Listed Store");
+    expect(home).toMatchObject({ role: "owner", active: true });
+    expect(listedStore).toMatchObject({ role: "cashier", active: false });
+
+    const deactivated = await request(app.getHttpServer()).get("/api/v1/memberships")
+      .set("Cookie", ownerJar).then((res) => (res.body.items as Array<{ id: string; userId: string }>)
+        .find((row) => row.userId === member.body.user.id));
+    expect(deactivated).toBeTruthy();
+    await app.get<DbPort>("DbPort").updateMembership(deactivated!.id, owner.body.business.id, { deactivatedAt: new Date() });
+
+    const afterDeactivate = await request(app.getHttpServer()).get("/api/v1/auth/businesses").set("Cookie", memberJar);
+    const remaining = afterDeactivate.body.items as Array<{ name: string }>;
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]?.name).toBe("Member Home");
+  });
+
+  it("answers nothing without a session", async () => {
+    const anonymous = await request(app.getHttpServer()).get("/api/v1/auth/businesses");
+    expect(anonymous.status).toBe(401);
+  });
+});
