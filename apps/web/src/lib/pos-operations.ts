@@ -62,32 +62,54 @@ export async function authorizePosDiscount(
 
 export async function holdPosSale(
   input: SaleIdentityInput,
-  deps: { api?: PosApiCall } = {},
+  deps: { api?: PosApiCall; idempotencyKey?: string | null } = {},
 ): Promise<{ draftId: string }> {
   const api = deps.api ?? apiFetch;
   const csrf = await api<{ csrfToken: string }>("/api/v1/auth/csrf");
   const draft = input.existingDraftId
     ? { id: input.existingDraftId }
-    : await api<{ id: string }>("/api/v1/sales/drafts", {
-        csrfToken: csrf.csrfToken,
-        init: {
-          method: "POST",
-          body: JSON.stringify(buildDraftSaleInput(
-            input.cart,
-            input.registerId,
-            input.customerId,
-            input.walkIn,
-            input.orderDiscountMinor,
-            input.approvalToken,
-            input.giftCardLoad,
-          )),
-        },
-      });
+    : await createDraft(api, csrf.csrfToken, input, deps.idempotencyKey ?? null);
   await api("/api/v1/sales/" + draft.id + "/hold", {
     csrfToken: csrf.csrfToken,
     init: { method: "POST", body: JSON.stringify({}) },
   });
   return { draftId: draft.id };
+}
+
+/**
+ * Creates the draft for a payment attempt under the attempt's idempotency
+ * key. A lost response therefore cannot produce a second draft: retrying
+ * resumes the same attempt.
+ *
+ * The failure is tagged with the DRAFT phase, because the client cannot know
+ * whether the write landed - the attempt may already exist on the server.
+ */
+async function createDraft(
+  api: PosApiCall,
+  csrfToken: string,
+  input: SaleIdentityInput,
+  idempotencyKey: string | null,
+): Promise<{ id: string; totalMinor: number }> {
+  try {
+    return await api<{ id: string; totalMinor: number }>("/api/v1/sales/drafts", {
+      csrfToken,
+      init: {
+        method: "POST",
+        body: JSON.stringify(buildDraftSaleInput(
+          input.cart,
+          input.registerId,
+          input.customerId,
+          input.walkIn,
+          input.orderDiscountMinor,
+          input.approvalToken,
+          input.giftCardLoad,
+        )),
+        ...(idempotencyKey ? { headers: { "Idempotency-Key": idempotencyKey } } : {}),
+      },
+    });
+  } catch (error) {
+    throw tagPosSaleAttempt(error, { phase: "draft", saleId: null });
+  }
 }
 
 export async function resumePosSale(
@@ -151,27 +173,18 @@ export async function completePosSale(
     internalInstrumentId?: string;
     existingDraft?: { id: string; totalMinor: number };
   },
-  deps: { api?: PosApiCall; uuid?: () => string } = {},
+  deps: { api?: PosApiCall; uuid?: () => string; idempotencyKey?: string | null } = {},
 ): Promise<CompletePosSaleResult> {
   const api = deps.api ?? apiFetch;
   const uuid = deps.uuid ?? (() => crypto.randomUUID());
   const csrf = await api<{ csrfToken: string }>("/api/v1/auth/csrf");
-  const draft = input.existingDraft ?? await api<{ id: string; totalMinor: number }>("/api/v1/sales/drafts", {
-    csrfToken: csrf.csrfToken,
-    init: {
-      method: "POST",
-      body: JSON.stringify(buildDraftSaleInput(
-        input.cart,
-        input.registerId,
-        input.customerId,
-        input.walkIn,
-        input.orderDiscountMinor,
-        input.approvalToken,
-        input.giftCardLoad,
-      )),
-    },
-  });
-  const key = uuid();
+  const draft = input.existingDraft
+    ? input.existingDraft
+    : await createDraft(api, csrf.csrfToken, input, deps.idempotencyKey ?? null);
+  // The attempt key identifies the whole attempt, so a retry after a lost
+  // response reaches the server's idempotency ledger instead of charging
+  // again.
+  const key = deps.idempotencyKey ?? uuid();
   if (isPayMongoMethodKey(input.method)) {
     try {
       const checkout = await api<{ checkoutUrl: string }>(`/api/v1/sales/${draft.id}/paymongo/checkout`, {

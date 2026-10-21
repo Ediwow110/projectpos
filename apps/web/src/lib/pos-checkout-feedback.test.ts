@@ -27,13 +27,16 @@ describe("POS checkout failure contract", () => {
     expect(isRetryBlocked(failure)).toBe(false);
   });
 
-  it("keeps a connection drop before the sale was sent retryable", () => {
+  it("keeps a connection drop retryable without claiming the sale was never sent", () => {
     const failure = checkoutFailureFromError(apiError("NETWORK_ERROR", 0, "Could not reach the API."));
 
     expect(failure.kind).toBe("connectivity");
     expect(failure.retryable).toBe(true);
     expect(failure.action).toEqual({ kind: "check_connection", label: "Check connection and retry" });
     expect(isRetryBlocked(failure)).toBe(false);
+    // The write may have landed, so the copy must not claim otherwise.
+    expect(failure.message).not.toMatch(/before the sale was sent/i);
+    expect(failure.message).toMatch(/may already be recorded/i);
   });
 
   it("turns a connection drop after the draft exists into an unknown outcome that blocks blind retry", () => {
@@ -93,16 +96,44 @@ describe("POS checkout failure contract", () => {
     });
   });
 
-  it("keeps a provider outage with no recorded sale retryable", () => {
+  it("treats a provider outage as an unknown outcome, because the request may have reached the provider", () => {
     const failure = checkoutFailureFromError(apiError("PAYMENT_PROVIDER_UNAVAILABLE", 503));
 
-    expect(failure.kind).toBe("server");
-    expect(failure.retryable).toBe(true);
-    expect(failure.action.kind).toBe("retry");
-    expect(isRetryBlocked(failure)).toBe(false);
+    // Once a request has been sent to a provider, NexPOS cannot prove that no
+    // money moved. A blind retry is therefore not offered, and the copy must
+    // not claim that nothing was charged.
+    expect(failure.kind).toBe("unknown_outcome");
+    expect(failure.retryable).toBe(false);
+    expect(isRetryBlocked(failure)).toBe(true);
+    expect(failure.message).not.toMatch(/no payment was taken/i);
+    expect(failure.message).not.toMatch(/nothing was charged/i);
   });
 
-  it("keeps a 500 while the draft was still being created retryable", () => {
+  it.each([
+    "PAYMENT_PROVIDER_UNAVAILABLE",
+    "PAYMENT_PROVIDER_TIMEOUT",
+    "PAYMENT_PROVIDER_ERROR",
+    "PAYMENT_PROVIDER_INVALID_RESPONSE",
+    "PAYMENT_PROVIDER_MISMATCH",
+    "PAYMENT_PROVIDER_DOWN",
+  ])("never offers a blind retry for the provider code %s", (code) => {
+    const failure = checkoutFailureFromError(apiError(code, 503));
+
+    expect(failure.kind).toBe("unknown_outcome");
+    expect(failure.retryable).toBe(false);
+    expect(isRetryBlocked(failure)).toBe(true);
+    expect(failure.message).not.toMatch(/no payment was taken/i);
+    expect(failure.message).not.toMatch(/nothing was charged/i);
+  });
+
+  it("keeps the PayMongo configuration gap distinct from an ambiguous provider outcome", () => {
+    const failure = checkoutFailureFromError(apiError("PAYMENT_PROVIDER_NOT_CONFIGURED", 503));
+
+    expect(failure.kind).toBe("config");
+    expect(failure.retryable).toBe(false);
+  });
+
+  it("keeps a 500 while the draft was still being created retryable, without claiming the sale was not sent", () => {
     const error = tagPosSaleAttempt(
       apiError("HTTP_ERROR", 500, "Request failed."),
       { phase: "draft", saleId: null },
@@ -113,6 +144,9 @@ describe("POS checkout failure contract", () => {
     expect(failure.retryable).toBe(true);
     expect(failure.action.kind).toBe("retry");
     expect(isRetryBlocked(failure)).toBe(false);
+    // The write may have landed, so the copy must not claim otherwise.
+    expect(failure.message).not.toMatch(/before the sale was sent/i);
+    expect(failure.message).not.toMatch(/nothing was charged/i);
   });
 
   it("maps FORBIDDEN without a discount to a permission failure without approval copy", () => {

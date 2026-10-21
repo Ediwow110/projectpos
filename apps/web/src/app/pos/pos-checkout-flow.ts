@@ -53,6 +53,12 @@ interface CheckoutDependencies {
   queue?: (input: Parameters<typeof queueOfflinePosSale>[0]) => ReturnType<typeof queueOfflinePosSale>;
   complete?: (input: Parameters<typeof completePosSale>[0]) => ReturnType<typeof completePosSale>;
   redirect?: (url: string) => void;
+  /**
+   * The key of the in-flight attempt. The draft and the completion are both
+   * addressed by it, so a retry after a lost response reaches the server's
+   * idempotency ledger instead of paying again.
+   */
+  attemptKey?: string | null;
 }
 
 function clearPaymentResult(effects: PosCheckoutEffects): void {
@@ -81,11 +87,11 @@ export async function runPosOfflineCheckout(
   state: PosCheckoutInput,
   effects: PosCheckoutEffects,
   deps: CheckoutDependencies = {},
-): Promise<void> {
+): Promise<boolean> {
   clearPaymentResult(effects);
   if (state.cart.length === 0) {
     fail(effects, preconditionFailures.cartEmpty(), "Cart is empty.");
-    return;
+    return false;
   }
   if (state.identityLoading) {
     fail(
@@ -93,17 +99,17 @@ export async function runPosOfflineCheckout(
       preconditionFailures.workspaceUnconfirmed(),
       "Confirming the signed-in workspace before offline checkout.",
     );
-    return;
+    return false;
   }
   if (!state.store) {
     fail(
       effects,
       preconditionFailures.reconnectRequired(
-        "Offline selling is unavailable until this signed-in workspace is identified.",
+        "This device has no offline storage, so the sale cannot be queued. Reconnect and take the payment online.",
       ),
-      "Offline selling is unavailable until this signed-in workspace is identified.",
+      "This device has no offline storage, so the sale cannot be queued.",
     );
-    return;
+    return false;
   }
   if (state.discountTotalMinor > 0) {
     fail(
@@ -113,7 +119,7 @@ export async function runPosOfflineCheckout(
       ),
       "Reconnect before completing a discounted sale. Discount authorization must be checked by the server.",
     );
-    return;
+    return false;
   }
   try {
     const queued = await (deps.queue ?? queueOfflinePosSale)({
@@ -133,6 +139,7 @@ export async function runPosOfflineCheckout(
     effects.setStatus(
       `Sale queued offline. Provisional receipt ${queued.provisionalReceipt} — pending sync, not yet final. Review it on the sync page.`,
     );
+    return true;
   } catch {
     fail(
       effects,
@@ -141,6 +148,9 @@ export async function runPosOfflineCheckout(
       ),
       "Could not queue the offline sale.",
     );
+    // Nothing was queued. Reporting success would tell the cashier a sale
+    // is on its way when the server never received it.
+    return false;
   }
 }
 
@@ -162,8 +172,7 @@ export async function runPosCheckout(
         "Reconnect before completing this resumed held sale.",
       );
     }
-    await runPosOfflineCheckout(state, effects, deps);
-    return true;
+    return await runPosOfflineCheckout(state, effects, deps);
   }
   if (isPayMongoMethodKey(state.method) && !state.methodAvailable(state.method)) {
     return fail(
@@ -195,7 +204,7 @@ export async function runPosCheckout(
       approvalToken,
       existingDraft: state.activeDraft ?? undefined,
       giftCardLoad: state.giftCardLoad ?? undefined,
-    });
+    }, { idempotencyKey: deps.attemptKey ?? null });
     if (result.kind === "redirect") {
       effects.setStatus("Redirecting to PayMongo secure checkout…");
       (deps.redirect ?? ((url: string) => window.location.assign(url)))(result.checkoutUrl);

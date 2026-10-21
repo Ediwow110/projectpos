@@ -364,7 +364,7 @@ describe("POS operations", () => {
     expect(posSaleAttemptContext(caught)).toEqual({ phase: "complete", saleId: "sale-ctx" });
   });
 
-  it("does not tag a draft-creation failure as a sent sale attempt", async () => {
+  it("tags a draft-creation failure as an attempt that may already be recorded", async () => {
     const api: PosApiCall = async <T>(path: string) => {
       if (path === "/api/v1/auth/csrf") return { csrfToken: "csrf" } as T;
       if (path === "/api/v1/sales/drafts") {
@@ -383,7 +383,11 @@ describe("POS operations", () => {
     }
 
     expect(caught).toBeInstanceOf(ApiError);
-    expect(posSaleAttemptContext(caught)).toBeNull();
+    // The write may have landed before the connection dropped, so the failure
+    // carries the DRAFT phase: no payment was sent, but the attempt may
+    // already exist. Treating it as "nothing happened" is what allowed a
+    // retry to create a second draft.
+    expect(posSaleAttemptContext(caught)).toEqual({ phase: "draft", saleId: null });
   });
 
   it("tags a hosted-checkout creation failure with its draft", async () => {

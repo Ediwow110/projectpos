@@ -84,15 +84,33 @@ describe("POS checkout flow", () => {
     expect(state.statuses.at(-1)).toContain("pending sync, not yet final");
   });
 
-  it("preserves offline pay returning true even when queueing fails", async () => {
+  it("reports a failed offline queue as a failure instead of a success", async () => {
     const state = effects();
     const result = await runPosCheckout(input({
       offline: true, store: new MemorySyncStore(),
     }), state.values, {
       queue: async () => { throw new Error("storage failed"); },
     });
-    expect(result).toBe(true);
+    // Nothing was queued, so the payment must NOT report success. Reporting
+    // success would tell the cashier a sale is on its way when the server
+    // never received it.
+    expect(result).toBe(false);
     expect(state.statuses.at(-1)).toBe("Could not queue the offline sale.");
+  });
+
+  it("does not present a final receipt for an offline sale that is only queued", async () => {
+    const state = effects();
+    const result = await runPosCheckout(input({
+      offline: true, store: new MemorySyncStore(),
+    }), state.values, {
+      queue: async () => ({ provisionalReceipt: "PROV-1" }),
+    });
+
+    expect(result).toBe(true);
+    // The sale is queued, not completed: no receipt id and no confirmed sale.
+    expect(state.receipts.every((value) => value === null)).toBe(true);
+    expect(state.confirmations.every((value) => value === null)).toBe(true);
+    expect(state.statuses.at(-1)).toMatch(/pending sync, not yet final/i);
   });
 
   it("redirects hosted payments without marking them as completed", async () => {

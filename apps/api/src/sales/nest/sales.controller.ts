@@ -125,12 +125,50 @@ export class SalesController {
         },
         granted,
         approval,
+        idemKey(req),
       );
       res.status(201).json(sale);
     } catch (e) {
       const code = e instanceof Error ? e.message : "VALIDATION";
       fail(res, statusFor(code), code, "Draft creation failed", req);
     }
+  }
+
+  // The authoritative outcome of a payment attempt, addressed by the key the
+  // client generated before it sent anything. This is what lets a client that
+  // lost a response - or that was reloaded, or that is a second tab - ask the
+  // server what actually happened instead of guessing, and it is the lookup
+  // the "unknown outcome" recovery path points at.
+  @Get("sales/attempts/:key")
+  async attemptOutcome(@Req() req: Request, @Res() res: Response): Promise<void> {
+    const raw = req.params.key;
+    const key = (Array.isArray(raw) ? raw[0] : raw)?.trim();
+    if (!key) {
+      fail(res, 400, "VALIDATION", "Invalid attempt key", req);
+      return;
+    }
+    const auth = req.auth!;
+    const complete = await this.db.findIdempotency(auth.businessId, key, "sale.complete");
+    const draft = await this.db.findIdempotency(auth.businessId, key, "sale.draft");
+    if (!complete && !draft) {
+      res.status(200).json({ ok: true, attempt: { found: false, stage: "none" } });
+      return;
+    }
+    const sale = await this.db.findSaleById((complete ?? draft)!.resultId, auth.businessId);
+    if (!sale) {
+      res.status(200).json({ ok: true, attempt: { found: false, stage: "none" } });
+      return;
+    }
+    res.status(200).json({
+      ok: true,
+      attempt: {
+        found: true,
+        stage: complete ? "complete" : "draft",
+        saleId: sale.id,
+        status: sale.status,
+        receiptNo: sale.receiptNo,
+      },
+    });
   }
 
 @Post("sales/complete")

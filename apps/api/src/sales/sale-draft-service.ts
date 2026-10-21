@@ -1,6 +1,7 @@
 import type { DbPort, DbProduct, DbSale } from "../common/db.port";
 import { BillingService } from "../billing/nest/billing.service";
 import { computeSaleTotals, requiresDiscountOverride } from "./totals";
+import { fingerprintPayload } from "./idempotency";
 import type { DraftInput } from "./sales-types";
 import { SalesStockService } from "./sale-stock-service";
 
@@ -22,7 +23,22 @@ export class SalesDraftService {
     requestId: string,
     input: DraftInput,
     granted: string[],
+    idempotencyKey: string | null = null,
   ): Promise<DbSale> {
+    // A draft is the first write of a payment attempt. If its response is
+    // lost, the client cannot know whether the draft exists, and a retry
+    // would create a SECOND draft for one payment. Recording the attempt
+    // under the caller's idempotency key makes the retry return the draft
+    // that was already created instead of a new one.
+    if (idempotencyKey) {
+      const fingerprint = fingerprintPayload(input);
+      const existing = await this.db.findIdempotency(businessId, idempotencyKey, "sale.draft");
+      if (existing) {
+        if (existing.fingerprint !== fingerprint) throw new Error("IDEMPOTENCY_MISMATCH");
+        const prior = await this.db.findSaleById(existing.resultId, businessId);
+        if (prior) return prior;
+      }
+    }
     const businessTax = await this.businessTaxRateBps(businessId);
     const policy = await this.db.getSettings(businessId);
     const lines: Array<{ product: DbProduct; qty: number; lineDiscountMinor: number; costMinor: number }> = [];
@@ -180,6 +196,15 @@ export class SalesDraftService {
       entityId: sale.id,
       requestId,
     });
+    if (idempotencyKey) {
+      await this.db.claimIdempotency({
+        businessId,
+        key: idempotencyKey,
+        commandType: "sale.draft",
+        fingerprint: fingerprintPayload(input),
+        resultId: sale.id,
+      });
+    }
     return { ...sale, ...totalWithStoredValue, totalMinor: totalWithStoredValue.totalMinor };
   }
 }

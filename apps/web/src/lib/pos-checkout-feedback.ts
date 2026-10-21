@@ -238,17 +238,11 @@ export function checkoutFailureFromError(error: unknown): PosCheckoutFailure {
     return unknownOutcome(error, saleId);
   }
 
+  // Any other provider code still means the request may have reached the
+  // provider. NexPOS cannot prove that no money moved, so it must not offer
+  // a blind retry and must not tell the cashier that nothing was charged.
   if (error.code.startsWith("PAYMENT_PROVIDER")) {
-    return {
-      kind: "server",
-      title: "Payment provider unavailable",
-      message: "PayMongo is temporarily unavailable and no payment was taken. Try again in a moment.",
-      action: { kind: "retry", label: "Try again" },
-      retryable: true,
-      code: error.code,
-      correlationId: error.correlationId,
-      saleId,
-    };
+    return unknownOutcome(error, saleId);
   }
 
   if (isAmbiguous(error) && saleId) {
@@ -257,10 +251,15 @@ export function checkoutFailureFromError(error: unknown): PosCheckoutFailure {
 
   if (isAmbiguous(error)) {
     if (error.code === "NETWORK_ERROR" || error.code === "NETWORK_TIMEOUT") {
+      // The attempt may already be recorded on the server: the connection
+      // dropped, so the client never learned whether the write landed. The
+      // attempt is addressed by an idempotency key, so retrying resumes the
+      // SAME attempt and cannot create a second sale.
       return {
         kind: "connectivity",
         title: "Connection problem",
-        message: "Could not reach NexPOS before the sale was sent. Check the connection and try again.",
+        message:
+          "The connection dropped before NexPOS confirmed the attempt. It may already be recorded - retrying resumes the same attempt and cannot create a second sale.",
         action: { kind: "check_connection", label: "Check connection and retry" },
         retryable: true,
         code: error.code,
@@ -271,7 +270,8 @@ export function checkoutFailureFromError(error: unknown): PosCheckoutFailure {
     return {
       kind: "server",
       title: "Service problem",
-      message: "The server could not start this sale, so nothing was charged. Try again in a moment.",
+      message:
+        "NexPOS could not confirm the attempt. It may already be recorded - retrying resumes the same attempt and cannot create a second sale.",
       action: { kind: "retry", label: "Try again" },
       retryable: true,
       code: error.code,

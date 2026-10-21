@@ -217,7 +217,21 @@ export default function PosPage(): JSX.Element {
           onOpenHeldSales={openHeldSales}
           onOpenDiscounts={openDiscounts}
           onClearCart={() => { setCart([]); setOrderDiscountMinor(0); setGiftCardLoad(null); clearCheckoutFailure(); }}
-          onResetSale={() => { setCart([]); setOrderDiscountMinor(0); setGiftCardLoad(null); setStatus(''); clearCheckoutFailure(); setReconcileSaleId(null); setReceiptId(null); setConfirmedSale(null); }}
+          onResetSale={() => {
+        setCart([]);
+        setOrderDiscountMinor(0);
+        setGiftCardLoad(null);
+        setStatus('');
+        // An unresolved outcome keeps its reconciliation pointers, so the
+        // cashier cannot escape the unknown sale by resetting the till.
+        const unresolved = checkoutFailure?.kind === "unknown_outcome";
+        clearCheckoutFailure();
+        if (!unresolved) {
+          setReconcileSaleId(null);
+          setReceiptId(null);
+          setConfirmedSale(null);
+        }
+      }}
           onSetQty={setQty}
           onAssignCustomer={openCustomerAssignment}
           onOpenPayment={openPaymentFlow}

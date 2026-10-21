@@ -105,11 +105,12 @@ export class SalesService {
     input: DraftInput,
     granted: string[],
     approval?: { approverId: string; permission: "discount.override" },
+    idempotencyKey: string | null = null,
   ): Promise<DbSale> {
     withScope(businessId, {});
     const sale = await this.db.withTransaction(async (tx) => {
       void tx;
-      const created = await this.drafts.createDraft(businessId, actorId, requestId, input, granted);
+      const created = await this.drafts.createDraft(businessId, actorId, requestId, input, granted, idempotencyKey);
       await this.orderSales.createPosOrderForSaleLocked(this.db, businessId, actorId, requestId, created.id);
       return created;
     });
