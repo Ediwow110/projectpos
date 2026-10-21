@@ -74,6 +74,7 @@ async function setup() {
     postCashSale: async () => undefined,
     recordSale: async () => { metered += 1; },
   }, {
+    configured: () => true,
     queryProvider: async (businessId, paymentId) => {
       providerQueries += 1;
       expect(businessId).toBe("b1");
@@ -209,6 +210,9 @@ describe("sales payment reconciliation service", () => {
     // The provider confirms this leg before the reconcile is allowed to settle
     // it: the sale starts UNKNOWN because nothing has answered, and it completes
     // because the provider has - not because the caller said so.
+    setTestDoubleOutcome("unknown-rec", "SUCCEEDED", business.id);
+    // A provider is wired up in this test, so the reconcile is only allowed to
+    // settle the leg once that provider says it is paid.
     setTestDoubleOutcome("unknown-rec", "SUCCEEDED", business.id);
     const done = await sales.reconcilePayment(business.id, "staff", "rec-ok", payment.id, "SUCCEEDED", "rec-ok-key");
     expect(done.sale.status).toBe("COMPLETED");

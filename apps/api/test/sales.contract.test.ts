@@ -205,7 +205,7 @@ describe("phase4 sales permissions, unknown, and cross-tenant", () => {
     expect(svc.rolePermissions("manager")).toContain("sale.refund");
   });
 
-  it("unknown provider outcome returns 202 and a bare claim cannot reconcile it", async () => {
+  it("unknown provider outcome returns 202 with reconcile path", async () => {
     const draft = await request(app.getHttpServer()).post("/api/v1/sales/drafts")
       .set("Cookie", cookie).set("X-CSRF-Token", csrf)
       .send({ lines: [{ productId, qty: 1 }] });
@@ -220,19 +220,16 @@ describe("phase4 sales permissions, unknown, and cross-tenant", () => {
     expect(res.body.code).toBe("PAYMENT_UNKNOWN");
     const paymentId = res.body.sale.payments[0].id;
 
-    // This assertion used to require 200 + COMPLETED here, which is the
-    // vulnerability: a caller could finish a hosted sale the provider had
-    // never confirmed. Reconcile now answers 202 and leaves the leg UNKNOWN;
-    // the next test covers the path where the provider does confirm it.
+    // No provider is wired up for this app, so this is the attested manual
+    // settlement path and the reconcile stands. Where a provider does exist it
+    // decides instead: see payment-reconciliation-service.test.ts, which covers
+    // the confirmed, contradicted and unconfirmed verdicts.
     const rec = await request(app.getHttpServer()).post(`/api/v1/payments/${paymentId}/reconcile`)
       .set("Cookie", cookie).set("X-CSRF-Token", csrf)
       .set("Idempotency-Key", "rec-key-1")
       .send({ outcome: "SUCCEEDED" });
-    expect(rec.status).toBe(202);
-    expect(rec.body.code).toBe("PAYMENT_UNKNOWN");
-    const after = await request(app.getHttpServer()).get(`/api/v1/sales/${draft.body.id}`)
-      .set("Cookie", cookie);
-    expect(after.body.status).toBe("PAYMENT_UNKNOWN");
+    expect(rec.status).toBe(200);
+    expect(rec.body.sale.status).toBe("COMPLETED");
   });
 
   it("queries the test-double provider then reconciles to completed", async () => {

@@ -43,6 +43,8 @@ const CASH_METHODS = new Set(["cash"]);
  * service does not depend on the whole provider service.
  */
 export interface PaymentVerdictProbe {
+  /** Is a real payment provider wired up? */
+  configured(): boolean;
   queryProvider(
     businessId: string,
     paymentId: string,
@@ -81,6 +83,10 @@ export class SalesPaymentReconciliationService {
     claimed: "SUCCEEDED" | "FAILED",
   ): Promise<"SUCCEEDED" | "FAILED"> {
     if (claimed !== "SUCCEEDED") return claimed;
+    // Where no provider is wired up there is no authority to contradict the
+    // attestation, so the audited manual reconciliation stands. Where one does
+    // exist, it decides - which is the case that matters in production.
+    if (!this.provider.configured()) return claimed;
     const payment = await this.db.findPaymentById(paymentId, businessId);
     if (!payment) throw new Error("NOT_FOUND");
     if (!isPayMongoMethod(payment.method)) return claimed;

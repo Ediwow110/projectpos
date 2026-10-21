@@ -135,7 +135,7 @@ export function PosCartPanel({
           {giftCardLoadMinor > 0 ? <div className="flex justify-between"><span>Gift-card load</span><span className="font-data text-[#202826]">₱{money(giftCardLoadMinor)}</span></div> : null}
           <div className="flex justify-between"><span>Register</span><span className="font-data max-w-44 truncate text-[#202826]">{selectedRegisterName}</span></div>
         </div>
-        <div className="flex items-end justify-between gap-3 py-3"><span className="font-data text-[11px] uppercase text-[#53615a]">Total due</span><strong className="font-display text-[28px] font-semibold text-[#202826]">₱{money(due)}</strong></div>
+        <div className="flex items-end justify-between gap-3 py-2"><span className="font-data text-[11px] uppercase text-[#53615a]">Total due</span><strong className="font-display text-[28px] font-semibold text-[#202826]">₱{money(due)}</strong></div>
         <button type="button" disabled={!canPay} onClick={onOpenPayment} aria-label={`Pay ₱${money(due)} (F5)`}
           className="min-h-[56px] w-full rounded-[8px] bg-[#b84f3c] px-4 text-[13px] font-semibold text-white hover:bg-[#a94431] disabled:opacity-40">Proceed to payment →</button>
         <div className="grid grid-cols-4 gap-2">
@@ -185,7 +185,7 @@ export function PosCartPanel({
           </p>
         ) : null}
 
-        <ul className="absolute inset-x-0 top-[56px] overflow-y-auto xl:h-[244px]">
+        <ul className="absolute inset-x-0 top-[56px] overflow-y-auto xl:h-[220px]">
           {cart.length === 0 ? (
             <li className="grid h-full place-items-center text-[11px] text-[var(--color-atlas-muted-strong)]">Cart is empty. Tap products to add.</li>
           ) : null}
@@ -193,7 +193,7 @@ export function PosCartPanel({
             const gross = entry.qty * entry.priceMinor;
             const net = Math.max(0, gross - entry.lineDiscountMinor);
             return (
-            <li key={entry.productId} className="flex min-h-[61px] items-center justify-between gap-3 border-b border-[#e5e9e3] py-1">
+            <li key={entry.productId} className="flex min-h-[61px] items-center justify-between gap-3 border-b border-[#e5e9e3]">
               {entry.imageUrl && validProductImageUrl(entry.imageUrl) ? (
                 <span aria-hidden className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-[#eff2ef]">
                   <Image unoptimized src={entry.imageUrl} alt="" fill sizes="40px" className="object-cover" />
