@@ -265,7 +265,7 @@ export default function ProductsPage(): JSX.Element {
         />
 
         {createSuccess ? (
-          <div role="status" className="rounded-xl border border-[#cfe9dc] bg-[#eaf7f0] px-4 py-3 text-sm font-medium text-[#1f8a5b]">
+          <div role="status" className="rounded-xl border border-[#cfe9dc] bg-[#eaf7f0] px-4 py-3 text-sm font-medium text-[var(--color-atlas-verified)]">
             {createSuccess} {newProductId && role === "owner" ? <Link href={`/products/${newProductId}`} className="ml-2 underline">Open product to upload a photo →</Link> : null}
           </div>
         ) : null}
@@ -322,7 +322,7 @@ export default function ProductsPage(): JSX.Element {
               <h2 className="font-display text-base font-semibold">Products</h2>
               <p className="mt-1 text-[11px] text-[#7a6f66]">{data.total} result{data.total === 1 ? "" : "s"} · page {data.page} of {pages}</p>
             </div>
-            <div className="flex items-center gap-4"><Link href="/products/families" className="text-[11px] font-semibold text-[#e44e34]">Manage variants →</Link><Link href="/products/bundles" className="text-[11px] font-semibold text-[#e44e34]">Manage bundles →</Link><Link href="/products/labels" className="text-[11px] font-semibold text-[#e44e34]">Barcode labels →</Link><Link href="/categories" className="text-[11px] font-semibold text-[#e44e34]">Manage categories →</Link></div>
+            <div className="flex items-center gap-4"><Link href="/products/families" className="text-[11px] font-semibold text-[var(--color-atlas-accent-strong)]">Manage variants →</Link><Link href="/products/bundles" className="text-[11px] font-semibold text-[var(--color-atlas-accent-strong)]">Manage bundles →</Link><Link href="/products/labels" className="text-[11px] font-semibold text-[var(--color-atlas-accent-strong)]">Barcode labels →</Link><Link href="/categories" className="text-[11px] font-semibold text-[var(--color-atlas-accent-strong)]">Manage categories →</Link></div>
           </div>
           <table className="premium-table min-w-[720px] text-left text-[12px]">
             <thead>
@@ -337,7 +337,7 @@ export default function ProductsPage(): JSX.Element {
               {data.items.map((product) => (
                 <tr key={product.id}>
                   <td className="px-5 py-3">
-                    <Link href={"/products/" + product.id} className="font-semibold text-[#2a241f] hover:text-[#d94a30]">{product.name}</Link>
+                    <Link href={"/products/" + product.id} className="font-semibold text-[#2a241f] hover:text-[var(--color-atlas-accent-strong)]">{product.name}</Link>
                   </td>
                   <td className="font-data px-5 py-3 text-[#73685f]">{product.sku ?? "—"}</td>
                   <td className="font-data px-5 py-3 text-right font-medium">₱{formatMoneyMinor(product.priceMinor)}</td>
@@ -348,7 +348,7 @@ export default function ProductsPage(): JSX.Element {
               ))}
             </tbody>
           </table>
-          {data.items.length === 0 ? <div className="border-t border-[#eee6de] px-5 py-10 text-center text-sm text-[#8b8077]">No products match this filter.</div> : null}
+          {data.items.length === 0 ? <div className="border-t border-[#eee6de] px-5 py-10 text-center text-sm text-[var(--color-atlas-muted-strong)]">No products match this filter.</div> : null}
           <div className="flex items-center justify-end gap-2 border-t border-[#eee6de] px-5 py-4">
             <GhostButton type="button" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</GhostButton>
             <GhostButton type="button" disabled={page >= pages} onClick={() => setPage(page + 1)}>Next</GhostButton>
@@ -389,7 +389,7 @@ export default function ProductsPage(): JSX.Element {
               <label className="text-[11px] font-semibold text-[#655b53] sm:col-span-2">
                 Product image URL (optional)
                 <input type="url" value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} maxLength={500} placeholder="https://images.example.com/product.jpg" className="field mt-1.5" />
-                <span className="mt-1 block font-normal text-[#8b8077]">Use a publicly accessible HTTP(S) image link. It appears on POS product tiles.</span>
+                <span className="mt-1 block font-normal text-[var(--color-atlas-muted-strong)]">Use a publicly accessible HTTP(S) image link. It appears on POS product tiles.</span>
               </label>
               <label className="text-[11px] font-semibold text-[#655b53]">
                 Category
@@ -437,7 +437,7 @@ export default function ProductsPage(): JSX.Element {
             </div>
           </section>
 
-          {categoriesQuery.isError ? <p className="text-[11px] text-[#b56d0c]">Categories could not be loaded. You can still create the product uncategorized.</p> : null}
+          {categoriesQuery.isError ? <p className="text-[11px] text-[var(--color-atlas-warning-strong)]">Categories could not be loaded. You can still create the product uncategorized.</p> : null}
           {createError ? <p role="alert" className="rounded-xl bg-[#fff0f0] px-3 py-2.5 text-[12px] font-medium text-[#c43e3e]">{createError}</p> : null}
         </form>
       </Modal>
@@ -458,7 +458,7 @@ export default function ProductsPage(): JSX.Element {
             CSV content
             <textarea autoFocus value={importText} onChange={(event) => setImportText(event.target.value)} rows={11} className="field font-data mt-1.5 resize-none text-[11px]" placeholder="Paste CSV here…" />
           </label>
-          <p className="text-[10px] leading-4 text-[#8b8077]">Import creates catalog records only. It does not fabricate opening stock; record actual quantities through Inventory movements afterward.</p>
+          <p className="text-[10px] leading-4 text-[var(--color-atlas-muted-strong)]">Import creates catalog records only. It does not fabricate opening stock; record actual quantities through Inventory movements afterward.</p>
           {importError ? <p role="alert" className="rounded-xl bg-[#fff0f0] px-3 py-2.5 text-[12px] font-medium text-[#c43e3e]">{importError}</p> : null}
         </form>
       </Modal>

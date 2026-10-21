@@ -46,15 +46,15 @@ export default function PlatformTenantHealthPage(): JSX.Element {
         ["DIAGNOSTICS", data ? "Available" : "Awaiting consent", "No cross-tenant browsing"],
         ["OPERATOR SCOPE", "Read-only", "Aggregate counters only"],
       ].map(([label, value, caption]) => <div key={label} className="rounded-xl border border-[#e5e9e3] bg-white px-5 py-4">
-        <p className="font-data text-[11px] font-semibold tracking-[0.08em] text-[#748078]">{label}</p>
+        <p className="font-data text-[11px] font-semibold tracking-[0.08em] text-[var(--color-atlas-muted-strong)]">{label}</p>
         <p className="mt-3 font-display text-[22px] font-semibold text-[#202826]">{value}</p>
-        <p className="mt-2 text-xs text-[#748078]">{caption}</p>
+        <p className="mt-2 text-xs text-[var(--color-atlas-muted-strong)]">{caption}</p>
       </div>)}
     </section>
     <div className="max-w-5xl">
       <section className="rounded-[13px] border border-[#e5e9e3] bg-white p-5 sm:p-7">
         <h2 className="font-display text-[23px] font-semibold text-[#202826]">Tenant health</h2>
-        <p className="mt-2 text-sm leading-6 text-[#748078]">Inspect one authorized tenant. Independent operator credentials and unexpired owner consent are required; no customer or payment details are returned.</p>
+        <p className="mt-2 text-sm leading-6 text-[var(--color-atlas-muted-strong)]">Inspect one authorized tenant. Independent operator credentials and unexpired owner consent are required; no customer or payment details are returned.</p>
         <form className="mt-6 grid gap-4" onSubmit={(event) => void inspect(event)}>
           <label className="text-xs font-semibold text-[#655b53]">Business ID<input className="field mt-1.5" required value={businessId} onChange={(event) => setBusinessId(event.target.value)} autoComplete="off" /></label>
           <label className="text-xs font-semibold text-[#655b53]">Operator key<input className="field mt-1.5" required type="password" value={key} onChange={(event) => setKey(event.target.value)} autoComplete="off" /></label>

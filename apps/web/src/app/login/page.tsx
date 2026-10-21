@@ -76,7 +76,7 @@ export default function LoginPage(): JSX.Element {
         <div className="animate-auth-card relative z-10 w-full max-w-[684px]">
           <p className="atlas-eyebrow">SIGN IN</p>
           <h2 className="font-display mt-11 text-[30px] font-semibold text-[#202826] sm:text-[33px]">Sign in to NexPOS</h2>
-          <p className="mt-3 text-[16px] text-[#707b75]">Your workspace, right where you left it.</p>
+          <p className="mt-3 text-[16px] text-[var(--color-atlas-muted-strong)]">Your workspace, right where you left it.</p>
 
           {verifiedNotice ? (
             <div className="animate-auth-status mt-5 rounded-xl border border-[#cde8da] bg-[#eaf7f0] px-4 py-3 text-[12px] font-medium text-[#1f6f4a]" role="status">
@@ -85,7 +85,7 @@ export default function LoginPage(): JSX.Element {
           ) : null}
 
           <form onSubmit={submit} noValidate className="mt-14 space-y-4 lg:mt-[68px] lg:space-y-5">
-            <label className="block text-[13px] font-medium text-[#707b75]">
+            <label className="block text-[13px] font-medium text-[var(--color-atlas-muted-strong)]">
               Email address
               <input
                 type="email"
@@ -97,7 +97,7 @@ export default function LoginPage(): JSX.Element {
                 className="field mt-2 !min-h-[55px]"
               />
             </label>
-            <label className="block text-[13px] font-medium text-[#707b75]">
+            <label className="block text-[13px] font-medium text-[var(--color-atlas-muted-strong)]">
               Password
               <span className="relative mt-2 block">
                 <input
@@ -112,7 +112,7 @@ export default function LoginPage(): JSX.Element {
                 <button
                   type="button"
                   onClick={() => setShowPassword((shown) => !shown)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-[#e44e34]"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-[var(--color-atlas-accent-strong)]"
                 >
                   {showPassword ? "Hide" : "Show"}
                 </button>
@@ -129,8 +129,8 @@ export default function LoginPage(): JSX.Element {
             >
               {submitState === "connecting" ? "Connecting…" : submitLabel}
             </button>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-1 text-[14px] text-[#707b75]">
-              <Link href="/password-reset" className="font-medium text-[#da614c] underline-offset-4 hover:underline">Forgot password?</Link>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-1 text-[14px] text-[var(--color-atlas-muted-strong)]">
+              <Link href="/password-reset" className="font-medium text-[var(--color-atlas-accent-strong)] underline-offset-4 hover:underline">Forgot password?</Link>
               <span aria-hidden>•</span>
               <Link href="/register" className="font-semibold text-[#202826] underline-offset-4 hover:underline">Create account</Link>
             </div>

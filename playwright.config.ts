@@ -37,6 +37,13 @@ export default defineConfig({
         isMobile: true,
       },
     },
+    {
+      // POS-01 checkout-failure coverage requires the 820px breakpoint too.
+      // Scoped by testMatch so the rest of the suite keeps its three projects.
+      name: "mobile-wide",
+      testMatch: /pos-checkout-failure\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"], viewport: { width: 820, height: 1180 } },
+    },
   ],
   webServer: externalServers ? undefined : [
     {

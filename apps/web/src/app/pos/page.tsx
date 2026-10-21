@@ -17,6 +17,7 @@ import { PosProductCatalog } from "../../components/PosProductCatalog";
 import { PosResponsiveCart } from "../../components/PosResponsiveCart";
 import { GiftCardLoadDialog } from "../../components/GiftCardLoadDialog";
 import { GiftCardLoadResultDialog } from "../../components/GiftCardLoadResultDialog";
+import { shouldClearCheckoutFailureForNewAttempt } from "../../lib/pos-checkout-feedback";
 import { usePosPageController } from "./use-pos-page-controller";
 
 export default function PosPage(): JSX.Element {
@@ -34,6 +35,8 @@ export default function PosPage(): JSX.Element {
     canSell,
     categoriesQuery,
     changeMinor,
+    checkoutFailure,
+    clearCheckoutFailure,
     count,
     customerId,
     customerQ,
@@ -66,6 +69,7 @@ export default function PosPage(): JSX.Element {
     received,
     reconcileId,
     reconcileSaleId,
+    setReconcileSaleId,
     registerId,
     resumedSaleLocked,
     resumingSaleId,
@@ -128,6 +132,7 @@ export default function PosPage(): JSX.Element {
     const opener = document.activeElement;
     if (opener instanceof HTMLElement) paymentOpener.current = opener;
     setStatus("");
+    if (shouldClearCheckoutFailureForNewAttempt(checkoutFailure)) clearCheckoutFailure();
     if (window.matchMedia("(min-width: 1280px)").matches) {
       setPaymentChooserOpen(true);
     } else {
@@ -202,7 +207,7 @@ export default function PosPage(): JSX.Element {
           saleLocked={resumedSaleLocked}
           heldCount={heldSalesQuery.data?.items.length ?? 0}
           effectiveMethod={effectiveMethod}
-          status={status}
+          status={showPay ? "" : status}
           statusTone={statusView.tone}
           receiptId={receiptId}
           reconcileId={reconcileId}
@@ -211,16 +216,32 @@ export default function PosPage(): JSX.Element {
           onHold={() => void holdCart()}
           onOpenHeldSales={openHeldSales}
           onOpenDiscounts={openDiscounts}
-          onClearCart={() => { setCart([]); setOrderDiscountMinor(0); setGiftCardLoad(null); }}
-          onResetSale={() => { setCart([]); setOrderDiscountMinor(0); setGiftCardLoad(null); setStatus(''); setReceiptId(null); setConfirmedSale(null); }}
+          onClearCart={() => { setCart([]); setOrderDiscountMinor(0); setGiftCardLoad(null); clearCheckoutFailure(); }}
+          onResetSale={() => {
+        setCart([]);
+        setOrderDiscountMinor(0);
+        setGiftCardLoad(null);
+        setStatus('');
+        // An unresolved outcome keeps its reconciliation pointers, so the
+        // cashier cannot escape the unknown sale by resetting the till.
+        const unresolved = checkoutFailure?.kind === "unknown_outcome";
+        clearCheckoutFailure();
+        if (!unresolved) {
+          setReconcileSaleId(null);
+          setReceiptId(null);
+          setConfirmedSale(null);
+        }
+      }}
           onSetQty={setQty}
           onAssignCustomer={openCustomerAssignment}
           onOpenPayment={openPaymentFlow}
           giftCardLoadMinor={giftCardLoadMinor}
           onOpenGiftCardLoad={openGiftCardLoad}
           onSelectShortcut={(key) => {
+            if (!shouldClearCheckoutFailureForNewAttempt(checkoutFailure)) return;
             if (key !== 'more') setMethod(key);
             setStatus('');
+            clearCheckoutFailure();
             setShowPay(true);
           }}
         />
@@ -236,7 +257,7 @@ export default function PosPage(): JSX.Element {
           canPay={canPay}
           saleLocked={resumedSaleLocked}
           heldCount={heldSalesQuery.data?.items.length ?? 0}
-          status={status}
+          status={showPay ? "" : status}
           statusTone={statusView.tone}
           receiptId={receiptId}
           reconcileSaleId={reconcileSaleId}
@@ -372,12 +393,16 @@ export default function PosPage(): JSX.Element {
             paying={paying}
             canPay={canPay}
             methodAvailable={methodAvailable}
-            onMethodChange={setMethod}
+            onMethodChange={(value) => {
+              setMethod(value);
+              if (shouldClearCheckoutFailureForNewAttempt(checkoutFailure)) clearCheckoutFailure();
+            }}
             internalInstrumentId={internalInstrumentId}
             onInternalInstrumentIdChange={setInternalInstrumentId}
             onReceivedChange={setReceived}
             onClose={closePaymentDetails}
             onPay={() => void pay()}
+            failure={checkoutFailure}
           />
         ) : null}
         {showGiftCardLoad ? <GiftCardLoadDialog onClose={() => setShowGiftCardLoad(false)} onSave={(load) => { setGiftCardLoad(load); setShowGiftCardLoad(false); setMethod("cash"); setStatus("Gift-card load added. It will be funded only after payment completes."); }} /> : null}

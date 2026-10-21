@@ -139,15 +139,18 @@ export function Modal({
       >
         <header className={"flex items-start justify-between gap-4 border-b bg-white " + (atlasFlow ? "border-[#e4e9e3] px-[26px] pb-6 pt-7" : "border-[#eadfd6] px-5 py-4 sm:px-6")}>
           <div>
-            <p className={"font-data font-medium uppercase " + (atlasFlow ? "text-[11px] tracking-[0.05em] text-[#da614c]" : "text-[9px] tracking-[0.14em] text-[#e44e34]")}>{atlasFlow ? "Workflow step" : "Workspace action"}</p>
+            {/* The eyebrow is 9-11px words, so both variants use the text-safe
+                accent: --color-atlas-accent was 3.62:1 and the coral literal
+                3.86:1 on the white header, --color-atlas-accent-strong is 5.90:1. */}
+            <p className={"font-data font-medium uppercase " + (atlasFlow ? "text-[11px] tracking-[0.05em] text-[var(--color-atlas-accent-strong)]" : "text-[9px] tracking-[0.14em] text-[var(--color-atlas-accent-strong)]")}>{atlasFlow ? "Workflow step" : "Workspace action"}</p>
             <h2 id={titleId} className={"font-display font-semibold " + (atlasFlow ? "mt-7 text-[25px] text-[#202826]" : "mt-1 text-[22px] text-[#17130f]")}>{title}</h2>
-            {description ? <p id={descriptionId} className={"max-w-2xl leading-5 " + (atlasFlow ? "mt-2 text-[14px] text-[#71807a]" : "mt-1 text-[12px] text-[#73685f]")}>{description}</p> : null}
+            {description ? <p id={descriptionId} className={"max-w-2xl leading-5 " + (atlasFlow ? "mt-2 text-[14px] text-[var(--color-atlas-muted-strong)]" : "mt-1 text-[12px] text-[#73685f]")}>{description}</p> : null}
           </div>
           {!hideHeaderClose ? <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className={"grid h-11 w-11 shrink-0 place-items-center rounded-[10px] text-lg transition " + (atlasFlow ? "border border-[#e4e9e3] bg-white text-[#71807a] hover:bg-[#eff2ed] hover:text-[#202826]" : "border border-[#eee4db] bg-[#fcf8f3] text-[#73685f] hover:bg-[#fff0ea] hover:text-[#e44e34]")}
+            className={"grid h-11 w-11 shrink-0 place-items-center rounded-[10px] text-lg transition " + (atlasFlow ? "border border-[#e4e9e3] bg-white text-[var(--color-atlas-muted-strong)] hover:bg-[#eff2ed] hover:text-[#202826]" : "border border-[#eee4db] bg-[#fcf8f3] text-[#73685f] hover:bg-[#fff0ea] hover:text-[var(--color-atlas-accent-strong)]")} // contrast-gate: non-text indicator (the x is a control glyph; the button is named by aria-label)
           >
             ×
           </button> : null}

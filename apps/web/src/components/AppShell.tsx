@@ -355,7 +355,7 @@ export function AppShell({
                 <span
                   className={
                     "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[9px] font-semibold " +
-                    (offline ? "bg-[#fff4df] text-[#b56d0c]" : "bg-[#eaf7f0] text-[#1f8a5b]")
+                    (offline ? "bg-[#fff4df] text-[var(--color-atlas-warning-strong)]" : "bg-[#eaf7f0] text-[var(--color-atlas-verified)]")
                   }
                 >
                   <span aria-hidden>{offline ? "!" : "●"}</span>
@@ -372,7 +372,7 @@ export function AppShell({
                   <span
                     className={
                       "inline-flex shrink-0 items-center gap-1 text-[8px] font-semibold " +
-                      (offline ? "text-[#b56d0c]" : "text-[#1f8a5b]")
+                      (offline ? "text-[var(--color-atlas-warning-strong)]" : "text-[var(--color-atlas-verified)]")
                     }
                   >
                     <span aria-hidden>●</span>
@@ -552,7 +552,7 @@ export function AppShell({
             <AtlasInventoryNavigation role={currentRole} pathname={pathname} onNavigate={beginNavigation} onSignOut={() => void signOut()} signingOut={signingOut} />
           ) : <div className="flex h-full min-h-[540px] flex-col overflow-y-auto p-4 xl:pt-5">
             <div className="mb-3 px-2">
-              <p className="font-data text-[8px] font-semibold uppercase tracking-[0.16em] text-[#9a8d83]">Workspace</p>
+              <p className="font-data text-[8px] font-semibold uppercase tracking-[0.16em] text-[var(--color-atlas-muted-strong)]">Workspace</p>
               <p className="mt-1 text-[11px] leading-4 text-[#746960]">Store operations and administration.</p>
             </div>
 

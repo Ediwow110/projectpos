@@ -23,6 +23,13 @@ export interface CompleteBody {
 }
 
 export interface SaleApi {
+  /**
+   * Asks the idempotency ledger what happened to this key. A refused, failed,
+   * or never-sent check must REJECT rather than resolve: "could not ask" is not
+   * an answer, and reading it as "not applied" would open a second sale for a
+   * cart the server may already have recorded. pos-attempt.ts models the same
+   * three-way split (applied / answered-not-applied / unanswered).
+   */
   check: (key: string) => Promise<{ applied: boolean; resultId?: string }>;
   createDraft: (body: Omit<SaleCommandPayload, "payments">) => Promise<{ id: string; totalMinor: number }>;
   complete: (key: string, body: CompleteBody) => Promise<SaleSendResult>;
@@ -36,8 +43,11 @@ export function toDraftBody(payload: SaleCommandPayload): Omit<SaleCommandPayloa
 
 export async function sendSaleCommand(cmd: OutboxCommand, api: SaleApi): Promise<SaleSendResult> {
   // Timeout ambiguity first: a previous attempt may have applied server-side.
-  const checked = await api.check(cmd.key).catch(() => null);
-  if (checked?.applied) return { status: 200, code: null, resultId: checked.resultId ?? null };
+  // A check that was refused or never landed rejects here, so the command stays
+  // in the outbox for retry instead of opening a second sale for a cart the
+  // ledger may already hold. Only an answered "not applied" may draft.
+  const checked = await api.check(cmd.key);
+  if (checked.applied) return { status: 200, code: null, resultId: checked.resultId ?? null };
   const payload = cmd.payload as SaleCommandPayload;
   const draft = await api.createDraft(toDraftBody(payload));
   const body: CompleteBody = {

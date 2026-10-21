@@ -91,9 +91,9 @@ export default function ReceiptLookupPage(): JSX.Element {
     <AppShell businessName={meQuery.data?.businessName} role={role} atlasCashier>
       <main className={role === "cashier" ? "mx-auto w-full max-w-none space-y-6 px-4 pb-10 pt-8 sm:px-8 lg:px-[38px]" : "mx-auto max-w-[1240px] space-y-5 px-4 pb-10 pt-3 sm:px-6"}>
         {role === "cashier" ? <header className="space-y-2">
-          <p className="font-data text-[11px] tracking-[0.06em] text-[#748078]">SALES / RECEIPT LOOKUP</p>
+          <p className="font-data text-[11px] tracking-[0.06em] text-[var(--color-atlas-muted-strong)]">SALES / RECEIPT LOOKUP</p>
           <h1 className="font-display text-[29px] font-semibold tracking-tight text-[#202826]">Find a receipt</h1>
-          <p className="text-[13px] leading-5 text-[#748078]">Search a receipt to verify a purchase before handling a customer concern.</p>
+          <p className="text-[13px] leading-5 text-[var(--color-atlas-muted-strong)]">Search a receipt to verify a purchase before handling a customer concern.</p>
         </header> : <PageHeader
           eyebrow="Sales / Receipt lookup"
           title="Find a receipt"
@@ -103,7 +103,7 @@ export default function ReceiptLookupPage(): JSX.Element {
         <Panel className="!rounded-[14px] !border-[#e4e9e3] p-5 sm:p-6">
           <form onSubmit={submit} className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
             <div className="min-w-0">
-              <label htmlFor="receipt-number" className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#707b75]">
+              <label htmlFor="receipt-number" className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-atlas-muted-strong)]">
                 Receipt number
               </label>
               <input
@@ -126,7 +126,7 @@ export default function ReceiptLookupPage(): JSX.Element {
             >
               {lookup.isPending ? <><span aria-hidden className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white motion-reduce:animate-none" />Searching…</> : "Search"}
             </PrimaryButton>
-            <p id="receipt-lookup-help" className="text-[11px] leading-5 text-[#707b75] md:col-span-2">
+            <p id="receipt-lookup-help" className="text-[11px] leading-5 text-[var(--color-atlas-muted-strong)] md:col-span-2">
               Press Enter or select Search. Results stay hidden until you submit an exact receipt number.
             </p>
           </form>
@@ -135,7 +135,7 @@ export default function ReceiptLookupPage(): JSX.Element {
         <section aria-label="Receipt lookup result" aria-live="polite" aria-busy={lookup.isPending}>
           {lookup.isPending ? (
             <Panel className="grid min-h-[280px] place-items-center !rounded-[14px] !border-[#e4e9e3] p-8 text-center">
-              <div><span aria-hidden className="mx-auto grid h-14 w-14 animate-pulse place-items-center rounded-[18px] bg-[#eff2ed] text-2xl text-[#267552] motion-reduce:animate-none">⌕</span><p className="mt-5 font-display text-lg font-semibold text-[#202826]">Looking for receipt {receiptNo.trim()}</p><p className="mt-2 text-sm text-[#707b75]">Checking within your authorized business and branch.</p></div>
+              <div><span aria-hidden className="mx-auto grid h-14 w-14 animate-pulse place-items-center rounded-[18px] bg-[#eff2ed] text-2xl text-[#267552] motion-reduce:animate-none">⌕</span><p className="mt-5 font-display text-lg font-semibold text-[#202826]">Looking for receipt {receiptNo.trim()}</p><p className="mt-2 text-sm text-[var(--color-atlas-muted-strong)]">Checking within your authorized business and branch.</p></div>
             </Panel>
           ) : lookup.data ? (
             <Panel className="overflow-hidden !rounded-[14px] !border-[#e4e9e3] p-4 sm:p-5">
@@ -144,11 +144,11 @@ export default function ReceiptLookupPage(): JSX.Element {
                 <h2 className="font-display min-w-0 flex-1 text-lg font-semibold text-[#202826] sm:text-xl">Receipt {lookup.data.receiptNo}</h2>
                 <StatusPill tone={statusTone(lookup.data.status)}>{lookup.data.status.replaceAll("_", " ")}</StatusPill>
               </div>
-              <p className="mt-3 text-[12px] text-[#707b75]">{receiptDate(lookup.data.createdAt)}</p>
+              <p className="mt-3 text-[12px] text-[var(--color-atlas-muted-strong)]">{receiptDate(lookup.data.createdAt)}</p>
               <div className="my-4 border-t border-[#e4e9e3]" />
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[560px] border-separate border-spacing-y-1 text-left text-[12px]">
-                  <thead className="font-data text-[9px] font-medium uppercase tracking-[0.08em] text-[#707b75]">
+                  <thead className="font-data text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--color-atlas-muted-strong)]">
                     <tr><th scope="col" className="px-2 py-2">Product</th><th scope="col" className="px-2 py-2">Qty</th><th scope="col" className="px-2 py-2">Unit price</th><th scope="col" className="px-2 py-2 text-right">Line total</th></tr>
                   </thead>
                   <tbody>
@@ -170,22 +170,22 @@ export default function ReceiptLookupPage(): JSX.Element {
               <div className="mt-4 flex flex-wrap gap-2">
                 <Link href={`/receipts/${encodeURIComponent(lookup.data.saleId)}`} className="inline-flex min-h-10 items-center justify-center rounded-[8px] border border-[#dce3dc] bg-white px-4 text-[12px] font-semibold text-[#202826] transition-colors hover:border-[#9baa9d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#267552]">View receipt</Link>
                 <Link href={`/sales/${encodeURIComponent(lookup.data.saleId)}`} className="inline-flex min-h-10 items-center justify-center rounded-[8px] bg-[#202826] px-4 text-[12px] font-semibold text-white transition-colors hover:bg-[#35423d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#267552]">View sale actions</Link>
-                {concernEligibilityMessage(lookup.data.status) ? <p role="status" className="max-w-xl self-center text-xs leading-5 text-[#707b75]">{concernEligibilityMessage(lookup.data.status)}</p> : <Link href={`/customer-concerns/new/${encodeURIComponent(lookup.data.receiptNo)}`} className="inline-flex min-h-10 items-center justify-center rounded-[8px] border border-[#dce3dc] bg-white px-4 text-[12px] font-semibold text-[#202826] transition-colors hover:border-[#9baa9d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#267552]">Report an item concern</Link>}
+                {concernEligibilityMessage(lookup.data.status) ? <p role="status" className="max-w-xl self-center text-xs leading-5 text-[var(--color-atlas-muted-strong)]">{concernEligibilityMessage(lookup.data.status)}</p> : <Link href={`/customer-concerns/new/${encodeURIComponent(lookup.data.receiptNo)}`} className="inline-flex min-h-10 items-center justify-center rounded-[8px] border border-[#dce3dc] bg-white px-4 text-[12px] font-semibold text-[#202826] transition-colors hover:border-[#9baa9d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#267552]">Report an item concern</Link>}
               </div>
-              <p className="mt-3 text-[10px] leading-4 text-[#707b75]">This is a POS receipt for the recorded sale. It is not a tax invoice or a BIR-compliant document.</p>
+              <p className="mt-3 text-[10px] leading-4 text-[var(--color-atlas-muted-strong)]">This is a POS receipt for the recorded sale. It is not a tax invoice or a BIR-compliant document.</p>
             </Panel>
           ) : failure ? (
             <Panel className={`flex min-h-[220px] flex-col items-center justify-center !rounded-[14px] !border p-8 text-center ${failure.kind === "missing" ? "!border-[#e4e9e3]" : "!border-[#efc8be]"}`}>
-              <span aria-hidden className={`grid h-14 w-14 place-items-center rounded-[18px] text-2xl ${failure.kind === "missing" ? "bg-[#eff2ed] text-[#707b75]" : "bg-[#fff0eb] text-[#b84b38]"}`}>{failure.kind === "missing" ? "⌕" : "!"}</span>
+              <span aria-hidden className={`grid h-14 w-14 place-items-center rounded-[18px] text-2xl ${failure.kind === "missing" ? "bg-[#eff2ed] text-[var(--color-atlas-muted-strong)]" : "bg-[#fff0eb] text-[#b84b38]"}`}>{failure.kind === "missing" ? "⌕" : "!"}</span>
               <h2 className="font-display mt-4 text-lg font-semibold text-[#202826]">{failure.kind === "missing" ? "Receipt not found" : "Search could not be completed"}</h2>
-              <p role={failure.kind === "error" ? "alert" : "status"} className="mt-2 max-w-lg text-sm leading-6 text-[#707b75]">{failure.message}</p>
+              <p role={failure.kind === "error" ? "alert" : "status"} className="mt-2 max-w-lg text-sm leading-6 text-[var(--color-atlas-muted-strong)]">{failure.message}</p>
             </Panel>
           ) : (
             <Panel className="grid min-h-[300px] place-items-center !rounded-[14px] !border-[#e4e9e3] p-8 text-center sm:min-h-[340px]">
               <div>
                 <span aria-hidden className="mx-auto grid h-[76px] w-[84px] place-items-center rounded-[20px] bg-[#eff2ed] text-[42px] leading-none text-[#267552]">⌕</span>
                 <h2 className="font-display mt-5 text-lg font-semibold text-[#202826] sm:text-xl">{receiptNo.trim() ? 'Receipt number ready to search' : 'Enter a receipt number to get started'}</h2>
-                <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-[#707b75]">No receipt details or product lines appear until an exact number is searched.</p>
+                <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-[var(--color-atlas-muted-strong)]">No receipt details or product lines appear until an exact number is searched.</p>
                 <span className="mt-6 inline-flex rounded-md bg-[#e7f0f6] px-3 py-2 text-[10px] font-medium text-[#496b81]">Customer concern lookup · authorized access only</span>
               </div>
             </Panel>

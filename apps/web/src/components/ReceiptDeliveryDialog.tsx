@@ -64,7 +64,7 @@ export function ReceiptDeliveryDialog({
         <form noValidate onSubmit={submit} className="space-y-3 rounded-xl border border-[#eee4db] bg-white p-4">
           <div>
             <p className="font-display text-[13px] font-semibold text-[#2a241f]">Email receipt</p>
-            <p className="mt-1 text-[10px] leading-4 text-[#8b8077]">The customer receives a secure 24-hour receipt link. A deliberate resend creates a new delivery attempt.</p>
+            <p className="mt-1 text-[10px] leading-4 text-[var(--color-atlas-muted-strong)]">The customer receives a secure 24-hour receipt link. A deliberate resend creates a new delivery attempt.</p>
           </div>
           <label className="block text-[11px] font-semibold text-[#655b53]">
             Customer email
@@ -83,7 +83,7 @@ export function ReceiptDeliveryDialog({
 
         <div className="rounded-xl border border-[#eee4db] bg-[#fcf8f3] p-4">
           <p className="font-display text-[13px] font-semibold text-[#2a241f]">Secure share link</p>
-          <p className="mt-1 text-[10px] leading-4 text-[#8b8077]">Create a 24-hour public link you can copy into any customer messaging channel you already use.</p>
+          <p className="mt-1 text-[10px] leading-4 text-[var(--color-atlas-muted-strong)]">Create a 24-hour public link you can copy into any customer messaging channel you already use.</p>
           <GhostButton type="button" disabled={busy} onClick={onShare} className="mt-3">Create secure share link</GhostButton>
         </div>
 
@@ -93,17 +93,17 @@ export function ReceiptDeliveryDialog({
         <section aria-label="Receipt delivery history" className="space-y-3">
           <div>
             <p className="font-display text-[13px] font-semibold text-[#2a241f]">Delivery history</p>
-            <p className="mt-1 text-[10px] text-[#8b8077]">Email status is persisted server-side. Share links are intentionally not stored in plaintext.</p>
+            <p className="mt-1 text-[10px] text-[var(--color-atlas-muted-strong)]">Email status is persisted server-side. Share links are intentionally not stored in plaintext.</p>
           </div>
           {deliveries.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-[#ddd0c6] px-4 py-5 text-center text-[11px] text-[#8b8077]">No email deliveries yet.</p>
+            <p className="rounded-xl border border-dashed border-[#ddd0c6] px-4 py-5 text-center text-[11px] text-[var(--color-atlas-muted-strong)]">No email deliveries yet.</p>
           ) : (
             <div className="space-y-2">
               {[...deliveries].reverse().map((delivery) => (
                 <div key={delivery.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#eee4db] bg-white px-3 py-3">
                   <div className="min-w-0">
                     <p className="truncate text-[11px] font-semibold text-[#2a241f]">{delivery.recipient}</p>
-                    <p className="font-data mt-1 text-[9px] text-[#9a8d83]">{new Date(delivery.sentAt ?? delivery.createdAt).toLocaleString()}</p>
+                    <p className="font-data mt-1 text-[9px] text-[var(--color-atlas-muted-strong)]">{new Date(delivery.sentAt ?? delivery.createdAt).toLocaleString()}</p>
                   </div>
                   <StatusPill tone={delivery.status === "SENT" ? "ok" : delivery.status === "FAILED" ? "warn" : "info"}>{delivery.status}</StatusPill>
                 </div>

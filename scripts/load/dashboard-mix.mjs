@@ -22,10 +22,26 @@ const args = Object.fromEntries(
 const BASE = args["base"] ?? "http://localhost:3001";
 const EMAIL = args["email"] ?? `owner-load-${Date.now()}@load.test`;
 const PASSWORD = args["password"] ?? "correct-horse-12";
-const CONCURRENCY = Number(args["concurrency"] ?? 5);
-const DURATION_SECS = Number(args["duration"] ?? 60);
-const CATALOG = Number(args["catalog"] ?? 50);
-const COMPLETE_RATE = Math.max(0.1, Number(args["complete-rate"] ?? 8));
+// A valueless flag parses to "" and Number("") is 0: zero workers ran, every
+// percentile came back 0, each budget printed PASS, and the gate exited 0
+// having measured nothing. Same guard shape as the sibling harness
+// (scripts/load/phase21-mix.mjs).
+export function numberOption(raw, fallback) {
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+// The percentile of an empty jar is 0, and 0 <= budget, so a sampled-nothing
+// operation is not a PASS. It is reported as NO_SAMPLE and fails the gate.
+export function operationVerdict(count, p95, budget) {
+  if (count === 0) return "NO_SAMPLE";
+  return p95 <= budget ? "PASS" : "BREACH";
+}
+
+const CONCURRENCY = numberOption(args["concurrency"], 5);
+const DURATION_SECS = numberOption(args["duration"], 60);
+const CATALOG = numberOption(args["catalog"], 50);
+const COMPLETE_RATE = Math.max(0.1, numberOption(args["complete-rate"], 8));
 const COMPLETE_INTERVAL_MS = 1000 / COMPLETE_RATE;
 
 const BUDGETS = {
@@ -164,26 +180,34 @@ function percentile(sorted, p) {
   return sorted[Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1)];
 }
 
-const ctx = await setup();
-console.log(
-  `load: concurrency=${CONCURRENCY} duration=${DURATION_SECS}s catalog=${CATALOG} completeRate=${COMPLETE_RATE}/s`,
-);
-const deadline = Date.now() + DURATION_SECS * 1000;
-await Promise.all(Array.from({ length: CONCURRENCY }, () => worker(ctx, deadline)));
-
-let breach = false;
-for (const op of ["search", "complete", "overview", "list"]) {
-  const sorted = [...lat[op]].sort((a, b) => a - b);
-  const p50 = percentile(sorted, 50);
-  const p95 = percentile(sorted, 95);
-  const p99 = percentile(sorted, 99);
-  const ok = p95 <= BUDGETS[op];
-  if (!ok) breach = true;
+async function main() {
+  const ctx = await setup();
   console.log(
-    `${op}: n=${sorted.length} p50=${p50.toFixed(1)}ms p95=${p95.toFixed(1)}ms p99=${p99.toFixed(1)}ms budget=${BUDGETS[op]}ms ${ok ? "PASS" : "BREACH"}`,
+    `load: concurrency=${CONCURRENCY} duration=${DURATION_SECS}s catalog=${CATALOG} completeRate=${COMPLETE_RATE}/s`,
   );
+  const deadline = Date.now() + DURATION_SECS * 1000;
+  await Promise.all(Array.from({ length: Math.trunc(CONCURRENCY) }, () => worker(ctx, deadline)));
+
+  // A gate that sampled nothing must not report PASS.
+  let breach = total === 0;
+  for (const op of ["search", "complete", "overview", "list"]) {
+    const sorted = [...lat[op]].sort((a, b) => a - b);
+    const p50 = percentile(sorted, 50);
+    const p95 = percentile(sorted, 95);
+    const p99 = percentile(sorted, 99);
+    const verdict = operationVerdict(sorted.length, p95, BUDGETS[op]);
+    if (verdict !== "PASS") breach = true;
+    console.log(
+      `${op}: n=${sorted.length} p50=${p50.toFixed(1)}ms p95=${p95.toFixed(1)}ms p99=${p99.toFixed(1)}ms budget=${BUDGETS[op]}ms ${verdict}`,
+    );
+  }
+  const errRate = total === 0 ? 0 : (errors / total) * 100;
+  console.log(`total=${total} errors=${errors} errRate=${errRate.toFixed(2)}%`);
+  if (errRate > 1) breach = true;
+  if (breach && total === 0) console.error("gate measured nothing: no requests were sampled");
+  process.exit(breach ? 1 : 0);
 }
-const errRate = total === 0 ? 0 : (errors / total) * 100;
-console.log(`total=${total} errors=${errors} errRate=${errRate.toFixed(2)}%`);
-if (errRate > 1) breach = true;
-process.exit(breach ? 1 : 0);
+
+if (import.meta.url === `file://${process.argv[1]?.replaceAll("\\", "/")}`) {
+  await main();
+}

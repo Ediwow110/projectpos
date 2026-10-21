@@ -95,8 +95,8 @@ export class PgDbPort implements DbPort {
   appendAudit(e: AuditEntry): Promise<void> {
     return this.audit.appendAudit(e);
   }
-  listAudit(): Promise<AuditEntry[]> {
-    return this.audit.listAudit();
+  listAudit(businessId?: string): Promise<AuditEntry[]> {
+    return this.audit.listAudit(businessId);
   }
 
   // Tenants family: users, businesses, memberships, sessions, reset and

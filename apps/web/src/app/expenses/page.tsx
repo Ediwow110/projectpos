@@ -164,7 +164,7 @@ export default function ExpensesPage(): JSX.Element {
           <MetricCard label="Voided on page" value={items.filter((expense) => expense.voidedAt !== null).length} icon="×" tone="success" meta="Excluded from active spend" />
         </section>
 
-        {success ? <div role="status" className="rounded-xl border border-[#cfe9dc] bg-[#eaf7f0] px-4 py-3 text-sm font-medium text-[#1f8a5b]">{success}</div> : null}
+        {success ? <div role="status" className="rounded-xl border border-[#cfe9dc] bg-[#eaf7f0] px-4 py-3 text-sm font-medium text-[var(--color-atlas-verified)]">{success}</div> : null}
         <RequestError error={error} fallback="Action failed" />
 
         <Panel className="p-5">
@@ -178,7 +178,7 @@ export default function ExpensesPage(): JSX.Element {
         <DataTableFrame>
           <div className="px-5 py-4"><SectionHeader title="Expense ledger" description="Voided expenses remain visible for audit history." /></div>
           {listQuery.isLoading ? <p className="px-5 pb-6 text-sm text-[#73685f]">Loading expenses…</p> : null}
-          {items.length === 0 && !listQuery.isLoading ? <p className="px-5 pb-8 text-sm text-[#8b8077]">No expenses recorded.</p> : null}
+          {items.length === 0 && !listQuery.isLoading ? <p className="px-5 pb-8 text-sm text-[var(--color-atlas-muted-strong)]">No expenses recorded.</p> : null}
           {items.length > 0 ? (
             <table className="premium-table min-w-[760px] text-left text-[12px]">
               <thead><tr><th className="px-5 pb-3">Category</th><th className="px-5 pb-3">Method</th><th className="px-5 pb-3">Date</th><th className="px-5 pb-3 text-right">Amount</th><th className="px-5 pb-3 text-right">Status</th><th className="px-5 pb-3 text-right">Action</th></tr></thead>
@@ -190,7 +190,7 @@ export default function ExpensesPage(): JSX.Element {
                     <td className="font-data px-5 py-3 text-[#73685f]">{new Date(expense.expenseDate).toLocaleDateString("en-PH")}</td>
                     <td className="font-data px-5 py-3 text-right font-medium">₱{money(expense.amountMinor)}</td>
                     <td className="px-5 py-3 text-right"><StatusPill tone={expense.voidedAt ? "warn" : "ok"}>{expense.voidedAt ? "Voided" : "Recorded"}</StatusPill></td>
-                    <td className="px-5 py-3 text-right">{voidable && !expense.voidedAt ? <DangerButton type="button" onClick={() => { setVoidTarget(expense); setVoidReason(""); setError(null); }}>Void</DangerButton> : <span className="text-[11px] text-[#9a8d83]">—</span>}</td>
+                    <td className="px-5 py-3 text-right">{voidable && !expense.voidedAt ? <DangerButton type="button" onClick={() => { setVoidTarget(expense); setVoidReason(""); setError(null); }}>Void</DangerButton> : <span className="text-[11px] text-[var(--color-atlas-muted-strong)]">—</span>}</td>
                   </tr>
                 ))}
               </tbody>

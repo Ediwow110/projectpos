@@ -87,7 +87,7 @@ export class ManagerApprovalPolicyService {
   private async refundRequiresDistinctApprover(businessId: string, requesterId: string, saleId: string): Promise<boolean> {
     const sale = await this.requireSale(businessId, saleId);
     if (sale.status !== "REFUND_REQUESTED") return false;
-    const audit = await this.db.listAudit();
+    const audit = await this.db.listAudit(businessId);
     const latestRequest = [...audit].reverse().find((entry) =>
       entry.businessId === businessId
       && entry.entityType === "Sale"

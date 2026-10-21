@@ -123,10 +123,10 @@ export function PosProductCatalog({
       </label>
       <div className="mt-6 flex min-h-11 items-center gap-2 overflow-x-auto pb-1">
         <button type="button" aria-pressed={activeCategoryId === ""} onClick={() => onCategoryChange("")}
-          className={"min-h-[35px] min-w-[112px] shrink-0 rounded-[7px] px-3 text-xs font-medium sm:min-w-[125px] " + (activeCategoryId === "" ? "bg-[#202826] text-white" : "bg-[#eff2ed] text-[#202826]")}>All products</button>
+          className={"min-h-11 min-w-[112px] shrink-0 rounded-[7px] px-3 text-xs font-medium sm:min-w-[125px] " + (activeCategoryId === "" ? "bg-[#202826] text-white" : "bg-[#eff2ed] text-[#202826]")}>All products</button>
         {categories.filter((c) => c.isActive).map((c) => <button key={c.id} type="button" aria-pressed={activeCategoryId === c.id} onClick={() => onCategoryChange(c.id)}
-          className={"min-h-[35px] min-w-[112px] shrink-0 rounded-[7px] px-3 text-xs font-medium sm:min-w-[125px] " + (activeCategoryId === c.id ? "bg-[#202826] text-white" : "bg-[#eff2ed] text-[#202826]")}>{c.name}</button>)}
-        <button type="button" onClick={onAssignCustomer} disabled={saleLocked} className="ml-auto min-h-[35px] shrink-0 rounded-[7px] bg-[#eff2ed] px-3 text-xs text-[#202826] xl:hidden">Customer</button>
+          className={"min-h-11 min-w-[112px] shrink-0 rounded-[7px] px-3 text-xs font-medium sm:min-w-[125px] " + (activeCategoryId === c.id ? "bg-[#202826] text-white" : "bg-[#eff2ed] text-[#202826]")}>{c.name}</button>)}
+        <button type="button" onClick={onAssignCustomer} disabled={saleLocked} className="ml-auto min-h-11 shrink-0 rounded-[7px] bg-[#eff2ed] px-3 text-xs text-[#202826] xl:hidden">Customer</button>
       </div>
       {offline ? <p role="status" className="mt-3 rounded-lg bg-[#fff4df] px-3 py-2 text-xs text-[#946c31]">Offline catalog{catalogAt ? ` as of ${catalogAt}` : " (never synced)"}</p> : null}
       {loading ? <p role="status" className="mt-4 text-sm text-[#53615a]">Loading products…</p> : null}
@@ -173,7 +173,7 @@ export function PosProductCatalog({
     <section aria-label="Products" className="min-w-0 p-4 lg:max-xl:flex lg:max-xl:h-full lg:max-xl:flex-col lg:max-xl:px-7 lg:max-xl:pb-7 lg:max-xl:pt-6 xl:relative xl:flex xl:h-full xl:min-h-[820px] xl:flex-col xl:p-[24px] xl:pr-[26px]">
       <div className="hidden xl:mb-7 xl:block">
         <h1 className="font-display text-[26px] font-semibold text-[#202826]">Products</h1>
-        <p className="mt-1 text-[13px] text-[#71807a]">Choose a quantity before adding to this sale.</p>
+        <p className="mt-1 text-[13px] text-[var(--color-atlas-muted-strong)]">Choose a quantity before adding to this sale.</p>
       </div>
       <label className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-[10px] font-semibold text-white/70 md:hidden">
         Register
@@ -182,7 +182,7 @@ export function PosProductCatalog({
           value={registerId}
           onChange={(event) => onRegisterChange(event.target.value)}
           disabled={saleLocked}
-          className="min-w-0 max-w-[190px] rounded-lg border border-white/10 bg-[#252422] px-2 py-2 text-[10px] font-semibold text-white outline-none"
+          className="min-h-11 min-w-0 max-w-[190px] rounded-lg border border-white/10 bg-[#252422] px-2 text-[10px] font-semibold text-white outline-none"
         >
           <option value="">Select register</option>
           {registers.filter((register) => register.isActive).map((register) => (
@@ -207,10 +207,10 @@ export function PosProductCatalog({
             onChange={(event) => onQueryChange(event.target.value)}
             placeholder="Search product, SKU or scan barcode…"
             autoFocus
-            className="field-dark !h-[54px] !rounded-xl !py-3 pl-10 xl:!rounded-[9px] xl:!border-[#e5e9e3] xl:!bg-white xl:!text-[#202826] xl:placeholder:text-[#71807a]"
+            className="field-dark !h-[54px] !rounded-xl !py-3 pl-10 xl:!rounded-[9px] xl:!border-[#e5e9e3] xl:!bg-white xl:!text-[#202826] xl:placeholder:text-[var(--color-atlas-muted-strong)]"
           />
-          <span aria-hidden className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/35 xl:text-[#71807a]">⌕</span>
-          <kbd className="absolute right-3.5 top-1/2 hidden -translate-y-1/2 rounded-md border border-white/15 px-1.5 py-0.5 text-[10px] text-white/40 xl:block xl:border-[#e5e9e3] xl:text-[#71807a]">Ctrl K</kbd>
+          <span aria-hidden className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/35 xl:text-[var(--color-atlas-muted-strong)]">⌕</span>
+          <kbd className="absolute right-3.5 top-1/2 hidden -translate-y-1/2 rounded-md border border-white/15 px-1.5 py-0.5 text-[10px] text-white/40 xl:block xl:border-[#e5e9e3] xl:text-[var(--color-atlas-muted-strong)]">Ctrl K</kbd>
         </div>
         <button
           type="button"
@@ -221,13 +221,13 @@ export function PosProductCatalog({
         </button>
       </form>
 
-      <div className="mt-4 flex min-h-[34px] flex-nowrap items-center gap-2 overflow-x-auto lg:max-xl:mt-[18px] lg:max-xl:gap-[22px] xl:mt-7 xl:gap-3">
+      <div className="mt-4 flex min-h-11 flex-nowrap items-center gap-2 overflow-x-auto lg:max-xl:mt-[18px] lg:max-xl:gap-[22px] xl:mt-7 xl:gap-3">
         <button
           type="button"
           onClick={() => onCategoryChange("")}
           aria-pressed={activeCategoryId === ""}
           className={
-            "h-[34px] shrink-0 rounded-[17px] border px-3 text-[8px] font-semibold lg:max-xl:mr-[30px] lg:max-xl:w-20 xl:mr-0 xl:w-[130px] xl:rounded-[7px] xl:text-[12px] " +
+            "min-h-11 shrink-0 rounded-[17px] border px-3 text-[8px] font-semibold lg:max-xl:mr-[30px] lg:max-xl:w-20 xl:mr-0 xl:w-[130px] xl:rounded-[7px] xl:text-[12px] " +
             (activeCategoryId === ""
               ? "border-[#ffb7a4] bg-[#ffb7a4] text-[#4a2118] xl:border-[#202826] xl:bg-[#202826] xl:text-white"
               : "border-[#3a3732] bg-[#252422] text-[#d5cdc6] xl:border-[#eff2ef] xl:bg-[#eff2ef] xl:text-[#202826]")
@@ -243,7 +243,7 @@ export function PosProductCatalog({
             onClick={() => onCategoryChange(category.id)}
             aria-pressed={activeCategoryId === category.id}
             className={
-              "h-[34px] shrink-0 rounded-[17px] border px-3 text-[8px] font-semibold lg:max-xl:w-[110px] xl:w-[130px] xl:rounded-[7px] xl:text-[12px] " +
+              "min-h-11 shrink-0 rounded-[17px] border px-3 text-[8px] font-semibold lg:max-xl:w-[110px] xl:w-[130px] xl:rounded-[7px] xl:text-[12px] " +
               (activeCategoryId === category.id
                 ? "border-[#ffb7a4] bg-[#ffb7a4] text-[#4a2118] xl:border-[#202826] xl:bg-[#202826] xl:text-white"
                 : "border-[#3a3732] bg-[#252422] text-[#d5cdc6] xl:border-[#eff2ef] xl:bg-[#eff2ef] xl:text-[#202826]")
@@ -261,15 +261,15 @@ export function PosProductCatalog({
           type="button"
           onClick={onAssignCustomer}
           disabled={saleLocked}
-          className="ml-auto rounded-full border border-white/15 px-3 py-1.5 text-[11px] font-semibold text-white/65 hover:text-white lg:hidden"
+          className="ml-auto min-h-11 rounded-full border border-white/15 px-3 py-1.5 text-[11px] font-semibold text-white/70 hover:text-white lg:hidden"
         >
           Customer
         </button>
       </div>
 
-      {loading ? <p className="mt-4 text-sm text-white/50 xl:text-[#71807a]">Loading products…</p> : null}
+      {loading ? <p className="mt-4 text-sm text-white/50 xl:text-[var(--color-atlas-muted-strong)]">Loading products…</p> : null}
       {!offline && !loading && products.length === 0 ? (
-        <p className="mt-4 rounded-xl border border-white/10 bg-white/[0.04] p-6 text-center text-sm text-white/50 xl:border-[#e5e9e3] xl:bg-white xl:text-[#71807a]">No products found.</p>
+        <p className="mt-4 rounded-xl border border-white/10 bg-white/[0.04] p-6 text-center text-sm text-white/50 xl:border-[#e5e9e3] xl:bg-white xl:text-[var(--color-atlas-muted-strong)]">No products found.</p>
       ) : null}
       <ul className="mt-5 grid content-start grid-cols-2 gap-3 sm:grid-cols-3 lg:max-xl:mt-[22px] lg:max-xl:min-h-0 lg:max-xl:flex-1 lg:max-xl:grid-cols-[repeat(3,280px)] lg:max-xl:overflow-y-auto lg:max-xl:pb-4 xl:min-h-0 xl:flex-1 xl:grid-cols-[repeat(auto-fill,minmax(215px,1fr))] xl:gap-3 xl:overflow-y-auto xl:pb-24">
         {products.map((product, index) => {
@@ -310,7 +310,7 @@ export function PosProductCatalog({
                   quantityTrigger.current = event.currentTarget;
                   setPendingProduct(product);
                 }}
-                className="absolute bottom-2.5 right-2.5 z-10 min-h-9 rounded-lg border border-[#ffb7a4]/50 bg-[#4a2118] px-2.5 text-[10px] font-semibold text-[#ffb7a4] shadow-sm hover:border-[#f35d3f] hover:bg-[#6b3023] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffb7a4] disabled:opacity-35 xl:min-h-[30px] xl:border-[#eff2ef] xl:bg-[#eff2ef] xl:text-[#202826] xl:hover:border-[#d4ded7] xl:hover:bg-[#e5e9e3]">
+                className="absolute bottom-2.5 right-2.5 z-10 min-h-11 rounded-lg border border-[#ffb7a4]/50 bg-[#4a2118] px-2.5 text-[10px] font-semibold text-[#ffb7a4] shadow-sm hover:border-[#f35d3f] hover:bg-[#6b3023] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffb7a4] disabled:opacity-35 xl:border-[#eff2ef] xl:bg-[#eff2ef] xl:text-[#202826] xl:hover:border-[#d4ded7] xl:hover:bg-[#e5e9e3]">
                 Set qty
               </button>
             </li>
@@ -319,14 +319,14 @@ export function PosProductCatalog({
       </ul>
 
       <div className="hidden xl:absolute xl:bottom-[18px] xl:left-[24px] xl:right-[26px] xl:flex xl:items-center xl:gap-2 xl:rounded-xl xl:border xl:border-[#e5e9e3] xl:bg-white xl:p-3">
-        <span className="mr-auto text-[11px] font-semibold text-[#71807a]">⚡ Quick actions</span>
+        <span className="mr-auto text-[11px] font-semibold text-[var(--color-atlas-muted-strong)]">⚡ Quick actions</span>
         <button
           type="button"
           onClick={onAssignCustomer}
           disabled={saleLocked}
-          className="rounded-lg border border-[#e5e9e3] bg-[#eff2ef] px-5 py-2 text-[10px] font-semibold text-[#202826] hover:bg-[#e5e9e3]"
+          className="min-h-11 rounded-lg border border-[#e5e9e3] bg-[#eff2ef] px-5 py-2 text-[10px] font-semibold text-[#202826] hover:bg-[#e5e9e3]"
         >
-          Add customer <span className="font-data text-white/35">F1</span>
+          Add customer <span className="font-data text-[var(--color-atlas-muted-strong)]">F1</span>
         </button>
       </div>
       {connectivityBanner}

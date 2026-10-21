@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { apiFetch, ApiError } from "../../lib/api";
 import { cartTotal } from "../../lib/sales";
 import { canPresentPayAction, paymentPresentation, posSaleErrorMessage } from "../../lib/pos-view";
+import { shouldClearCheckoutFailureForNewAttempt, type PosCheckoutFailure } from "../../lib/pos-checkout-feedback";
 import {
   addProductToCart,
   changeCartQuantity,
@@ -18,6 +19,14 @@ import {
   type PosProduct,
 } from "../../lib/pos-sale-model";
 import { holdPosSale, resumePosSale } from "../../lib/pos-operations";
+import {
+  attemptSlot,
+  claimAttemptKey,
+  clearAttemptKey,
+  currentAttemptKey,
+  fetchAttemptOutcome,
+  type AttemptOutcome,
+} from "../../lib/pos-attempt";
 import { usePosData } from "../../lib/use-pos-data";
 import { usePosOffline } from "../../lib/use-pos-offline";
 import { registersForBranch } from "../../lib/workspace-branch";
@@ -45,6 +54,14 @@ export function usePosPageController() {
   const [received, setReceived] = useState("");
   const [internalInstrumentId, setInternalInstrumentId] = useState("");
   const [status, setStatus] = useState("");
+  const [checkoutFailure, setCheckoutFailure] = useState<PosCheckoutFailure | null>(null);
+  // An attempt from a previous session that the server still has a record
+  // of. The server is asked what happened, because the client never learned
+  // whether its last request landed.
+  const [pendingAttempt, setPendingAttempt] = useState<AttemptOutcome | null>(null);
+  // True while an attempt key exists and the server has not been able to say
+  // what happened to it. Blocks a second payment without claiming anything.
+  const [attemptUnconfirmed, setAttemptUnconfirmed] = useState(false);
   const [receiptId, setReceiptId] = useState<string | null>(null);
   const [confirmedSale, setConfirmedSale] = useState<{ saleId: string; receiptNo?: string; amountMinor: number } | null>(null);
   const [reconcileId, setReconcileId] = useState<string | null>(null);
@@ -64,6 +81,9 @@ export function usePosPageController() {
   // after a cancellation. Without this flag the cancel message would overwrite
   // the real "Sale completed."/"Sale held." status the sale just produced.
   const discountApprovedRef = useRef(false);
+  // Synchronous guard: a double Enter/click can fire before React disables the
+  // payment button, and a duplicate completion call is financially unsafe.
+  const payingRef = useRef(false);
   const [paying, setPaying] = useState(false);
   const [resumingSaleId, setResumingSaleId] = useState<string | null>(null);
   const [activeDraft, setActiveDraft] = useState<{ id: string; totalMinor: number } | null>(null);
@@ -81,12 +101,18 @@ export function usePosPageController() {
     heldSalesQuery,
   } = usePosData(q, activeCategoryId, customerQ);
 
-  const { store, offline, catalogAt, cachedItems, now } = usePosOffline(
+  const { store, offline, catalogAt, cachedItems, catalogError, now } = usePosOffline(
     meQuery.data ? { userId: meQuery.data.userId, businessId: meQuery.data.businessId } : undefined,
     meQuery.error,
     meQuery.isLoading,
     searchQuery.data?.items,
   );
+
+  // A device whose offline store cannot be read must say so: otherwise the
+  // cashier sees an empty product list and concludes the catalogue is empty.
+  useEffect(() => {
+    if (catalogError) setStatus(`The saved product catalog could not be read on this device (${catalogError}). Products may be missing until it syncs again.`);
+  }, [catalogError]);
 
   const role = meQuery.data?.role ?? "cashier";
   const scopedRegisters = registersForBranch(
@@ -98,6 +124,46 @@ export function usePosPageController() {
       setRegisterId("");
     }
   }, [registerId, scopedRegisters]);
+
+  // A payment attempt that was left unresolved must survive a reload. The
+  // browser slot carries the attempt key; the SERVER decides what happened,
+  // because the client never learned whether its last request landed.
+  useEffect(() => {
+    const businessId = meQuery.data?.businessId;
+    if (!businessId || registerId === "") return;
+    const slot = attemptSlot(businessId, registerId);
+    const key = currentAttemptKey(slot);
+    if (!key) return;
+    let active = true;
+    void fetchAttemptOutcome(key).then((attempt) => {
+      if (!active) return;
+      if (attempt.found) {
+        setAttemptUnconfirmed(false);
+        setPendingAttempt(attempt);
+        setStatus(
+          "An earlier payment attempt on this register is still unresolved. Review the sale before taking another payment.",
+        );
+        return;
+      }
+      if (attempt.answered) {
+        // Only a server that has actually answered "not there" proves the
+        // attempt never landed, so this is the one case that may drop the slot.
+        setAttemptUnconfirmed(false);
+        clearAttemptKey(slot);
+        return;
+      }
+      // The server could not answer - refused, errored, or never reached. The
+      // attempt is still unknown, so the slot keeps its key and a second
+      // payment stays blocked until a reload can ask again.
+      setAttemptUnconfirmed(true);
+      setStatus(
+        "NexPOS could not confirm an earlier payment attempt on this register. Check the sale before taking another payment, then reload.",
+      );
+    });
+    return () => {
+      active = false;
+    };
+  }, [meQuery.data?.businessId, registerId]);
   const canSell = role === "owner" || role === "manager" || role === "cashier";
   const discountSummary = posDiscountSummary(cart, orderDiscountMinor);
   const merchandiseDue = cartTotal(cart.map((c) => ({ qty: c.qty, priceMinor: c.priceMinor, lineDiscountMinor: c.lineDiscountMinor }))) - discountSummary.orderDiscountMinor;
@@ -313,17 +379,45 @@ export function usePosPageController() {
   }
 
   async function pay(approvalToken?: string): Promise<boolean> {
-    return runPosCheckout({
-      cart, registerId, customerId, walkIn, received, due, orderDiscountMinor,
-      discountTotalMinor: discountSummary.totalDiscountMinor,
-      method, internalInstrumentId, offline, identityLoading: meQuery.isLoading,
-      store, activeDraft, giftCardLoad, methodAvailable,
-    }, {
-      setStatus, setReceiptId, setConfirmedSale, setReconcileId, setReconcileSaleId,
-      setCart, setActiveDraft, setOrderDiscountMinor, setReceived,
-      setShowPay, setGiftCardLoad, setGiftCardResult, setPaying,
-      requireManagerApproval,
-    }, {}, approvalToken);
+    if (payingRef.current || !shouldClearCheckoutFailureForNewAttempt(checkoutFailure)) return false;
+    payingRef.current = true;
+    try {
+      const businessId = meQuery.data?.businessId ?? "";
+      const slot = attemptSlot(businessId, registerId);
+      // A second tab joins the attempt already in flight for this register
+      // instead of paying the same cart again: the server's idempotency then
+      // returns the sale that is already being paid.
+      const attemptKey = claimAttemptKey(slot, crypto.randomUUID());
+      return await runPosCheckout({
+        cart, registerId, customerId, walkIn, received, due, orderDiscountMinor,
+        discountTotalMinor: discountSummary.totalDiscountMinor,
+        method, internalInstrumentId, offline, identityLoading: meQuery.isLoading,
+        store, activeDraft, giftCardLoad, methodAvailable,
+      }, {
+        setStatus, setCheckoutFailure, setReceiptId,
+        // A confirmed sale is a definitive outcome, so the attempt is done.
+        // Only an authoritative confirmation ends the attempt. The flow also
+        // calls this with null to reset the previous receipt before a new
+        // sale, and that reset must not drop the attempt pointer.
+        setConfirmedSale: (sale) => {
+          if (sale) clearAttemptKey(slot);
+          setConfirmedSale(sale);
+        },
+        setReconcileId, setReconcileSaleId,
+        setCart, setActiveDraft, setOrderDiscountMinor, setReceived,
+        setShowPay, setGiftCardLoad, setGiftCardResult, setPaying,
+        requireManagerApproval,
+      }, { attemptKey }, approvalToken);
+    } finally {
+      payingRef.current = false;
+    }
+  }
+
+  function clearCheckoutFailure(): void {
+    // An unresolved outcome is not cleared away: doing so would re-enable the
+    // pay action for a sale that may already be recorded.
+    if (!shouldClearCheckoutFailureForNewAttempt(checkoutFailure)) return;
+    setCheckoutFailure(null);
   }
 
   async function approveDiscount(token: string): Promise<boolean> {
@@ -343,7 +437,7 @@ export function usePosPageController() {
     : (searchQuery.data?.items ?? []);
   const count = cart.reduce((n, c) => n + c.qty, 0);
   const statusView = paymentPresentation(status);
-  const canPay = canPresentPayAction(cart.length, canSell) && due > 0 && reconcileId === null && reconcileSaleId === null && !(offline && resumedSaleLocked);
+  const canPay = canPresentPayAction(cart.length, canSell) && due > 0 && reconcileId === null && reconcileSaleId === null && checkoutFailure?.kind !== "unknown_outcome" && pendingAttempt === null && !attemptUnconfirmed && !(offline && resumedSaleLocked);
   const selectedRegisterName =
     scopedRegisters.find((register) => register.id === registerId)?.name ?? "—";
 
@@ -358,6 +452,8 @@ export function usePosPageController() {
     canSell,
     categoriesQuery,
     changeMinor,
+    checkoutFailure,
+    clearCheckoutFailure,
     count,
     customerId,
     customerQ,
@@ -393,6 +489,7 @@ export function usePosPageController() {
     received,
     reconcileId,
     reconcileSaleId,
+    setReconcileSaleId,
     registerId,
     resumedSaleLocked,
     resumingSaleId,

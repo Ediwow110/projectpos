@@ -142,7 +142,7 @@ export default function MovementHistoryPage({ params }: { params: Promise<{ prod
   if (historyQuery.isError || productQuery.isError) {
     return (
       <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role}>
-        <main className="mx-auto max-w-[1240px] p-6"><Panel className="border-[#efb9b9] bg-[#fff0f0] p-6"><p role="alert" className="text-sm font-medium text-[#c43e3e]">Movement history could not be loaded.</p><Link href="/inventory" className="mt-3 inline-block text-sm font-semibold text-[#e44e34]">← Back to inventory</Link></Panel></main>
+        <main className="mx-auto max-w-[1240px] p-6"><Panel className="border-[#efb9b9] bg-[#fff0f0] p-6"><p role="alert" className="text-sm font-medium text-[#c43e3e]">Movement history could not be loaded.</p><Link href="/inventory" className="mt-3 inline-block text-sm font-semibold text-[var(--color-atlas-accent-strong)]">← Back to inventory</Link></Panel></main>
       </AppShell>
     );
   }
@@ -169,7 +169,7 @@ export default function MovementHistoryPage({ params }: { params: Promise<{ prod
           <MetricCard label="Negative entries" value={visibleNegative} icon="−" tone={visibleNegative > 0 ? "warning" : "success"} meta="Current page" />
         </section>
 
-        {success ? <div role="status" className="rounded-xl border border-[#cfe9dc] bg-[#eaf7f0] px-4 py-3 text-sm font-medium text-[#1f8a5b]">{success}</div> : null}
+        {success ? <div role="status" className="rounded-xl border border-[#cfe9dc] bg-[#eaf7f0] px-4 py-3 text-sm font-medium text-[var(--color-atlas-verified)]">{success}</div> : null}
         {error ? <Panel className="border-[#efb9b9] bg-[#fff0f0] p-4"><p role="alert" className="text-sm font-medium text-[#c43e3e]">{error}</p></Panel> : null}
 
         <DataTableFrame>
@@ -178,7 +178,7 @@ export default function MovementHistoryPage({ params }: { params: Promise<{ prod
             {productQuery.data?.sku ? <span className="font-data rounded-full bg-[#f7f1ea] px-3 py-1.5 text-[10px] text-[#73685f]">SKU {productQuery.data.sku}</span> : null}
           </div>
           {historyQuery.isLoading ? <p className="px-5 pb-6 text-sm text-[#73685f]">Loading movements…</p> : null}
-          {data && data.items.length === 0 ? <p className="px-5 pb-8 text-sm text-[#8b8077]">No movements recorded yet.</p> : null}
+          {data && data.items.length === 0 ? <p className="px-5 pb-8 text-sm text-[var(--color-atlas-muted-strong)]">No movements recorded yet.</p> : null}
           {data && data.items.length > 0 ? (
             <table className="premium-table min-w-[720px] text-left text-[12px]">
               <thead><tr><th className="px-5 pb-3">Type</th><th className="px-5 pb-3">Reason</th><th className="px-5 pb-3">Actor</th><th className="px-5 pb-3 text-right">Quantity delta</th><th className="px-5 pb-3 text-right">Direction</th></tr></thead>
@@ -187,7 +187,7 @@ export default function MovementHistoryPage({ params }: { params: Promise<{ prod
                   <tr key={movement.id}>
                     <td className="px-5 py-3 font-semibold capitalize text-[#2a241f]">{movementLabel(movement.type)}</td>
                     <td className="px-5 py-3 text-[#73685f]">{movement.reason ?? "—"}</td>
-                    <td className="font-data px-5 py-3 text-[#9a8d83]">{movement.actorId.slice(0, 8)}</td>
+                    <td className="font-data px-5 py-3 text-[var(--color-atlas-muted-strong)]">{movement.actorId.slice(0, 8)}</td>
                     <td className="font-data px-5 py-3 text-right font-semibold">{movement.qtyDelta > 0 ? `+${movement.qtyDelta}` : movement.qtyDelta}</td>
                     <td className="px-5 py-3 text-right"><StatusPill tone={movementTone(movement.qtyDelta)}>{movement.qtyDelta > 0 ? "Inbound" : movement.qtyDelta < 0 ? "Outbound" : "Neutral"}</StatusPill></td>
                   </tr>

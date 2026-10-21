@@ -7,6 +7,7 @@ import { OrderSaleService } from "../orders/order-sale-service";
 import { ReservationService } from "../orders/reservation-service";
 import { SalesService } from "./nest/sales.service";
 import { createMemoryOrderNotificationOutbox } from "../orders/order-notification-outbox";
+import { setTestDoubleOutcome } from "../payments/provider";
 
 async function setup() {
   const db = createMemoryDb();
@@ -61,14 +62,38 @@ async function setup() {
     items: await db.listSaleItems(row.id, row.businessId),
     payments: await db.listPaymentsBySale(row.id, row.businessId),
   });
+  // The provider is authoritative for a hosted leg: a reconcile request that
+  // claims success must not be able to complete a sale the provider has not
+  // confirmed. Tests set providerVerdict before calling reconcilePayment.
+  let providerVerdict: "SUCCEEDED" | "FAILED" | "UNKNOWN" = "SUCCEEDED";
+  let providerQueries = 0;
   const service = new SalesPaymentReconciliationService(db, {
     requireSale,
     embedSale,
     applyStockEffect: async () => { stockApplications += 1; },
     postCashSale: async () => undefined,
     recordSale: async () => { metered += 1; },
+  }, {
+    configured: () => true,
+    queryProvider: async (businessId, paymentId) => {
+      providerQueries += 1;
+      expect(businessId).toBe("b1");
+      expect(typeof paymentId).toBe("string");
+      return { status: providerVerdict };
+    },
   });
-  return { db, sale, first, second, service, effects: () => ({ stockApplications, metered }) };
+  return {
+    db,
+    sale,
+    first,
+    second,
+    service,
+    effects: () => ({ stockApplications, metered }),
+    provider: {
+      get queries() { return providerQueries; },
+      setVerdict: (v: "SUCCEEDED" | "FAILED" | "UNKNOWN") => { providerVerdict = v; },
+    },
+  };
 }
 
 describe("sales payment reconciliation service", () => {
@@ -98,6 +123,47 @@ describe("sales payment reconciliation service", () => {
     expect(failed.sale.status).toBe("PAYMENT_FAILED");
     expect((failed.payment as DbPayment).status).toBe("FAILED");
     expect(effects()).toEqual({ stockApplications: 0, metered: 0 });
+  });
+
+  it("refuses to complete a hosted leg the provider has not confirmed", async () => {
+    const { db, first, service, effects, provider } = await setup();
+    provider.setVerdict("UNKNOWN");
+
+    await expect(
+      service.reconcilePayment("b1", "u1", "r2", first.id, "SUCCEEDED", "rec-unconfirmed"),
+    ).rejects.toThrow("PAYMENT_UNKNOWN");
+
+    expect(provider.queries).toBe(1);
+    expect((await db.findPaymentById(first.id, "b1"))?.status).toBe("UNKNOWN");
+    expect(effects()).toEqual({ stockApplications: 0, metered: 0 });
+  });
+
+  it("follows the provider when it contradicts a client-claimed success", async () => {
+    const { db, first, service, provider } = await setup();
+    provider.setVerdict("FAILED");
+
+    const out = await service.reconcilePayment("b1", "u1", "r2", first.id, "SUCCEEDED", "rec-contradicted");
+
+    expect(out.payment.status).toBe("FAILED");
+    expect((await db.findPaymentById(first.id, "b1"))?.status).toBe("FAILED");
+  });
+
+  it("does not ask the provider about a local cash leg", async () => {
+    const { db, sale, service, provider } = await setup();
+    const cash = await db.createPayment({
+      businessId: "b1",
+      saleId: sale.id,
+      method: "cash",
+      amountMinor: 100,
+      status: "UNKNOWN",
+      providerRef: null,
+      idempotencyKey: "cash-leg",
+    });
+
+    const out = await service.reconcilePayment("b1", "u1", "r9", cash.id, "SUCCEEDED", "rec-cash");
+
+    expect(provider.queries).toBe(0);
+    expect(out.payment.status).toBe("SUCCEEDED");
   });
 
   it("commits a linked WEB reservation once when UNKNOWN reconciliation succeeds", async () => {
@@ -141,6 +207,13 @@ describe("sales payment reconciliation service", () => {
     expect(unknown.sale.status).toBe("PAYMENT_UNKNOWN");
     const payment = (await db.listPaymentsBySale(sale.id, business.id))[0]!;
 
+    // The provider confirms this leg before the reconcile is allowed to settle
+    // it: the sale starts UNKNOWN because nothing has answered, and it completes
+    // because the provider has - not because the caller said so.
+    setTestDoubleOutcome("unknown-rec", "SUCCEEDED", business.id);
+    // A provider is wired up in this test, so the reconcile is only allowed to
+    // settle the leg once that provider says it is paid.
+    setTestDoubleOutcome("unknown-rec", "SUCCEEDED", business.id);
     const done = await sales.reconcilePayment(business.id, "staff", "rec-ok", payment.id, "SUCCEEDED", "rec-ok-key");
     expect(done.sale.status).toBe("COMPLETED");
     expect(await db.findOrderById(order.id, business.id)).toMatchObject({ status: "CONFIRMED" });

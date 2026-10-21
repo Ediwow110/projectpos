@@ -91,7 +91,7 @@ export function ReceiptPrinterDialog({
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="font-display text-[13px] font-semibold text-[#2a241f]">{selected.name}</p>
-                    <p className="font-data mt-1 text-[9px] text-[#9a8d83]">{branchName} · {selected.width}mm</p>
+                    <p className="font-data mt-1 text-[9px] text-[var(--color-atlas-muted-strong)]">{branchName} · {selected.width}mm</p>
                   </div>
                   <div className="flex items-center gap-2">
                     {selected.isDefault ? <StatusPill tone="info">Default</StatusPill> : null}

@@ -116,7 +116,12 @@ describe("premium POS shell", () => {
   it("keeps the desktop current-sale rail spatially stable like the Figma cart panel", () => {
     const cartSource = readFileSync(resolve(process.cwd(), "src/components/PosCartPanel.tsx"), "utf8");
 
-    expect(cartSource).toContain("xl:h-[244px]");
+    // 244px came from the Figma cart panel, but with the rail's tap targets at
+    // the 44px the accessibility audit demands, a 244px list pushes the Pay
+    // action below the fold at 1366x768 and the reachability spec fails. The
+    // panel keeps its proportions; the list gives back 24px so the primary
+    // action stays hittable at the shortest supported desktop height.
+    expect(cartSource).toContain("xl:h-[220px]");
     expect(cartSource).toContain('aria-label="Assign customer to sale"');
     expect(cartSource).toContain("grid grid-cols-4 gap-2");
     expect(cartSource).toContain("Clear sale");

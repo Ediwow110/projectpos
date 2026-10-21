@@ -145,7 +145,7 @@ export default function OnlineOrderingSettingsPage(): JSX.Element {
 
         {canManage && businessQuery.data && branchesQuery.data ? (
           <form noValidate onSubmit={(event) => void save(event)} className="space-y-5">
-            {success ? <div role="status" className="rounded-xl border border-[#cfe9dc] bg-[#eaf7f0] px-4 py-3 text-sm font-medium text-[#1f8a5b]">{success}</div> : null}
+            {success ? <div role="status" className="rounded-xl border border-[#cfe9dc] bg-[#eaf7f0] px-4 py-3 text-sm font-medium text-[var(--color-atlas-verified)]">{success}</div> : null}
             {error ? <div role="alert" className="rounded-xl border border-[#efb9b9] bg-[#fff0f0] px-4 py-3 text-sm font-medium text-[#c43e3e]">{error}</div> : null}
 
             <Panel className="p-5 sm:p-6">

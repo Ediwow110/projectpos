@@ -43,7 +43,7 @@ export function PosSaleConfirmedDialog({ sale, onClose }: { sale: PosConfirmedSa
         </p>
         <p className="rounded-[8px] bg-[#eff2ed] px-4 py-[18px] text-[13px] text-[#202826]">Payment: confirmed</p>
         <p className="rounded-[8px] bg-[#eff2ed] px-4 py-[18px] text-[13px] text-[#202826]">Receipt: available</p>
-        <p className="text-[11px] leading-5 text-[#71807a]">
+        <p className="text-[11px] leading-5 text-[var(--color-atlas-muted-strong)]">
           This is a POS receipt for the completed sale, not a tax invoice or BIR-compliant document.
         </p>
       </div>

@@ -219,6 +219,11 @@ describe("phase4 sales permissions, unknown, and cross-tenant", () => {
     expect(res.status).toBe(202);
     expect(res.body.code).toBe("PAYMENT_UNKNOWN");
     const paymentId = res.body.sale.payments[0].id;
+
+    // No provider is wired up for this app, so this is the attested manual
+    // settlement path and the reconcile stands. Where a provider does exist it
+    // decides instead: see payment-reconciliation-service.test.ts, which covers
+    // the confirmed, contradicted and unconfirmed verdicts.
     const rec = await request(app.getHttpServer()).post(`/api/v1/payments/${paymentId}/reconcile`)
       .set("Cookie", cookie).set("X-CSRF-Token", csrf)
       .set("Idempotency-Key", "rec-key-1")

@@ -34,18 +34,18 @@ function ExceptionRow({ index, title, detail, priority, owner, href }: {
     <span aria-hidden className={`grid h-[42px] w-[42px] place-items-center rounded-[9px] text-sm font-semibold ${priority === "HIGH" ? "bg-[#fff1ef] text-[#b74945]" : "bg-[#f0f3ef] text-[#53615a]"}`}>{String(index).padStart(2, "0")}</span>
     <div className="min-w-0">
       <h3 className="text-sm font-semibold text-[#202826]">{title}</h3>
-      <p className="mt-1 break-words text-xs text-[#748078]">{detail}</p>
+      <p className="mt-1 break-words text-xs text-[var(--color-atlas-muted-strong)]">{detail}</p>
       <Link href={href} aria-label={`Review record: ${title}`} className="mt-2 inline-flex min-h-8 items-center text-xs font-semibold text-[#267552] underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#267552]">Review record<span className="sr-only">: {title}</span></Link>
     </div>
     <StatusPill tone={priority === "HIGH" ? "bad" : priority === "MEDIUM" ? "warn" : "info"}>{priority}</StatusPill>
-    <span className="rounded-md bg-[#f0f3ef] px-3 py-2 text-xs font-semibold text-[#748078]">{owner}</span>
+    <span className="rounded-md bg-[#f0f3ef] px-3 py-2 text-xs font-semibold text-[var(--color-atlas-muted-strong)]">{owner}</span>
   </article>;
 }
 
 function CategoryState({ pending, error, empty, children }: {
   pending: boolean; error: unknown; empty: boolean; children: ReactNode;
 }): JSX.Element | null {
-  if (pending) return <p className="px-1 py-3 text-sm text-[#748078]">Checking current records…</p>;
+  if (pending) return <p className="px-1 py-3 text-sm text-[var(--color-atlas-muted-strong)]">Checking current records…</p>;
   if (error) return <p role="alert" className="px-1 py-3 text-sm text-[#8c4337]">This category could not be checked with your current access. Open its workflow to review it directly.</p>;
   if (empty) return null;
   return <>{children}</>;
@@ -85,15 +85,24 @@ export default function OperationalExceptionsPage(): JSX.Element {
     !["COMPLETED", "REJECTED", "CANCELLED", "EXPIRED"].includes(row.status)
       && olderThan40Minutes(row.submittedAt ?? row.createdAt));
   const exceptionCount = unknownPayments.length + countVariances.length + staleHeld.length + delayedOrders.length;
+  // A failed query is an unknown count, not a zero: the visible total must never be
+  // presented as "clear" while one of these categories could not be checked.
+  const uncheckedCategories = [
+    { label: "payment status unknown", query: sales },
+    { label: "stock count variances", query: counts },
+    { label: "open held sales", query: held },
+    { label: "web order handoffs", query: orders },
+  ].filter((category) => category.query.isError).map((category) => category.label);
   const role = me.data?.role ?? "";
 
   return <AppShell role={role} businessName={me.data?.businessName} atlasApprovals={canReview}>
     <main className={canReview ? "mx-auto w-full max-w-none space-y-6 px-4 pb-12 pt-8 sm:px-8 lg:px-[40px]" : "mx-auto w-full max-w-[1480px] space-y-6 px-4 py-6 sm:px-6 lg:px-8"}>
       <PageHeader eyebrow="APPROVAL OPERATIONS / ATLAS 2026" title="Operational exception center" description="Review by urgency and ownership. Exceptions link to their existing protected workflows; this page does not change payment, stock, or order state." />
-      {!me.isPending && !canReview ? <Panel className="p-6"><h2 className="font-semibold text-[#202826]">Manager access required</h2><p className="mt-2 text-sm text-[#748078]">Operational exceptions are available to managers and owners.</p></Panel> :
+      {!me.isPending && !canReview ? <Panel className="p-6"><h2 className="font-semibold text-[#202826]">Manager access required</h2><p className="mt-2 text-sm text-[var(--color-atlas-muted-strong)]">Operational exceptions are available to managers and owners.</p></Panel> :
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_270px]">
           <Panel className="space-y-3 p-4 sm:p-5">
-            <div className="flex flex-wrap items-end justify-between gap-2 pb-2"><div><h2 className="font-display text-xl font-semibold text-[#202826]">Review by urgency and ownership</h2><p className="mt-1 text-xs text-[#748078]">{me.data?.activeBranchName ? `Active scope: ${me.data.activeBranchName}` : "Active authorized workspace scope"} · {exceptionCount} open exception{exceptionCount === 1 ? "" : "s"}</p></div><StatusPill tone={exceptionCount ? "warn" : "ok"}>{exceptionCount ? "Review needed" : "Clear"}</StatusPill></div>
+            <div className="flex flex-wrap items-end justify-between gap-2 pb-2"><div><h2 className="font-display text-xl font-semibold text-[#202826]">Review by urgency and ownership</h2><p className="mt-1 text-xs text-[var(--color-atlas-muted-strong)]">{me.data?.activeBranchName ? `Active scope: ${me.data.activeBranchName}` : "Active authorized workspace scope"} · {uncheckedCategories.length > 0 ? "exception count incomplete" : `${exceptionCount} open exception${exceptionCount === 1 ? "" : "s"}`}</p></div><StatusPill tone={uncheckedCategories.length > 0 ? "bad" : exceptionCount ? "warn" : "ok"}>{uncheckedCategories.length > 0 ? "Incomplete" : exceptionCount ? "Review needed" : "Clear"}</StatusPill></div>
+            {uncheckedCategories.length > 0 && <p role="alert" className="rounded-lg bg-[#fafbf9] p-4 text-sm text-[#8c4337]">{`${uncheckedCategories.length} categor${uncheckedCategories.length === 1 ? "y" : "ies"} could not be checked (${uncheckedCategories.join(", ")}). Their records are unknown, not clear — the count above only covers the categories that answered.`}</p>}
             <CategoryState pending={sales.isPending} error={sales.error} empty={!unknownPayments.length}>
               {unknownPayments.map((row) => <ExceptionRow key={row.id} index={1} title="Payment status unknown" detail={`${row.receiptNo} · ${money(row.totalMinor)} · ${formatDate(row.createdAt)} · confirm before retry`} priority="HIGH" owner="Finance" href={`/sales/${encodeURIComponent(row.id)}`} />)}
             </CategoryState>
@@ -106,16 +115,16 @@ export default function OperationalExceptionsPage(): JSX.Element {
             <CategoryState pending={orders.isPending} error={orders.error} empty={!delayedOrders.length}>
               {delayedOrders.map((row) => <ExceptionRow key={row.id} index={4} title="Web order handoff delayed" detail={`Order ${row.shortCode ?? row.id.slice(0, 8)} · ${row.status.toLowerCase().replaceAll("_", " ")} · submitted ${formatDate(row.submittedAt ?? row.createdAt)}`} priority="MEDIUM" owner="Orders" href={`/orders/${encodeURIComponent(row.id)}`} />)}
             </CategoryState>
-            {exceptionCount === 0 && [sales, counts, held, orders].every((query) => !query.isPending && !query.isError) && <p className="rounded-lg bg-[#fafbf9] p-5 text-sm text-[#748078]">No operational exceptions need review in the current authorized scope.</p>}
-            {[sales, counts, held, orders].some((query) => query.isError) && <p className="border-t border-[#e5e9e3] pt-3 text-xs text-[#748078]">Some categories may be hidden because your role does not have permission to view them. Their records remain protected in the linked workflows.</p>}
+            {exceptionCount === 0 && [sales, counts, held, orders].every((query) => !query.isPending && !query.isError) && <p className="rounded-lg bg-[#fafbf9] p-5 text-sm text-[var(--color-atlas-muted-strong)]">No operational exceptions need review in the current authorized scope.</p>}
+            {[sales, counts, held, orders].some((query) => query.isError) && <p className="border-t border-[#e5e9e3] pt-3 text-xs text-[var(--color-atlas-muted-strong)]">Some categories may be hidden because your role does not have permission to view them. Their records remain protected in the linked workflows.</p>}
             {me.isError && <p role="alert" className="text-sm text-[#8c4337]">Workspace access could not be verified. Refresh and try again.</p>}
             {me.error instanceof ApiError && me.error.status === 401 && <p role="alert" className="text-sm text-[#8c4337]">Sign in to review operational exceptions.</p>}
           </Panel>
           <Panel className="h-fit space-y-4 p-4 sm:p-5">
             <h2 className="font-display text-base font-semibold text-[#202826]">Exception controls</h2>
-            <p className="border-l-2 border-[#e7a59a] pl-3 text-sm leading-6 text-[#53615a]">Payment status unknown</p><p className="-mt-3 text-xs text-[#748078]">Confirm against provider and settlement records before any retry.</p>
-            <p className="border-l-2 border-[#d6c28e] pl-3 text-sm leading-6 text-[#53615a]">Inventory count variance</p><p className="-mt-3 text-xs text-[#748078]">Review and post through the existing stock-count approval flow.</p>
-            <p className="border-l-2 border-[#b8c8bb] pl-3 text-sm leading-6 text-[#53615a]">One-use protected actions</p><p className="-mt-3 text-xs text-[#748078]">This center is read-only. Authorization and execution remain in their source workflows.</p>
+            <p className="border-l-2 border-[#e7a59a] pl-3 text-sm leading-6 text-[#53615a]">Payment status unknown</p><p className="-mt-3 text-xs text-[var(--color-atlas-muted-strong)]">Confirm against provider and settlement records before any retry.</p>
+            <p className="border-l-2 border-[#d6c28e] pl-3 text-sm leading-6 text-[#53615a]">Inventory count variance</p><p className="-mt-3 text-xs text-[var(--color-atlas-muted-strong)]">Review and post through the existing stock-count approval flow.</p>
+            <p className="border-l-2 border-[#b8c8bb] pl-3 text-sm leading-6 text-[#53615a]">One-use protected actions</p><p className="-mt-3 text-xs text-[var(--color-atlas-muted-strong)]">This center is read-only. Authorization and execution remain in their source workflows.</p>
             <div className="flex flex-wrap gap-2 border-t border-[#e5e9e3] pt-3"><Link className="text-xs font-semibold text-[#267552] underline-offset-4 hover:underline" href="/customer-concerns">Approval inbox</Link><Link className="text-xs font-semibold text-[#267552] underline-offset-4 hover:underline" href="/reports/payments">Payment report</Link></div>
           </Panel>
         </div>}

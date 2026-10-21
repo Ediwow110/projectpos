@@ -359,7 +359,7 @@ function OrderExperience(): JSX.Element {
               aria-pressed={fulfillmentMode === "PICKUP"}
               disabled={storefront.pickupBranches.length === 0}
               onClick={() => chooseMode("PICKUP")}
-              className={"min-h-11 rounded-[10px] border px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-45 " + (fulfillmentMode === "PICKUP" ? "border-[#f35d3f] bg-[#fff0ea] text-[#d94a30]" : "border-[#e4d9d0] bg-white text-[#4d443d] hover:border-[#d5c4b7]")}
+              className={"min-h-11 rounded-[10px] border px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-45 " + (fulfillmentMode === "PICKUP" ? "border-[#f35d3f] bg-[#fff0ea] text-[var(--color-atlas-accent-strong)]" : "border-[#e4d9d0] bg-white text-[#4d443d] hover:border-[#d5c4b7]")}
             >
               Pickup
             </button>
@@ -368,7 +368,7 @@ function OrderExperience(): JSX.Element {
               aria-pressed={fulfillmentMode === "DELIVERY"}
               disabled={!storefront.deliveryAvailable}
               onClick={() => chooseMode("DELIVERY")}
-              className={"min-h-11 rounded-[10px] border px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-45 " + (fulfillmentMode === "DELIVERY" ? "border-[#f35d3f] bg-[#fff0ea] text-[#d94a30]" : "border-[#e4d9d0] bg-white text-[#4d443d] hover:border-[#d5c4b7]")}
+              className={"min-h-11 rounded-[10px] border px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-45 " + (fulfillmentMode === "DELIVERY" ? "border-[#f35d3f] bg-[#fff0ea] text-[var(--color-atlas-accent-strong)]" : "border-[#e4d9d0] bg-white text-[#4d443d] hover:border-[#d5c4b7]")}
             >
               Delivery
             </button>
@@ -416,7 +416,7 @@ function OrderExperience(): JSX.Element {
                   <h2 className="font-display text-lg font-semibold">Available products</h2>
                   <p className="mt-1 text-[11px] text-[#8d8178]">{catalog?.total ?? 0} product{catalog?.total === 1 ? "" : "s"} in this location</p>
                 </div>
-                {(catalog?.total ?? 0) > 100 ? <span className="font-data text-[9px] text-[#9a8d83]">Showing first 100</span> : null}
+                {(catalog?.total ?? 0) > 100 ? <span className="font-data text-[9px] text-[var(--color-atlas-muted-strong)]">Showing first 100</span> : null}
               </div>
               <ul className="divide-y divide-[#eee6de]">
                 {(catalog?.items ?? []).map((item) => {
@@ -427,12 +427,12 @@ function OrderExperience(): JSX.Element {
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="truncate text-sm font-semibold text-[#2a241f]">{item.name}</h3>
-                          {item.brand ? <span className="font-data text-[9px] uppercase tracking-[0.08em] text-[#9a8d83]">{item.brand}</span> : null}
+                          {item.brand ? <span className="font-data text-[9px] uppercase tracking-[0.08em] text-[var(--color-atlas-muted-strong)]">{item.brand}</span> : null}
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[#73685f]">
                           <span className="font-data font-semibold text-[#17130f]">{formatOrderMoney(item.priceMinor, storefront.currency)}</span>
                           <span>{item.unit}</span>
-                          <span className={unavailable ? "font-semibold text-[#c43e3e]" : "text-[#1f8a5b]"}>
+                          <span className={unavailable ? "font-semibold text-[#c43e3e]" : "text-[var(--color-atlas-verified)]"}>
                             {item.availableToSell === null ? "Available" : unavailable ? "Out of stock" : item.availableToSell + " available"}
                           </span>
                         </div>
@@ -513,7 +513,7 @@ function OrderExperience(): JSX.Element {
                     <span className="font-data text-[14px] font-bold">{formatOrderMoney(serverTotals.totalMinor, storefront.currency)}</span>
                   </div>
                 ) : (
-                  <p className="mt-3 text-[10px] leading-4 text-[#9a8d83]">Taxes and final totals are recalculated by the store when you submit.</p>
+                  <p className="mt-3 text-[10px] leading-4 text-[var(--color-atlas-muted-strong)]">Taxes and final totals are recalculated by the store when you submit.</p>
                 )}
               </div>
 
@@ -546,7 +546,7 @@ function OrderExperience(): JSX.Element {
                 ) : null}
 
                 <label className="block text-[11px] font-semibold text-[#655b53]">
-                  Fulfillment notes <span className="font-normal text-[#9a8d83]">(optional)</span>
+                  Fulfillment notes <span className="font-normal text-[var(--color-atlas-muted-strong)]">(optional)</span>
                   <textarea className="field mt-2 min-h-20 resize-y" value={instructions} onChange={(event) => setInstructions(event.target.value)} placeholder="Pickup or delivery instructions" />
                 </label>
 
@@ -558,7 +558,7 @@ function OrderExperience(): JSX.Element {
                         type="button"
                         aria-pressed={paymentMode === "PAY_AT_PICKUP"}
                         onClick={() => { setPaymentMode("PAY_AT_PICKUP"); setPaymentMethod(null); invalidateDraft(); }}
-                        className={"min-h-11 rounded-[9px] border px-3 text-[11px] font-semibold " + (paymentMode === "PAY_AT_PICKUP" ? "border-[#f35d3f] bg-[#fff0ea] text-[#d94a30]" : "border-[#e4d9d0]")}
+                        className={"min-h-11 rounded-[9px] border px-3 text-[11px] font-semibold " + (paymentMode === "PAY_AT_PICKUP" ? "border-[#f35d3f] bg-[#fff0ea] text-[var(--color-atlas-accent-strong)]" : "border-[#e4d9d0]")}
                       >
                         Pay at pickup
                       </button>
@@ -566,7 +566,7 @@ function OrderExperience(): JSX.Element {
                         type="button"
                         aria-pressed={paymentMode === "PREPAID"}
                         onClick={() => { setPaymentMode("PREPAID"); setPaymentMethod((current) => current ?? "card"); invalidateDraft(); }}
-                        className={"min-h-11 rounded-[9px] border px-3 text-[11px] font-semibold " + (paymentMode === "PREPAID" ? "border-[#f35d3f] bg-[#fff0ea] text-[#d94a30]" : "border-[#e4d9d0]")}
+                        className={"min-h-11 rounded-[9px] border px-3 text-[11px] font-semibold " + (paymentMode === "PREPAID" ? "border-[#f35d3f] bg-[#fff0ea] text-[var(--color-atlas-accent-strong)]" : "border-[#e4d9d0]")}
                       >
                         Pay online
                       </button>
@@ -594,7 +594,7 @@ function OrderExperience(): JSX.Element {
                 >
                   {submitting ? "Submitting order…" : paymentMode === "PREPAID" ? "Continue to secure payment" : "Submit pickup order"}
                 </button>
-                <p className="text-center font-data text-[9px] leading-4 text-[#9a8d83]">Final pricing, tax, and availability are verified by the store when you submit.</p>
+                <p className="text-center font-data text-[9px] leading-4 text-[var(--color-atlas-muted-strong)]">Final pricing, tax, and availability are verified by the store when you submit.</p>
               </div>
             </div>
           </form>

@@ -137,6 +137,7 @@ describe("phase22 security and redaction contract", () => {
     await expect(access.authenticate(minted.token, "STATUS", other.id)).rejects.toThrow("NOT_FOUND");
 
     const status = await request(app.getHttpServer()).post("/api/v1/public/orders/status")
+      .set("Origin", ORIGIN)
       .send({ token: minted.token });
     expect(status.status).toBe(200);
     expect(status.body.id).toBe(direct.id);

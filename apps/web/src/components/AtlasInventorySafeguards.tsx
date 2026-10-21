@@ -13,11 +13,11 @@ export function AtlasInventorySafeguards({
     <header className="space-y-1">
       <p className="font-data text-[11px] font-medium tracking-[0.1em] text-[#267552]">INVENTORY CONTROLS / ATLAS 2026</p>
       <h2 className="font-display text-[30px] font-semibold tracking-tight text-[#202826]">{title}</h2>
-      <p className="text-[13px] leading-5 text-[#748078]">{description}</p>
+      <p className="text-[13px] leading-5 text-[var(--color-atlas-muted-strong)]">{description}</p>
     </header>
     <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_269px]">
       <div className="min-w-0 rounded-[13px] border border-[#e5e9e3] bg-white p-5 sm:p-6">
-        {alert ? <p className="mb-4 rounded-lg bg-[#fcf1df] px-3 py-2 text-xs font-semibold text-[#9a6e32]">{alert}</p> : null}
+        {alert ? <p className="mb-4 rounded-lg bg-[#fcf1df] px-3 py-2 text-xs font-semibold text-[var(--color-atlas-warning-strong)]">{alert}</p> : null}
         {children}
       </div>
       <aside aria-label={`${title} safeguards`} className="rounded-[13px] border border-[#e5e9e3] bg-white p-4 sm:p-5">

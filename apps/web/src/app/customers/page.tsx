@@ -96,7 +96,7 @@ export default function CustomersPage(): JSX.Element {
           }
         />
 
-        {success ? <div role="status" className="rounded-xl border border-[#cfe9dc] bg-[#eaf7f0] px-4 py-3 text-sm font-medium text-[#1f8a5b]">{success}</div> : null}
+        {success ? <div role="status" className="rounded-xl border border-[#cfe9dc] bg-[#eaf7f0] px-4 py-3 text-sm font-medium text-[var(--color-atlas-verified)]">{success}</div> : null}
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Customer summary">
           <MetricCard label="Matching customers" value={(listQuery.data?.total ?? 0).toLocaleString("en-PH")} icon="○" meta="Current search" />
@@ -129,7 +129,7 @@ export default function CustomersPage(): JSX.Element {
               <p className="mt-1 text-[11px] text-[#7a6f66]">Profiles returned by the active customer search.</p>
             </div>
             {listQuery.isLoading ? <p className="px-5 pb-6 text-sm text-[#73685f]">Loading customers…</p> : null}
-            {listQuery.data && items.length === 0 ? <p className="px-5 pb-8 text-sm text-[#8b8077]">No customers found.</p> : null}
+            {listQuery.data && items.length === 0 ? <p className="px-5 pb-8 text-sm text-[var(--color-atlas-muted-strong)]">No customers found.</p> : null}
             {items.length > 0 ? (
               <table className="premium-table min-w-[620px] text-left text-[12px]">
                 <thead>
@@ -143,7 +143,7 @@ export default function CustomersPage(): JSX.Element {
                   {items.map((customer) => (
                     <tr key={customer.id}>
                       <td className="px-5 py-3">
-                        <Link href={"/customers/" + customer.id} className="font-semibold text-[#2a241f] hover:text-[#d94a30]">
+                        <Link href={"/customers/" + customer.id} className="font-semibold text-[#2a241f] hover:text-[var(--color-atlas-accent-strong)]">
                           {customerLabel(customer)}
                         </Link>
                       </td>

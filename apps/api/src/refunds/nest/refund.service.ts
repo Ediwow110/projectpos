@@ -41,7 +41,7 @@ export class RefundService {
   }
 
   private async findRequester(businessId: string, saleId: string): Promise<string | null> {
-    const audit = await this.db.listAudit();
+    const audit = await this.db.listAudit(businessId);
     const requests = audit.filter(
       (a) => a.businessId === businessId && a.entityType === "Sale" && a.entityId === saleId && a.action === "refund.request",
     );

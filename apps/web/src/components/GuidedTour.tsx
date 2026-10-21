@@ -120,6 +120,39 @@ interface Rect {
   height: number;
 }
 
+/** Minimal shape the tour needs from a highlighted element. `parentDisclosure`
+ * is the Atlas "All workspace destinations" group the link may sit inside. */
+export interface TourCandidate {
+  getClientRects(): ArrayLike<unknown>;
+  parentDisclosure?: { open: boolean } | null;
+}
+
+/**
+ * Resolve a step target to something the user can actually see. A rendered
+ * candidate wins; otherwise the first match hidden behind a collapsed
+ * disclosure is revealed, because Atlas task rails keep authorized routes in
+ * that group. Returns null when no shell exposes the target.
+ */
+export function resolveTourTarget<T extends TourCandidate>(candidates: readonly T[]): T | null {
+  const rendered = candidates.find((candidate) => candidate.getClientRects().length > 0);
+  if (rendered) return rendered;
+  for (const candidate of candidates) {
+    const disclosure = candidate.parentDisclosure;
+    if (!disclosure || disclosure.open) continue;
+    disclosure.open = true;
+    if (candidate.getClientRects().length > 0) return candidate;
+  }
+  return null;
+}
+
+function tourCandidates(target: string): (TourCandidate & { element: HTMLElement })[] {
+  return Array.from(document.querySelectorAll<HTMLElement>(`[data-tour="${target}"]`)).map((element) => ({
+    element,
+    getClientRects: () => element.getClientRects(),
+    parentDisclosure: element.closest("details") as HTMLDetailsElement | null,
+  }));
+}
+
 export function GuidedTour({
   open,
   role,
@@ -171,11 +204,8 @@ export function GuidedTour({
       setRect(null);
       return;
     }
-    const target = step.target
-      ? Array.from(document.querySelectorAll<HTMLElement>(`[data-tour="${step.target}"]`)).find(
-          (candidate) => candidate.getClientRects().length > 0,
-        ) ?? null
-      : null;
+    const resolved = step.target ? resolveTourTarget(tourCandidates(step.target)) : null;
+    const target = resolved?.element ?? null;
     if (!target) {
       setRect(null);
       return;
@@ -244,8 +274,11 @@ export function GuidedTour({
 
   const finalStep = index === steps.length - 1;
   return (
-    <div className="fixed inset-0 z-[120]" role="presentation">
-      <div className="absolute inset-0 bg-[#17130f]/60 backdrop-blur-[1px]" aria-hidden />
+    // Modeless overlay: the dim layer ignores pointer events so the action a
+    // step instructs (open Shifts, start POS) can be performed on the real page
+    // while the tour stays open. The dialog re-enables its own events.
+    <div className="fixed inset-0 z-[120] pointer-events-none" role="presentation">
+      <div className="absolute inset-0 bg-[#17130f]/60 backdrop-blur-[1px] pointer-events-none" aria-hidden />
       {rect ? (
         <div
           aria-hidden
@@ -261,14 +294,14 @@ export function GuidedTour({
         aria-labelledby="workspace-tour-title"
         aria-describedby="workspace-tour-description"
         className={
-          "fixed z-[122] w-[calc(100%-2rem)] max-w-[480px] rounded-[18px] border border-[#eee4db] bg-white p-5 text-[#17130f] shadow-[0_28px_80px_-22px_rgb(0_0_0/0.5)] sm:p-6 " +
+          "fixed z-[122] pointer-events-auto w-[calc(100%-2rem)] max-w-[480px] rounded-[18px] border border-[#eee4db] bg-white p-5 text-[#17130f] shadow-[0_28px_80px_-22px_rgb(0_0_0/0.5)] sm:p-6 " +
           (index === 0 ? "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" : "bottom-5 left-1/2 -translate-x-1/2 sm:bottom-7")
         }
       >
         <div className="flex items-start gap-4">
           <NexposMark size={40} className="rounded-xl" />
           <div className="min-w-0 flex-1">
-            <p className="font-data text-[9px] font-semibold uppercase tracking-[0.14em] text-[#e44e34]">
+            <p className="font-data text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--color-atlas-accent-strong)]">
               System tour · {index + 1} of {steps.length}
             </p>
             <h2 id="workspace-tour-title" className="font-display mt-2 text-xl font-bold">{step.title}</h2>
@@ -277,7 +310,7 @@ export function GuidedTour({
             type="button"
             onClick={closeAndRestoreFocus}
             aria-label="Close tour and do not show automatically again"
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-[#eee4db] text-[#73685f] hover:border-[#f2b8a9] hover:text-[#d94a30]"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-[#eee4db] text-[#73685f] hover:border-[#f2b8a9] hover:text-[var(--color-atlas-accent-strong)]"
           >
             ✕
           </button>

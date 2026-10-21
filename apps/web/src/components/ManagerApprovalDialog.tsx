@@ -213,7 +213,7 @@ export function ManagerApprovalDialog({
         ) : (
           <label className="block text-[11px] font-semibold text-[#655b53]">Manager password<span className="mt-1.5 flex gap-2"><input type={showPassword ? "text" : "password"} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} disabled={busy} className="field min-w-0 flex-1" placeholder="Password" /><GhostButton type="button" disabled={busy} aria-pressed={showPassword} aria-label={showPassword ? "Hide manager password" : "Show manager password"} onClick={() => setShowPassword((current) => !current)} className="shrink-0">{showPassword ? "Hide" : "Show"}</GhostButton></span></label>
         )}
-        <button type="button" disabled={busy} onClick={() => { setMode((current) => current === "pin" ? "password" : "pin"); setError(""); }} className="text-[11px] font-semibold text-[#d94a30] hover:text-[#b93d28] disabled:opacity-50">{mode === "pin" ? "Use password instead" : "Use approval PIN instead"}</button>
+        <button type="button" disabled={busy} onClick={() => { setMode((current) => current === "pin" ? "password" : "pin"); setError(""); }} className="text-[11px] font-semibold text-[var(--color-atlas-accent-strong)] hover:text-[#b93d28] disabled:opacity-50">{mode === "pin" ? "Use password instead" : "Use approval PIN instead"}</button>
         {error ? <p role="alert" className="rounded-xl border border-[#efb9b9] bg-[#fff0f0] px-3 py-2.5 text-[12px] font-medium text-[#c43e3e]">{error}</p> : null}
       </form>
     </Modal>

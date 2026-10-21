@@ -245,7 +245,7 @@ export default function DashboardPage(): JSX.Element {
                 ["Shifts", "/shifts"],
                 ["Customers", "/customers"],
               ].map(([label, href]) => (
-                <Link key={href} href={href} className="rounded-xl border border-[#e4d9d0] bg-[#fcf8f3] px-3 py-3 text-sm font-semibold text-[#2a241f] transition hover:border-[#f35d3f] hover:text-[#d94a30]">
+                <Link key={href} href={href} className="rounded-xl border border-[#e4d9d0] bg-[#fcf8f3] px-3 py-3 text-sm font-semibold text-[#2a241f] transition hover:border-[#f35d3f] hover:text-[var(--color-atlas-accent-strong)]">
                   {label}
                 </Link>
               ))}
@@ -287,7 +287,7 @@ export default function DashboardPage(): JSX.Element {
                           key={item}
                           type="button"
                           onClick={() => setMetric(item)}
-                          className={"rounded-lg px-3 py-1.5 text-[10px] font-semibold capitalize " + (activeMetric === item ? "bg-[#fff0ea] text-[#e44e34]" : "text-[#73685f]")}
+                          className={"rounded-lg px-3 py-1.5 text-[10px] font-semibold capitalize " + (activeMetric === item ? "bg-[#fff0ea] text-[var(--color-atlas-accent-strong)]" : "text-[#73685f]")}
                         >
                           {item}
                         </button>
@@ -307,15 +307,15 @@ export default function DashboardPage(): JSX.Element {
               <Panel className="p-5">
                 <SectionHeader title="Store health" description="Operational items that need a human decision." action={<StatusPill tone={attention.length === 0 ? "ok" : "warn"}>{attention.length === 0 ? "Healthy" : attention.length + " alerts"}</StatusPill>} />
                 {attention.length === 0 ? (
-                  <div className="mt-5 rounded-xl bg-[#eaf7f0] p-4 text-sm font-medium text-[#1f8a5b]">No dashboard attention items right now.</div>
+                  <div className="mt-5 rounded-xl bg-[#eaf7f0] p-4 text-sm font-medium text-[var(--color-atlas-verified)]">No dashboard attention items right now.</div>
                 ) : (
                   <ul className="mt-4 space-y-2">
                     {attention.slice(0, 4).map((item) => (
                       <li key={item.kind} className="flex items-center gap-3 rounded-xl bg-[#fcf8f3] p-3">
-                        <span aria-hidden className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#fff4df] font-bold text-[#b56d0c]">!</span>
+                        <span aria-hidden className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#fff4df] font-bold text-[var(--color-atlas-warning-strong)]">!</span>
                         <div className="min-w-0 flex-1">
-                          <Link href={item.href} className="block truncate text-[12px] font-semibold text-[#2a241f] hover:text-[#d94a30]">{item.label}</Link>
-                          <p className="mt-0.5 text-[10px] text-[#8b8077]">{item.count} item(s) · Review now</p>
+                          <Link href={item.href} className="block truncate text-[12px] font-semibold text-[#2a241f] hover:text-[var(--color-atlas-accent-strong)]">{item.label}</Link>
+                          <p className="mt-0.5 text-[10px] text-[var(--color-atlas-muted-strong)]">{item.count} item(s) · Review now</p>
                         </div>
                       </li>
                     ))}
@@ -352,7 +352,7 @@ export default function DashboardPage(): JSX.Element {
 
             <div className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
               <Panel className="p-5">
-                <SectionHeader title="Top selling products" description="Best-performing products for this selected range." action={<Link href="/reports/products" className="text-[11px] font-semibold text-[#e44e34]">View all →</Link>} />
+                <SectionHeader title="Top selling products" description="Best-performing products for this selected range." action={<Link href="/reports/products" className="text-[11px] font-semibold text-[var(--color-atlas-accent-strong)]">View all →</Link>} />
                 <div className="mt-4 overflow-x-auto">
                   <table className="premium-table min-w-[560px] text-left text-[12px]">
                     <thead>
@@ -392,7 +392,7 @@ export default function DashboardPage(): JSX.Element {
 
             <nav aria-label="Reports" className="flex flex-wrap gap-2 pb-2">
               {["sales", "products", "inventory", "payments", "cash", "customers", "cashiers", "branches"].map((report) => (
-                <Link key={report} href={"/reports/" + report} className="rounded-full border border-[#e4d9d0] bg-white px-3 py-1.5 text-[10px] font-semibold capitalize text-[#73685f] hover:border-[#f35d3f] hover:text-[#d94a30]">
+                <Link key={report} href={"/reports/" + report} className="rounded-full border border-[#e4d9d0] bg-white px-3 py-1.5 text-[10px] font-semibold capitalize text-[#73685f] hover:border-[#f35d3f] hover:text-[var(--color-atlas-accent-strong)]">
                   {report}
                 </Link>
               ))}

@@ -111,6 +111,7 @@ describe("phase22 public ordering", () => {
     expect(lines[0]).toMatchObject({ priceMinor: 1200, qty: 2 });
 
     const status = await request(app.getHttpServer()).post("/api/v1/public/orders/status")
+      .set("Origin", origin)
       .send({ token: submit.body.statusToken });
     expect(status.status).toBe(200);
     expect(status.body).toMatchObject({ id: created.body.id, status: "SUBMITTED", paymentStatus: "UNPAID" });
@@ -178,6 +179,7 @@ describe("phase22 public ordering", () => {
     expect(sent.slice(sentBeforeConfirm).filter((row) => row.event === "CONFIRMED")).toHaveLength(1);
 
     const oldStatus = await request(app.getHttpServer()).post("/api/v1/public/orders/status")
+      .set("Origin", origin)
       .send({ token: good.body.statusToken });
     expect(oldStatus.status).toBe(200);
     expect(oldStatus.body.status).toBe("CONFIRMED");

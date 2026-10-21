@@ -144,7 +144,7 @@ export function SaleExchangeDialog({
         <section className="space-y-3" aria-label="Items to return">
           <div>
             <h3 className="text-sm font-semibold text-[#2a241f]">1. Choose return quantities</h3>
-            <p className="mt-1 text-[11px] text-[#8b8077]">Refund values come from the recorded sale lines, including historical discounts.</p>
+            <p className="mt-1 text-[11px] text-[var(--color-atlas-muted-strong)]">Refund values come from the recorded sale lines, including historical discounts.</p>
           </div>
           {lines.map((line) => {
             const refundable = Math.max(0, line.qty - line.alreadyRefundedQty);
@@ -152,7 +152,7 @@ export function SaleExchangeDialog({
               <label key={line.id} className="grid gap-2 rounded-xl border border-[#eee4db] bg-white p-3 sm:grid-cols-[minmax(0,1fr)_120px] sm:items-end">
                 <span>
                   <span className="block text-[12px] font-semibold text-[#2a241f]">{line.name}</span>
-                  <span className="font-data mt-1 block text-[10px] text-[#8b8077]">Sold {line.qty} · refundable {refundable} · recorded value ₱{money(line.lineTotalMinor)}</span>
+                  <span className="font-data mt-1 block text-[10px] text-[var(--color-atlas-muted-strong)]">Sold {line.qty} · refundable {refundable} · recorded value ₱{money(line.lineTotalMinor)}</span>
                 </span>
                 <span className="text-[10px] font-semibold text-[#655b53]">
                   Return qty
@@ -176,7 +176,7 @@ export function SaleExchangeDialog({
         <section className="space-y-3" aria-label="Replacement products">
           <div>
             <h3 className="text-sm font-semibold text-[#2a241f]">2. Add replacement items</h3>
-            <p className="mt-1 text-[11px] text-[#8b8077]">Replacement pricing uses the current active catalog and configured tax.</p>
+            <p className="mt-1 text-[11px] text-[var(--color-atlas-muted-strong)]">Replacement pricing uses the current active catalog and configured tax.</p>
           </div>
           <label className="block text-[11px] font-semibold text-[#655b53]">
             Search replacement products
@@ -188,14 +188,14 @@ export function SaleExchangeDialog({
               placeholder="Product name, SKU or barcode"
             />
           </label>
-          {productsLoading ? <p className="text-sm text-[#8b8077]">Loading products…</p> : null}
-          {!productsLoading && products.length === 0 ? <p className="rounded-xl bg-[#f7f1ea] p-4 text-sm text-[#8b8077]">No active products match this search.</p> : null}
+          {productsLoading ? <p className="text-sm text-[var(--color-atlas-muted-strong)]">Loading products…</p> : null}
+          {!productsLoading && products.length === 0 ? <p className="rounded-xl bg-[#f7f1ea] p-4 text-sm text-[var(--color-atlas-muted-strong)]">No active products match this search.</p> : null}
           <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
             {products.map((product) => (
               <label key={product.id} className="grid gap-2 rounded-xl border border-[#eee4db] bg-white p-3 sm:grid-cols-[minmax(0,1fr)_120px] sm:items-end">
                 <span>
                   <span className="block text-[12px] font-semibold text-[#2a241f]">{product.name}</span>
-                  <span className="font-data mt-1 block text-[10px] text-[#8b8077]">₱{money(product.priceMinor)} each{product.taxRateBps != null ? ` · ${(product.taxRateBps / 100).toFixed(2)}% tax` : ""}</span>
+                  <span className="font-data mt-1 block text-[10px] text-[var(--color-atlas-muted-strong)]">₱{money(product.priceMinor)} each{product.taxRateBps != null ? ` · ${(product.taxRateBps / 100).toFixed(2)}% tax` : ""}</span>
                 </span>
                 <span className="text-[10px] font-semibold text-[#655b53]">
                   Replacement qty
@@ -228,9 +228,9 @@ export function SaleExchangeDialog({
         </label>
 
         <section className="grid gap-3 rounded-xl bg-[#eff2ed] p-4 text-[11px] sm:grid-cols-3" aria-label="Exchange preview">
-          <div><span className="text-[#8b8077]">Return value</span><p className="font-data mt-1 font-semibold text-[#2a241f]">₱{money(preview.returnMinor)}</p></div>
-          <div><span className="text-[#8b8077]">Replacement value</span><p className="font-data mt-1 font-semibold text-[#2a241f]">₱{money(preview.replacementMinor)}</p></div>
-          <div className="sm:text-right"><span className="text-[#8b8077]">Net difference</span><p className="font-data mt-1 font-bold text-[#e44e34]">{netLabel}</p></div>
+          <div><span className="text-[var(--color-atlas-muted-strong)]">Return value</span><p className="font-data mt-1 font-semibold text-[#2a241f]">₱{money(preview.returnMinor)}</p></div>
+          <div><span className="text-[var(--color-atlas-muted-strong)]">Replacement value</span><p className="font-data mt-1 font-semibold text-[#2a241f]">₱{money(preview.replacementMinor)}</p></div>
+          <div className="sm:text-right"><span className="text-[var(--color-atlas-muted-strong)]">Net difference</span><p className="font-data mt-1 font-bold text-[var(--color-atlas-accent-strong)]">{netLabel}</p></div>
         </section>
         <p className="text-[10px] leading-4 text-[#94877d]">Preview uses the current catalog and tax settings. The server revalidates stock, refundable quantity, price, tax, open shift, and refund permissions before committing.</p>
 

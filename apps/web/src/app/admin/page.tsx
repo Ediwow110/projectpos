@@ -63,7 +63,7 @@ export default function AdminPage(): JSX.Element {
           <section aria-label="Administration destinations" className="space-y-4">
             <div>
               <h2 className="font-display text-[20px] font-semibold text-[#202826]">{isOwner ? "Owner controls & access" : "Manager work areas"}</h2>
-              <p className="mt-1 text-sm text-[#748078]">Actions require the relevant server-side permission; availability may vary by assignment.</p>
+              <p className="mt-1 text-sm text-[var(--color-atlas-muted-strong)]">Actions require the relevant server-side permission; availability may vary by assignment.</p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
             {destinations.map((item) => (
@@ -74,8 +74,8 @@ export default function AdminPage(): JSX.Element {
               >
                 <span aria-hidden className="grid size-10 place-items-center rounded-[10px] bg-[#eff2ed] font-data text-base font-semibold text-[#29332d]">{item.icon}</span>
                 <h3 className="font-display mt-3 text-[16px] font-semibold text-[#202826]">{item.title}</h3>
-                <p className="mt-1.5 text-[12px] leading-5 text-[#748078]">{item.description}</p>
-                <span className="mt-auto pt-3 text-[12px] font-semibold text-[#da614c]">Open →</span>
+                <p className="mt-1.5 text-[12px] leading-5 text-[var(--color-atlas-muted-strong)]">{item.description}</p>
+                <span className="mt-auto pt-3 text-[12px] font-semibold text-[var(--color-atlas-accent-strong)]">Open →</span>
               </Link>
             ))}
             </div>
@@ -96,7 +96,7 @@ export default function AdminPage(): JSX.Element {
             ].map(([title, copy]) => (
               <div key={title} className="rounded-xl border border-[#e5e9e3] bg-[#f7f8f5] p-4">
                 <h3 className="font-display text-[13px] font-semibold text-[#202826]">{title}</h3>
-                <p className="mt-2 text-[11px] leading-5 text-[#748078]">{copy}</p>
+                <p className="mt-2 text-[11px] leading-5 text-[var(--color-atlas-muted-strong)]">{copy}</p>
               </div>
             ))}
           </div>
@@ -110,7 +110,7 @@ export default function AdminPage(): JSX.Element {
           <p className="mt-4 text-[12px] leading-6 text-[#655b53]">
             Search or scan from the POS product field, choose the register before checkout, and use the visible payment controls rather than retrying an uncertain provider payment. The system tour can be restarted whenever a workflow is unfamiliar.
           </p>
-          <Link href="/pos" className="mt-4 inline-flex text-[11px] font-semibold text-[#e44e34] hover:text-[#c33e29]">
+          <Link href="/pos" className="mt-4 inline-flex text-[11px] font-semibold text-[var(--color-atlas-accent-strong)] hover:text-[#c33e29]">
             Return to POS →
           </Link>
         </Panel>

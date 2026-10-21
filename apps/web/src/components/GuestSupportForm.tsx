@@ -59,17 +59,17 @@ export function GuestSupportForm({ statusToken, orderReference }: { statusToken:
 
   return <section aria-label="Customer support" data-ui="atlas-guest-support" className="space-y-5 pb-24 sm:pb-0">
     <header className="space-y-2">
-      <p className="font-data text-[11px] font-medium tracking-[0.08em] text-[#da614c]">HELP &amp; ORDER SUPPORT</p>
+      <p className="font-data text-[11px] font-medium tracking-[0.08em] text-[var(--color-atlas-accent-strong)]">HELP &amp; ORDER SUPPORT</p>
       <h2 className="font-display text-[26px] font-semibold tracking-tight text-[#202826]"><span className="sm:hidden">Get order support</span><span className="hidden sm:inline">Need help with this order?</span></h2>
-      <p className="text-[14px] text-[#748078] sm:hidden">No account needed</p>
-      <p className="hidden text-[14px] leading-6 text-[#748078] sm:block">Your secure order status link has been verified. You do not need a new account or a separate order-reference lookup.</p>
+      <p className="text-[14px] text-[var(--color-atlas-muted-strong)] sm:hidden">No account needed</p>
+      <p className="hidden text-[14px] leading-6 text-[var(--color-atlas-muted-strong)] sm:block">Your secure order status link has been verified. You do not need a new account or a separate order-reference lookup.</p>
     </header>
     {submitted ? <div role="status" className="mx-auto max-w-2xl rounded-[15px] border border-[#e5e9e3] bg-white px-5 py-9 text-center sm:px-8 sm:py-12">
       <span aria-hidden className="mx-auto grid size-[90px] place-items-center rounded-[20px] bg-[#e8f4ec] font-display text-[48px] text-[#267552]">✓</span>
       <h3 ref={confirmationRef} tabIndex={-1} className="mt-6 font-display text-[25px] font-semibold text-[#202826] focus:outline-none">Support request received</h3>
-      <p className="mt-3 text-[14px] leading-6 text-[#748078]">We&apos;ve received your message. Keep this reference and your original secure order link.</p>
+      <p className="mt-3 text-[14px] leading-6 text-[var(--color-atlas-muted-strong)]">We&apos;ve received your message. Keep this reference and your original secure order link.</p>
       <p className="mt-3 break-all font-data text-sm text-[#202826]">Reference: {submitted}</p>
-      <span className="mt-5 inline-block rounded-md bg-[#fcf1df] px-4 py-2 font-data text-[11px] font-semibold text-[#9a6e32]">AWAITING REVIEW</span>
+      <span className="mt-5 inline-block rounded-md bg-[#fcf1df] px-4 py-2 font-data text-[11px] font-semibold text-[var(--color-atlas-warning-strong)]">AWAITING REVIEW</span>
       <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
         <button type="button" onClick={returnToOrderStatus} className="inline-flex min-h-11 items-center justify-center rounded-lg bg-[#29332d] px-5 text-sm font-semibold text-white hover:bg-[#35423d] motion-reduce:scroll-auto">Back to order status</button>
         <button type="button" className="min-h-11 rounded-lg border border-[#e5e9e3] px-5 text-sm font-semibold text-[#202826] hover:bg-[#f7f8f5]" onClick={() => setSubmitted(null)}>Submit another issue</button>
@@ -80,11 +80,11 @@ export function GuestSupportForm({ statusToken, orderReference }: { statusToken:
         <div className="mt-5 space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <p className="text-xs font-medium text-[#748078]">Order reference</p>
+              <p className="text-xs font-medium text-[var(--color-atlas-muted-strong)]">Order reference</p>
               <p className="mt-2 flex min-h-[56px] items-center rounded-lg bg-[#f7f8f5] px-4 font-data text-sm font-semibold tracking-wide text-[#202826]">{orderReference}</p>
             </div>
             <div>
-              <p className="text-xs font-medium text-[#748078]">Verification</p>
+              <p className="text-xs font-medium text-[var(--color-atlas-muted-strong)]">Verification</p>
               <p className="mt-2 flex min-h-[56px] items-center rounded-lg bg-[#f7f8f5] px-4 text-sm font-medium text-[#267552]">Verified through secure order status link</p>
             </div>
           </div>
@@ -104,12 +104,12 @@ export function GuestSupportForm({ statusToken, orderReference }: { statusToken:
       </form>
       <aside aria-label="Support privacy" className="rounded-[13px] border border-[#e5e9e3] bg-white p-5 sm:p-6">
         <h3 className="font-display text-[21px] font-semibold text-[#202826]">Private by design</h3>
-        <p className="mt-5 text-sm leading-6 text-[#748078]">Your order link grants access only to the matching order. Support cases do not cancel orders or initiate refunds.</p>
+        <p className="mt-5 text-sm leading-6 text-[var(--color-atlas-muted-strong)]">Your order link grants access only to the matching order. Support cases do not cancel orders or initiate refunds.</p>
         <div className="mt-5 space-y-3">{[
           ["Secure lookup", "A valid status token is required."],
           ["Safe sharing", "No full payment or wallet details."],
           ["Case records", "The store owner can review submitted requests."],
-        ].map(([label, detail]) => <div key={label} className="rounded-lg bg-[#f0f3ef] p-3"><p className="text-[13px] font-semibold text-[#202826]">{label}</p><p className="mt-2 text-xs text-[#748078]">{detail}</p></div>)}</div>
+        ].map(([label, detail]) => <div key={label} className="rounded-lg bg-[#f0f3ef] p-3"><p className="text-[13px] font-semibold text-[#202826]">{label}</p><p className="mt-2 text-xs text-[var(--color-atlas-muted-strong)]">{detail}</p></div>)}</div>
       </aside>
     </div>}
     <div className="rounded-[13px] border border-[#e5e9e3] bg-white p-5">
@@ -119,7 +119,7 @@ export function GuestSupportForm({ statusToken, orderReference }: { statusToken:
         <li key={entry.caseId} className="rounded-lg bg-[#f7f8f5] p-3 text-xs text-[#53615a]">
           <span className="font-data break-all">{entry.caseId}</span> · {entry.category} · <strong>{entry.status}</strong>
         </li>)}</ul>}
-      {history.length === 0 && submitted && <p className="mt-2 text-xs text-[#748078]">Case history is not yet available.</p>}
+      {history.length === 0 && submitted && <p className="mt-2 text-xs text-[var(--color-atlas-muted-strong)]">Case history is not yet available.</p>}
     </div>
   </section>;
 }

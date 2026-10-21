@@ -8,6 +8,9 @@ export const storedValueAdjustSchema = z.object({
 
 export const giftCardIssueSchema = z.object({ idempotencyKey: z.string().min(8).max(128) });
 export const giftCardStatusSchema = z.object({ status: z.enum(["ACTIVE", "SUSPENDED"]), reason: z.string().trim().min(3).max(500) });
+// A gift-card code is a bearer secret, so it arrives in a POST body and never
+// in a URL that proxies, access logs, browser history and APM would capture.
+export const giftCardLookupSchema = z.object({ code: z.string().trim().min(8).max(200) });
 
 export const loyaltyProgramSchema = z.object({
   enabled: z.boolean(),

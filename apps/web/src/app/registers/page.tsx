@@ -126,7 +126,7 @@ export default function RegistersPage(): JSX.Element {
           <MetricCard label="Assigned to branch" value={assignedCount} icon="⌘" tone="info" meta="Explicit branch scope" />
         </section>
 
-        {success ? <div role="status" className="rounded-xl border border-[#cfe9dc] bg-[#eaf7f0] px-4 py-3 text-sm font-medium text-[#1f8a5b]">{success}</div> : null}
+        {success ? <div role="status" className="rounded-xl border border-[#cfe9dc] bg-[#eaf7f0] px-4 py-3 text-sm font-medium text-[var(--color-atlas-verified)]">{success}</div> : null}
         {error ? <Panel className="border-[#efb9b9] bg-[#fff0f0] p-4"><p role="alert" className="text-sm font-medium text-[#c43e3e]">{error}</p></Panel> : null}
 
         <DataTableFrame>
@@ -135,7 +135,7 @@ export default function RegistersPage(): JSX.Element {
           </div>
           {listQuery.isLoading ? <p className="px-5 pb-6 text-sm text-[#73685f]">Loading registers…</p> : null}
           {listQuery.isError ? <p role="alert" className="px-5 pb-6 text-sm font-medium text-[#c43e3e]">Could not load registers.</p> : null}
-          {listQuery.data && items.length === 0 ? <p className="px-5 pb-8 text-sm text-[#8b8077]">No registers yet.</p> : null}
+          {listQuery.data && items.length === 0 ? <p className="px-5 pb-8 text-sm text-[var(--color-atlas-muted-strong)]">No registers yet.</p> : null}
           {items.length > 0 ? (
             <table className="premium-table min-w-[680px] text-left text-[12px]">
               <thead>
@@ -153,7 +153,7 @@ export default function RegistersPage(): JSX.Element {
                     <td className="px-5 py-3 text-[#73685f]">{register.branchName ?? "No branch"}</td>
                     <td className="px-5 py-3 text-right"><StatusPill tone={register.isActive ? "ok" : "warn"}>{register.isActive ? "Active" : "Archived"}</StatusPill></td>
                     <td className="px-5 py-3 text-right">
-                      {manageable && register.isActive ? <GhostButton type="button" onClick={() => setArchiveTarget(register)}>Archive</GhostButton> : <span className="text-[11px] text-[#9a8d83]">—</span>}
+                      {manageable && register.isActive ? <GhostButton type="button" onClick={() => setArchiveTarget(register)}>Archive</GhostButton> : <span className="text-[11px] text-[var(--color-atlas-muted-strong)]">—</span>}
                     </td>
                   </tr>
                 ))}

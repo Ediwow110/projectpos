@@ -95,7 +95,7 @@ function OrderStatusExperience(): JSX.Element {
           <p role="status" className="mt-4 text-sm leading-6 text-[#73685f]">
             Check your email for your secure order status link. This return page does not confirm that payment succeeded.
           </p>
-          <a href="/order-status" className="mt-7 inline-flex min-h-11 items-center justify-center rounded-[9px] border border-[#e4d9d0] bg-white px-4 text-[12px] font-semibold text-[#2a241f] hover:border-[#f35d3f] hover:text-[#d94a30]">
+          <a href="/order-status" className="mt-7 inline-flex min-h-11 items-center justify-center rounded-[9px] border border-[#e4d9d0] bg-white px-4 text-[12px] font-semibold text-[#2a241f] hover:border-[#f35d3f] hover:text-[var(--color-atlas-accent-strong)]">
             Open a secure status link
           </a>
         </section>
@@ -108,7 +108,7 @@ function OrderStatusExperience(): JSX.Element {
       <div className="mx-auto max-w-[1300px]">
         <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e5e9e3] pb-5">
           <NexposLogo size="md" />
-          <div className="flex flex-wrap items-center gap-4"><Link href="/order-help" className="text-[13px] font-semibold text-[#53615a] hover:underline">Order help</Link><span className="font-data text-[10px] uppercase tracking-[0.12em] text-[#748078]">Secure order status</span></div>
+          <div className="flex flex-wrap items-center gap-4"><Link href="/order-help" className="text-[13px] font-semibold text-[#53615a] hover:underline">Order help</Link><span className="font-data text-[10px] uppercase tracking-[0.12em] text-[var(--color-atlas-muted-strong)]">Secure order status</span></div>
         </header>
 
         {loading && !status ? (
@@ -142,13 +142,13 @@ function OrderStatusExperience(): JSX.Element {
               <section aria-labelledby="payment-status-heading" className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-start">
                 <div>
                   <h2 id="payment-status-heading" className="text-[12px] font-semibold text-[#655b53]">Payment</h2>
-                  <p className={"mt-2 text-sm font-semibold " + (status.paymentStatus === "UNKNOWN" || status.paymentStatus === "FAILED" ? "text-[#b56d0c]" : status.paymentStatus === "PAID" ? "text-[#1f8a5b]" : "text-[#2a241f]")}>
+                  <p className={"mt-2 text-sm font-semibold " + (status.paymentStatus === "UNKNOWN" || status.paymentStatus === "FAILED" ? "text-[var(--color-atlas-warning-strong)]" : status.paymentStatus === "PAID" ? "text-[var(--color-atlas-verified)]" : "text-[#2a241f]")}>
                     {status.paymentStatus.replaceAll("_", " ")}
                   </p>
                   <p className="mt-1 text-[11px] leading-5 text-[#73685f]">{paymentStatusCopy(status.paymentStatus)}</p>
                 </div>
                 <div className="rounded-[10px] bg-[#f7f1ea] px-4 py-3 text-right">
-                  <span className="font-data text-[9px] uppercase tracking-[0.08em] text-[#9a8d83]">Total</span>
+                  <span className="font-data text-[9px] uppercase tracking-[0.08em] text-[var(--color-atlas-muted-strong)]">Total</span>
                   <p className="font-data mt-1 text-[16px] font-bold">{formatOrderMoney(status.totalMinor, status.currency)}</p>
                 </div>
               </section>
@@ -181,12 +181,12 @@ function OrderStatusExperience(): JSX.Element {
 
               {tokenRef.current ? (
                 <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#eee4db] pt-5">
-                  <p className="text-[10px] leading-4 text-[#9a8d83]">This page keeps the secure token only in memory. Refresh through this control instead of copying the browser URL.</p>
+                  <p className="text-[10px] leading-4 text-[var(--color-atlas-muted-strong)]">This page keeps the secure token only in memory. Refresh through this control instead of copying the browser URL.</p>
                   <button
                     type="button"
                     disabled={loading}
                     onClick={() => tokenRef.current && void loadStatus(tokenRef.current)}
-                    className="min-h-10 rounded-[9px] border border-[#e4d9d0] bg-white px-4 text-[11px] font-semibold text-[#2a241f] hover:border-[#f35d3f] hover:text-[#d94a30] disabled:cursor-not-allowed disabled:opacity-60"
+                    className="min-h-10 rounded-[9px] border border-[#e4d9d0] bg-white px-4 text-[11px] font-semibold text-[#2a241f] hover:border-[#f35d3f] hover:text-[var(--color-atlas-accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {loading ? "Refreshing…" : "Refresh status"}
                   </button>

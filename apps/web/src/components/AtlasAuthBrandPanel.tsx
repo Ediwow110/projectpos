@@ -16,7 +16,7 @@ export function AtlasAuthBrandPanel(): JSX.Element {
           Retail,
           <span className="block">under control.</span>
         </h1>
-        <p className="mt-3 text-[14px] leading-6 text-[#707b75] sm:mt-7 sm:text-[18px] lg:ml-1 lg:mt-[83px]">
+        <p className="mt-3 text-[14px] leading-6 text-[var(--color-atlas-muted-strong)] sm:mt-7 sm:text-[18px] lg:ml-1 lg:mt-[83px]">
           Security and simplicity for every shift.
         </p>
       </div>

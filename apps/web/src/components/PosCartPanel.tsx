@@ -38,6 +38,7 @@ interface PosCartPanelProps {
   onSetQty: (productId: string, delta: number) => void;
   onAssignCustomer: () => void;
   onOpenPayment: () => void;
+  /** The Load-card control only renders when a real handler can accept it. */
   onOpenGiftCardLoad?: () => void;
   onSelectShortcut: (key: string) => void;
 }
@@ -75,7 +76,7 @@ export function PosCartPanel({
   onSetQty,
   onAssignCustomer,
   onOpenPayment,
-  onOpenGiftCardLoad = () => undefined,
+  onOpenGiftCardLoad,
   onSelectShortcut,
 }: PosCartPanelProps) {
   if (atlasV4) return (
@@ -101,11 +102,11 @@ export function PosCartPanel({
               {entry.lineDiscountMinor > 0 ? <p className="mt-1 text-[10px] text-[#b04a39]">Line discount −₱{money(entry.lineDiscountMinor)}</p> : null}
               <div className="mt-2 flex items-center gap-2">
                 <div className="flex items-center rounded-[7px] bg-[#eff2ed]">
-                  <button type="button" aria-label={"Decrease " + entry.name} disabled={saleLocked} onClick={() => onSetQty(entry.productId, -1)} className="grid size-9 place-items-center text-sm text-[#202826] disabled:opacity-35">−</button>
+                  <button type="button" aria-label={"Decrease " + entry.name} disabled={saleLocked} onClick={() => onSetQty(entry.productId, -1)} className="grid size-11 place-items-center text-sm text-[#202826] disabled:opacity-35">−</button>
                   <span className="font-data min-w-7 text-center text-xs text-[#202826]">{entry.qty}</span>
-                  <button type="button" aria-label={"Increase " + entry.name} disabled={saleLocked} onClick={() => onSetQty(entry.productId, 1)} className="grid size-9 place-items-center text-sm text-[#202826] disabled:opacity-35">+</button>
+                  <button type="button" aria-label={"Increase " + entry.name} disabled={saleLocked} onClick={() => onSetQty(entry.productId, 1)} className="grid size-11 place-items-center text-sm text-[#202826] disabled:opacity-35">+</button>
                 </div>
-                <button type="button" onClick={() => onSetQty(entry.productId, -entry.qty)} disabled={saleLocked} aria-label={"Remove " + entry.name} className="ml-auto min-h-9 rounded-md px-2 text-[11px] font-medium text-[#b04a39] hover:bg-[#fff0eb] disabled:opacity-35">Remove</button>
+                <button type="button" onClick={() => onSetQty(entry.productId, -entry.qty)} disabled={saleLocked} aria-label={"Remove " + entry.name} className="ml-auto min-h-11 rounded-md px-2 text-[11px] font-medium text-[#b04a39] hover:bg-[#fff0eb] disabled:opacity-35">Remove</button>
               </div>
             </div>
             <strong className="font-data shrink-0 text-[12px] font-semibold text-[#202826]">₱{money(net)}</strong>
@@ -124,9 +125,9 @@ export function PosCartPanel({
           <button type="button" aria-label="Clear sale" onClick={onClearCart} disabled={cart.length === 0 || saleLocked} className="ml-auto min-h-11 rounded-lg bg-[#eff2ed] px-3 text-xs font-medium text-[#202826] disabled:opacity-40">Cancel sale</button>
         </div>
         <div className="flex flex-wrap gap-2 text-xs text-[#53615a]">
-          <button type="button" onClick={onOpenHeldSales} className="min-h-9 rounded-lg border border-[#e5e9e3] px-3">Held {heldCount}</button>
-          <button type="button" onClick={onAssignCustomer} disabled={saleLocked} className="min-h-9 rounded-lg border border-[#e5e9e3] px-3 disabled:opacity-40">Add customer</button>
-          <button type="button" onClick={onOpenGiftCardLoad} disabled={offline || saleLocked} className="min-h-9 rounded-lg border border-[#e5e9e3] px-3 disabled:opacity-40">Load card</button>
+          <button type="button" onClick={onOpenHeldSales} className="min-h-11 rounded-lg border border-[#e5e9e3] px-3">Held {heldCount}</button>
+          <button type="button" onClick={onAssignCustomer} disabled={saleLocked} className="min-h-11 rounded-lg border border-[#e5e9e3] px-3 disabled:opacity-40">Add customer</button>
+          {onOpenGiftCardLoad ? <button type="button" onClick={onOpenGiftCardLoad} disabled={offline || saleLocked} className="min-h-11 rounded-lg border border-[#e5e9e3] px-3 disabled:opacity-40">Load card</button> : null}
         </div>
         <div className="space-y-3 border-t border-[#e5e9e3] pt-5 text-xs text-[#53615a]">
           <div className="flex justify-between"><span>Subtotal</span><strong className="font-data text-[#202826]">₱{money(subtotalMinor)}</strong></div>
@@ -134,14 +135,14 @@ export function PosCartPanel({
           {giftCardLoadMinor > 0 ? <div className="flex justify-between"><span>Gift-card load</span><span className="font-data text-[#202826]">₱{money(giftCardLoadMinor)}</span></div> : null}
           <div className="flex justify-between"><span>Register</span><span className="font-data max-w-44 truncate text-[#202826]">{selectedRegisterName}</span></div>
         </div>
-        <div className="flex items-end justify-between gap-3 py-3"><span className="font-data text-[11px] uppercase text-[#53615a]">Total due</span><strong className="font-display text-[28px] font-semibold text-[#202826]">₱{money(due)}</strong></div>
+        <div className="flex items-end justify-between gap-3 py-2"><span className="font-data text-[11px] uppercase text-[#53615a]">Total due</span><strong className="font-display text-[28px] font-semibold text-[#202826]">₱{money(due)}</strong></div>
         <button type="button" disabled={!canPay} onClick={onOpenPayment} aria-label={`Pay ₱${money(due)} (F5)`}
           className="min-h-[56px] w-full rounded-[8px] bg-[#b84f3c] px-4 text-[13px] font-semibold text-white hover:bg-[#a94431] disabled:opacity-40">Proceed to payment →</button>
         <div className="grid grid-cols-4 gap-2">
           {[{ key: "cash", label: "Cash (F6)" }, { key: "card", label: "Card (F7)" }, { key: "gcash", label: "GCash (F8)" }, { key: "more", label: "More" }].map((method) => <button key={method.key} type="button" onClick={() => onSelectShortcut(method.key)} disabled={!canPay || (offline && method.key !== "cash") || (method.key !== "more" && !methodAvailable(method.key))}
             className={"min-h-11 rounded-lg border px-1 text-[10px] disabled:opacity-35 " + (method.key === effectiveMethod ? "border-[#da614c] bg-[#fff0eb] text-[#a34132]" : "border-[#e5e9e3] bg-white text-[#53615a]")}>{method.label}</button>)}
         </div>
-        <button type="button" disabled={cart.length === 0 || reconcileId !== null || saleLocked} onClick={onResetSale} className="min-h-10 w-full rounded-lg border border-[#e5e9e3] text-xs text-[#53615a] disabled:opacity-40">Reset current sale</button>
+        <button type="button" disabled={cart.length === 0 || reconcileId !== null || saleLocked} onClick={onResetSale} className="min-h-11 w-full rounded-lg border border-[#e5e9e3] text-xs text-[#53615a] disabled:opacity-40">Reset current sale</button>
         <p className="text-[10px] leading-4 text-[#53615a]">Totals are server-validated. Unknown payments require reconciliation, not a blind retry.</p>
       </div>
     </aside>
@@ -155,15 +156,15 @@ export function PosCartPanel({
           type="button"
           onClick={onHold}
           disabled={cart.length === 0 || giftCardLoadMinor > 0}
-          className="absolute right-[120px] top-[-4px] h-[34px] w-[68px] rounded-[9px] border border-[#e5e9e3] bg-[#eff2ef] text-[9px] font-semibold text-[#202826] disabled:opacity-40"
+          className="absolute right-[120px] top-[-4px] h-11 w-[68px] rounded-[9px] border border-[#e5e9e3] bg-[#eff2ef] text-[9px] font-semibold text-[#202826] disabled:opacity-40"
         >
           {saleLocked ? "Re-hold" : "Hold"}
         </button>
-        <button type="button" onClick={onOpenGiftCardLoad} disabled={offline || saleLocked} className="absolute right-[192px] top-[-4px] h-[34px] rounded-[9px] border border-[#e5e9e3] bg-[#fff3ee] px-2 text-[9px] font-semibold text-[#bd503e] disabled:opacity-40">Load card</button>
+        {onOpenGiftCardLoad ? <button type="button" onClick={onOpenGiftCardLoad} disabled={offline || saleLocked} className="absolute right-[192px] top-[-4px] h-11 rounded-[9px] border border-[#e5e9e3] bg-[#fff3ee] px-2 text-[9px] font-semibold text-[#bd503e] disabled:opacity-40">Load card</button> : null}
         <button
           type="button"
           onClick={onOpenHeldSales}
-          className="absolute right-[48px] top-[-4px] h-[34px] w-[68px] rounded-[9px] border border-[#e5e9e3] bg-[#eff2ef] text-[9px] font-semibold text-[#202826] hover:border-[#c9d5cb]"
+          className="absolute right-[48px] top-[-4px] h-11 w-[68px] rounded-[9px] border border-[#e5e9e3] bg-[#eff2ef] text-[9px] font-semibold text-[#202826] hover:border-[#c9d5cb]"
         >
           Held {heldCount}
         </button>
@@ -172,7 +173,7 @@ export function PosCartPanel({
           aria-label="Clear sale"
           onClick={onClearCart}
           disabled={cart.length === 0 || saleLocked}
-          className="absolute right-0 top-[-4px] h-[34px] w-[40px] rounded-[9px] border border-[#e5e9e3] bg-[#eff2ef] text-[14px] font-semibold text-[#da614c] disabled:opacity-40"
+          className="absolute right-0 top-[-4px] h-11 w-11 rounded-[9px] border border-[#e5e9e3] bg-[#eff2ef] text-[14px] font-semibold text-[var(--color-atlas-accent-strong)] disabled:opacity-40"
         >
           ⌫
         </button>
@@ -184,15 +185,15 @@ export function PosCartPanel({
           </p>
         ) : null}
 
-        <ul className="absolute inset-x-0 top-[56px] overflow-y-auto xl:h-[244px]">
+        <ul className="absolute inset-x-0 top-[56px] overflow-y-auto xl:h-[220px]">
           {cart.length === 0 ? (
-            <li className="grid h-full place-items-center text-[11px] text-[#71807a]">Cart is empty. Tap products to add.</li>
+            <li className="grid h-full place-items-center text-[11px] text-[var(--color-atlas-muted-strong)]">Cart is empty. Tap products to add.</li>
           ) : null}
           {cart.map((entry) => {
             const gross = entry.qty * entry.priceMinor;
             const net = Math.max(0, gross - entry.lineDiscountMinor);
             return (
-            <li key={entry.productId} className="flex h-[61px] items-center justify-between gap-3 border-b border-[#e5e9e3]">
+            <li key={entry.productId} className="flex min-h-[61px] items-center justify-between gap-3 border-b border-[#e5e9e3]">
               {entry.imageUrl && validProductImageUrl(entry.imageUrl) ? (
                 <span aria-hidden className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-[#eff2ef]">
                   <Image unoptimized src={entry.imageUrl} alt="" fill sizes="40px" className="object-cover" />
@@ -200,19 +201,19 @@ export function PosCartPanel({
               ) : null}
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[11px] font-semibold text-[#202826]">{entry.name}</p>
-                <div className="mt-2 flex items-center gap-2 font-data text-[8px] text-[#71807a]">
+                <div className="mt-1 flex flex-wrap items-center gap-1 font-data text-[8px] text-[var(--color-atlas-muted-strong)]">
                   <span>Qty {entry.qty} × ₱{money(entry.priceMinor)}</span>
-                  {entry.lineDiscountMinor > 0 ? <span className="text-[#ff9a82]">−₱{money(entry.lineDiscountMinor)}</span> : null}
-                  <button type="button" onClick={() => onSetQty(entry.productId, -1)} disabled={saleLocked} aria-label={"Decrease " + entry.name} className="grid h-5 w-5 place-items-center rounded bg-[#eff2ef] text-[11px] hover:bg-[#e5e9e3] disabled:opacity-35">−</button>
-                  <button type="button" onClick={() => onSetQty(entry.productId, 1)} disabled={saleLocked} aria-label={"Increase " + entry.name} className="grid h-5 w-5 place-items-center rounded bg-[#eff2ef] text-[11px] hover:bg-[#e5e9e3] disabled:opacity-35">+</button>
+                  {entry.lineDiscountMinor > 0 ? <span className="text-[var(--color-atlas-accent-strong)]">−₱{money(entry.lineDiscountMinor)}</span> : null}
+                  <button type="button" onClick={() => onSetQty(entry.productId, -1)} disabled={saleLocked} aria-label={"Decrease " + entry.name} className="grid size-11 place-items-center rounded bg-[#eff2ef] text-[11px] hover:bg-[#e5e9e3] disabled:opacity-35">−</button>
+                  <button type="button" onClick={() => onSetQty(entry.productId, 1)} disabled={saleLocked} aria-label={"Increase " + entry.name} className="grid size-11 place-items-center rounded bg-[#eff2ef] text-[11px] hover:bg-[#e5e9e3] disabled:opacity-35">+</button>
                   <button type="button" onClick={() => onSetQty(entry.productId, -entry.qty)} disabled={saleLocked}
-                    aria-label={"Remove " + entry.name} className="text-[9px] font-semibold text-[#da614c] hover:underline disabled:opacity-35">
+                    aria-label={"Remove " + entry.name} className="min-h-11 text-[9px] font-semibold text-[var(--color-atlas-accent-strong)] hover:underline disabled:opacity-35">
                     Remove
                   </button>
                 </div>
               </div>
               <span className="money shrink-0 text-right text-[11px] font-medium text-[#202826]">
-                {entry.lineDiscountMinor > 0 ? <span className="mr-1 text-[8px] text-[#98a49c] line-through">₱{money(gross)}</span> : null}
+                {entry.lineDiscountMinor > 0 ? <span className="mr-1 text-[8px] text-[var(--color-atlas-muted-strong)] line-through">₱{money(gross)}</span> : null}
                 ₱{money(net)}
               </span>
             </li>
@@ -225,28 +226,28 @@ export function PosCartPanel({
           aria-label="Assign customer to sale"
           onClick={onAssignCustomer}
           disabled={saleLocked}
-          className="absolute inset-x-0 top-[322px] h-[38px] rounded-[8px] bg-[#eff2ef] px-3 text-left text-[10px] text-[#53615a] hover:text-[#202826] disabled:opacity-40"
+          className="absolute inset-x-0 top-[322px] h-11 rounded-[8px] bg-[#eff2ef] px-3 text-left text-[10px] text-[var(--color-atlas-muted-strong)] hover:text-[#202826] disabled:opacity-40"
         >
           ○ Add customer / walk-in
         </button>
 
-        <div className="absolute inset-x-0 top-[382px] flex items-center justify-between text-[10px] text-[#71807a]">
+        <div className="absolute inset-x-0 top-[382px] flex items-center justify-between text-[10px] text-[var(--color-atlas-muted-strong)]">
           <span>Subtotal ({count} item{count === 1 ? "" : "s"})</span>
           <span className="money font-medium text-[#202826]">₱{money(subtotalMinor)}</span>
         </div>
-        <div className="absolute inset-x-0 top-[414px] flex items-center justify-between text-[10px] text-[#71807a]">
+        <div className="absolute inset-x-0 top-[414px] flex items-center justify-between text-[10px] text-[var(--color-atlas-muted-strong)]">
           <button
             type="button"
             onClick={onOpenDiscounts}
             disabled={cart.length === 0 || offline || saleLocked}
-            className="font-semibold text-[#da614c] hover:text-[#bd503e] disabled:text-[#a6b1aa]"
+            className="font-semibold text-[var(--color-atlas-accent-strong)] hover:text-[#bd503e] disabled:text-[#a6b1aa]"
           >
             Discounts
           </button>
-          <span className="money font-medium text-[#da614c]">−₱{money(discountMinor)}</span>
+          <span className="money font-medium text-[var(--color-atlas-accent-strong)]">−₱{money(discountMinor)}</span>
         </div>
-        {giftCardLoadMinor > 0 ? <div className="absolute inset-x-0 top-[438px] flex items-center justify-between text-[9px] text-[#ffb7a4]"><span>Gift-card load</span><span className="money font-medium">₱{money(giftCardLoadMinor)}</span></div> : null}
-        <div className={`absolute inset-x-0 ${giftCardLoadMinor > 0 ? "top-[470px]" : "top-[446px]"} flex items-center justify-between text-[9px] text-[#71807a]`}>
+        {giftCardLoadMinor > 0 ? <div className="absolute inset-x-0 top-[438px] flex items-center justify-between text-[9px] text-[var(--color-atlas-accent-strong)]"><span>Gift-card load</span><span className="money font-medium">₱{money(giftCardLoadMinor)}</span></div> : null}
+        <div className={`absolute inset-x-0 ${giftCardLoadMinor > 0 ? "top-[470px]" : "top-[446px]"} flex items-center justify-between text-[9px] text-[var(--color-atlas-muted-strong)]`}>
           <span>Register</span>
           <span className="font-data max-w-48 truncate text-[8px] text-[#53615a]">{selectedRegisterName}</span>
         </div>
@@ -282,7 +283,7 @@ export function PosCartPanel({
                 (shortcut.key !== "more" && !methodAvailable(shortcut.key))
               }
               className={
-                "h-[42px] rounded-[10px] border text-[8px] font-semibold transition disabled:opacity-35 " +
+                "h-11 rounded-[10px] border text-[8px] font-semibold transition disabled:opacity-35 " +
                 (shortcut.key === effectiveMethod
                   ? "border-[#da614c] bg-[#fff3ee] text-[#bd503e]"
                   : "border-[#e5e9e3] bg-[#eff2ef] text-[#53615a] hover:border-[#b6c5ba]")
@@ -297,11 +298,11 @@ export function PosCartPanel({
           type="button"
           onClick={onResetSale}
           disabled={cart.length === 0 || reconcileId !== null || saleLocked}
-          className={`absolute inset-x-0 ${giftCardLoadMinor > 0 ? "top-[716px]" : "top-[692px]"} h-12 rounded-[10px] border border-[#e5e9e3] text-[10px] font-semibold text-[#da614c] hover:bg-[#fff3ee] disabled:opacity-35`}
+          className={`absolute inset-x-0 ${giftCardLoadMinor > 0 ? "top-[716px]" : "top-[692px]"} h-12 rounded-[10px] border border-[#e5e9e3] text-[10px] font-semibold text-[var(--color-atlas-accent-strong)] hover:bg-[#fff3ee] disabled:opacity-35`}
         >
           ⌫ Clear sale
         </button>
-        <p className={`absolute inset-x-0 ${giftCardLoadMinor > 0 ? "top-[784px]" : "top-[760px]"} font-data text-[7px] leading-4 text-[#71807a]`}>
+        <p className={`absolute inset-x-0 ${giftCardLoadMinor > 0 ? "top-[784px]" : "top-[760px]"} font-data text-[7px] leading-4 text-[var(--color-atlas-muted-strong)]`}>
           Totals are server-validated before commit. Unknown payment status blocks blind retries.
         </p>
 

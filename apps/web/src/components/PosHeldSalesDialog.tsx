@@ -67,7 +67,7 @@ export function PosHeldSalesDialog({
                     <span className="font-data rounded-full bg-[#f7f1ea] px-2 py-1 text-[9px] text-[#73685f]">{held.sale.id.slice(0, 8)}</span>
                   </div>
                   <p className="mt-2 truncate text-[11px] text-[#655b53]">{itemSummary(held)}</p>
-                  <p className="font-data mt-2 text-[10px] text-[#8b8077]">
+                  <p className="font-data mt-2 text-[10px] text-[var(--color-atlas-muted-strong)]">
                     {new Date(held.sale.createdAt).toLocaleString("en-PH")} · {held.sale.items.length} line{held.sale.items.length === 1 ? "" : "s"}
                   </p>
                 </div>

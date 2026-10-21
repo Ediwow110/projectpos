@@ -97,7 +97,7 @@ export function TeamBranchAssignmentDialog({
           This is a security restriction, not a full multi-branch workflow.
           Returning to unrestricted branch access also removes any register-specific restrictions.
         </p>
-        {loading ? <p role="status" className="text-sm text-[#707b75]">Loading branches…</p> : null}
+        {loading ? <p role="status" className="text-sm text-[var(--color-atlas-muted-strong)]">Loading branches…</p> : null}
         {assignment.isError || branchList.isError ? (
           <p role="alert" className="text-sm text-[#b74945]">Unable to load branch assignments. Saving is disabled.</p>
         ) : null}

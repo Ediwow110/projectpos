@@ -212,7 +212,7 @@ export default function SyncPage(): JSX.Element {
             <p className="mt-1 text-[11px] text-[#7a6f66]">Provisional receipts remain visibly provisional until the server confirms or a conflict is resolved.</p>
           </div>
           {listQuery.isLoading ? <p className="px-5 pb-6 text-sm text-[#73685f]">Loading queue…</p> : null}
-          {items.length === 0 && !listQuery.isLoading ? <p className="px-5 pb-8 text-sm text-[#8b8077]">No offline commands queued.</p> : null}
+          {items.length === 0 && !listQuery.isLoading ? <p className="px-5 pb-8 text-sm text-[var(--color-atlas-muted-strong)]">No offline commands queued.</p> : null}
           {items.length > 0 ? (
             <div className="space-y-2 border-t border-[#eee6de] p-4">
               {items.map((command) => {
@@ -224,7 +224,7 @@ export default function SyncPage(): JSX.Element {
                         <p className="font-data text-[10px] font-medium text-[#2a241f]">{command.provisionalReceipt ?? command.localId.slice(0, 8)}</p>
                         <p className="mt-1 text-[10px] text-[#73685f]">{command.commandType} · attempts {command.attempts}</p>
                         {command.lastError ? <p className="mt-1 text-[10px] text-[#c43e3e]">{command.lastError}</p> : null}
-                        {command.serverResultId ? <p className="font-data mt-1 text-[9px] text-[#1f8a5b]">server record {command.serverResultId.slice(0, 8)}</p> : null}
+                        {command.serverResultId ? <p className="font-data mt-1 text-[9px] text-[var(--color-atlas-verified)]">server record {command.serverResultId.slice(0, 8)}</p> : null}
                       </div>
                       <StatusPill tone={presentation.tone}>{presentation.label}{presentation.final ? "" : " · pending"}</StatusPill>
                       {(command.status === "FAILED" || command.status === "CONFLICT") ? (
@@ -273,7 +273,7 @@ export default function SyncPage(): JSX.Element {
             action={
               <Link
                 href="/devices"
-                className="inline-flex min-h-10 items-center rounded-[10px] border border-[#e4d9d0] bg-white px-4 py-2.5 text-sm font-semibold text-[#2a241f] hover:border-[#f35d3f] hover:text-[#d94a30]"
+                className="inline-flex min-h-10 items-center rounded-[10px] border border-[#e4d9d0] bg-white px-4 py-2.5 text-sm font-semibold text-[#2a241f] hover:border-[#f35d3f] hover:text-[var(--color-atlas-accent-strong)]"
               >
                 Open Device Fleet
               </Link>
@@ -282,7 +282,7 @@ export default function SyncPage(): JSX.Element {
         </Panel>
 
         {status !== "" ? <p role="status" className="rounded-xl border border-[#eee4db] bg-white px-4 py-3 text-sm font-medium text-[#2a241f] shadow-[0_4px_14px_-6px_rgb(28_20_15/0.08)]">{status}</p> : null}
-        <Link href="/" className="text-[11px] font-semibold text-[#e44e34]">← Back to dashboard</Link>
+        <Link href="/" className="text-[11px] font-semibold text-[var(--color-atlas-accent-strong)]">← Back to dashboard</Link>
       </main>
     </AppShell>
   );

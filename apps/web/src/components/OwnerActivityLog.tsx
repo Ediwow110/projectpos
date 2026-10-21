@@ -41,19 +41,19 @@ export function OwnerActivityLog(): React.JSX.Element {
         <GhostButton type="submit">Filter</GhostButton>
         <GhostButton type="button" onClick={() => { setDraftAction(""); setAction(""); void audit.refetch(); }}>Reset</GhostButton>
       </form>
-      {audit.isLoading ? <p role="status" className="mt-4 text-sm text-[#707b75]">Loading audit history…</p> : null}
+      {audit.isLoading ? <p role="status" className="mt-4 text-sm text-[var(--color-atlas-muted-strong)]">Loading audit history…</p> : null}
       {audit.isError ? (
         <div className="mt-4 space-y-2">
           <p role="alert" className="text-sm text-[#b74945]">Audit history could not load.</p>
           <GhostButton type="button" onClick={() => void audit.refetch()}>Try again</GhostButton>
         </div>
       ) : null}
-      {audit.data?.items.length === 0 ? <p className="mt-4 text-sm text-[#707b75]">No actions match this filter.</p> : null}
+      {audit.data?.items.length === 0 ? <p className="mt-4 text-sm text-[var(--color-atlas-muted-strong)]">No actions match this filter.</p> : null}
       {audit.data && audit.data.items.length > 0 ? (
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[640px] text-left text-xs">
             <caption className="sr-only">Recent owner-visible business audit events</caption>
-            <thead><tr className="border-b border-[#e5e9e3] text-[#707b75]">
+            <thead><tr className="border-b border-[#e5e9e3] text-[var(--color-atlas-muted-strong)]">
               <th scope="col" className="p-3">When</th>
               <th scope="col" className="p-3">Action</th>
               <th scope="col" className="p-3">Actor</th>
@@ -61,10 +61,10 @@ export function OwnerActivityLog(): React.JSX.Element {
             </tr></thead>
             <tbody>{audit.data.items.map((event, index) => (
               <tr key={event.requestId + event.entityId + index} className="border-b border-[#e5e9e3]/80">
-                <td className="p-3 text-[#707b75]">{event.at ? new Date(event.at).toLocaleString("en-PH") : "Unknown"}</td>
+                <td className="p-3 text-[var(--color-atlas-muted-strong)]">{event.at ? new Date(event.at).toLocaleString("en-PH") : "Unknown"}</td>
                 <td className="p-3 font-medium text-[#202826]">{event.action}</td>
-                <td className="p-3 font-mono text-[11px] text-[#707b75]">{event.actorId}</td>
-                <td className="p-3 text-[#707b75]">{event.entityType}</td>
+                <td className="p-3 font-mono text-[11px] text-[var(--color-atlas-muted-strong)]">{event.actorId}</td>
+                <td className="p-3 text-[var(--color-atlas-muted-strong)]">{event.entityType}</td>
               </tr>
             ))}</tbody>
           </table>

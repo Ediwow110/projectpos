@@ -45,7 +45,13 @@ export function GiftCardLoadDialog({
     setBusy(true);
     setError("");
     try {
-      const result = await apiFetch<GiftCardLookup>(`/api/v1/gift-cards/lookup?code=${encodeURIComponent(raw)}`);
+      // The bearer code goes in the body of a CSRF-guarded POST: a query string
+      // would persist it in proxy/access logs, browser history and APM capture.
+      const csrf = await apiFetch<{ csrfToken: string }>("/api/v1/auth/csrf");
+      const result = await apiFetch<GiftCardLookup>("/api/v1/gift-cards/lookup", {
+        csrfToken: csrf.csrfToken,
+        init: { method: "POST", body: JSON.stringify({ code: raw }) },
+      });
       setLookup(result);
       setCode("");
     } catch (err) {
@@ -93,8 +99,8 @@ export function GiftCardLoadDialog({
     >
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-2" role="group" aria-label="Gift-card load type">
-          <button type="button" onClick={() => selectKind("NEW")} aria-pressed={kind === "NEW"} className={`rounded-xl border px-3 py-3 text-left text-sm font-semibold ${kind === "NEW" ? "border-[#f35d3f] bg-[#fff0ea] text-[#c43e3e]" : "border-[#eee4db] bg-white text-[#655b53]"}`}>New gift card<span className="mt-1 block text-[11px] font-normal text-[#8b8077]">Issue on completion</span></button>
-          <button type="button" onClick={() => selectKind("RELOAD")} aria-pressed={kind === "RELOAD"} className={`rounded-xl border px-3 py-3 text-left text-sm font-semibold ${kind === "RELOAD" ? "border-[#f35d3f] bg-[#fff0ea] text-[#c43e3e]" : "border-[#eee4db] bg-white text-[#655b53]"}`}>Reload card<span className="mt-1 block text-[11px] font-normal text-[#8b8077]">Use an existing card</span></button>
+          <button type="button" onClick={() => selectKind("NEW")} aria-pressed={kind === "NEW"} className={`rounded-xl border px-3 py-3 text-left text-sm font-semibold ${kind === "NEW" ? "border-[#f35d3f] bg-[#fff0ea] text-[#c43e3e]" : "border-[#eee4db] bg-white text-[#655b53]"}`}>New gift card<span className="mt-1 block text-[11px] font-normal text-[var(--color-atlas-muted-strong)]">Issue on completion</span></button>
+          <button type="button" onClick={() => selectKind("RELOAD")} aria-pressed={kind === "RELOAD"} className={`rounded-xl border px-3 py-3 text-left text-sm font-semibold ${kind === "RELOAD" ? "border-[#f35d3f] bg-[#fff0ea] text-[#c43e3e]" : "border-[#eee4db] bg-white text-[#655b53]"}`}>Reload card<span className="mt-1 block text-[11px] font-normal text-[var(--color-atlas-muted-strong)]">Use an existing card</span></button>
         </div>
 
         {kind === "RELOAD" ? (
@@ -102,16 +108,16 @@ export function GiftCardLoadDialog({
             <label className="block text-[11px] font-semibold text-[#655b53]">Gift-card bearer code
               <input value={code} onChange={(event) => setCode(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void resolveCard(); }} className="field mt-1.5" placeholder="Scan or enter code" aria-describedby="gift-card-code-help" autoComplete="off" />
             </label>
-            <p id="gift-card-code-help" className="text-[10px] text-[#8b8077]">The code is used only for secure lookup and is cleared after resolution.</p>
+            <p id="gift-card-code-help" className="text-[10px] text-[var(--color-atlas-muted-strong)]">The code is used only for secure lookup and is cleared after resolution.</p>
             <GhostButton type="button" onClick={() => void resolveCard()} disabled={busy || !code.trim()}>{busy ? "Looking up…" : "Resolve card"}</GhostButton>
-            {lookup ? <div className="rounded-lg border border-[#cfe9dc] bg-[#eaf7f0] p-3 text-[11px] text-[#1f8a5b]"><p className="font-semibold">{lookup.maskedCode} · {lookup.status}</p><p className="mt-1">Current balance ₱{money(lookup.balanceMinor)}</p></div> : null}
+            {lookup ? <div className="rounded-lg border border-[#cfe9dc] bg-[#eaf7f0] p-3 text-[11px] text-[var(--color-atlas-verified)]"><p className="font-semibold">{lookup.maskedCode} · {lookup.status}</p><p className="mt-1">Current balance ₱{money(lookup.balanceMinor)}</p></div> : null}
           </div>
         ) : <p className="rounded-xl bg-[#fcf8f3] p-4 text-[11px] leading-5 text-[#73685f]">A new active card and its one-time bearer code are created only after the sale completes successfully.</p>}
 
         <label className="block text-[11px] font-semibold text-[#655b53]">Load amount (PHP)
           <input value={amount} onChange={(event) => setAmount(event.target.value)} className="field mt-1.5" placeholder="10.00" inputMode="decimal" aria-describedby="gift-card-amount-help" />
         </label>
-        <p id="gift-card-amount-help" className="text-[10px] text-[#8b8077]">The load is separate from merchandise and does not earn loyalty points or affect inventory.</p>
+        <p id="gift-card-amount-help" className="text-[10px] text-[var(--color-atlas-muted-strong)]">The load is separate from merchandise and does not earn loyalty points or affect inventory.</p>
         {error ? <p role="alert" className="rounded-lg border border-[#efb9b9] bg-[#fff0f0] px-3 py-2 text-[11px] font-medium text-[#c43e3e]">{error}</p> : null}
       </div>
     </Modal>

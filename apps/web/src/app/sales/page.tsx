@@ -210,7 +210,7 @@ export default function SalesHistoryPage(): JSX.Element {
                   ))}
                 </ul>
               </div>
-            ) : !paymentsQuery.isLoading ? <p className="mt-5 text-sm text-[#8b8077]">No payment data available.</p> : null}
+            ) : !paymentsQuery.isLoading ? <p className="mt-5 text-sm text-[var(--color-atlas-muted-strong)]">No payment data available.</p> : null}
           </Panel>
         </div>
 
@@ -322,7 +322,7 @@ export default function SalesHistoryPage(): JSX.Element {
               <h2 className="font-display text-base font-semibold">Transactions</h2>
               <p className="mt-1 text-[11px] text-[#7a6f66]">Source records remain the authoritative drill-down.</p>
             </div>
-            <Link href="/reports/sales" className="text-[11px] font-semibold text-[#e44e34]">Open reports →</Link>
+            <Link href="/reports/sales" className="text-[11px] font-semibold text-[var(--color-atlas-accent-strong)]">Open reports →</Link>
           </div>
           {listQuery.isLoading ? <p className="px-5 pb-5 text-sm text-[#73685f]">Loading sales…</p> : null}
           {listQuery.isError ? (
@@ -330,7 +330,7 @@ export default function SalesHistoryPage(): JSX.Element {
               {listQuery.error instanceof ApiError ? listQuery.error.code + ": " + listQuery.error.message : "Could not load sales."}
             </p>
           ) : null}
-          {listQuery.data && visibleSales.length === 0 ? <p className="px-5 pb-6 text-sm text-[#8b8077]">No sales match these filters.</p> : null}
+          {listQuery.data && visibleSales.length === 0 ? <p className="px-5 pb-6 text-sm text-[var(--color-atlas-muted-strong)]">No sales match these filters.</p> : null}
           {visibleSales.length > 0 ? (
             <table className="premium-table min-w-[900px] text-left text-[12px]">
               <thead>
@@ -345,7 +345,7 @@ export default function SalesHistoryPage(): JSX.Element {
               <tbody>
                 {visibleSales.map((sale) => (
                   <tr key={sale.id}>
-                    <td className="px-5 py-3"><Link href={"/sales/" + sale.id} className="font-data font-medium text-[#2a241f] hover:text-[#d94a30]">{sale.receiptNo}</Link></td>
+                    <td className="px-5 py-3"><Link href={"/sales/" + sale.id} className="font-data font-medium text-[#2a241f] hover:text-[var(--color-atlas-accent-strong)]">{sale.receiptNo}</Link></td>
                     <td className="px-5 py-3 text-[#73685f]">{sale.customerName ?? "Walk-in"}</td>
                     <td className="px-5 py-3 text-[#73685f]">{branchName(sale.branchId)}</td>
                     <td className="font-data px-5 py-3 text-right font-medium">₱{money(sale.totalMinor)}</td>

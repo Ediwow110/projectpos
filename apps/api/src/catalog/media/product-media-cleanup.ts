@@ -1,5 +1,6 @@
 import type { OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import type { DbPort } from "../../common/db.port";
+import { incrementMetric, setMetric } from "../../common/metrics";
 import type { ProductMediaStorage } from "./product-media.storage";
 
 /** Retries deletion of old image bytes without ever removing the active product image. */
@@ -12,9 +13,27 @@ export class ProductMediaCleanup implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     if (!this.storage) return;
-    this.timer = setInterval(() => { void this.sweep().catch(() => undefined); }, 5 * 60_000);
+    // The sweep's outcome is an operational signal. Discarding it - or swallowing
+    // its rejection - leaves an unbounded backlog of retired image bytes with no
+    // trace anywhere, exactly the failure a worker is here to surface.
+    const run = (): void => {
+      void this.sweep().then(
+        (outcome) => {
+          setMetric("pos_product_media_cleanup_deleted", outcome.deleted);
+          setMetric("pos_product_media_cleanup_failed", outcome.failed);
+          if (outcome.failed > 0) {
+            // Counts only: no storage paths, asset ids, or business ids in the line.
+            console.warn(`product-media cleanup: ${outcome.failed} retired image deletion(s) failed`);
+          }
+        },
+        () => {
+          incrementMetric("pos_product_media_cleanup_worker_failures_total");
+        },
+      );
+    };
+    run();
+    this.timer = setInterval(run, 5 * 60_000);
     this.timer.unref();
-    void this.sweep().catch(() => undefined);
   }
 
   onModuleDestroy(): void {

@@ -211,7 +211,7 @@ export default function InventoryPage(): JSX.Element {
                     setView(item);
                     setPage(1);
                   }}
-                  className={"rounded-full px-3 py-2 text-[11px] font-semibold " + (view === item ? "bg-[#fff0ea] text-[#e44e34]" : "border border-[#e4d9d0] bg-white text-[#73685f]")}
+                  className={"rounded-full px-3 py-2 text-[11px] font-semibold " + (view === item ? "bg-[#fff0ea] text-[var(--color-atlas-accent-strong)]" : "border border-[#e4d9d0] bg-white text-[#73685f]")}
                 >
                   {item === "all" ? "All stock" : item === "low" ? "Low stock" : "Out of stock"}
                 </button>
@@ -242,7 +242,7 @@ export default function InventoryPage(): JSX.Element {
                 const health = inventoryStatus(item.qtyOnHand, item.reorderLevel);
                 return (
                   <tr key={item.productId}>
-                    <td className="px-5 py-3"><Link href={"/inventory/" + item.productId} className="font-semibold text-[#2a241f] hover:text-[#d94a30]">{item.productName}</Link></td>
+                    <td className="px-5 py-3"><Link href={"/inventory/" + item.productId} className="font-semibold text-[#2a241f] hover:text-[var(--color-atlas-accent-strong)]">{item.productName}</Link></td>
                     <td className="font-data px-5 py-3 text-right font-medium">{item.qtyOnHand}</td>
                     <td className="font-data px-5 py-3 text-right text-[#73685f]">{item.reorderLevel}</td>
                     <td className="px-5 py-3 text-right">
@@ -253,7 +253,7 @@ export default function InventoryPage(): JSX.Element {
               })}
             </tbody>
           </table>
-          {data.items.length === 0 ? <div className="border-t border-[#eee6de] px-5 py-10 text-center text-sm text-[#8b8077]">No products are in this stock view.</div> : null}
+          {data.items.length === 0 ? <div className="border-t border-[#eee6de] px-5 py-10 text-center text-sm text-[var(--color-atlas-muted-strong)]">No products are in this stock view.</div> : null}
           <div className="flex justify-end gap-2 border-t border-[#eee6de] px-5 py-4">
             <GhostButton type="button" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>Previous</GhostButton>
             <GhostButton type="button" disabled={page >= pages} onClick={() => setPage((current) => current + 1)}>Next</GhostButton>

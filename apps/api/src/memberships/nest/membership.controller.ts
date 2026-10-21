@@ -304,6 +304,16 @@ export class MembershipController {
   ): Promise<void> {
     const granted = this.manageGuard(req, res);
     if (granted === false) return;
+    // The approval PIN is the credential a manager enters at a till to authorize
+    // overrides, so enrolling it must carry the same step-up confirmation as the
+    // role, branch and register mutations beside it; otherwise a hijacked idle
+    // session can install an attacker-chosen PIN and mint approvals.
+    try {
+      this.auth.checkReAuth(req.auth!.authenticatedAt);
+    } catch {
+      fail(res, 403, "AUTH_REAUTH_REQUIRED", "Re-authentication required", req);
+      return;
+    }
     const parsed = approvalPinSchema.safeParse(body);
     if (!parsed.success) {
       fail(res, 400, "VALIDATION", "Approval PIN must be exactly six digits", req);

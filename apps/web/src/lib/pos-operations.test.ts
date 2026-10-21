@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { ApiError } from "./api";
+import { posSaleAttemptContext } from "./pos-checkout-feedback";
 import { MemorySyncStore } from "./sync-store";
 import {
   authorizePosDiscount,
@@ -337,5 +339,77 @@ describe("POS operations", () => {
 
     expect(result).toEqual({ kind: "completed", saleId: "sale-held" });
     expect(calls).toEqual(["/api/v1/auth/csrf", "/api/v1/sales/complete"]);
+  });
+
+  it("tags a completion failure with the existing draft so the payment UI can block blind retry", async () => {
+    const api: PosApiCall = async <T>(path: string) => {
+      if (path === "/api/v1/auth/csrf") return { csrfToken: "csrf" } as T;
+      if (path === "/api/v1/sales/drafts") return { id: "sale-ctx", totalMinor: 5000 } as T;
+      if (path === "/api/v1/sales/complete") {
+        throw new ApiError("HTTP_ERROR", "Request failed.", "", 500);
+      }
+      throw new Error("unexpected path " + path);
+    };
+
+    let caught: unknown;
+    try {
+      await completePosSale({
+        cart, registerId: "", customerId: "", walkIn: "", received: "50", method: "cash", orderDiscountMinor: 0,
+      }, { api, uuid: () => "ctx-complete" });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(ApiError);
+    expect(posSaleAttemptContext(caught)).toEqual({ phase: "complete", saleId: "sale-ctx" });
+  });
+
+  it("tags a draft-creation failure as an attempt that may already be recorded", async () => {
+    const api: PosApiCall = async <T>(path: string) => {
+      if (path === "/api/v1/auth/csrf") return { csrfToken: "csrf" } as T;
+      if (path === "/api/v1/sales/drafts") {
+        throw new ApiError("NETWORK_ERROR", "Could not reach the API.", "", 0);
+      }
+      throw new Error("unexpected path " + path);
+    };
+
+    let caught: unknown;
+    try {
+      await completePosSale({
+        cart, registerId: "", customerId: "", walkIn: "", received: "50", method: "cash", orderDiscountMinor: 0,
+      }, { api, uuid: () => "ctx-draft" });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(ApiError);
+    // The write may have landed before the connection dropped, so the failure
+    // carries the DRAFT phase: no payment was sent, but the attempt may
+    // already exist. Treating it as "nothing happened" is what allowed a
+    // retry to create a second draft.
+    expect(posSaleAttemptContext(caught)).toEqual({ phase: "draft", saleId: null });
+  });
+
+  it("tags a hosted-checkout creation failure with its draft", async () => {
+    const api: PosApiCall = async <T>(path: string) => {
+      if (path === "/api/v1/auth/csrf") return { csrfToken: "csrf" } as T;
+      if (path === "/api/v1/sales/drafts") return { id: "sale-hosted", totalMinor: 5000 } as T;
+      if (path === "/api/v1/sales/sale-hosted/paymongo/checkout") {
+        throw new ApiError("NETWORK_TIMEOUT", "The request timed out.", "", 0);
+      }
+      throw new Error("unexpected path " + path);
+    };
+
+    let caught: unknown;
+    try {
+      await completePosSale({
+        cart, registerId: "", customerId: "", walkIn: "", received: "", method: "qrph", orderDiscountMinor: 0,
+      }, { api, uuid: () => "ctx-hosted" });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(ApiError);
+    expect(posSaleAttemptContext(caught)).toEqual({ phase: "checkout", saleId: "sale-hosted" });
   });
 });

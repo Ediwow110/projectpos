@@ -16,6 +16,78 @@ import {
   type TransactionalEmailPort,
 } from "../../email/email.service";
 
+// Timing equalization, not a credential: these are throwaway argon2 digests of
+// values no account uses, produced with the same parameters as hashPassword()
+// and hashApprovalPin(). A path that answers without touching argon2 is
+// measurably faster than one that verifies, which lets an attacker enumerate
+// accounts (or managers with no PIN enrolled) before guessing anything. The miss
+// paths verify against these so every credential answer costs the same.
+const TIMING_EQUALIZATION_PASSWORD_HASH =
+  "$argon2id$v=19$m=65536,t=3,p=4$lpDM38Ji/4uSRGE570/4EQ$pzhkZZuZmEus28wzBgrznJBXH4UKZ9/Sncseo7dTWMA";
+const TIMING_EQUALIZATION_APPROVAL_PIN_HASH =
+  "$argon2id$v=19$m=19456,t=2,p=1$7H+zBDO0RHOtOLJsu8WVjA$+KnEhxZG8llW2jRwc9mAmns+821wzNGWAA280qS7ino";
+
+// The caller-scoped limiter (5/min per till, see sales.controller.shared.ts)
+// cannot protect a manager's six-digit approval PIN: every till gets its own
+// budget, N cashiers aggregate against one credential, and the manager being
+// guessed at never trips. Misses are therefore counted against the credential
+// being verified, and the fifth miss inside the window locks that approver's
+// credential out with a doubling backoff.
+const APPROVER_MISS_WINDOW_MS = 60_000;
+const APPROVER_MISS_LIMIT = 5;
+const APPROVER_LOCKOUT_MS = 60_000;
+const APPROVER_LOCKOUT_MAX_MS = 15 * 60_000;
+const APPROVER_TRACKED_KEYS_MAX = 10_000;
+
+interface ApproverCredentialState {
+  count: number;
+  lastMissAt: number;
+  lockedUntil: number;
+  lockouts: number;
+}
+
+const approverCredentialStates = new Map<string, ApproverCredentialState>();
+
+// Keyed on the approver being verified, never on the caller.
+export function approverCredentialKey(businessId: string, email: string): string {
+  return `${businessId}:approval-credential:${email.trim().toLowerCase()}`;
+}
+
+export function assertApproverCredentialAvailable(key: string, now: number = Date.now()): void {
+  const state = approverCredentialStates.get(key);
+  if (state && state.lockedUntil > now) throw new Error("RATE_LIMITED");
+}
+
+export function recordApproverCredentialMiss(key: string, now: number = Date.now()): void {
+  let state = approverCredentialStates.get(key);
+  if (!state) {
+    // Unbounded tracked keys would make the brake itself a memory DoS.
+    if (approverCredentialStates.size >= APPROVER_TRACKED_KEYS_MAX) {
+      for (const [tracked, entry] of approverCredentialStates) {
+        if (entry.lockedUntil <= now && now - entry.lastMissAt > APPROVER_MISS_WINDOW_MS) approverCredentialStates.delete(tracked);
+      }
+    }
+    state = { count: 0, lastMissAt: 0, lockedUntil: 0, lockouts: 0 };
+    approverCredentialStates.set(key, state);
+  }
+  state.count = now - state.lastMissAt > APPROVER_MISS_WINDOW_MS ? 1 : state.count + 1;
+  state.lastMissAt = now;
+  incrementMetric("pos_approval_credential_failures_total");
+  if (state.count < APPROVER_MISS_LIMIT) return;
+  state.lockouts += 1;
+  state.lockedUntil = now + Math.min(APPROVER_LOCKOUT_MS * 2 ** (state.lockouts - 1), APPROVER_LOCKOUT_MAX_MS);
+  state.count = 0;
+  incrementMetric("pos_approval_credential_lockouts_total");
+}
+
+export function clearApproverCredentialMisses(key: string): void {
+  approverCredentialStates.delete(key);
+}
+
+export function resetApproverCredentialThrottleForTests(): void {
+  approverCredentialStates.clear();
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -155,7 +227,11 @@ export class AuthService {
 
   async login(input: { email: string; password: string }, meta: { requestId: string; ip: string | null; userAgent: string | null }, deviceId?: string): Promise<{ token: string; csrfToken: string; userId: string; businessId: string; onboardingRequired: boolean }> {
     const user = await this.db.findUserByEmail(input.email);
-    if (!user || !(await verifyPassword(user.passwordHash, input.password))) {
+    // An unknown address still pays a full argon2 verify: skipping it would make
+    // "no such account" answer faster than "wrong password" and turn the login
+    // endpoint into an account enumerator.
+    const passwordMatches = await verifyPassword(user?.passwordHash ?? TIMING_EQUALIZATION_PASSWORD_HASH, input.password);
+    if (!user || !passwordMatches) {
       incrementMetric("pos_auth_failures_total");
       throw new Error("AUTH_INVALID_CREDENTIALS");
     }
@@ -321,15 +397,29 @@ export class AuthService {
     requestId: string,
     input: { email: string; password?: string; pin?: string; permission: string; fingerprint: string; requireDistinctApprover?: boolean },
   ): Promise<{ token: string; expiresAt: Date; approver: { id: string; name: string; role: string } }> {
+    const credentialKey = approverCredentialKey(businessId, input.email);
+    // A locked credential is refused before the verify, whatever the calling
+    // till's own budget says, so the brake follows the credential under attack.
+    assertApproverCredentialAvailable(credentialKey);
     const approver = await this.db.findUserByEmail(input.email.trim().toLowerCase());
     const membership = approver ? await this.db.findMembership(approver.id, businessId) : null;
     const eligibleRole = membership?.role === "owner" || membership?.role === "manager";
     const eligiblePermission = membership ? (
       effectivePermissions(membership.role, membership.id, await this.db.getSettings(businessId)).includes(input.permission)
     ) : false;
+    // Same equalization on the approver surface: an unknown email, a missing
+    // membership, or a manager with no PIN enrolled must cost what a wrong
+    // credential costs, or the response time reports which staff can approve
+    // before any PIN is guessed.
     const credentialValid = input.pin !== undefined
-      ? membership?.approvalPinHash != null && await verifyApprovalPin(membership.approvalPinHash, input.pin)
-      : input.password !== undefined && approver !== null && await verifyPassword(approver.passwordHash, input.password);
+      ? await verifyApprovalPin(membership?.approvalPinHash ?? TIMING_EQUALIZATION_APPROVAL_PIN_HASH, input.pin)
+      : input.password !== undefined
+        ? await verifyPassword(approver?.passwordHash ?? TIMING_EQUALIZATION_PASSWORD_HASH, input.password)
+        : false;
+    if (input.pin !== undefined || input.password !== undefined) {
+      if (credentialValid) clearApproverCredentialMisses(credentialKey);
+      else recordApproverCredentialMiss(credentialKey);
+    }
     const valid =
       approver !== null &&
       membership !== null &&

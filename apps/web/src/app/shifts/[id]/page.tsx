@@ -70,7 +70,7 @@ export default function ShiftDetailPage({ params }: { params: Promise<{ id: stri
             <p role="alert" className="text-sm font-medium text-[#c43e3e]">
               {reportQuery.error instanceof ApiError ? `${reportQuery.error.code}: ${reportQuery.error.message}` : "Shift not found."}
             </p>
-            <Link href="/shifts" className="mt-3 inline-block text-sm font-semibold text-[#e44e34]">← Back to shifts</Link>
+            <Link href="/shifts" className="mt-3 inline-block text-sm font-semibold text-[var(--color-atlas-accent-strong)]">← Back to shifts</Link>
           </Panel>
         </main>
       </AppShell>
@@ -115,7 +115,7 @@ export default function ShiftDetailPage({ params }: { params: Promise<{ id: stri
                   ["Expected cash", c.expectedCash],
                 ].map(([label, value]) => (
                   <div key={String(label)} className="rounded-xl bg-[#f7f1ea] p-3">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#9a8d83]">{label}</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--color-atlas-muted-strong)]">{label}</p>
                     <p className="font-data mt-1 text-sm font-semibold text-[#2a241f]">{money(Number(value))}</p>
                   </div>
                 ))}
@@ -124,7 +124,7 @@ export default function ShiftDetailPage({ params }: { params: Promise<{ id: stri
 
             <DataTableFrame>
               <div className="px-5 py-4"><SectionHeader title="Cash movements" description="Each movement preserves its type, amount, actor and reference where available." /></div>
-              {movements.length === 0 ? <p className="px-5 pb-8 text-sm text-[#8b8077]">No movements recorded.</p> : (
+              {movements.length === 0 ? <p className="px-5 pb-8 text-sm text-[var(--color-atlas-muted-strong)]">No movements recorded.</p> : (
                 <table className="premium-table min-w-[760px] text-left text-[12px]">
                   <thead><tr><th className="px-5 pb-3">Type</th><th className="px-5 pb-3">Reason</th><th className="px-5 pb-3">Actor</th><th className="px-5 pb-3 text-right">Amount</th><th className="px-5 pb-3 text-right">Reference</th></tr></thead>
                   <tbody>
@@ -132,9 +132,9 @@ export default function ShiftDetailPage({ params }: { params: Promise<{ id: stri
                       <tr key={movement.id}>
                         <td className="px-5 py-3"><StatusPill tone={movement.amountMinor < 0 ? "warn" : "info"}>{movementLabel(movement.type)}</StatusPill></td>
                         <td className="px-5 py-3 text-[#73685f]">{movement.reason ?? "—"}</td>
-                        <td className="font-data px-5 py-3 text-[#9a8d83]">{movement.actorId.slice(0, 8)}</td>
+                        <td className="font-data px-5 py-3 text-[var(--color-atlas-muted-strong)]">{movement.actorId.slice(0, 8)}</td>
                         <td className="font-data px-5 py-3 text-right font-semibold">{money(movement.amountMinor)}</td>
-                        <td className="px-5 py-3 text-right">{movement.referenceType === "Sale" && movement.referenceId ? <Link href={`/receipts/${movement.referenceId}`} className="text-[11px] font-semibold text-[#e44e34]">Receipt →</Link> : <span className="font-data text-[10px] text-[#9a8d83]">{movement.referenceType ?? "—"}</span>}</td>
+                        <td className="px-5 py-3 text-right">{movement.referenceType === "Sale" && movement.referenceId ? <Link href={`/receipts/${movement.referenceId}`} className="text-[11px] font-semibold text-[var(--color-atlas-accent-strong)]">Receipt →</Link> : <span className="font-data text-[10px] text-[var(--color-atlas-muted-strong)]">{movement.referenceType ?? "—"}</span>}</td>
                       </tr>
                     ))}
                   </tbody>

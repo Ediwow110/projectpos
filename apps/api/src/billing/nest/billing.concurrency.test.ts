@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createMemoryDb } from "../../common/memory.db";
+import { setTestDoubleOutcome } from "../../payments/provider";
 import { BillingService } from "./billing.service";
 import { CatalogService } from "../../catalog/nest/catalog.service";
 
@@ -122,7 +123,8 @@ describe("phase10 batch caps and metering", () => {
     });
     expect((await billing.usageSummary(business.id)).salesMonthly).toBe(0);
 
-    // Reconciling the unknown payment completes the sale and meters it once.
+    // The provider confirms the leg before the reconcile may settle it.
+    setTestDoubleOutcome("unknown-reconcile", "SUCCEEDED", business.id);
     const payments = await db.listPaymentsBySale(draft.id, business.id);
     const pending = payments.find((p) => p.status === "UNKNOWN")!;
     await sales.reconcilePayment(business.id, "u1", "r4", pending.id, "SUCCEEDED", "reconcile-key-1");

@@ -125,7 +125,7 @@ export default function BranchesPage(): JSX.Element {
           actions={<><Link href="/transfers" className="inline-flex min-h-10 items-center rounded-[10px] border border-[#e4d9d0] bg-white px-4 text-sm font-semibold text-[#2a241f] hover:border-[#f35d3f]">Inventory transfers</Link>{manageable ? <PrimaryButton type="button" onClick={() => { setError(""); setSuccess(""); setCreateOpen(true); }}>+ Add branch</PrimaryButton> : null}</>}
         />
 
-        {success ? <div role="status" className="rounded-xl border border-[#cfe9dc] bg-[#eaf7f0] px-4 py-3 text-sm font-medium text-[#1f8a5b]">{success}</div> : null}
+        {success ? <div role="status" className="rounded-xl border border-[#cfe9dc] bg-[#eaf7f0] px-4 py-3 text-sm font-medium text-[var(--color-atlas-verified)]">{success}</div> : null}
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Branch summary">
           <MetricCard label="Branches" value={branches.length} icon="⌘" meta="All returned locations" />
@@ -150,7 +150,7 @@ export default function BranchesPage(): JSX.Element {
                 <h2 className="font-display mt-4 text-lg font-semibold text-[#17130f]">{branch.name}</h2>
                 <p className="mt-1 text-[11px] capitalize text-[#73685f]">{branch.type}</p>
                 <div className="mt-5 flex items-center gap-2">
-                  <Link href={"/reports/branches"} className="text-[11px] font-semibold text-[#e44e34]">View performance →</Link>
+                  <Link href={"/reports/branches"} className="text-[11px] font-semibold text-[var(--color-atlas-accent-strong)]">View performance →</Link>
                   {manageable && branch.isActive ? (
                     <GhostButton
                       type="button"
@@ -170,11 +170,11 @@ export default function BranchesPage(): JSX.Element {
           <SectionHeader
             title="Inventory transfers"
             description="Recent stock movements between locations from the live transfers endpoint."
-            action={<Link href="/transfers" className="text-[11px] font-semibold text-[#e44e34]">Manage transfers →</Link>}
+            action={<Link href="/transfers" className="text-[11px] font-semibold text-[var(--color-atlas-accent-strong)]">Manage transfers →</Link>}
           />
           {transfersQuery.isLoading ? <p className="mt-4 text-sm text-[#73685f]">Loading transfers…</p> : null}
           {transfersQuery.isError ? <p role="alert" className="mt-4 text-sm text-[#c43e3e]">Could not load transfers.</p> : null}
-          {transfers.length === 0 && !transfersQuery.isLoading ? <p className="mt-4 text-sm text-[#8b8077]">No transfers yet.</p> : null}
+          {transfers.length === 0 && !transfersQuery.isLoading ? <p className="mt-4 text-sm text-[var(--color-atlas-muted-strong)]">No transfers yet.</p> : null}
           {transfers.length > 0 ? (
             <div className="mt-4 overflow-x-auto">
               <table className="premium-table min-w-[760px] text-left text-[12px]">
@@ -190,7 +190,7 @@ export default function BranchesPage(): JSX.Element {
                 <tbody>
                   {transfers.slice(0, 6).map((transfer) => (
                     <tr key={transfer.id}>
-                      <td className="py-3"><Link href={"/transfers/" + transfer.id} className="font-data font-medium text-[#2a241f] hover:text-[#d94a30]">{transfer.id.slice(0, 8)}</Link></td>
+                      <td className="py-3"><Link href={"/transfers/" + transfer.id} className="font-data font-medium text-[#2a241f] hover:text-[var(--color-atlas-accent-strong)]">{transfer.id.slice(0, 8)}</Link></td>
                       <td className="py-3 text-[#73685f]">{branchName(transfer.fromBranchId)}</td>
                       <td className="py-3 text-[#73685f]">{branchName(transfer.toBranchId)}</td>
                       <td className="font-data py-3 text-right">{transfer.lines.length}</td>

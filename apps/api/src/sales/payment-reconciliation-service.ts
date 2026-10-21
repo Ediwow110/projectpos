@@ -1,4 +1,6 @@
 import type { DbPayment, DbPort, DbSale, DbSaleItem } from "../common/db.port";
+import type { ProviderVerdict } from "../payments/provider";
+import { isPayMongoMethod } from "../payments/paymongo";
 import { OrderSaleService } from "../orders/order-sale-service";
 import { OrderNotificationService } from "../orders/order-notification-service";
 import { fingerprintPayload } from "./idempotency";
@@ -35,15 +37,69 @@ interface ReconciliationOps {
 
 const CASH_METHODS = new Set(["cash"]);
 
+/**
+ * The provider verdict probe. A reconcile that claims success for a hosted
+ * method is only a claim: the provider decides. Kept as a narrow port so this
+ * service does not depend on the whole provider service.
+ */
+export interface PaymentVerdictProbe {
+  /** Is a real payment provider wired up? */
+  configured(): boolean;
+  queryProvider(
+    businessId: string,
+    paymentId: string,
+    provider?: string,
+  ): Promise<{ status: ProviderVerdict }>;
+}
+
 export class SalesPaymentReconciliationService {
   private readonly orderSales: OrderSaleService;
 
   constructor(
     private readonly db: DbPort,
     private readonly ops: ReconciliationOps,
+    private readonly provider: PaymentVerdictProbe,
     private readonly notifications?: OrderNotificationService,
   ) {
     this.orderSales = new OrderSaleService(db);
+  }
+
+  /**
+   * Resolve what the ledger may actually be told about a payment.
+   *
+   * A client asserting SUCCEEDED for a hosted method is not evidence: that is
+   * exactly the claim a browser can make about money it never saw move. The
+   * provider is asked first, and its verdict outranks the request - including
+   * downward to FAILED. When the provider cannot answer, nothing is written:
+   * the leg stays UNKNOWN and can be reconciled again, rather than being
+   * completed on an unverified promise.
+   *
+   * Runs before the lock and transaction so a provider round-trip never holds
+   * a database transaction open.
+   */
+  private async settleOutcome(
+    businessId: string,
+    paymentId: string,
+    claimed: "SUCCEEDED" | "FAILED",
+  ): Promise<"SUCCEEDED" | "FAILED"> {
+    if (claimed !== "SUCCEEDED") return claimed;
+    // Where no provider is wired up there is no authority to contradict the
+    // attestation, so the audited manual reconciliation stands. Where one does
+    // exist, it decides - which is the case that matters in production.
+    if (!this.provider.configured()) return claimed;
+    const payment = await this.db.findPaymentById(paymentId, businessId);
+    if (!payment) throw new Error("NOT_FOUND");
+    if (!isPayMongoMethod(payment.method)) return claimed;
+    // Resolve the verdict through the same adapter the provider-status endpoint
+    // uses: a PayMongo checkout session is queried at PayMongo, anything else
+    // through the double keyed by (business, reference). Nothing is registered
+    // for a double in production, so an unverifiable reference answers UNKNOWN
+    // and the leg stays unresolved - the safe direction for money.
+    const provider = (payment.providerRef ?? "").startsWith("cs_") ? "paymongo" : "test-double";
+    const verdict = await this.provider.queryProvider(businessId, paymentId, provider);
+    if (verdict.status === "SUCCEEDED") return "SUCCEEDED";
+    if (verdict.status === "FAILED") return "FAILED";
+    throw new Error("PAYMENT_UNKNOWN");
   }
 
   async reconcilePayment(
@@ -54,8 +110,9 @@ export class SalesPaymentReconciliationService {
     outcome: "SUCCEEDED" | "FAILED",
     key: string,
   ): Promise<{ sale: EmbeddedSale; payment: DbPayment }> {
+    const settled = await this.settleOutcome(businessId, paymentId, outcome);
     const result = await this.db.withLock(`sales:${businessId}`, async () => this.db.withTransaction(async () => {
-      const fingerprint = fingerprintPayload({ paymentId, outcome });
+      const fingerprint = fingerprintPayload({ paymentId, outcome: settled });
       const existing = await this.db.findIdempotency(businessId, key, "payment.reconcile");
       if (existing) {
         if (existing.fingerprint !== fingerprint) {
@@ -76,7 +133,7 @@ export class SalesPaymentReconciliationService {
 
       const updatedPayment =
         (await this.db.updatePayment(payment.id, businessId, {
-          status: outcome === "SUCCEEDED" ? "SUCCEEDED" : "FAILED",
+          status: settled === "SUCCEEDED" ? "SUCCEEDED" : "FAILED",
         })) ?? payment;
       await this.db.claimIdempotency({
         businessId,

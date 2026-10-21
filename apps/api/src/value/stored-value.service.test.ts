@@ -1,6 +1,17 @@
+import { createHmac, randomBytes } from "node:crypto";
 import { createMemoryDb } from "../common/memory.db";
 import { StoredValueService, assertProductionGiftCardCodeSecret } from "./stored-value.service";
 import { describe, expect, it, vi } from "vitest";
+
+function captureEnv(names: string[]): () => void {
+  const originals = names.map((name) => [name, process.env[name]] as const);
+  return () => {
+    for (const [name, value] of originals) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  };
+}
 
 describe("StoredValueService", () => {
   it("requires a separate configured HMAC secret before production API startup", () => {
@@ -9,6 +20,48 @@ describe("StoredValueService", () => {
     expect(() => assertProductionGiftCardCodeSecret({ NODE_ENV: "production", GIFT_CARD_CODE_SECRET: "s".repeat(32) })).not.toThrow();
     expect(() => assertProductionGiftCardCodeSecret({ NODE_ENV: "development" })).not.toThrow();
   });
+
+  it("fails closed for a bearer-code hash whenever the HMAC secret is unset outside the test env", async () => {
+    // The suite's own environment is the only place a key may be synthesised;
+    // if this precondition ever stops holding, the fallback below must be
+    // removed rather than widened.
+    expect(process.env["NODE_ENV"]).toBe("test");
+    const service = new StoredValueService(createMemoryDb());
+    const restore = captureEnv(["GIFT_CARD_CODE_SECRET", "NODE_ENV"]);
+    try {
+      delete process.env["GIFT_CARD_CODE_SECRET"];
+      expect(service.hashGiftCardCode("NXP-GC-LOOKUP-TEST")).toMatch(/^[0-9a-f]{64}$/);
+      for (const nodeEnv of ["development", "staging", "production", ""]) {
+        process.env["NODE_ENV"] = nodeEnv;
+        expect(() => service.hashGiftCardCode("NXP-GC-LOOKUP-TEST")).toThrow("GIFT_CARD_CODE_SECRET_MISSING");
+      }
+      // A short configured value is as unusable as no value at all.
+      process.env["NODE_ENV"] = "test";
+      process.env["GIFT_CARD_CODE_SECRET"] = "too-short";
+      expect(() => service.hashGiftCardCode("NXP-GC-LOOKUP-TEST")).toThrow("GIFT_CARD_CODE_SECRET_MISSING");
+    } finally {
+      restore();
+    }
+  });
+
+  it("derives bearer-code hashes only from the configured secret, never a committed default", () => {
+    const service = new StoredValueService(createMemoryDb());
+    const restore = captureEnv(["GIFT_CARD_CODE_SECRET", "NODE_ENV"]);
+    const normalize = (code: string) => code.trim().toUpperCase();
+    try {
+      const first = randomBytes(32).toString("hex");
+      const second = randomBytes(32).toString("hex");
+      process.env["NODE_ENV"] = "test";
+      process.env["GIFT_CARD_CODE_SECRET"] = first;
+      const expected = createHmac("sha256", first).update(normalize("NXP-GC-AAAA"), "utf8").digest("hex");
+      expect(service.hashGiftCardCode(" nxp-gc-aaaa ")).toBe(expected);
+      process.env["GIFT_CARD_CODE_SECRET"] = second;
+      expect(service.hashGiftCardCode("NXP-GC-AAAA")).not.toBe(expected);
+    } finally {
+      restore();
+    }
+  });
+
   it("keeps gift-card money and approval audit atomic and rejects mismatched replays", async () => {
     const { db, service, business } = await fixture();
     const issued = await service.issueGiftCard(business.id, "cashier", "issue", "gift-issue");

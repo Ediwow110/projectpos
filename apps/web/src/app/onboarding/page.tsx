@@ -187,10 +187,10 @@ export default function OnboardingPage(): JSX.Element {
   }
 
   if (query.isLoading || business.isLoading) {
-    return <main role="status" className="atlas-entry grid min-h-screen place-items-center text-sm text-[#748078]">Loading setup…</main>;
+    return <main role="status" className="atlas-entry grid min-h-screen place-items-center text-sm text-[var(--color-atlas-muted-strong)]">Loading setup…</main>;
   }
   if (unauthorized) {
-    return <main role="status" className="atlas-entry grid min-h-screen place-items-center text-sm text-[#748078]">Returning to sign in…</main>;
+    return <main role="status" className="atlas-entry grid min-h-screen place-items-center text-sm text-[var(--color-atlas-muted-strong)]">Returning to sign in…</main>;
   }
   if (query.isError || !query.data || business.isError || !business.data) {
     return (
@@ -231,7 +231,7 @@ export default function OnboardingPage(): JSX.Element {
       <header className="mx-auto flex min-h-[77px] max-w-[1360px] flex-wrap items-center gap-3 rounded-xl border border-[#e5e9e3] bg-white px-5 py-3">
         <AtlasEntryBrand compact href={requiredDone ? "/" : "/login"} />
         <div className="ml-auto flex items-center gap-3">
-          <span className="font-data text-[11px] text-[#748078]">STEP {String(currentIndex + 1).padStart(2, "0")} / 05</span>
+          <span className="font-data text-[11px] text-[var(--color-atlas-muted-strong)]">STEP {String(currentIndex + 1).padStart(2, "0")} / 05</span>
           <span role="status" className="rounded-md bg-[#e8f4ec] px-3 py-1.5 text-[11px] font-semibold text-[#267552]">Setup progress</span>
         </div>
       </header>
@@ -240,7 +240,7 @@ export default function OnboardingPage(): JSX.Element {
         <aside className="atlas-panel p-5 sm:p-6">
           <p className="atlas-eyebrow">BUSINESS WORKSPACE</p>
           <h1 className="font-display mt-4 text-[21px] font-semibold text-[#202826]">Set up your business</h1>
-          <p className="mt-3 text-[13px] leading-5 text-[#748078]">Configure the essentials. We verify each saved step before you continue.</p>
+          <p className="mt-3 text-[13px] leading-5 text-[var(--color-atlas-muted-strong)]">Configure the essentials. We verify each saved step before you continue.</p>
           {legacyReview.length > 0 ? (
             <p role="status" className="mt-4 rounded-lg border border-[#f1c8a0] bg-[#fff9f0] p-3 text-[12px] leading-5 text-[#784724]">
               Earlier setup was marked done without saving {legacyReview.length} required step{legacyReview.length === 1 ? "" : "s"}.
@@ -260,8 +260,8 @@ export default function OnboardingPage(): JSX.Element {
                       (state === "done" || active
                         ? "bg-[var(--color-atlas-accent-strong)] text-white"
                         : state === "skipped"
-                          ? "bg-[#fff4df] text-[#b56d0c]"
-                          : "bg-[#f7f8f5] text-[#748078]")
+                          ? "bg-[#fff4df] text-[var(--color-atlas-warning-strong)]"
+                          : "bg-[#f7f8f5] text-[var(--color-atlas-muted-strong)]")
                     }
                   >
                     {String(index + 1).padStart(2, "0")}
@@ -270,7 +270,7 @@ export default function OnboardingPage(): JSX.Element {
                     disabled={state !== "done" || savingStep !== null}
                     onClick={() => setEditingStep(step)}>
                     <p className={"text-[13px] " + (active ? "font-semibold text-[#202826]" : "font-medium text-[#526159]")}>{STEP_META[step].title}</p>
-                    <p className={"font-data mt-1 text-[10px] " + (state === "done" ? "text-[#267552]" : active ? "text-[var(--color-atlas-accent-strong)]" : state === "skipped" ? "text-[#9a6e32]" : "text-[#748078]")}>
+                    <p className={"font-data mt-1 text-[10px] " + (state === "done" ? "text-[#267552]" : active ? "text-[var(--color-atlas-accent-strong)]" : state === "skipped" ? "text-[var(--color-atlas-warning-strong)]" : "text-[var(--color-atlas-muted-strong)]")}>
                       {legacyReview.includes(step) ? "Review required · Missing saved settings" : state === "done" ? "Done · Select to review" : state === "skipped" ? "Skipped" : active ? "Current" : "Next"}
                     </p>
                   </button>
@@ -281,7 +281,7 @@ export default function OnboardingPage(): JSX.Element {
 
           <div className="mt-8 rounded-xl border border-[#e5e9e3] bg-[#fbfcfa] p-4">
             <p className="text-[13px] font-semibold text-[#202826]">Verified setup progress</p>
-            <p className="mt-2 text-[12px] leading-5 text-[#748078]">Completion requires saved configuration. Optional steps can be skipped without creating records.</p>
+            <p className="mt-2 text-[12px] leading-5 text-[var(--color-atlas-muted-strong)]">Completion requires saved configuration. Optional steps can be skipped without creating records.</p>
           </div>
         </aside>
 
@@ -290,7 +290,7 @@ export default function OnboardingPage(): JSX.Element {
             Step {String(currentIndex + 1).padStart(2, "0")} · {currentMeta.title}
           </p>
           <h2 className="font-display mt-5 max-w-3xl text-[30px] font-semibold text-[#202826]">{currentMeta.title}</h2>
-          <p className="mt-3 max-w-3xl text-[14px] leading-6 text-[#748078]">{currentMeta.description}</p>
+          <p className="mt-3 max-w-3xl text-[14px] leading-6 text-[var(--color-atlas-muted-strong)]">{currentMeta.description}</p>
           {editingCompletedStep ? <button type="button" className="mt-3 text-xs font-semibold text-[var(--color-atlas-accent-strong)]"
             onClick={() => setEditingStep(null)}>← Return to current setup</button> : null}
 
@@ -336,7 +336,7 @@ export default function OnboardingPage(): JSX.Element {
             <div className="rounded-xl border border-[#e5e9e3] bg-[#fbfcfa] p-5 sm:p-7">
               <h3 className="font-display text-lg font-semibold text-[#202826]">Configuration</h3>
               {steps[current] === "done" && !editingCompletedStep ? null : (
-                <p className="mt-2 text-[13px] leading-5 text-[#748078]">{currentMeta.note}</p>
+                <p className="mt-2 text-[13px] leading-5 text-[var(--color-atlas-muted-strong)]">{currentMeta.note}</p>
               )}
 
               {current === "businessDetails" && (steps[current] === "pending" || editingCompletedStep) ? (
@@ -451,7 +451,7 @@ export default function OnboardingPage(): JSX.Element {
                   ) : null}
                 </div>
               ) : (
-                <p className="mt-6 text-[11px] font-medium text-[#1f8a5b]">
+                <p className="mt-6 text-[11px] font-medium text-[var(--color-atlas-verified)]">
                   {steps[current] === "done"
                     ? "This step is complete. Saved values are shown above; use the list to change them."
                     : "This step is already resolved."}
@@ -462,7 +462,7 @@ export default function OnboardingPage(): JSX.Element {
             <div className="rounded-xl border border-[#e5e9e3] bg-white p-5 text-[#202826]">
               <div className="grid h-10 w-10 place-items-center rounded-lg bg-[#29332d] font-data text-white">N</div>
               <h3 className="mt-5 text-[15px] font-semibold">Configured for consistency</h3>
-              <p className="mt-3 text-[12px] leading-5 text-[#748078]">
+              <p className="mt-3 text-[12px] leading-5 text-[var(--color-atlas-muted-strong)]">
                 Completed setup state is server-backed. Unsupported settings are not simulated or silently stored only in the browser.
               </p>
             </div>
@@ -505,7 +505,7 @@ export default function OnboardingPage(): JSX.Element {
             {requiredDone
               ? <Link href="/" className="inline-flex min-h-11 items-center text-[11px] font-semibold text-[#73685f] hover:text-[var(--color-atlas-accent-strong)]">← Back to dashboard</Link>
               : <p className="text-[11px] font-medium text-[#73685f]">Save your required business, tax and receipt settings to open the dashboard.</p>}
-            <p className="font-data text-[9px] text-[#9a8d83]">Progress is saved by the onboarding endpoint</p>
+            <p className="font-data text-[9px] text-[var(--color-atlas-muted-strong)]">Progress is saved by the onboarding endpoint</p>
           </div>
         </Panel>
       </div>

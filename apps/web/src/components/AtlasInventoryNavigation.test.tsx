@@ -21,12 +21,11 @@ describe("Atlas inventory sidebar active destination", () => {
     expect(counts).toMatch(/aria-current="page"[^>]*>Counts<\/a>/);
   });
 
-  it("keeps Receiving as a separate labeled action without marking two active purchase-order links", () => {
+  it("lists one purchase-order destination instead of a duplicate Receiving link", () => {
     const html = markupFor("/purchase-orders/123");
-    expect(html).toContain(">Receiving</a>");
-    expect(html).toContain(">Purchase orders</a>");
+    expect(html).not.toContain(">Receiving</a>");
+    expect([...html.matchAll(/<a\b[^>]*href="\/purchase-orders"[^>]*>/g)]).toHaveLength(1);
     expect(html.match(/aria-current="page"/g)).toHaveLength(1);
     expect(html).toMatch(/aria-current="page"[^>]*>Purchase orders<\/a>/);
-    expect(html).not.toMatch(/aria-current="page"[^>]*>Receiving<\/a>/);
   });
 });
