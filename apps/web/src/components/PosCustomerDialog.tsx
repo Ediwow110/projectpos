@@ -1,4 +1,17 @@
+"use client";
+
 import React from "react";
+import { useEffect, useRef } from "react";
+
+/** Same focusable set as components/Modal.tsx so the trap behaves identically here. */
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(",");
 
 interface CustomerOption {
   id: string;
@@ -29,27 +42,104 @@ export function PosCustomerDialog({
   onClear,
   onClose,
 }: PosCustomerDialogProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+  // Captured during render (before the mount effect moves focus into the
+  // dialog), exactly like Modal.tsx lines 48-51, so the opener can be restored.
+  if (restoreFocusRef.current === null && typeof document !== "undefined") {
+    restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  }
+  onCloseRef.current = onClose;
+
+  // Focus management lifted from components/Modal.tsx (lines 53-112): this is a
+  // modal over a live sale, so focus must enter it, stay inside it, Escape must
+  // dismiss it, and the opener must be restored when it closes.
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const focusableElements = (): HTMLElement[] =>
+      Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ?? [])
+        .filter((element) => !element.hasAttribute("disabled") && element.getAttribute("aria-hidden") !== "true");
+
+    const frame = window.requestAnimationFrame(() => {
+      if (dialog.contains(document.activeElement)) return;
+      const first = focusableElements()[0];
+      (first ?? dialog).focus();
+    });
+
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const elements = focusableElements();
+      if (elements.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const first = elements[0]!;
+      const last = elements[elements.length - 1]!;
+      const active = document.activeElement;
+
+      if (event.shiftKey && (active === first || !dialog.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (active === last || !dialog.contains(active))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+      const previousFocus = restoreFocusRef.current;
+      restoreFocusRef.current = null;
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, []);
+
   return (
-    <div className="fixed inset-0 z-[70] grid place-items-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-label="Customer assignment">
+    <div
+      ref={dialogRef}
+      data-focus-trap="true"
+      tabIndex={-1}
+      className="fixed inset-0 z-[70] grid place-items-center bg-black/55 p-4 outline-none"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Customer assignment"
+    >
       <div className="w-full max-w-lg rounded-[18px] border border-white/10 bg-[#171614] p-5 text-white shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="font-data text-[8px] uppercase tracking-[0.14em] text-[#ff765a]">Current sale</p>
             <h2 className="font-display mt-2 text-xl font-semibold">Assign customer</h2>
-            <p className="mt-1 text-[11px] text-white/45">Choose an existing customer or keep a walk-in name for this sale.</p>
+            <p className="mt-1 text-[11px] text-white/70">Choose an existing customer or keep a walk-in name for this sale.</p>
           </div>
           <button
             type="button"
             aria-label="Close customer assignment"
             onClick={onClose}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/[0.07] text-white/60 hover:text-white"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-white/[0.07] text-white/70 hover:text-white"
           >
             ✕
           </button>
         </div>
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          <label className="relative block text-[10px] font-semibold uppercase tracking-[0.08em] text-white/45">
+          <label className="relative block text-[10px] font-semibold uppercase tracking-[0.08em] text-white/70">
             Customer
             <input
               value={customerQuery}
@@ -64,10 +154,10 @@ export function PosCustomerDialog({
                     <button
                       type="button"
                       onClick={() => onSelectCustomer(customer)}
-                      className="w-full rounded-lg px-3 py-2 text-left text-[12px] normal-case hover:bg-white/10"
+                      className="min-h-11 w-full rounded-lg px-3 py-2 text-left text-[12px] normal-case hover:bg-white/10"
                     >
                       <span className="font-semibold">{customer.name}</span>
-                      {customer.phone ? <span className="text-white/45"> — {customer.phone}</span> : null}
+                      {customer.phone ? <span className="text-white/70"> — {customer.phone}</span> : null}
                     </button>
                   </li>
                 ))}
@@ -75,7 +165,7 @@ export function PosCustomerDialog({
             ) : null}
           </label>
 
-          <label className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-white/45">
+          <label className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-white/70">
             Walk-in name
             <input
               value={walkIn}
@@ -87,7 +177,7 @@ export function PosCustomerDialog({
         </div>
 
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
-          <p className="text-[11px] text-white/45">
+          <p className="text-[11px] text-white/70">
             {customerId !== "" ? `Selected: ${customerQuery}` : walkIn.trim() !== "" ? `Walk-in: ${walkIn.trim()}` : "No customer assigned"}
           </p>
           <div className="flex gap-2">
@@ -95,7 +185,7 @@ export function PosCustomerDialog({
               <button
                 type="button"
                 onClick={onClear}
-                className="rounded-lg border border-white/10 px-3 py-2 text-[11px] font-semibold text-white/60 hover:text-white"
+                className="min-h-11 rounded-lg border border-white/10 px-3 py-2 text-[11px] font-semibold text-white/70 hover:text-white"
               >
                 Clear
               </button>
@@ -103,7 +193,7 @@ export function PosCustomerDialog({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg bg-[#f35d3f] px-5 py-2 text-[11px] font-semibold text-white hover:bg-[#d94a30]"
+              className="min-h-11 rounded-lg bg-[#f35d3f] px-5 py-2 text-[11px] font-semibold text-white hover:bg-[#d94a30]"
             >
               Use for sale
             </button>

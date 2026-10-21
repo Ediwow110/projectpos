@@ -1,11 +1,28 @@
 import Link from "next/link";
 
-const paths = [
-  { title: "Find an existing order", body: "Use the secure order status link sent to your email.", href: "/order-status" },
-  { title: "Report a problem", body: "Missing, damaged, or incorrect items can be reported after verifying your order.", href: "/order-status" },
-  { title: "Payment concerns", body: "Check the verified payment state before requesting assistance.", href: "/order-status" },
-  { title: "Store contact", body: "Questions about pickup or delivery belong to your verified order.", href: "/order-status" },
-] as const;
+type HelpPath = { readonly title: string; readonly body: string; readonly href?: string };
+
+/** Only `href` entries are navigable. The remaining topics are handled inside
+ * the verified order status page, so they are shown as guidance, not as links. */
+const paths: readonly HelpPath[] = [
+  {
+    title: "Find an existing order",
+    body: "Open the secure order status link sent to your email. It works without creating an account.",
+    href: "/order-status",
+  },
+  {
+    title: "Report a problem",
+    body: "Missing, damaged, or incorrect items are reported on the order status page, which opens the issue form once your order is verified.",
+  },
+  {
+    title: "Payment concerns",
+    body: "The verified payment state is shown on the same order status page. Nothing here can read or change a payment.",
+  },
+  {
+    title: "Store contact",
+    body: "Pickup and delivery questions reach the store through the support form on the verified order status page. There is no separate contact route.",
+  },
+];
 
 export default function OrderHelpPage() {
   return <div data-ui="atlas-guest-help" className="min-h-screen bg-[#f7f8f5] text-[#202826]">
@@ -30,11 +47,17 @@ export default function OrderHelpPage() {
       </header>
       <section aria-label="Order support paths" className="rounded-[14px] border border-[#e5e9e3] bg-white p-5 sm:p-7">
         <h2 className="font-display text-[23px] font-semibold">Choose what you need help with</h2>
-        <div className="mt-7 grid gap-4 md:grid-cols-2">{paths.map((path, index) => <Link key={path.title} href={path.href}
-          className={"group flex min-h-[142px] flex-col justify-start rounded-[11px] px-5 py-5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#da614c] " + (index === 1 ? "bg-[#fff0eb] hover:bg-[#ffe7df]" : "bg-[#f7f8f5] hover:bg-[#e9f4ec]")}>
-          <span className="font-display text-[20px] font-semibold text-[#202826]">{path.title} <span aria-hidden className="inline-block transition-transform motion-safe:group-hover:translate-x-1">→</span></span>
-          <span className="mt-4 text-[14px] leading-6 text-[#748078]">{path.body}</span>
-        </Link>)}</div>
+        <div className="mt-7 grid gap-4 md:grid-cols-2">{paths.map((path, index) => {
+          const surface = "flex min-h-[142px] flex-col justify-start rounded-[11px] px-5 py-5 " + (index === 1 ? "bg-[#fff0eb]" : "bg-[#f7f8f5]");
+          const content = <>
+            <span className="font-display text-[20px] font-semibold text-[#202826]">{path.title}{path.href ? <> <span aria-hidden className="inline-block transition-transform motion-safe:group-hover:translate-x-1">→</span></> : null}</span>
+            <span className="mt-4 text-[14px] leading-6 text-[#748078]">{path.body}</span>
+          </>;
+          return path.href
+            ? <Link key={path.title} href={path.href} data-ui="order-help-path-link"
+              className={"group transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#da614c] " + surface + (index === 1 ? " hover:bg-[#ffe7df]" : " hover:bg-[#e9f4ec]")}>{content}</Link>
+            : <div key={path.title} data-ui="order-help-path-note" className={surface}>{content}</div>;
+        })}</div>
       </section>
       <p className="text-xs text-[#748078]">For privacy, support requests open only after verifying your order through its secure status link. The reference number alone is not enough.</p>
     </main>

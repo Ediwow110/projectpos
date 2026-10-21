@@ -222,4 +222,71 @@ describe("POS payment workspace", () => {
     expect(html).toContain('aria-describedby="payment-failure-mobile"');
     expect(html).toContain('aria-describedby="payment-failure-desktop"');
   });
+
+  /**
+   * The Escape listener, the Tab cycling and the focus restore live in a
+   * useEffect lifted from Modal.tsx, and renderToStaticMarkup never runs
+   * effects - so the runtime behaviour is only provable in a browser
+   * (Playwright). Markup proves the trap is attached to both legacy surfaces
+   * and that both are announced as modal.
+   */
+  it("declares the modal focus-trap contract on both legacy payment surfaces", () => {
+    const html = renderToStaticMarkup(<PosPaymentWorkspace
+      count={1} due={2500} changeMinor={0} registerSelected now="11:00"
+      cart={[{ productId: "p1", name: "Coffee", priceMinor: 2500, qty: 1, lineDiscountMinor: 0 }]}
+      paymentTiles={[{ key: "cash", label: "Cash", tile: "bg-[#f35d3f]" }]}
+      offline={false} effectiveMethod="cash" received="" paying={false} canPay methodAvailable={() => true}
+      onMethodChange={() => undefined} onReceivedChange={() => undefined} onClose={() => undefined} onPay={() => undefined}
+    />);
+
+    expect(html).toContain('data-focus-trap="true"');
+    expect(html.match(/data-focus-trap="true"/g)).toHaveLength(2);
+    expect(html.match(/aria-modal="true"/g)).toHaveLength(2);
+    expect(html).toContain('aria-label="Close payment" class="grid h-11 w-11');
+  });
+
+  it("keeps the legacy tender controls at 44px and the light-card labels on text-safe tokens", () => {
+    const html = renderToStaticMarkup(<PosPaymentWorkspace
+      count={1} due={2500} changeMinor={100} registerSelected now="11:00"
+      cart={[{ productId: "p1", name: "Coffee", priceMinor: 2500, qty: 1, lineDiscountMinor: 0 }]}
+      paymentTiles={[{ key: "cash", label: "Cash", tile: "bg-[#f35d3f]" }]}
+      offline={false} effectiveMethod="cash" received="30" paying={false} canPay methodAvailable={() => true}
+      onMethodChange={() => undefined} onReceivedChange={() => undefined} onClose={() => undefined} onPay={() => undefined}
+    />);
+
+    expect(html).toContain('min-h-11 rounded-xl border border-white/15');
+    expect(html).toContain('min-h-11 rounded-xl bg-[#f35d3f]');
+    expect(html).toContain('min-h-11 rounded-lg border border-[#eee4db]');
+    expect(html).not.toContain("text-white/40");
+    expect(html).not.toContain("text-white/45");
+    expect(html).not.toContain("text-[#e44e34]");
+    expect(html).not.toContain("text-[#8b8077]");
+    expect(html).toContain("text-[var(--color-atlas-accent-strong)]");
+    expect(html).toContain("text-[var(--color-atlas-muted-strong)]");
+  });
+
+  it("only renders the internal instrument field when a handler can accept it", () => {
+    const base = {
+      count: 1, due: 2500, changeMinor: 0, registerSelected: true, now: "11:00",
+      cart: [{ productId: "p1", name: "Coffee", priceMinor: 2500, qty: 1, lineDiscountMinor: 0 }],
+      paymentTiles: [{ key: "gift_card", label: "Gift card", tile: "bg-[#f35d3f]" }],
+      offline: false, effectiveMethod: "gift_card", received: "", paying: false, canPay: true,
+      methodAvailable: () => true,
+      onMethodChange: () => undefined, onReceivedChange: () => undefined,
+      onClose: () => undefined, onPay: () => undefined,
+    };
+    const dead = renderToStaticMarkup(<PosPaymentWorkspace {...base} internalInstrumentId="gc-1" />);
+    expect(dead).not.toContain("Gift card ID");
+
+    const wired = renderToStaticMarkup(
+      <PosPaymentWorkspace {...base} internalInstrumentId="gc-1" onInternalInstrumentIdChange={() => undefined} />,
+    );
+    expect(wired).toContain("Gift card ID");
+    expect(wired.match(/Gift card ID/g)).toHaveLength(2);
+
+    const atlasWired = renderToStaticMarkup(
+      <PosPaymentWorkspace {...base} atlasV4 internalInstrumentId="gc-1" onInternalInstrumentIdChange={() => undefined} />,
+    );
+    expect(atlasWired).toContain("Gift card ID");
+  });
 });

@@ -17,9 +17,20 @@ test("Atlas V4 Phase D guest and platform surfaces remain responsive and permiss
   await page.goto("/order-help");
   await expect(page.getByRole("link", { name: "NexPOS storefront" })).toBeVisible();
   const choices = page.getByRole("region", { name: "Order support paths" });
-  for (const text of ["Find an existing order", "Report a problem", "Payment concerns", "Store contact"]) {
-    await expect(choices.getByRole("link", { name: new RegExp(text) })).toHaveAttribute("href", "/order-status");
+  // Only one path is a real destination. The other three are handled inside the
+  // verified order status page, so they render as guidance rather than as links
+  // that all pointed at the same page.
+  const navigable = choices.locator('[data-ui="order-help-path-link"]');
+  await expect(navigable).toHaveCount(1);
+  await expect(navigable).toHaveText(/Find an existing order/);
+  await expect(navigable).toHaveAttribute("href", "/order-status");
+  const notes = choices.locator('[data-ui="order-help-path-note"]');
+  await expect(notes).toHaveCount(3);
+  for (const text of ["Report a problem", "Payment concerns", "Store contact"]) {
+    await expect(notes.filter({ hasText: text })).toHaveCount(1);
   }
+  await expect(choices.getByRole("link")).toHaveCount(1);
+  await expect(notes.filter({ hasText: "Store contact" })).toContainText(/no separate contact route/i);
   await page.goto("/platform/tenant-health");
   await expect(page.getByLabel("Operator key")).toHaveAttribute("type", "password");
   await expect(page.getByLabel("Owner consent token")).toHaveAttribute("type", "password");

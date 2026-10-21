@@ -53,6 +53,7 @@ export function PosPaymentMethodChooser({
 
   return (
     <div
+      data-focus-trap="true"
       className="fixed inset-0 z-[100] hidden place-items-center bg-[#202826]/35 p-4 backdrop-blur-[1px] xl:grid"
       onKeyDown={(event) => {
         if (event.key === "Escape") {
@@ -85,9 +86,9 @@ export function PosPaymentMethodChooser({
         data-ui="atlas-v4-payment-chooser"
         className="flex min-h-[586px] w-full max-w-[530px] flex-col rounded-[17px] bg-white px-[26px] pt-[30px] pb-[17px] text-[#202826] shadow-[0_20px_65px_-12px_rgb(20_32_27/0.22)]"
       >
-        <p className="text-[10px] font-medium uppercase tracking-[0.05em] text-[#da614c]">Workflow step</p>
+        <p className="text-[10px] font-medium uppercase tracking-[0.05em] text-[var(--color-atlas-accent-strong)]">Workflow step</p>
         <h2 id="atlas-payment-chooser-title" className="font-display mt-6 text-[23px] font-semibold">Choose a payment method</h2>
-        <p id="atlas-payment-chooser-description" className="mt-3 text-[13px] text-[#71807a]">Cash is local. Card and QR Ph use hosted payment.</p>
+        <p id="atlas-payment-chooser-description" className="mt-3 text-[13px] text-[var(--color-atlas-muted-strong)]">Cash is local. Card and QR Ph use hosted payment.</p>
         <div className="mt-[40px] border-t border-[#e5e9e3] pt-[26px]">
           <div className="grid gap-[14px]">
             {METHODS.map((method) => (
@@ -111,7 +112,7 @@ export function PosPaymentMethodChooser({
               </button>
             ))}
           </div>
-          <button type="button" onClick={onMoreMethods} className="mt-3 min-h-9 text-[12px] font-medium text-[#53615a] underline underline-offset-4 hover:text-[#202826]">
+          <button type="button" onClick={onMoreMethods} className="mt-3 min-h-11 text-[12px] font-medium text-[#53615a] underline underline-offset-4 hover:text-[#202826]">
             Other payment methods
           </button>
         </div>

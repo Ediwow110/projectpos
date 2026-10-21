@@ -42,11 +42,15 @@ export function SectionHeader({ title, description, action }: { title: string; d
 }
 
 export function MetricCard({ label, value, icon, meta, tone = "coral", className = "" }: { label: string; value: ReactNode; icon: ReactNode; meta?: ReactNode; tone?: "coral" | "success" | "warning" | "info"; className?: string }): JSX.Element {
+  // contrast-gate: non-text indicator - these classes paint only the aria-hidden
+  // icon square below, never a word, so the plain semantic values stay legal.
+  // The meta line does carry words, so it uses --color-atlas-verified (5.60:1 on
+  // the white card) instead of --color-success (4.33:1).
   const tones = {
-    coral: "bg-[#fff0ea] text-[#f35d3f]",
-    success: "bg-[#eaf7f0] text-[#1f8a5b]",
-    warning: "bg-[#fff4df] text-[#b56d0c]",
-    info: "bg-[#edf3ff] text-[#3468d4]",
+    coral: "bg-[#fff0ea] text-[#f35d3f]", // contrast-gate: non-text indicator (icon glyph)
+    success: "bg-[#eaf7f0] text-[#1f8a5b]", // contrast-gate: non-text indicator (icon glyph)
+    warning: "bg-[#fff4df] text-[#b56d0c]", // contrast-gate: non-text indicator (icon glyph)
+    info: "bg-[#edf3ff] text-[#3468d4]", // contrast-gate: non-text indicator (icon glyph)
   };
   return (
     <article data-ui="metric-card" className={"rounded-2xl border border-[#eee4db] bg-white p-4 shadow-[0_4px_14px_-6px_rgb(28_20_15/0.08)] " + className}>
@@ -55,7 +59,7 @@ export function MetricCard({ label, value, icon, meta, tone = "coral", className
         <div className="min-w-0">
           <p className="text-[11px] text-[#675c54]">{label}</p>
           <div className="font-display mt-1 text-[22px] font-semibold leading-none text-[#17130f]">{value}</div>
-          {meta ? <div className="mt-2 text-[10px] font-semibold text-[#1f8a5b]">{meta}</div> : null}
+          {meta ? <div className="mt-2 text-[10px] font-semibold text-[var(--color-atlas-verified)]">{meta}</div> : null}
         </div>
       </div>
     </article>

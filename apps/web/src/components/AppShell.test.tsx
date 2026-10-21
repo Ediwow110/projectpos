@@ -108,4 +108,25 @@ describe("workspace access failures", () => {
     expect(source).toContain('router.replace("/login");');
     expect(source).not.toContain('router.refresh();');
   });
+
+  it("keeps the guided-tour vocabulary and 44px targets on the legacy rail", () => {
+    fixture.data = { role: "owner", onboardingRequired: false };
+    fixture.error = new ApiError("NETWORK_TIMEOUT", "Timed out", "", 0);
+    const html = renderToStaticMarkup(<AppShell businessName="QA Business" role="owner"><p>Owner workspace</p></AppShell>);
+
+    for (const key of ["products", "shifts", "pos", "sales", "admin", "tour-restart"]) {
+      expect(html, `legacy rail must expose data-tour="${key}"`).toContain(`data-tour="${key}"`);
+    }
+    expect(html).toContain("group relative flex min-h-11 items-center");
+  });
+
+  it("exposes the tour restart control and Atlas tour keys inside an Atlas shell", () => {
+    fixture.data = { role: "owner", onboardingRequired: false };
+    fixture.error = new ApiError("NETWORK_TIMEOUT", "Timed out", "", 0);
+    const html = renderToStaticMarkup(<AppShell businessName="QA Business" role="owner" atlasOwner><p>Owner workspace</p></AppShell>);
+
+    expect(html).toContain('data-tour="tour-restart"');
+    expect(html).toContain('data-tour="admin"');
+    expect(html).toContain('data-tour="dashboard"');
+  });
 });

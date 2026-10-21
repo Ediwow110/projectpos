@@ -4,18 +4,22 @@ import Link from "next/link";
 import type { JSX } from "react";
 import { AtlasWorkspaceDestinations } from "./AtlasWorkspaceDestinations";
 
-const OWNER_SECTIONS = [
-  { href: "/", label: "Overview" },
-  { href: "/onboarding", label: "Business setup" },
-  { href: "/admin/owner-controls", label: "Owner controls" },
-  { href: "/team", label: "Team & permissions" },
-  { href: "/branches", label: "Branches & registers" },
+type AtlasSection = { readonly href: string; readonly label: string; readonly tour?: string };
+
+/** `tour` uses the same vocabulary as the workspace-navigation items so a guided
+ * tour step resolves in this Atlas shell exactly as it does in the legacy rail. */
+const OWNER_SECTIONS: readonly AtlasSection[] = [
+  { href: "/", label: "Overview", tour: "dashboard" },
+  { href: "/onboarding", label: "Business setup", tour: "business-setup" },
+  { href: "/admin/owner-controls", label: "Owner controls", tour: "admin" },
+  { href: "/team", label: "Team & permissions", tour: "team" },
+  { href: "/branches", label: "Branches & registers", tour: "branches" },
   { href: "/admin/owner-controls#financial-policies", label: "Financial policies" },
   { href: "/customer-concerns", label: "Approval inbox" },
   { href: "/admin/support", label: "Guest support & consent" },
   { href: "/admin/owner-controls#security-sessions", label: "Security & sessions" },
   { href: "/admin/owner-controls#activity-audit", label: "Activity & audit" },
-] as const;
+];
 
 export function AtlasOwnerNavigation({
   pathname,
@@ -45,6 +49,7 @@ export function AtlasOwnerNavigation({
               key={section.label}
               href={section.href}
               aria-current={active ? "page" : undefined}
+              data-tour={section.tour}
               onClick={() => {
                 if (section.href.split("#")[0] !== pathname) onNavigate(section.href);
               }}

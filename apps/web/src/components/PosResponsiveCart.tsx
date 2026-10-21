@@ -32,6 +32,7 @@ interface PosResponsiveCartProps {
   onOpenDiscounts: () => void;
   onSetQty: (productId: string, delta: number) => void;
   onOpenPayment: () => void;
+  /** The Load-card control only renders when a real handler can accept it. */
   onOpenGiftCardLoad?: () => void;
 }
 
@@ -62,7 +63,7 @@ export function PosResponsiveCart({
   onOpenDiscounts,
   onSetQty,
   onOpenPayment,
-  onOpenGiftCardLoad = () => undefined,
+  onOpenGiftCardLoad,
 }: PosResponsiveCartProps) {
   const drawerRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -109,7 +110,7 @@ export function PosResponsiveCart({
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-semibold">{count} item{count === 1 ? "" : "s"} in cart</p>
             <p className="font-display mt-1 text-lg font-bold">₱{money(due)}</p>
-            <p className={"mt-1 truncate text-[9px] " + (atlasV4 ? "text-[#53615a]" : "text-white/45")}>
+            <p className={"mt-1 truncate text-[9px] " + (atlasV4 ? "text-[#53615a]" : "text-white/70")}>
               {cart.length === 0 ? "Tap a product to begin a sale." : cart.slice(0, 2).map((item) => item.name + " ×" + item.qty).join(" · ")}
             </p>
           </div>
@@ -146,7 +147,7 @@ export function PosResponsiveCart({
       >
         <div className="absolute left-7 top-6 max-w-[520px]">
           <p className="text-[12px] font-semibold">{count} item{count === 1 ? "" : "s"} in cart</p>
-          <p className={"mt-1 truncate text-[10px] " + (atlasV4 ? "text-[#53615a]" : "text-white/45")}>
+          <p className={"mt-1 truncate text-[10px] " + (atlasV4 ? "text-[#53615a]" : "text-white/70")}>
             {cart.length === 0 ? "Tap a product to begin a sale." : cart.slice(0, 3).map((item) => item.name + " ×" + item.qty).join(" · ")}
           </p>
         </div>
@@ -165,7 +166,7 @@ export function PosResponsiveCart({
           Held {heldCount}
         </button>
         <div className="absolute right-[221px] top-6 w-[123px] text-left">
-          <p className={"font-data text-[8px] uppercase tracking-[0.12em] " + (atlasV4 ? "text-[#53615a]" : "text-white/45")}>Total</p>
+          <p className={"font-data text-[8px] uppercase tracking-[0.12em] " + (atlasV4 ? "text-[#53615a]" : "text-white/70")}>Total</p>
           <p className="font-display mt-1 text-xl font-bold">₱{money(due)}</p>
         </div>
         <button
@@ -211,6 +212,7 @@ export function PosResponsiveCart({
       {drawerOpen ? (
         <div
           ref={drawerRef}
+          data-focus-trap="true"
           onKeyDown={onDrawerKeyDown}
           className="fixed inset-0 z-[90] bg-black/45 p-3 sm:p-5 xl:hidden"
           role="dialog"
@@ -221,17 +223,19 @@ export function PosResponsiveCart({
             <div className={"flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4 " + (atlasV4 ? "border-[#e5e9e3]" : "border-white/10")}>
               <div>
                 <p className="font-display text-base font-semibold">Current sale</p>
-                <p className={"mt-1 text-[10px] " + (atlasV4 ? "text-[#53615a]" : "text-white/45")}>{count} item{count === 1 ? "" : "s"} in cart</p>
+                <p className={"mt-1 text-[10px] " + (atlasV4 ? "text-[#53615a]" : "text-white/70")}>{count} item{count === 1 ? "" : "s"} in cart</p>
               </div>
               <div className={"flex flex-wrap items-center gap-2 " + (atlasV4 ? "[&_button]:!border-[#e5e9e3] [&_button]:!text-[#202826] [&_button]:!bg-[#eff2ed]" : "")}>
-                <button
-                  type="button"
-                  onClick={onOpenGiftCardLoad}
-                  disabled={saleLocked}
-                  className="min-h-11 rounded-lg border border-white/10 px-3 py-2 text-[10px] font-semibold text-[#ffb7a4] hover:text-white disabled:opacity-35"
-                >
-                  Load card
-                </button>
+                {onOpenGiftCardLoad ? (
+                  <button
+                    type="button"
+                    onClick={onOpenGiftCardLoad}
+                    disabled={saleLocked}
+                    className="min-h-11 rounded-lg border border-white/10 px-3 py-2 text-[10px] font-semibold text-[#ffb7a4] hover:text-white disabled:opacity-35"
+                  >
+                    Load card
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={onAssignCustomer}
@@ -270,7 +274,7 @@ export function PosResponsiveCart({
 
             <ul className="min-h-0 flex-1 space-y-2 overflow-auto px-5 py-4">
               {cart.length === 0 ? (
-                <li className={"rounded-xl p-6 text-center text-sm " + (atlasV4 ? "bg-[#f7f8f5] text-[#53615a]" : "bg-white/[0.04] text-white/45")}>
+                <li className={"rounded-xl p-6 text-center text-sm " + (atlasV4 ? "bg-[#f7f8f5] text-[#53615a]" : "bg-white/[0.04] text-white/70")}>
                   Cart is empty. Tap products to add.
                 </li>
               ) : null}
@@ -282,7 +286,7 @@ export function PosResponsiveCart({
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[13px] font-semibold">{item.name}</p>
-                    <p className={"money mt-1 text-[11px] " + (atlasV4 ? "text-[#53615a]" : "text-white/45")}>Qty {item.qty} × ₱{money(item.priceMinor)} = ₱{money(item.qty * item.priceMinor)}</p>
+                    <p className={"money mt-1 text-[11px] " + (atlasV4 ? "text-[#53615a]" : "text-white/70")}>Qty {item.qty} × ₱{money(item.priceMinor)} = ₱{money(item.qty * item.priceMinor)}</p>
                     <p className={"money mt-1 text-[11px] " + (atlasV4 ? "text-[#53615a]" : "text-white/70")}>Line total ₱{money(Math.max(0, item.qty * item.priceMinor - item.lineDiscountMinor))}</p>
                     {item.lineDiscountMinor > 0 ? <p className="money mt-1 text-[10px] text-[#ff9a82]">Line discount −₱{money(item.lineDiscountMinor)}</p> : null}
                     <button type="button" onClick={() => onSetQty(item.productId, -item.qty)} disabled={saleLocked} aria-label={"Remove " + item.name} className={"mt-1 min-h-11 rounded-md px-2 text-[11px] font-semibold disabled:opacity-35 " + (atlasV4 ? "text-[#b04a39] hover:bg-[#fff0eb]" : "text-[#ff9a82] hover:bg-white/10")}>Remove</button>
@@ -322,7 +326,7 @@ export function PosResponsiveCart({
               {giftCardLoadMinor > 0 ? <div className="mb-3 flex items-center justify-between text-[11px] text-[#ffb7a4]"><span>Gift-card load</span><span className="money font-semibold">₱{money(giftCardLoadMinor)}</span></div> : null}
               <div className="flex items-end justify-between">
                 <div>
-                  <p className={"font-data text-[8px] uppercase tracking-[0.12em] " + (atlasV4 ? "text-[#53615a]" : "text-white/45")}>Total</p>
+                  <p className={"font-data text-[8px] uppercase tracking-[0.12em] " + (atlasV4 ? "text-[#53615a]" : "text-white/70")}>Total</p>
                   <p className="font-display mt-1 text-2xl font-bold">₱{money(due)}</p>
                 </div>
                 <button

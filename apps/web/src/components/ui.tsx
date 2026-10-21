@@ -17,22 +17,31 @@ export function Peso({ minor, className = "", prefix = "₱" }: { minor: number;
   return <span className={"money " + className}>{prefix}{v}</span>;
 }
 
+// Delta labels are 12px mono text, so the up/compare foregrounds use the
+// text-safe tokens: --color-success is 4.33:1 and --color-faint 3.22:1 on the
+// white card, while --color-atlas-verified is 5.60:1 and
+// --color-atlas-muted-strong 6.51:1.
 export function Delta({ deltaMinor, deltaPct, compareLabel }: { deltaMinor: number | null; deltaPct: number | null; compareLabel: string }): JSX.Element | null {
   if (deltaMinor === null) return null;
   const up = deltaMinor >= 0;
   return (
-    <span className={"tnum inline-flex items-center gap-1 text-xs font-semibold " + (up ? "text-[#1f8a5b]" : "text-[#c43e3e]")}>
+    <span className={"tnum inline-flex items-center gap-1 text-xs font-semibold " + (up ? "text-[var(--color-atlas-verified)]" : "text-[#c43e3e]")}>
       <span aria-hidden>{up ? "↑" : "↓"}</span>
       {deltaPct !== null ? Math.abs(deltaPct).toFixed(1) + "%" : "—"}
-      <span className="font-sans font-normal text-[#9a8d83]">vs. {compareLabel}</span>
+      <span className="font-sans font-normal text-[var(--color-atlas-muted-strong)]">vs. {compareLabel}</span>
     </span>
   );
 }
 
 export function StatusPill({ tone, children }: { tone: "ok" | "warn" | "bad" | "info"; children: ReactNode }): JSX.Element {
+  // The soft background carries the tone; the words use the text-safe tokens.
+  // --color-success (3.93:1 on --color-success-soft) and --color-warning
+  // (3.73:1 on --color-warning-soft) are below AA at this 12px size, so the
+  // pill text uses --color-atlas-verified (5.08:1) and
+  // --color-atlas-muted-strong (5.97:1) instead. danger/info already clear AA.
   const tones: Record<typeof tone, string> = {
-    ok: "bg-[#eaf7f0] text-[#1f8a5b]",
-    warn: "bg-[#fff4df] text-[#b56d0c]",
+    ok: "bg-[#eaf7f0] text-[var(--color-atlas-verified)]",
+    warn: "bg-[#fff4df] text-[var(--color-atlas-muted-strong)]",
     bad: "bg-[#fff0f0] text-[#c43e3e]",
     info: "bg-[#edf3ff] text-[#3468d4]",
   };
@@ -47,11 +56,14 @@ export function PrimaryButton(props: React.ButtonHTMLAttributes<HTMLButtonElemen
   });
 }
 
+// On hover the coral accent stays as the border (a non-text indicator) while
+// the label moves to --color-atlas-accent-strong: --color-coral-hover measured
+// 4.22:1 as hover text on white, the text-safe accent is 5.90:1.
 export function GhostButton(props: React.ButtonHTMLAttributes<HTMLButtonElement>): JSX.Element {
   const { className = "", ...rest } = props;
   return React.createElement("button", {
     ...rest,
-    className: "inline-flex min-h-11 items-center justify-center gap-2 rounded-[10px] border border-[#e4d9d0] bg-white px-4 py-2.5 text-sm font-semibold text-[#2a241f] transition-[transform,border-color,background-color,color,opacity] duration-150 hover:border-[#f35d3f] hover:text-[#d94a30] active:scale-[0.98] active:bg-[#fff8f5] motion-reduce:transform-none disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 " + className,
+    className: "inline-flex min-h-11 items-center justify-center gap-2 rounded-[10px] border border-[#e4d9d0] bg-white px-4 py-2.5 text-sm font-semibold text-[#2a241f] transition-[transform,border-color,background-color,color,opacity] duration-150 hover:border-[#f35d3f] hover:text-[var(--color-atlas-accent-strong)] active:scale-[0.98] active:bg-[#fff8f5] motion-reduce:transform-none disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 " + className,
   });
 }
 

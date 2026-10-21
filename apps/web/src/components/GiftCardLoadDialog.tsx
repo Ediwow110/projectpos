@@ -45,7 +45,13 @@ export function GiftCardLoadDialog({
     setBusy(true);
     setError("");
     try {
-      const result = await apiFetch<GiftCardLookup>(`/api/v1/gift-cards/lookup?code=${encodeURIComponent(raw)}`);
+      // The bearer code goes in the body of a CSRF-guarded POST: a query string
+      // would persist it in proxy/access logs, browser history and APM capture.
+      const csrf = await apiFetch<{ csrfToken: string }>("/api/v1/auth/csrf");
+      const result = await apiFetch<GiftCardLookup>("/api/v1/gift-cards/lookup", {
+        csrfToken: csrf.csrfToken,
+        init: { method: "POST", body: JSON.stringify({ code: raw }) },
+      });
       setLookup(result);
       setCode("");
     } catch (err) {

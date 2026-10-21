@@ -3,12 +3,16 @@
 import Link from "next/link";
 import type { JSX } from "react";
 
-const LINKS = [
-  { href: "/pos", label: "New sale" },
-  { href: "/receipts/lookup", label: "Receipt lookup" },
+type AtlasLink = { readonly href: string; readonly label: string; readonly tour?: string };
+
+/** `tour` reuses the workspace-navigation vocabulary: the legacy rail already
+ * answers the `sales` step with Receipt lookup, so this rail keys it the same. */
+const LINKS: readonly AtlasLink[] = [
+  { href: "/pos", label: "New sale", tour: "pos" },
+  { href: "/receipts/lookup", label: "Receipt lookup", tour: "sales" },
   { href: "/customer-concerns", label: "Customer concerns" },
-  { href: "/shifts", label: "My shifts" },
-] as const;
+  { href: "/shifts", label: "My shifts", tour: "shifts" },
+];
 
 export function AtlasCashierNavigation({
   pathname, onNavigate, onSignOut, signingOut,
@@ -32,6 +36,7 @@ export function AtlasCashierNavigation({
             : pathname === item.href;
           return (
             <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined}
+              data-tour={item.tour}
               onClick={() => { if (!active) onNavigate(item.href); }}
               className={"relative flex min-h-[46px] items-center rounded-lg px-[18px] text-[14px] transition-colors focus-visible:outline-2 focus-visible:outline-[#da614c] " +
                 (active ? "bg-[#fff0eb] font-medium text-[#da614c] before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:rounded-full before:bg-[#da614c]" : "text-[#202826] hover:bg-[#f0f3ef]")}

@@ -4,13 +4,17 @@ import Link from "next/link";
 import type { JSX } from "react";
 import { AtlasWorkspaceDestinations } from "./AtlasWorkspaceDestinations";
 
-const DESTINATIONS = [
-  { label: "Overview", href: "/" },
+type AtlasLink = { readonly href: string; readonly label: string; readonly tour?: string };
+
+/** `tour` reuses the workspace-navigation vocabulary. Approval inbox and order
+ * exceptions stay unkeyed so the `sales` step resolves to the sales register. */
+const DESTINATIONS: readonly AtlasLink[] = [
+  { label: "Overview", href: "/", tour: "dashboard" },
   { label: "Approval inbox", href: "/customer-concerns" },
   { label: "Order exceptions", href: "/exceptions" },
-  { label: "Shifts", href: "/shifts" },
-  { label: "Refunds & sales", href: "/sales" },
-] as const;
+  { label: "Shifts", href: "/shifts", tour: "shifts" },
+  { label: "Refunds & sales", href: "/sales", tour: "sales" },
+];
 
 export function AtlasApprovalNavigation({
   pathname, role, onNavigate, onSignOut, signingOut,
@@ -21,7 +25,7 @@ export function AtlasApprovalNavigation({
   onSignOut: () => void;
   signingOut: boolean;
 }): JSX.Element {
-  const audit = role === "owner"
+  const audit: AtlasLink = role === "owner"
     ? { label: "Activity audit", href: "/admin/owner-controls#activity-audit" }
     : { label: "Activity reports", href: "/reports/sales" };
   return (
@@ -38,6 +42,7 @@ export function AtlasApprovalNavigation({
             key={item.href}
             href={item.href}
             aria-current={active ? "page" : undefined}
+            data-tour={item.tour}
             onClick={() => { if (!active) onNavigate(item.href); }}
             className={"relative flex min-h-[46px] items-center rounded-lg px-[18px] text-[14px] transition-colors focus-visible:outline-2 focus-visible:outline-[#da614c] " +
               (active ? "bg-[#fff0eb] font-medium text-[#da614c] before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:rounded-full before:bg-[#da614c]" : "text-[#202826] hover:bg-[#f0f3ef]")}
