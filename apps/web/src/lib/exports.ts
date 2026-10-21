@@ -21,6 +21,9 @@ export function ledgerDownloadUrl(range: { dateFrom: string; dateTo: string }): 
   return `${apiBase()}/api/v1/exports/ledger.csv?${params.toString()}`;
 }
 
-export function expensesDownloadUrl(): string {
-  return `${apiBase()}/api/v1/expenses/export?format=csv`;
+export function expensesDownloadUrl(filters: { category: string }): string {
+  const params = new URLSearchParams({ format: "csv" });
+  const category = filters.category.trim();
+  if (category) params.set("category", category);
+  return `${apiBase()}/api/v1/expenses/export?${params.toString()}`;
 }

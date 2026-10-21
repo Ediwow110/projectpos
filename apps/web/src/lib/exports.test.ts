@@ -27,7 +27,23 @@ describe("csv export consumers", () => {
 
   it("routes the expenses export at the endpoint that serves it", async () => {
     const { expensesDownloadUrl } = await import("./exports");
-    expect(expensesDownloadUrl()).toContain("/api/v1/expenses/export?format=csv");
+    expect(expensesDownloadUrl({ category: "" })).toContain("/api/v1/expenses/export?format=csv");
+    expect(expensesDownloadUrl({ category: "" })).not.toContain("category");
+  });
+
+  it("sends the category the reviewer filtered by, encoded", async () => {
+    const { expensesDownloadUrl } = await import("./exports");
+    expect(expensesDownloadUrl({ category: "Rent" })).toContain("category=Rent");
+    expect(expensesDownloadUrl({ category: " a & b " })).toContain("category=a+%26+b");
+    expect(expensesDownloadUrl({ category: "x&format=json" })).not.toContain("&format=json");
+  });
+
+  it("states the same page cap the expenses export serves", async () => {
+    const { EXPENSES_ROW_WINDOW } = await import("./exports");
+    const controller = readFileSync(resolve(process.cwd(), "../../apps/api/src/expenses/nest/expense.controller.ts"), "utf8");
+    const declared = controller.match(/EXPENSE_EXPORT_ROW_LIMIT = (\d+)/);
+    expect(declared, "the API must name its export row ceiling").not.toBeNull();
+    expect(EXPENSES_ROW_WINDOW).toBe(Number(declared?.[1]));
   });
 
   it("states the same row window the server enforces", async () => {
@@ -36,13 +52,5 @@ describe("csv export consumers", () => {
     const declared = controller.match(/LEDGER_EXPORT_ROW_WINDOW = (\d+)/);
     expect(declared, "the API must declare its ledger row window").not.toBeNull();
     expect(LEDGER_ROW_WINDOW).toBe(Number(declared?.[1]));
-  });
-
-  it("states the same page cap the expenses export serves", async () => {
-    const { EXPENSES_ROW_WINDOW } = await import("./exports");
-    const controller = readFileSync(resolve(process.cwd(), "../../apps/api/src/expenses/nest/expense.controller.ts"), "utf8");
-    const declared = controller.match(/pageSize: (\d+)/);
-    expect(declared, "the API must declare its expenses export page size").not.toBeNull();
-    expect(EXPENSES_ROW_WINDOW).toBe(Number(declared?.[1]));
   });
 });

@@ -156,9 +156,9 @@ export default function ExpensesPage(): JSX.Element {
             <>
               {exportable ? (
                 <ExportCsvLink
-                  href={expensesDownloadUrl()}
+                  href={expensesDownloadUrl({ category: filterCategory })}
                   label="Export CSV"
-                  bounds={`Latest ${EXPENSES_ROW_WINDOW.toLocaleString("en-US")} expenses, voided ones included.`}
+                  bounds={`${filterCategory.trim() ? `Category "${filterCategory.trim()}", ` : ""}up to ${EXPENSES_ROW_WINDOW.toLocaleString("en-US")} expenses, voided ones included.`}
                 />
               ) : null}
               <PrimaryButton type="button" onClick={() => { setError(null); setSuccess(""); setCreateOpen(true); }}>+ Record expense</PrimaryButton>
