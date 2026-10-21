@@ -111,7 +111,7 @@ export function usePosPageController() {
     meQuery.data?.activeBranchId,
   );
   useEffect(() => {
-    if (registerId !== "" && scopedRegisters.some((register) => register.id === registerId)) {
+    if (registerId !== "" && !scopedRegisters.some((register) => register.id === registerId)) {
       setRegisterId("");
     }
   }, [registerId, scopedRegisters]);

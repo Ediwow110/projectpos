@@ -78,7 +78,12 @@ test("active branch persists and scopes POS registers plus inventory", async ({ 
   await expect(registers).toHaveCount(1);
   await expect(registers).toContainText("North Till");
   await expect(registers).not.toContainText("South Till");
+  const northTillValue = await registers.locator("option", { hasText: "North Till" }).getAttribute("value");
+  expect(northTillValue, "the North Till option must carry a register id").toBeTruthy();
   await registers.selectOption({ label: "North Till" });
+  // An in-scope selection must stick; the reset effect only drops a register that
+  // left scope, and every payment path downstream reads this same registerId.
+  await expect(registers).toHaveValue(northTillValue!);
 
   await posBranchSelect.selectOption(south.id);
   await expect(registers).toHaveValue("");
