@@ -19,6 +19,7 @@ const OWNER: readonly AtlasAdminDestination[] = [
   { href: "/reports/stored-value", title: "Stored-value liability", description: "Review outstanding gift-card, store-credit and loyalty liability.", icon: "▦" },
   { href: "/admin/api-tokens", title: "API credentials", description: "Issue and revoke public API tokens and see what each one can reach.", icon: "⚿" },
   { href: "/businesses", title: "Business workspaces", description: "Switch the business this session works in when you belong to more than one.", icon: "◈" },
+  { href: "/billing", title: "Plan and invoices", description: "Review the active plan, usage against its allowances, and issued invoices.", icon: "▥" },
 ];
 
 const MANAGER: readonly AtlasAdminDestination[] = [

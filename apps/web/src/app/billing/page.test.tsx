@@ -152,6 +152,11 @@ describe("/billing plan and usage surface", () => {
     fixture.invoices = "some";
   });
 
+  it("says what reading this screen can do to the billing ledger", () => {
+    expect(render()).toContain("the server issues an invoice");
+    expect(render()).not.toContain("Nothing here changes a plan");
+  });
+
   it("renders the current plan and one meter per usage slice when the read answered", () => {
     const html = render();
 

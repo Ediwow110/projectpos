@@ -109,7 +109,7 @@ export default function BillingPage(): JSX.Element {
         <PageHeader
           eyebrow="BILLING / READ-ONLY"
           title="Plan, usage and invoices"
-          description="What the server currently records for this business: the active plan, how close each capped resource is to its allowance, and the invoice ledger. Nothing here changes a plan."
+          description="What the server currently records for this business: the active plan, how close each capped resource is to its allowance, and the invoice ledger. This screen sends no command, but reading it is how a finished billing period is recognised: if the period has ended, the server issues an invoice for it, and a trial that has lapsed is moved to the free plan. The ledger can therefore advance while you are looking at it."
         />
 
         {subscriptionFailed ? (
