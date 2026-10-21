@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+import { GUARDS_METADATA, METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants";
+import { RequestMethod } from "@nestjs/common";
 import type { Request, Response } from "express";
 import { createMemoryDb } from "../common/memory.db";
+import { CsrfGuard } from "../common/csrf.guard";
 import { ValueController } from "./value.controller";
 import { StoredValueService } from "./stored-value.service";
 
@@ -52,8 +55,45 @@ describe("ValueController read authorization", () => {
     await controller.customerValue(cashierReq, customerBalance, customer.id);
     expect(customerBalance.json).toHaveBeenCalledWith({ customerId: customer.id, storeCreditMinor: 0, loyaltyPoints: 0 });
     const giftLookup = response();
-    await controller.lookupGiftCard(cashierReq, giftLookup, giftCode);
+    await controller.lookupGiftCard(cashierReq, giftLookup, { code: giftCode });
     expect(giftLookup.json).toHaveBeenCalledWith(expect.objectContaining({ id: card.id, codeLast4: "ONLY" }));
+  });
+});
+
+describe("ValueController gift-card lookup transport", () => {
+  // A bearer code is stored-value money. Carried in a query string it is
+  // recorded by every proxy, access log, browser history entry and APM capture
+  // between the till and the API, so the route must be a state-carrying POST
+  // behind the CSRF guard.
+  it("sends the bearer code in a CSRF-guarded POST body, not a query string", () => {
+    const proto = ValueController.prototype as unknown as Record<string, unknown>;
+    const handler = proto.lookupGiftCard as object;
+    expect(Reflect.getMetadata(METHOD_METADATA, handler)).toBe(RequestMethod.POST);
+    expect(Reflect.getMetadata(PATH_METADATA, handler)).toBe("gift-cards/lookup");
+    // Vitest's toContain does not fail on a missing receiver, so the array check
+    // is what proves the route carries any guard at all.
+    const guards = Reflect.getMetadata(GUARDS_METADATA, handler) as unknown[] | undefined;
+    expect(guards).toBeInstanceOf(Array);
+    expect(guards).toContain(CsrfGuard);
+  });
+
+  it("rejects a malformed lookup body with 400 VALIDATION before any code is hashed", async () => {
+    const db = createMemoryDb();
+    const business = await db.createBusiness({ name: "Lookup transport", currency: "PHP" });
+    const spy = vi.spyOn(StoredValueService.prototype, "hashGiftCardCode");
+    const controller = new ValueController(db, { permissionsForRequest: () => [] } as never, {} as never);
+    const request = { auth: { businessId: business.id, userId: "cashier", role: "cashier" }, headers: {}, ip: "127.0.0.1" } as unknown as Request;
+    try {
+      for (const body of [undefined, null, {}, { code: "" }, { code: 42 }, "NXP-GC-PLAIN-STRING"]) {
+        const res = { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis() } as unknown as Response;
+        await controller.lookupGiftCard(request, res, body);
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: "VALIDATION" }));
+      }
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

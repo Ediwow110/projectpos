@@ -1,7 +1,11 @@
 import { createHmac, randomBytes } from "node:crypto";
 import type { DbGiftCard, DbLoyaltyProgram, DbPort, DbSaleLoyalty, DbStoreCreditAccount } from "../common/db.port";
 
-const DEV_GIFT_CARD_SECRET = "phase20-development-only-gift-card-secret";
+// There is deliberately no committed fallback key: a literal in the repository
+// makes every issued bearer-code hash offline-computable by anyone with repo
+// read, which turns a stored-value card into forgeable money. Only the test
+// environment may synthesise a key, and it is random per process.
+let testOnlyGiftCardSecret: string | null = null;
 
 export function assertProductionGiftCardCodeSecret(env: NodeJS.ProcessEnv): void {
   if (env["NODE_ENV"] === "production" && (!env["GIFT_CARD_CODE_SECRET"] || env["GIFT_CARD_CODE_SECRET"].length < 32)) {
@@ -35,9 +39,20 @@ export class StoredValueService {
 
   private giftCardSecret(): string {
     const secret = process.env["GIFT_CARD_CODE_SECRET"];
-    if (secret && secret.length >= 32) return secret;
-    if (process.env["NODE_ENV"] === "production") throw new Error("GIFT_CARD_CODE_SECRET_MISSING");
-    return DEV_GIFT_CARD_SECRET;
+    if (secret) {
+      // A configured-but-weak key is never silently swapped for another one:
+      // the digests already stored would stop resolving and a random substitute
+      // would paper over the misconfiguration instead of reporting it.
+      if (secret.length < 32) throw new Error("GIFT_CARD_CODE_SECRET_MISSING");
+      return secret;
+    }
+    if ((process.env["NODE_ENV"] ?? "development") === "test") {
+      testOnlyGiftCardSecret ??= randomBytes(32).toString("hex");
+      return testOnlyGiftCardSecret;
+    }
+    // Fail closed: without a configured key the hashes this service stores are
+    // not a secret, so issuing or resolving a card must not silently proceed.
+    throw new Error("GIFT_CARD_CODE_SECRET_MISSING");
   }
 
   hashGiftCardCode(code: string): string {

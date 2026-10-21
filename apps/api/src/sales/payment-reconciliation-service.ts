@@ -84,7 +84,13 @@ export class SalesPaymentReconciliationService {
     const payment = await this.db.findPaymentById(paymentId, businessId);
     if (!payment) throw new Error("NOT_FOUND");
     if (!isPayMongoMethod(payment.method)) return claimed;
-    const verdict = await this.provider.queryProvider(businessId, paymentId, "paymongo");
+    // Resolve the verdict through the same adapter the provider-status endpoint
+    // uses: a PayMongo checkout session is queried at PayMongo, anything else
+    // through the double keyed by (business, reference). Nothing is registered
+    // for a double in production, so an unverifiable reference answers UNKNOWN
+    // and the leg stays unresolved - the safe direction for money.
+    const provider = (payment.providerRef ?? "").startsWith("cs_") ? "paymongo" : "test-double";
+    const verdict = await this.provider.queryProvider(businessId, paymentId, provider);
     if (verdict.status === "SUCCEEDED") return "SUCCEEDED";
     if (verdict.status === "FAILED") return "FAILED";
     throw new Error("PAYMENT_UNKNOWN");

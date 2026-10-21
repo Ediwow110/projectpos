@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, afterEach, expect, it } from "vitest";
 import { PATH_METADATA } from "@nestjs/common/constants";
 import { createMemoryDb } from "../../common/memory.db";
+import { clearTestDoubleOutcomes, setTestDoubleOutcome } from "../../payments/provider";
 import { PaymentsController } from "./payments.controller";
 import { ReceiptsController } from "./receipts.controller";
 import { SalesController } from "./sales.controller";
@@ -94,6 +95,8 @@ describe("phase10 gated data on paid surfaces", () => {
 });
 
 describe("phase10 split payment settlement", () => {
+  afterEach(() => clearTestDoubleOutcomes());
+
   it("waits for every unknown leg before completing the sale", async () => {
     const { db, business, product, sales } = await setup();
     const draft = await sales.createDraft(business.id, "u1", "r1", {
@@ -108,6 +111,11 @@ describe("phase10 split payment settlement", () => {
       granted: GRANT,
     });
     expect(pending.sale.status).toBe("PAYMENT_UNKNOWN");
+    // The provider confirms both legs. Reconcile settles a hosted leg on the
+    // provider's verdict, never on the caller's assertion, so a split test has
+    // to say what the provider said.
+    setTestDoubleOutcome("unknown-leg-1", "SUCCEEDED", business.id);
+    setTestDoubleOutcome("unknown-leg-2", "SUCCEEDED", business.id);
     const payments = await db.listPaymentsBySale(draft.id, business.id);
     expect(payments).toHaveLength(2);
     expect(payments.every((p) => p.status === "UNKNOWN")).toBe(true);
@@ -141,6 +149,10 @@ describe("phase10 split payment settlement", () => {
       granted: GRANT,
     });
     const payments = await db.listPaymentsBySale(draft.id, business.id);
+    // Leg A is provider-confirmed; leg B is reconciled as failed, which the
+    // provider gate lets through unexamined because it is the conservative
+    // direction.
+    setTestDoubleOutcome("unknown-leg-a", "SUCCEEDED", business.id);
     await sales.reconcilePayment(business.id, "u1", "r2", payments[0]!.id, "SUCCEEDED", "partial-rec-1");
     const failed = await sales.reconcilePayment(
       business.id, "u1", "r3", payments[1]!.id, "FAILED", "partial-rec-2",

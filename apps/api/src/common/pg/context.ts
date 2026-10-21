@@ -10,6 +10,21 @@ export function nid(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${(n += 1)}`;
 }
 
+// Pool sizing was measured, not guessed: at the growth cohort's 50
+// concurrent workers, max 10 starved every read behind the completes'
+// held transaction connections (overview p50 6s at ~22% CPU and an idle
+// database); 30 clears it. Staging re-verifies per PLAN §14.4.
+export const DEFAULT_PG_POOL_MAX = 30;
+
+// An unset-but-present PG_POOL_MAX (a valueless flag, an empty .env line) makes
+// Number() return 0 or NaN, which pg silently replaces with its own default of
+// 10 - the measured starvation number. Same clamp shape as the auth limiters
+// (apps/api/src/auth/nest/auth.controller.ts).
+export function resolvePoolMax(env: NodeJS.ProcessEnv): number {
+  const max = Number(env["PG_POOL_MAX"] ?? DEFAULT_PG_POOL_MAX);
+  return Number.isInteger(max) && max > 0 ? max : DEFAULT_PG_POOL_MAX;
+}
+
 // The transaction context: inside withLock/withTransaction every port call
 // joins the same client (and therefore the same transaction); outside, each
 // call uses the pool in autocommit. This is what makes existing service
@@ -24,11 +39,7 @@ export class PgContext {
   private lockTails = new Map<string, Promise<void>>();
 
   constructor(connectionString: string) {
-    // Pool sizing was measured, not guessed: at the growth cohort's 50
-    // concurrent workers, max 10 starved every read behind the completes'
-    // held transaction connections (overview p50 6s at ~22% CPU and an idle
-    // database); 30 clears it. Staging re-verifies per PLAN §14.4.
-    this.pool = new Pool({ connectionString, max: Number(process.env["PG_POOL_MAX"] ?? 30) });
+    this.pool = new Pool({ connectionString, max: resolvePoolMax(process.env) });
   }
 
   async client(): Promise<PoolClient> {

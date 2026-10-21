@@ -193,6 +193,7 @@ export class PublicOrderController {
   }
 
   @Post("orders/status")
+  @UseGuards(FirstPartyOriginGuard)
   async status(@Req() req: Request, @Res() res: Response, @Body() body: unknown): Promise<void> {
     const parsed = publicOrderStatusSchema.safeParse(body);
     if (!parsed.success) { fail(res, 400, "VALIDATION", "Invalid status token", req); return; }

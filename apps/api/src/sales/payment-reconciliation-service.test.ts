@@ -7,23 +7,7 @@ import { OrderSaleService } from "../orders/order-sale-service";
 import { ReservationService } from "../orders/reservation-service";
 import { SalesService } from "./nest/sales.service";
 import { createMemoryOrderNotificationOutbox } from "../orders/order-notification-outbox";
-import type { PayMongoCheckoutResult, PayMongoCheckoutSnapshot, PayMongoPort } from "../payments/paymongo";
-
-/**
- * A hosted leg the provider has actually paid. Reconciliation completes it on
- * the provider's word, never on the caller's - so a test that wants a completed
- * hosted sale must supply this rather than assert success at the request.
- */
-class ProviderConfirmsPayment implements PayMongoPort {
-  configured(): boolean { return true; }
-  async createCheckout(): Promise<PayMongoCheckoutResult> {
-    throw new Error("reconciliation never creates a checkout");
-  }
-  async retrieveCheckout(sessionId: string): Promise<PayMongoCheckoutSnapshot> {
-    return { sessionId, checkoutUrl: null, status: "active", paid: true };
-  }
-  verifyWebhook(): boolean { return true; }
-}
+import { setTestDoubleOutcome } from "../payments/provider";
 
 async function setup() {
   const db = createMemoryDb();
@@ -209,7 +193,7 @@ describe("sales payment reconciliation service", () => {
     const sale = await new OrderSaleService(db).createSaleFromSubmittedOrder(business.id, "staff", "rec-sale", order.id);
     const outbox = createMemoryOrderNotificationOutbox();
     let outboundOrderUpdates = 0;
-    const sales = new SalesService(db, new ProviderConfirmsPayment(), {
+    const sales = new SalesService(db, undefined, {
       async sendPasswordReset() {},
       async sendEmailVerification() {},
       async sendReceiptShare() {},
@@ -222,6 +206,10 @@ describe("sales payment reconciliation service", () => {
     expect(unknown.sale.status).toBe("PAYMENT_UNKNOWN");
     const payment = (await db.listPaymentsBySale(sale.id, business.id))[0]!;
 
+    // The provider confirms this leg before the reconcile is allowed to settle
+    // it: the sale starts UNKNOWN because nothing has answered, and it completes
+    // because the provider has - not because the caller said so.
+    setTestDoubleOutcome("unknown-rec", "SUCCEEDED", business.id);
     const done = await sales.reconcilePayment(business.id, "staff", "rec-ok", payment.id, "SUCCEEDED", "rec-ok-key");
     expect(done.sale.status).toBe("COMPLETED");
     expect(await db.findOrderById(order.id, business.id)).toMatchObject({ status: "CONFIRMED" });

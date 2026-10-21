@@ -55,6 +55,10 @@ export class SalesController {
     }
     try {
       const auth = req.auth!;
+      // This brake is per calling till, so it shapes one cashier's retry rate
+      // only. The manager PIN itself is guarded inside AuthService against the
+      // approver being verified, because N tills each get their own budget here
+      // and the aggregate never trips.
       if (await approvalLimiter.hit(`${auth.businessId}:discount-approval:${auth.userId}`)) {
         fail(res, 429, "RATE_LIMITED", "Too many approval attempts", req);
         return;

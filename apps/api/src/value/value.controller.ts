@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Inject, Param, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Post, Req, Res, UseGuards } from "@nestjs/common";
 import type { Request, Response } from "express";
-import { giftCardIssueSchema, giftCardStatusSchema, loyaltyProgramSchema, storedValueAdjustSchema } from "@pos/validation";
+import { giftCardIssueSchema, giftCardLookupSchema, giftCardStatusSchema, loyaltyProgramSchema, storedValueAdjustSchema } from "@pos/validation";
 import { SessionGuard } from "../common/session.guard";
 import { CsrfGuard } from "../common/csrf.guard";
 import { AuthService } from "../auth/nest/auth.service";
@@ -72,10 +72,15 @@ export class ValueController {
     } catch (error) { const code = error instanceof Error ? error.message : "VALIDATION"; fail(res, statusFor(code), code, "Stored-value report unavailable", req); }
   }
 
-  @Get("gift-cards/lookup")
-  async lookupGiftCard(@Req() req: Request, @Res() res: Response, @Query("code") code?: string): Promise<void> {
-    if (!code || await this.lookupLimiter.hit(`${req.auth!.businessId}:${req.ip}`)) { fail(res, 429, "RATE_LIMITED", "Too many lookup attempts", req); return; }
-    try { res.json(await this.service.lookupGiftCard(req.auth!.businessId, code)); }
+  @Post("gift-cards/lookup")
+  @UseGuards(CsrfGuard)
+  async lookupGiftCard(@Req() req: Request, @Res() res: Response, @Body() body: unknown): Promise<void> {
+    // The bearer code is the card: a URL query would leave it in proxy and
+    // access logs, browser history, and APM capture, so it travels in the body.
+    const parsed = giftCardLookupSchema.safeParse(body);
+    if (!parsed.success) { fail(res, 400, "VALIDATION", "Invalid gift-card lookup request", req); return; }
+    if (await this.lookupLimiter.hit(`${req.auth!.businessId}:${req.ip}`)) { fail(res, 429, "RATE_LIMITED", "Too many lookup attempts", req); return; }
+    try { res.json(await this.service.lookupGiftCard(req.auth!.businessId, parsed.data.code)); }
     catch (error) { const value = error instanceof Error ? error.message : "NOT_FOUND"; fail(res, statusFor(value), value, "Gift card lookup failed", req); }
   }
 
