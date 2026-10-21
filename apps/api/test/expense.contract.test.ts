@@ -205,6 +205,15 @@ describe("expenses export filter HTTP contract", () => {
     expect(allRes.status).toBe(200);
     const allIds = exportLines(allRes.text).slice(1).map((line) => line.split(",")[0]).sort();
     expect(allIds).toEqual([active.id, voided.id].sort());
+
+    // No voided parameter keeps the endpoint's stated behaviour: unfiltered
+    // downloads include voided rows (the UI's bounds text says so).
+    const defaultRes = await request(app.getHttpServer())
+      .get("/api/v1/expenses/export?format=csv")
+      .set("Cookie", biz.cookie);
+    expect(defaultRes.status).toBe(200);
+    const defaultIds = exportLines(defaultRes.text).slice(1).map((line) => line.split(",")[0]).sort();
+    expect(defaultIds).toEqual([active.id, voided.id].sort());
   });
 
   it("rejects an unparseable dateFrom with a 4xx VALIDATION error instead of an empty CSV", async () => {
