@@ -101,9 +101,10 @@ describe("payment attempt slot", () => {
     expect(outcome).toMatchObject({ found: true, stage: "draft", saleId: "sale-1" });
   });
 
-  it("reports no attempt when the server cannot answer", async () => {
-    const failing = vi.fn(async () => ({ ok: false, json: async () => ({}) }));
+  it("treats a refused or never-sent lookup as no answer at all", async () => {
+    const failing = vi.fn(async () => ({ ok: false, status: 502, json: async () => ({}) }));
     expect(await fetchAttemptOutcome("attempt-1", failing as unknown as typeof fetch)).toEqual({
+      answered: false,
       found: false,
       stage: "none",
     });
@@ -112,6 +113,20 @@ describe("payment attempt slot", () => {
       throw new Error("offline");
     });
     expect(await fetchAttemptOutcome("attempt-1", throwing as unknown as typeof fetch)).toEqual({
+      answered: false,
+      found: false,
+      stage: "none",
+    });
+  });
+
+  it("accepts a server that definitively says the attempt is not there", async () => {
+    const absent = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ ok: true, attempt: { found: false, stage: "none" } }),
+    }));
+
+    expect(await fetchAttemptOutcome("attempt-1", absent as unknown as typeof fetch)).toEqual({
+      answered: true,
       found: false,
       stage: "none",
     });

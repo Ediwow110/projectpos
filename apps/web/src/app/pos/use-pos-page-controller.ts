@@ -59,6 +59,9 @@ export function usePosPageController() {
   // of. The server is asked what happened, because the client never learned
   // whether its last request landed.
   const [pendingAttempt, setPendingAttempt] = useState<AttemptOutcome | null>(null);
+  // True while an attempt key exists and the server has not been able to say
+  // what happened to it. Blocks a second payment without claiming anything.
+  const [attemptUnconfirmed, setAttemptUnconfirmed] = useState(false);
   const [receiptId, setReceiptId] = useState<string | null>(null);
   const [confirmedSale, setConfirmedSale] = useState<{ saleId: string; receiptNo?: string; amountMinor: number } | null>(null);
   const [reconcileId, setReconcileId] = useState<string | null>(null);
@@ -126,18 +129,30 @@ export function usePosPageController() {
     const key = currentAttemptKey(slot);
     if (!key) return;
     let active = true;
-    void fetchAttemptOutcome(key).then((outcome) => {
+    void fetchAttemptOutcome(key).then((attempt) => {
       if (!active) return;
-      if (outcome.found) {
-        setPendingAttempt(outcome);
+      if (attempt.found) {
+        setAttemptUnconfirmed(false);
+        setPendingAttempt(attempt);
         setStatus(
           "An earlier payment attempt on this register is still unresolved. Review the sale before taking another payment.",
         );
-      } else {
-        // The attempt never reached the server, so the slot is stale and a
-        // fresh attempt can start safely.
-        clearAttemptKey(slot);
+        return;
       }
+      if (attempt.answered) {
+        // Only a server that has actually answered "not there" proves the
+        // attempt never landed, so this is the one case that may drop the slot.
+        setAttemptUnconfirmed(false);
+        clearAttemptKey(slot);
+        return;
+      }
+      // The server could not answer - refused, errored, or never reached. The
+      // attempt is still unknown, so the slot keeps its key and a second
+      // payment stays blocked until a reload can ask again.
+      setAttemptUnconfirmed(true);
+      setStatus(
+        "NexPOS could not confirm an earlier payment attempt on this register. Check the sale before taking another payment, then reload.",
+      );
     });
     return () => {
       active = false;
@@ -375,7 +390,13 @@ export function usePosPageController() {
       }, {
         setStatus, setCheckoutFailure, setReceiptId,
         // A confirmed sale is a definitive outcome, so the attempt is done.
-        setConfirmedSale: (sale) => { clearAttemptKey(slot); setConfirmedSale(sale); },
+        // Only an authoritative confirmation ends the attempt. The flow also
+        // calls this with null to reset the previous receipt before a new
+        // sale, and that reset must not drop the attempt pointer.
+        setConfirmedSale: (sale) => {
+          if (sale) clearAttemptKey(slot);
+          setConfirmedSale(sale);
+        },
         setReconcileId, setReconcileSaleId,
         setCart, setActiveDraft, setOrderDiscountMinor, setReceived,
         setShowPay, setGiftCardLoad, setGiftCardResult, setPaying,
@@ -410,7 +431,7 @@ export function usePosPageController() {
     : (searchQuery.data?.items ?? []);
   const count = cart.reduce((n, c) => n + c.qty, 0);
   const statusView = paymentPresentation(status);
-  const canPay = canPresentPayAction(cart.length, canSell) && due > 0 && reconcileId === null && reconcileSaleId === null && checkoutFailure?.kind !== "unknown_outcome" && pendingAttempt === null && !(offline && resumedSaleLocked);
+  const canPay = canPresentPayAction(cart.length, canSell) && due > 0 && reconcileId === null && reconcileSaleId === null && checkoutFailure?.kind !== "unknown_outcome" && pendingAttempt === null && !attemptUnconfirmed && !(offline && resumedSaleLocked);
   const selectedRegisterName =
     scopedRegisters.find((register) => register.id === registerId)?.name ?? "—";
 

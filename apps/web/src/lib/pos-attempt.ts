@@ -10,7 +10,8 @@
  *
  * The server is the authority on the outcome. The slot only carries the key.
  * A cleared slot therefore costs a reconciliation PROMPT, never a wrong
- * claim that nothing was recorded.
+ * claim that nothing was recorded - so the slot is dropped only when the
+ * server has actually answered that the attempt is not there.
  */
 
 export interface AttemptOutcome {
@@ -20,6 +21,18 @@ export interface AttemptOutcome {
   status?: string;
   receiptNo?: string;
 }
+
+/** The server answered, whatever the answer was. */
+export type AnsweredAttemptOutcome = AttemptOutcome & { answered: true };
+/** The lookup was refused, failed, or never left the browser. */
+export interface UnansweredAttempt {
+  answered: false;
+  found: false;
+  stage: "none";
+}
+export type AttemptLookup = AnsweredAttemptOutcome | UnansweredAttempt;
+
+const UNANSWERED: UnansweredAttempt = { answered: false, found: false, stage: "none" };
 
 const SLOT_PREFIX = "nexpos:pos-attempt:";
 
@@ -90,20 +103,25 @@ export function clearAttemptKey(slot: string): void {
  * Asks the server what happened to the attempt. The server answers from the
  * idempotency ledger and the sale row, so this is the truth rather than an
  * inference from what the client happened to receive.
+ *
+ * "Could not ask" is NOT an answer. A refused, failed, or never-sent lookup
+ * must not be read as "the attempt never reached us", because that reading
+ * drops the only pointer to a sale that may exist. The caller keeps the slot
+ * and blocks a blind retry until the server actually answers.
  */
 export async function fetchAttemptOutcome(
   key: string,
   fetcher: typeof fetch = fetch,
-): Promise<AttemptOutcome> {
+): Promise<AttemptLookup> {
   try {
     const response = await fetcher(`/api/v1/sales/attempts/${encodeURIComponent(key)}`, {
       headers: { accept: "application/json" },
     });
-    if (!response.ok) return { found: false, stage: "none" };
+    if (!response.ok) return UNANSWERED;
     const body = (await response.json()) as { ok?: boolean; attempt?: AttemptOutcome };
-    if (!body || body.ok !== true || !body.attempt) return { found: false, stage: "none" };
-    return body.attempt;
+    if (!body || body.ok !== true || !body.attempt) return UNANSWERED;
+    return { answered: true, ...body.attempt };
   } catch {
-    return { found: false, stage: "none" };
+    return UNANSWERED;
   }
 }
