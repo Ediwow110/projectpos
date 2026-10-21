@@ -202,7 +202,7 @@ export default function RegistersPage(): JSX.Element {
         onClose={() => setTicket(null)}
         title="Customer display link"
         description="The pairing token is issued for one register and is not stored by NexPOS after this dialog closes."
-        footer={<div className="flex justify-end"><GhostButton type="button" onClick={() => setTicket(null)}>Close</GhostButton></div>}
+        footer={<div className="flex justify-end"><GhostButton type="button" onClick={() => setTicket(null)}>Done</GhostButton></div>}
       >
         <DisplayLinkCard ticket={ticket} />
       </Modal>

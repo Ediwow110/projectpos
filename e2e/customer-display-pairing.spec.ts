@@ -27,10 +27,20 @@ test("a register can issue a customer display link that the display page consume
   await display.goto(link);
   await expect(display.getByRole("heading", { name: "Display Store" })).toBeVisible();
   await expect(display.getByText("Shift: OPEN")).toBeVisible();
-  await expect(display.getByRole("alert")).toHaveCount(0);
+
+  // Positive control: an unpairable link must raise the page's own alert, so the
+  // clean-feed check below cannot pass by the alert element simply not existing.
+  const unpaired = await context.newPage();
+  await unpaired.goto(`/display?registerId=reg_missing&token=${"0".repeat(64)}`);
+  await expect(unpaired.locator("main").getByRole("alert")).toContainText("Display unavailable");
+  await unpaired.close();
+
+  // Scoped to <main>: Next's route announcer is a hidden role="alert" node
+  // outside the page content, so an unscoped count is never zero on any route.
+  await expect(display.locator("main").getByRole("alert")).toHaveCount(0);
 
   // Closing the dialog must drop the token, not leave it re-renderable.
-  await dialog.getByRole("button", { name: "Close" }).click();
+  await dialog.getByRole("button", { name: "Done" }).click();
   await expect(page.locator('[data-ui="display-link"]')).toHaveCount(0);
   await display.close();
 });
