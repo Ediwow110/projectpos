@@ -9,6 +9,7 @@ import { AppShell } from "../../components/AppShell";
 import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "../../components/premium";
 import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { ApiError, apiFetch } from "../../lib/api";
+import { canExport as canExportCsv } from "../../lib/exports";
 import { DonutChart, HorizontalBarChart, VerticalBarChart } from "../../lib/charts";
 import { formatMoneyMinor } from "../../lib/money";
 import { paymentMix, reportSeries } from "../../lib/report-view";
@@ -16,6 +17,7 @@ import { paymentMix, reportSeries } from "../../lib/report-view";
 interface Me {
   role: string;
   businessName?: string;
+  permissions?: string[];
 }
 
 interface SaleRow {
@@ -150,7 +152,7 @@ export default function SalesHistoryPage(): JSX.Element {
   }
 
   const role = meQuery.data?.role ?? "cashier";
-  const canExport = role === "owner" || role === "manager" || role === "inventory";
+  const canExport = canExportCsv(meQuery.data?.permissions ?? []);
   const summary = summaryQuery.data;
   const mix = paymentMix(paymentsQuery.data?.byMethod ?? []);
   const leadingMix = mix[0];
