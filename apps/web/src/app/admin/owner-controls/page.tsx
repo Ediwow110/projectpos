@@ -174,7 +174,7 @@ export default function OwnerControlsPage(): JSX.Element {
     <AppShell businessName={profile.data?.businessName} role={profile.data?.role} atlasOwner>
       <main className="mx-auto w-full max-w-none space-y-7 px-4 pb-12 pt-8 sm:px-8 lg:pt-9 xl:px-[38px]">
         <header className="space-y-2">
-          <p className="font-data text-[11px] font-medium tracking-[0.05em] text-[#da614c]">OWNER CONTROLS / OWNER</p>
+          <p className="font-data text-[11px] font-medium tracking-[0.05em] text-[var(--color-atlas-accent-strong)]">OWNER CONTROLS / OWNER</p>
           <h1 className="font-display text-[29px] font-semibold tracking-tight text-[#202826]">Owner Control Center</h1>
           <p className="text-[13px] leading-6 text-[#758078]">Review the requests and access settings that your account is authorized to manage.</p>
         </header>
@@ -216,7 +216,7 @@ export default function OwnerControlsPage(): JSX.Element {
                         <p className="truncate text-[15px] font-semibold text-[#202826]">{APPROVAL_LABELS[item.kind] ?? item.kind.replaceAll("_", " ")}</p>
                         <p className="mt-1 text-[12px] text-[#758078]">Request awaiting an authorized decision</p>
                       </div>
-                      <span className="rounded-md bg-[#fcf1df] px-2.5 py-1 text-[11px] font-semibold text-[#9a6e32]">PENDING</span>
+                      <span className="rounded-md bg-[#fcf1df] px-2.5 py-1 text-[11px] font-semibold text-[var(--color-atlas-warning-strong)]">PENDING</span>
                     </li>
                   ))}
                 </ul>
@@ -273,9 +273,9 @@ export default function OwnerControlsPage(): JSX.Element {
                     href={item.href}
                     className="group rounded-2xl border border-[#e5e9e3] bg-white p-5 shadow-[0_8px_24px_-16px_rgb(32_40_38/0.18)] transition-[border-color,transform,box-shadow] duration-150 hover:-translate-y-0.5 hover:border-[#da614c] hover:shadow-[0_12px_25px_-16px_rgb(32_40_38/0.28)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#da614c] motion-reduce:transform-none"
                   >
-                    <span className="font-data text-xs text-[#da614c]">{item.marker}</span>
+                    <span className="font-data text-xs text-[var(--color-atlas-accent-strong)]">{item.marker}</span>
                     <h2 className="font-display mt-3 text-lg font-semibold text-[#202826]">{item.title} <span aria-hidden>↗</span></h2>
-                    <p className="mt-2 text-sm leading-6 text-[#707b75]">{item.detail}</p>
+                    <p className="mt-2 text-sm leading-6 text-[var(--color-atlas-muted-strong)]">{item.detail}</p>
                   </Link>
                 ))}
               </div>
@@ -287,7 +287,7 @@ export default function OwnerControlsPage(): JSX.Element {
                 <SectionHeader
                   title="Staff permission overview"
                   description="Role grants are server-defined. Owners can remove individual staff permissions from Team, but cannot add permissions outside their role."
-                  action={<Link href="/team" className="text-xs font-semibold text-[#da614c] hover:underline">Manage team →</Link>}
+                  action={<Link href="/team" className="text-xs font-semibold text-[var(--color-atlas-accent-strong)] hover:underline">Manage team →</Link>}
                 />
                 <ul className="mt-5 space-y-3">
                   {ROLE_GUIDANCE.map((item) => (
@@ -296,7 +296,7 @@ export default function OwnerControlsPage(): JSX.Element {
                         <strong className="text-sm text-[#202826]">{item.role}</strong>
                         <StatusPill tone={item.tone}>{item.scope}</StatusPill>
                       </div>
-                      <p className="mt-2 text-xs leading-5 text-[#707b75]">{item.detail}</p>
+                      <p className="mt-2 text-xs leading-5 text-[var(--color-atlas-muted-strong)]">{item.detail}</p>
                     </li>
                   ))}
                 </ul>
@@ -312,26 +312,26 @@ export default function OwnerControlsPage(): JSX.Element {
                 />
                 {message ? <p role="status" className="mt-4 rounded-lg bg-[#e8f4ec] p-3 text-sm text-[#267552]">{message}</p> : null}
                 {error ? <p role="alert" className="mt-4 rounded-lg bg-[#fff1ef] p-3 text-sm text-[#b74945]">{error}</p> : null}
-                {sessions.isLoading ? <p role="status" className="mt-5 text-sm text-[#707b75]">Loading sessions…</p> : null}
+                {sessions.isLoading ? <p role="status" className="mt-5 text-sm text-[var(--color-atlas-muted-strong)]">Loading sessions…</p> : null}
                 {sessions.isError ? (
                   <div className="mt-4 space-y-2">
                     <p role="alert" className="text-sm text-[#b74945]">Sessions could not load.</p>
                     <GhostButton type="button" onClick={() => void sessions.refetch()}>Try again</GhostButton>
                   </div>
                 ) : null}
-                {sessions.data?.sessions.length === 0 ? <p className="mt-5 text-sm text-[#707b75]">No sessions returned.</p> : null}
+                {sessions.data?.sessions.length === 0 ? <p className="mt-5 text-sm text-[var(--color-atlas-muted-strong)]">No sessions returned.</p> : null}
                 <ul className="mt-4 space-y-3">
                   {(sessions.data?.sessions ?? []).map((session) => (
                     <li key={session.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#e5e9e3] p-3">
                       <div>
                         <StatusPill tone={session.current ? "ok" : "info"}>{session.current ? "Current session" : "Other session"}</StatusPill>
-                        <p className="mt-2 text-xs text-[#707b75]">
+                        <p className="mt-2 text-xs text-[var(--color-atlas-muted-strong)]">
                           Expires {new Date(session.expiresAt).toLocaleString("en-PH")}
                         </p>
                       </div>
                       {canRevokeAccountSession(session) ? (
                         <GhostButton type="button" onClick={() => { setError(""); setTargetSession(session); }}>Revoke</GhostButton>
-                      ) : <span className="text-xs text-[#707b75]">Use Sign out to end this session</span>}
+                      ) : <span className="text-xs text-[var(--color-atlas-muted-strong)]">Use Sign out to end this session</span>}
                     </li>
                   ))}
                 </ul>
@@ -344,14 +344,14 @@ export default function OwnerControlsPage(): JSX.Element {
                 title="Effective server permissions"
                 description="Read-only base role templates. Individual deny-only restrictions are configured in Team → Permissions."
               />
-              {permissionRoles.isLoading ? <p role="status" className="mt-4 text-sm text-[#707b75]">Loading permissions…</p> : null}
+              {permissionRoles.isLoading ? <p role="status" className="mt-4 text-sm text-[var(--color-atlas-muted-strong)]">Loading permissions…</p> : null}
               {permissionRoles.isError ? <p role="alert" className="mt-4 text-sm text-[#b74945]">Could not load the current permission policy.</p> : null}
               {permissionRoles.data ? (
                 <div className="mt-5 overflow-x-auto">
                   <table className="w-full min-w-[640px] text-left text-xs">
                     <caption className="sr-only">Current backend permissions by role</caption>
                     <thead>
-                      <tr className="border-b border-[#e5e9e3] text-[#707b75]">
+                      <tr className="border-b border-[#e5e9e3] text-[var(--color-atlas-muted-strong)]">
                         <th scope="col" className="px-3 py-3">Sensitive action</th>
                         {permissionRoles.data.items.map((role) => (
                           <th scope="col" key={role.role} className="px-3 py-3 capitalize">{role.role}</th>
@@ -378,7 +378,7 @@ export default function OwnerControlsPage(): JSX.Element {
                   </table>
                 </div>
               ) : null}
-              <p className="mt-4 text-xs leading-5 text-[#707b75]">
+              <p className="mt-4 text-xs leading-5 text-[var(--color-atlas-muted-strong)]">
                 The matrix reflects role grants, not approval thresholds, branch context, or additional server checks.
                 Sensitive actions may still require a distinct manager approval or re-authentication.
               </p>
@@ -397,7 +397,7 @@ export default function OwnerControlsPage(): JSX.Element {
                 ].map(([title, detail]) => (
                   <div key={title} className="rounded-xl border border-[#e5e9e3] bg-[#f7f8f5] p-4">
                     <h3 className="text-sm font-semibold text-[#202826]">{title}</h3>
-                    <p className="mt-2 text-xs leading-5 text-[#707b75]">{detail}</p>
+                    <p className="mt-2 text-xs leading-5 text-[var(--color-atlas-muted-strong)]">{detail}</p>
                   </div>
                 ))}
               </div>

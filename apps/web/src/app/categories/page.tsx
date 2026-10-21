@@ -138,7 +138,7 @@ export default function CategoriesPage(): JSX.Element {
           </div>
           {listQuery.isLoading ? <p className="px-5 pb-6 text-sm text-[#73685f]">Loading categories…</p> : null}
           {listQuery.isError ? <p role="alert" className="px-5 pb-6 text-sm font-medium text-[#c43e3e]">Could not load categories.</p> : null}
-          {listQuery.data && items.length === 0 ? <p className="px-5 pb-8 text-sm text-[#8b8077]">No categories yet.</p> : null}
+          {listQuery.data && items.length === 0 ? <p className="px-5 pb-8 text-sm text-[var(--color-atlas-muted-strong)]">No categories yet.</p> : null}
           {items.length > 0 ? (
             <table className="premium-table min-w-[640px] text-left text-[12px]">
               <thead>
@@ -160,7 +160,7 @@ export default function CategoriesPage(): JSX.Element {
                         <GhostButton type="button" onClick={() => setPendingCategory(category)}>
                           {category.isActive ? "Archive" : "Restore"}
                         </GhostButton>
-                      ) : <span className="text-[11px] text-[#9a8d83]">Read only</span>}
+                      ) : <span className="text-[11px] text-[var(--color-atlas-muted-strong)]">Read only</span>}
                     </td>
                   </tr>
                 ))}

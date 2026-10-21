@@ -27,10 +27,10 @@ export default function InventoryAccessPage() {
     <main className="mx-auto w-full max-w-none space-y-5 px-4 pb-10 pt-8 sm:px-7">
       <AtlasInventorySafeguards title="Restricted action" description="Inventory permissions never automatically confer commercial or financial approval authority." rules={["Every protected operation is authorized by the API.", "Unavailable actions have an explicit route to the responsible workflow.", "Manager or owner verification cannot be bypassed by sharing credentials."]}>
         <h3 className="font-display text-[22px] font-semibold text-[#202826]">Access restrictions</h3>
-        <p className="mt-2 text-sm text-[#748078]">Your role and assigned permissions determine what you can do. These entries explain the existing workflows; they do not grant access.</p>
-        {me.isPending ? <p role="status" className="mt-5 text-sm text-[#748078]">Checking permissions…</p> : me.isError ? <p role="alert" className="mt-5 text-sm text-[#a34132]">Your permissions could not be verified. No protected controls are available.</p> : <div className="mt-5 space-y-2">
+        <p className="mt-2 text-sm text-[var(--color-atlas-muted-strong)]">Your role and assigned permissions determine what you can do. These entries explain the existing workflows; they do not grant access.</p>
+        {me.isPending ? <p role="status" className="mt-5 text-sm text-[var(--color-atlas-muted-strong)]">Checking permissions…</p> : me.isError ? <p role="alert" className="mt-5 text-sm text-[#a34132]">Your permissions could not be verified. No protected controls are available.</p> : <div className="mt-5 space-y-2">
           {restrictedActions.map((item, index) => <div key={item.label} className="grid gap-2 rounded-lg bg-[#f7f8f5] p-4 text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-            <div><p className="font-semibold text-[#202826]">{item.label}</p><p className="mt-1 text-xs text-[#748078]">{item.scope}</p></div>
+            <div><p className="font-semibold text-[#202826]">{item.label}</p><p className="mt-1 text-xs text-[var(--color-atlas-muted-strong)]">{item.scope}</p></div>
             <span className={"rounded-md px-2.5 py-1 text-xs font-semibold " + (index === 2 && inventoryPrivilege ? "bg-[#e9f4ec] text-[#267552]" : "bg-[#fff1ef] text-[#a34132]")}>{index === 2 && inventoryPrivilege ? "Permission granted" : "Separate authorization"}</span>
           </div>)}
         </div>}

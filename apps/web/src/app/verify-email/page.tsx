@@ -158,10 +158,10 @@ export default function VerifyEmailPage(): JSX.Element {
         <section className="animate-auth-card relative z-10 w-full max-w-[536px] rounded-[14px] border border-[#eee4db] bg-white p-6 shadow-[0_18px_48px_-14px_rgb(22_18_14/0.14)] sm:p-8">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="font-data text-[9px] font-medium uppercase tracking-[0.14em] text-[#e44e34]">Secure account activation</p>
+              <p className="font-data text-[9px] font-medium uppercase tracking-[0.14em] text-[var(--color-atlas-accent-strong)]">Secure account activation</p>
               <h2 className="font-display mt-5 text-[30px] font-bold text-[#17130f]">Verify your email</h2>
             </div>
-            <div className={`animate-auth-status grid h-11 w-11 shrink-0 place-items-center rounded-full ${verified ? "bg-[#eaf7f0] text-[#1f8a5b]" : "bg-[#fff0ea] text-[#e44e34]"}`} aria-hidden>
+            <div className={`animate-auth-status grid h-11 w-11 shrink-0 place-items-center rounded-full ${verified ? "bg-[#eaf7f0] text-[var(--color-atlas-verified)]" : "bg-[#fff0ea] text-[var(--color-atlas-accent-strong)]"}`} aria-hidden>
               {verified ? "✓" : verifying ? "…" : "✦"}
             </div>
           </div>
@@ -233,13 +233,13 @@ export default function VerifyEmailPage(): JSX.Element {
               )}
 
               <button
-                className="auth-interactive min-h-[52px] w-full rounded-[9px] border border-[#f35d3f] bg-white px-5 py-3 font-semibold text-[#b94029] shadow-[0_8px_20px_-12px_rgb(243_93_63/0.4)] hover:bg-[#fff8f5] disabled:cursor-not-allowed disabled:border-[#e4d9d0] disabled:bg-[#f7f1ea] disabled:text-[#9a8d83] disabled:shadow-none"
+                className="auth-interactive min-h-[52px] w-full rounded-[9px] border border-[#f35d3f] bg-white px-5 py-3 font-semibold text-[#b94029] shadow-[0_8px_20px_-12px_rgb(243_93_63/0.4)] hover:bg-[#fff8f5] disabled:cursor-not-allowed disabled:border-[#e4d9d0] disabled:bg-[#f7f1ea] disabled:text-[var(--color-atlas-muted-strong)] disabled:shadow-none"
                 type="submit"
                 disabled={resendDisabled}
               >
                 {sending ? "Sending…" : cooldown > 0 ? `Resend available in ${cooldown}s` : "Resend verification email"}
               </button>
-              <p className="text-center text-[10px] leading-4 text-[#9a8d83]">
+              <p className="text-center text-[10px] leading-4 text-[var(--color-atlas-muted-strong)]">
                 For your security, resend attempts are rate-limited and may require a human verification challenge.
               </p>
             </form>
@@ -247,7 +247,7 @@ export default function VerifyEmailPage(): JSX.Element {
 
           {!verified ? (
             <div className="mt-6 border-t border-[#eee4db] pt-5 text-center">
-              <Link href="/login" className="text-[11px] font-semibold text-[#e44e34] transition hover:text-[#c63d27]">Back to sign in</Link>
+              <Link href="/login" className="text-[11px] font-semibold text-[var(--color-atlas-accent-strong)] transition hover:text-[#c63d27]">Back to sign in</Link>
             </div>
           ) : null}
         </section>

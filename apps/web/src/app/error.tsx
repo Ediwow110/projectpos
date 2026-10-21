@@ -6,7 +6,7 @@ export default function GlobalError({ reset }: { error: Error & { digest?: strin
   return (
     <main className="grid min-h-screen place-items-center bg-[#fcf8f3] p-6 text-[#17130f]">
       <section className="w-full max-w-md rounded-2xl border border-[#eadfd6] bg-white p-7 text-center shadow-[0_18px_45px_-32px_rgb(40_24_16/0.45)]">
-        <div className="font-display mx-auto grid h-11 w-11 place-items-center rounded-xl bg-[#fff0ea] font-bold text-[#e44e34]">!</div>
+        <div className="font-display mx-auto grid h-11 w-11 place-items-center rounded-xl bg-[#fff0ea] font-bold text-[var(--color-atlas-accent-strong)]">!</div>
         <h1 className="font-display mt-4 text-xl font-bold">This page hit an unexpected error</h1>
         <p className="mt-2 text-sm text-[#73685f]">Your session is still intact. Retry the page before refreshing the whole app.</p>
         <button

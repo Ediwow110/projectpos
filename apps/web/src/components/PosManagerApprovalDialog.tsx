@@ -134,7 +134,7 @@ export function PosManagerApprovalDialog({
           type="button"
           disabled={busy}
           onClick={() => { setMode((current) => current === "pin" ? "password" : "pin"); setLocalError(""); }}
-          className="text-[11px] font-semibold text-[#d94a30] hover:text-[#b93d28] disabled:opacity-50"
+          className="text-[11px] font-semibold text-[var(--color-atlas-accent-strong)] hover:text-[#b93d28] disabled:opacity-50"
         >
           {mode === "pin" ? "Use password instead" : "Use approval PIN instead"}
         </button>

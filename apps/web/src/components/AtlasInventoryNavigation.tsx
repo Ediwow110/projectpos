@@ -53,7 +53,7 @@ export function AtlasInventoryNavigation({
     <AtlasWorkspaceDestinations role={role} onNavigate={onNavigate} excludedPaths={INVENTORY_LINKS.map((item) => item.href.split("#")[0]!)} />
     <div className="mt-auto border-t border-[#e5e9e3] px-3 pt-4">
       <Link href="/inventory#inventory-balances" className="block rounded-md py-2 text-[13px] text-[#53615a] hover:text-[#267552]">Inventory balances</Link>
-      <button type="button" disabled={signingOut} onClick={onSignOut} className="w-full rounded-md py-2 text-left text-[13px] text-[#748078] hover:text-[#202826] disabled:opacity-60">{signingOut ? "Signing out…" : "Sign out"}</button>
+      <button type="button" disabled={signingOut} onClick={onSignOut} className="w-full rounded-md py-2 text-left text-[13px] text-[var(--color-atlas-muted-strong)] hover:text-[#202826] disabled:opacity-60">{signingOut ? "Signing out…" : "Sign out"}</button>
     </div>
   </div>;
 }

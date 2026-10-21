@@ -42,7 +42,7 @@ export function NexposLogo({
 }: NexposLogoProps): JSX.Element {
   const markSize = MARK_SIZE[size];
   const titleColor = variant === "dark" ? "text-white" : "text-[#17130f]";
-  const eyebrowColor = variant === "dark" ? "text-[#a79e94]" : "text-[#9a8d83]";
+  const eyebrowColor = variant === "dark" ? "text-[#a79e94]" : "text-[var(--color-atlas-muted-strong)]";
 
   if (variant === "light" && withWordmark) {
     const width = Math.round(markSize * (240 / 56));

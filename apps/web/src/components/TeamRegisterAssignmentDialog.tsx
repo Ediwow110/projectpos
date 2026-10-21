@@ -95,7 +95,7 @@ export function TeamRegisterAssignmentDialog({
           Assign branches first. Register limits restrict POS, sales and shifts, including direct API requests.
           Business-wide financial reports remain unavailable while a register allowlist is active.
         </p>
-        {loading ? <p role="status" className="text-sm text-[#707b75]">Loading register access…</p> : null}
+        {loading ? <p role="status" className="text-sm text-[var(--color-atlas-muted-strong)]">Loading register access…</p> : null}
         {failed ? <p role="alert" className="text-sm text-[#b74945]">Register access could not load.</p> : null}
         {!loading && permittedBranches === null ? (
           <p role="alert" className="text-sm text-[#b74945]">This employee needs a branch assignment before registers can be restricted.</p>
@@ -116,7 +116,7 @@ export function TeamRegisterAssignmentDialog({
               {register.name}
             </label>
           ))}
-          {eligible.length === 0 ? <p className="text-xs text-[#707b75]">No active registers in assigned branches.</p> : null}
+          {eligible.length === 0 ? <p className="text-xs text-[var(--color-atlas-muted-strong)]">No active registers in assigned branches.</p> : null}
         </fieldset> : null}
         <label className="block text-xs font-semibold text-[#655b53]">
           Confirm owner password

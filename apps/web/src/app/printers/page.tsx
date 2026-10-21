@@ -210,7 +210,7 @@ export default function PrintersPage(): JSX.Element {
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
                             <h2 className="font-display text-[15px] font-semibold text-[#2a241f]">{printer.name}</h2>
-                            <p className="font-data mt-1 text-[9px] text-[#9a8d83]">{branch} · {printer.width}mm</p>
+                            <p className="font-data mt-1 text-[9px] text-[var(--color-atlas-muted-strong)]">{branch} · {printer.width}mm</p>
                           </div>
                           <div className="flex gap-2">
                             {printer.isDefault ? <StatusPill tone="info">Default</StatusPill> : null}
@@ -247,11 +247,11 @@ export default function PrintersPage(): JSX.Element {
                       {jobs.slice(0, 40).map((job) => {
                         const printer = printers.find((item) => item.id === job.printerId);
                         return <tr key={job.id}>
-                          <td className="px-4 py-3"><p className="font-semibold text-[#2a241f]">{job.receiptNo ? `Receipt ${job.receiptNo}` : "Test print"}</p><p className="font-data mt-1 text-[9px] text-[#9a8d83]">{job.id.slice(0, 12)}</p></td>
+                          <td className="px-4 py-3"><p className="font-semibold text-[#2a241f]">{job.receiptNo ? `Receipt ${job.receiptNo}` : "Test print"}</p><p className="font-data mt-1 text-[9px] text-[var(--color-atlas-muted-strong)]">{job.id.slice(0, 12)}</p></td>
                           <td className="px-4 py-3 text-[#655b53]">{printer?.name ?? "Printer"}</td>
-                          <td className="px-4 py-3"><StatusPill tone={job.status === "QUEUED" ? "info" : "ok"}>{job.status}</StatusPill><p className="font-data mt-1 text-[9px] text-[#9a8d83]">attempts {job.attempts}</p></td>
+                          <td className="px-4 py-3"><StatusPill tone={job.status === "QUEUED" ? "info" : "ok"}>{job.status}</StatusPill><p className="font-data mt-1 text-[9px] text-[var(--color-atlas-muted-strong)]">attempts {job.attempts}</p></td>
                           <td className="px-4 py-3 font-data text-[9px] text-[#73685f]">{new Date(job.createdAt).toLocaleString()}</td>
-                          <td className="px-4 py-3 text-right">{job.status !== "QUEUED" ? <GhostButton type="button" disabled={busy} onClick={() => void printerAction(`/api/v1/print-jobs/${job.id}/retry`, "Print job requeued as a new job.")}>Requeue</GhostButton> : <span className="text-[10px] text-[#9a8d83]">Waiting</span>}</td>
+                          <td className="px-4 py-3 text-right">{job.status !== "QUEUED" ? <GhostButton type="button" disabled={busy} onClick={() => void printerAction(`/api/v1/print-jobs/${job.id}/retry`, "Print job requeued as a new job.")}>Requeue</GhostButton> : <span className="text-[10px] text-[var(--color-atlas-muted-strong)]">Waiting</span>}</td>
                         </tr>;
                       })}
                     </tbody>

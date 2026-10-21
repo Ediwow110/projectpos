@@ -44,7 +44,7 @@ export function AtlasInventoryWorkbench({
         <div>
           <p className="font-data text-[11px] font-medium tracking-wide text-[#267552]">OPERATIONS / MY WORK</p>
           <h1 className="font-display mt-2 text-[29px] font-semibold text-[#202826]">Inventory workbench</h1>
-          <p className="mt-2 text-[14px] text-[#71807a]">
+          <p className="mt-2 text-[14px] text-[var(--color-atlas-muted-strong)]">
             {branchName ? `Stock attention for ${branchName}.` : "Stock attention for your authorized branch scope."}
           </p>
         </div>
@@ -56,14 +56,14 @@ export function AtlasInventoryWorkbench({
         {cards.map((card) => (
           <div key={card.label} className="min-h-[122px] rounded-xl border border-[#e5e9e3] bg-white px-5 py-5">
             <p className="font-display text-[28px] font-semibold text-[#202826]">{card.value}</p>
-            <p className="mt-2 text-[13px] text-[#71807a]">{card.label}</p>
+            <p className="mt-2 text-[13px] text-[var(--color-atlas-muted-strong)]">{card.label}</p>
           </div>
         ))}
       </div>
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
         <section aria-label="Records and work items" className="min-h-[300px] rounded-xl border border-[#e5e9e3] bg-white p-5">
           <h2 className="font-display text-[21px] font-semibold text-[#202826]">Records &amp; work items</h2>
-          <p className="mt-4 border-b border-[#e5e9e3] pb-3 font-data text-[10px] tracking-wide text-[#71807a]">PRODUCT / ON HAND / STOCK STATE</p>
+          <p className="mt-4 border-b border-[#e5e9e3] pb-3 font-data text-[10px] tracking-wide text-[var(--color-atlas-muted-strong)]">PRODUCT / ON HAND / STOCK STATE</p>
           {attention.length === 0 ? (
             <p className="mt-4 rounded-lg bg-[#eff2ed] p-4 text-[13px] text-[#53615a]">
               No low or out-of-stock products on this page. {total > items.length ? "Other pages may contain additional items." : "Review your regular count assignments."}
@@ -98,7 +98,7 @@ export function AtlasInventoryWorkbench({
           </ol>
         </aside>
       </div>
-      <p className="text-[11px] text-[#71807a]">Stock metrics reflect {items.length} of {total} products on the current query page. No sample figures are included.</p>
+      <p className="text-[11px] text-[var(--color-atlas-muted-strong)]">Stock metrics reflect {items.length} of {total} products on the current query page. No sample figures are included.</p>
     </section>
   );
 }

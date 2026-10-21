@@ -301,7 +301,7 @@ export function GuidedTour({
         <div className="flex items-start gap-4">
           <NexposMark size={40} className="rounded-xl" />
           <div className="min-w-0 flex-1">
-            <p className="font-data text-[9px] font-semibold uppercase tracking-[0.14em] text-[#e44e34]">
+            <p className="font-data text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--color-atlas-accent-strong)]">
               System tour · {index + 1} of {steps.length}
             </p>
             <h2 id="workspace-tour-title" className="font-display mt-2 text-xl font-bold">{step.title}</h2>
@@ -310,7 +310,7 @@ export function GuidedTour({
             type="button"
             onClick={closeAndRestoreFocus}
             aria-label="Close tour and do not show automatically again"
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-[#eee4db] text-[#73685f] hover:border-[#f2b8a9] hover:text-[#d94a30]"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-[#eee4db] text-[#73685f] hover:border-[#f2b8a9] hover:text-[var(--color-atlas-accent-strong)]"
           >
             ✕
           </button>

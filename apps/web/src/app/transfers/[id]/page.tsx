@@ -110,7 +110,7 @@ export default function TransferDetailPage({ params }: { params: Promise<{ id: s
   }
 
   if (detailQuery.isError) {
-    return <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role}><main className="mx-auto max-w-[1240px] p-6"><Panel className="border-[#efb9b9] bg-[#fff0f0] p-6"><p role="alert" className="text-sm font-medium text-[#c43e3e]">Could not load transfer.</p><Link href="/transfers" className="mt-3 inline-block text-sm font-semibold text-[#e44e34]">← Back to transfers</Link></Panel></main></AppShell>;
+    return <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role}><main className="mx-auto max-w-[1240px] p-6"><Panel className="border-[#efb9b9] bg-[#fff0f0] p-6"><p role="alert" className="text-sm font-medium text-[#c43e3e]">Could not load transfer.</p><Link href="/transfers" className="mt-3 inline-block text-sm font-semibold text-[var(--color-atlas-accent-strong)]">← Back to transfers</Link></Panel></main></AppShell>;
   }
 
   return (
@@ -165,8 +165,8 @@ export default function TransferDetailPage({ params }: { params: Promise<{ id: s
         ) : <Panel className="p-6 text-sm text-[#73685f]">Loading transfer…</Panel>}
 
         <div className="grid gap-4 lg:grid-cols-2">
-          <Panel className="p-5"><SectionHeader title={`Source ledger · ${detail ? branchName(detail.fromBranchId) : "—"}`} description="Stock leaves the source only when dispatch succeeds." /><div className="mt-4 space-y-2">{outMoves.length === 0 ? <p className="text-sm text-[#8b8077]">No stock has left the source yet.</p> : outMoves.map((movement) => <div key={movement.id} className="flex items-center justify-between rounded-xl bg-[#f7f1ea] px-3 py-2 text-sm"><span>{productName(movement.productId)}</span><span className="font-data font-semibold text-[#c43e3e]">{movement.qtyDelta}</span></div>)}</div></Panel>
-          <Panel className="p-5"><SectionHeader title={`Destination ledger · ${detail ? branchName(detail.toBranchId) : "—"}`} description="Stock arrives only when receive succeeds." /><div className="mt-4 space-y-2">{inMoves.length === 0 ? <p className="text-sm text-[#8b8077]">Nothing has arrived at the destination yet.</p> : inMoves.map((movement) => <div key={movement.id} className="flex items-center justify-between rounded-xl bg-[#f7f1ea] px-3 py-2 text-sm"><span>{productName(movement.productId)}</span><span className="font-data font-semibold text-[#1f8a5b]">+{movement.qtyDelta}</span></div>)}</div></Panel>
+          <Panel className="p-5"><SectionHeader title={`Source ledger · ${detail ? branchName(detail.fromBranchId) : "—"}`} description="Stock leaves the source only when dispatch succeeds." /><div className="mt-4 space-y-2">{outMoves.length === 0 ? <p className="text-sm text-[var(--color-atlas-muted-strong)]">No stock has left the source yet.</p> : outMoves.map((movement) => <div key={movement.id} className="flex items-center justify-between rounded-xl bg-[#f7f1ea] px-3 py-2 text-sm"><span>{productName(movement.productId)}</span><span className="font-data font-semibold text-[#c43e3e]">{movement.qtyDelta}</span></div>)}</div></Panel>
+          <Panel className="p-5"><SectionHeader title={`Destination ledger · ${detail ? branchName(detail.toBranchId) : "—"}`} description="Stock arrives only when receive succeeds." /><div className="mt-4 space-y-2">{inMoves.length === 0 ? <p className="text-sm text-[var(--color-atlas-muted-strong)]">Nothing has arrived at the destination yet.</p> : inMoves.map((movement) => <div key={movement.id} className="flex items-center justify-between rounded-xl bg-[#f7f1ea] px-3 py-2 text-sm"><span>{productName(movement.productId)}</span><span className="font-data font-semibold text-[var(--color-atlas-verified)]">+{movement.qtyDelta}</span></div>)}</div></Panel>
         </div>
       </main>
 

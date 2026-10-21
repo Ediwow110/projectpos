@@ -72,11 +72,11 @@ export default function RegisterPage(): JSX.Element {
         <div className="animate-auth-card relative z-10 w-full max-w-[684px]">
           <p className="atlas-eyebrow">OWNER REGISTRATION</p>
           <h2 className="font-display mt-11 text-[30px] font-semibold text-[#202826] sm:text-[33px]">Create your business</h2>
-          <p className="mt-3 text-[16px] leading-6 text-[#707b75]">Set up a secure workspace in a few minutes.</p>
+          <p className="mt-3 text-[16px] leading-6 text-[var(--color-atlas-muted-strong)]">Set up a secure workspace in a few minutes.</p>
 
           <form noValidate onSubmit={submit} className="mt-12 space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="block text-[13px] font-medium text-[#707b75]">
+              <label className="block text-[13px] font-medium text-[var(--color-atlas-muted-strong)]">
                 Your name
                 <input
                   value={ownerName}
@@ -87,7 +87,7 @@ export default function RegisterPage(): JSX.Element {
                   className="field mt-2 !min-h-[55px]"
                 />
               </label>
-              <label className="block text-[13px] font-medium text-[#707b75]">
+              <label className="block text-[13px] font-medium text-[var(--color-atlas-muted-strong)]">
                 Business name
                 <input
                   value={businessName}
@@ -100,7 +100,7 @@ export default function RegisterPage(): JSX.Element {
               </label>
             </div>
 
-            <label className="block text-[13px] font-medium text-[#707b75]">
+            <label className="block text-[13px] font-medium text-[var(--color-atlas-muted-strong)]">
               Business email
               <input
                 type="email"
@@ -113,7 +113,7 @@ export default function RegisterPage(): JSX.Element {
               />
             </label>
 
-            <label className="block text-[13px] font-medium text-[#707b75]">
+            <label className="block text-[13px] font-medium text-[var(--color-atlas-muted-strong)]">
               Password (12+ characters)
               <span className="relative mt-2 block">
                 <input
@@ -129,7 +129,7 @@ export default function RegisterPage(): JSX.Element {
                 <button
                   type="button"
                   onClick={() => setShowPassword((shown) => !shown)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-[#e44e34]"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-[var(--color-atlas-accent-strong)]"
                 >
                   {showPassword ? "Hide" : "Show"}
                 </button>
@@ -148,9 +148,9 @@ export default function RegisterPage(): JSX.Element {
           </form>
 
           <div className="mt-5">
-            <p className="text-[14px] text-[#707b75]">
+            <p className="text-[14px] text-[var(--color-atlas-muted-strong)]">
               Already have an account?{" "}
-              <Link href="/login" className="font-semibold text-[#da614c] underline-offset-4 hover:underline">Sign in</Link>
+              <Link href="/login" className="font-semibold text-[var(--color-atlas-accent-strong)] underline-offset-4 hover:underline">Sign in</Link>
             </p>
           </div>
         </div>

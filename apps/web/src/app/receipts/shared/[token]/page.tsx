@@ -43,7 +43,7 @@ export default function SharedReceiptPage({ params }: { params: Promise<{ token:
       <div className="mx-auto max-w-[430px]">
         <div className="mb-5 text-center">
           <NexposLogo variant="light" size="md" className="mx-auto" />
-          <p className="font-data mt-1 text-[9px] uppercase tracking-[0.16em] text-[#9a8d83]">Secure shared receipt</p>
+          <p className="font-data mt-1 text-[9px] uppercase tracking-[0.16em] text-[var(--color-atlas-muted-strong)]">Secure shared receipt</p>
         </div>
         {query.isLoading ? <div className="rounded-2xl border border-[#eadfd6] bg-white p-6 text-center text-sm text-[#73685f]">Loading receipt…</div> : null}
         {query.isError ? <div role="alert" className="rounded-2xl border border-[#efb9b9] bg-[#fff0f0] p-6 text-center text-sm font-medium text-[#c43e3e]">This receipt link is invalid or has expired.</div> : null}
@@ -57,13 +57,13 @@ export default function SharedReceiptPage({ params }: { params: Promise<{ token:
               <div className="space-y-3">
                 {query.data.items.map((item, index) => (
                   <div key={`${item.name}-${index}`} className="flex items-start justify-between gap-4 text-[12px]">
-                    <div><p className="font-semibold text-[#2a241f]">{item.name}</p><p className="font-data mt-1 text-[10px] text-[#9a8d83]">Qty {item.qty}</p></div>
+                    <div><p className="font-semibold text-[#2a241f]">{item.name}</p><p className="font-data mt-1 text-[10px] text-[var(--color-atlas-muted-strong)]">Qty {item.qty}</p></div>
                     <p className="font-data font-semibold text-[#2a241f]">₱{money(item.lineTotalMinor)}</p>
                   </div>
                 ))}
                 {query.data.giftCardLoads.map((load, index) => (
                   <div key={`gift-card-load-${index}`} className="flex items-start justify-between gap-4 text-[12px]">
-                    <div><p className="font-semibold text-[#2a241f]">{load.kind === "NEW" ? "Gift card load" : "Gift card reload"}</p><p className="font-data mt-1 text-[10px] text-[#9a8d83]">{load.maskedCode ?? "Stored-value load"}</p></div>
+                    <div><p className="font-semibold text-[#2a241f]">{load.kind === "NEW" ? "Gift card load" : "Gift card reload"}</p><p className="font-data mt-1 text-[10px] text-[var(--color-atlas-muted-strong)]">{load.maskedCode ?? "Stored-value load"}</p></div>
                     <p className="font-data font-semibold text-[#2a241f]">₱{money(load.amountMinor)}</p>
                   </div>
                 ))}
@@ -75,13 +75,13 @@ export default function SharedReceiptPage({ params }: { params: Promise<{ token:
                 <div className="mt-3 flex justify-between border-t border-[#eee4db] pt-3 text-sm font-bold"><span>Total</span><span className="font-data">₱{money(query.data.totalMinor)}</span></div>
               </div>
               <div className="border-t border-dashed border-[#d8ccc2] pt-4">
-                <p className="font-data text-[8px] font-semibold uppercase tracking-[0.14em] text-[#9a8d83]">Payments</p>
+                <p className="font-data text-[8px] font-semibold uppercase tracking-[0.14em] text-[var(--color-atlas-muted-strong)]">Payments</p>
                 {query.data.tenders.map((tender, index) => (
                   <div key={`${tender.method}-${index}`} className="mt-2 flex justify-between text-[11px]"><span className="text-[#73685f]">{tender.method.toUpperCase()}</span><span className="font-data font-semibold">₱{money(tender.amountMinor)}</span></div>
                 ))}
               </div>
             </div>
-            <footer className="border-t border-dashed border-[#d8ccc2] px-6 py-5 text-center text-[9px] leading-4 text-[#9a8d83]">This secure receipt link expires automatically.</footer>
+            <footer className="border-t border-dashed border-[#d8ccc2] px-6 py-5 text-center text-[9px] leading-4 text-[var(--color-atlas-muted-strong)]">This secure receipt link expires automatically.</footer>
           </article>
         ) : null}
       </div>

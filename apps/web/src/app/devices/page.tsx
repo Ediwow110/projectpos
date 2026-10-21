@@ -184,7 +184,7 @@ export default function DevicesPage(): JSX.Element {
           {devicesQuery.isLoading ? <p className="px-5 pb-6 text-sm text-[#73685f]">Loading devices…</p> : null}
           {devicesQuery.isError ? <p role="alert" className="px-5 pb-6 text-sm text-[#c43e3e]">Could not load registered devices.</p> : null}
           {!devicesQuery.isLoading && !devicesQuery.isError && devices.length === 0 ? (
-            <p className="px-5 pb-8 text-sm text-[#8b8077]">No devices are registered yet.</p>
+            <p className="px-5 pb-8 text-sm text-[var(--color-atlas-muted-strong)]">No devices are registered yet.</p>
           ) : null}
           {devices.length > 0 ? (
             <div className="overflow-x-auto">
@@ -205,8 +205,8 @@ export default function DevicesPage(): JSX.Element {
                       <tr key={device.id}>
                         <td className="px-5 py-3">
                           <p className="font-semibold text-[#2a241f]">{device.label}</p>
-                          <p className="font-data mt-1 text-[9px] text-[#8b8077]">{shortDeviceId(device.id)}</p>
-                          {current ? <span className="mt-1 inline-block text-[10px] font-semibold text-[#e44e34]">This device</span> : null}
+                          <p className="font-data mt-1 text-[9px] text-[var(--color-atlas-muted-strong)]">{shortDeviceId(device.id)}</p>
+                          {current ? <span className="mt-1 inline-block text-[10px] font-semibold text-[var(--color-atlas-accent-strong)]">This device</span> : null}
                         </td>
                         <td className="px-5 py-3 text-[#655b53]">{device.userId === meQuery.data?.userId ? "You" : "Team member"}</td>
                         <td className="px-5 py-3">
@@ -214,7 +214,7 @@ export default function DevicesPage(): JSX.Element {
                         </td>
                         <td className="px-5 py-3 text-right">
                           {revoked ? (
-                            <span className="text-[10px] font-medium text-[#9a8d83]">No action</span>
+                            <span className="text-[10px] font-medium text-[var(--color-atlas-muted-strong)]">No action</span>
                           ) : (
                             <GhostButton
                               type="button"

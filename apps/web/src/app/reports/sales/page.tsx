@@ -148,7 +148,7 @@ export default function SalesReportPage(): JSX.Element {
               className={
                 "rounded-full px-3 py-2 text-[11px] font-semibold " +
                 (href === "/reports/sales"
-                  ? "bg-[#fff0ea] text-[#e44e34]"
+                  ? "bg-[#fff0ea] text-[var(--color-atlas-accent-strong)]"
                   : "border border-[#e4d9d0] bg-white text-[#73685f] hover:border-[#f35d3f]")
               }
             >
@@ -234,7 +234,7 @@ export default function SalesReportPage(): JSX.Element {
                       ))}
                     </ul>
                   </div>
-                ) : !paymentsQuery.isLoading ? <p className="mt-5 text-sm text-[#8b8077]">No payment data available.</p> : null}
+                ) : !paymentsQuery.isLoading ? <p className="mt-5 text-sm text-[var(--color-atlas-muted-strong)]">No payment data available.</p> : null}
                 {paymentsQuery.data?.unknown ? (
                   <div className="mt-3">
                     <StatusPill tone="warn">{paymentsQuery.data.unknown} payment(s) need reconciliation</StatusPill>
@@ -248,7 +248,7 @@ export default function SalesReportPage(): JSX.Element {
                 <SectionHeader
                   title="Top product performance"
                   description="Revenue from the top-products report. No category contribution is fabricated."
-                  action={<Link href="/reports/products" className="text-[11px] font-semibold text-[#e44e34]">Open product report →</Link>}
+                  action={<Link href="/reports/products" className="text-[11px] font-semibold text-[var(--color-atlas-accent-strong)]">Open product report →</Link>}
                 />
                 <div className="mt-5">
                   {productsQuery.isLoading ? <p className="text-sm text-[#73685f]">Loading products…</p> : null}
@@ -269,7 +269,7 @@ export default function SalesReportPage(): JSX.Element {
                 <SectionHeader
                   title="Branch comparison"
                   description="Sales share across branch-report rows."
-                  action={<Link href="/reports/branches" className="text-[11px] font-semibold text-[#e44e34]">Open branch report →</Link>}
+                  action={<Link href="/reports/branches" className="text-[11px] font-semibold text-[var(--color-atlas-accent-strong)]">Open branch report →</Link>}
                 />
                 <div className="mt-5">
                   {branchesQuery.isLoading ? <p className="text-sm text-[#73685f]">Loading branches…</p> : null}
@@ -314,7 +314,7 @@ export default function SalesReportPage(): JSX.Element {
                     <dt className="text-[11px] text-[#73685f]">Discount total</dt>
                     <dd className="font-data text-sm font-semibold">₱{money(sales.totals.discountTotal)}</dd>
                   </div>
-                  <Link href="/sales" className="mt-2 inline-flex text-[11px] font-semibold text-[#e44e34]">Drill into source transactions →</Link>
+                  <Link href="/sales" className="mt-2 inline-flex text-[11px] font-semibold text-[var(--color-atlas-accent-strong)]">Drill into source transactions →</Link>
                 </dl>
               </Panel>
             </div>

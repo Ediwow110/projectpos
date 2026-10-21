@@ -150,7 +150,7 @@ export function Modal({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className={"grid h-11 w-11 shrink-0 place-items-center rounded-[10px] text-lg transition " + (atlasFlow ? "border border-[#e4e9e3] bg-white text-[#71807a] hover:bg-[#eff2ed] hover:text-[#202826]" : "border border-[#eee4db] bg-[#fcf8f3] text-[#73685f] hover:bg-[#fff0ea] hover:text-[#e44e34]")} // contrast-gate: non-text indicator (the x is a control glyph; the button is named by aria-label)
+            className={"grid h-11 w-11 shrink-0 place-items-center rounded-[10px] text-lg transition " + (atlasFlow ? "border border-[#e4e9e3] bg-white text-[var(--color-atlas-muted-strong)] hover:bg-[#eff2ed] hover:text-[#202826]" : "border border-[#eee4db] bg-[#fcf8f3] text-[#73685f] hover:bg-[#fff0ea] hover:text-[var(--color-atlas-accent-strong)]")} // contrast-gate: non-text indicator (the x is a control glyph; the button is named by aria-label)
           >
             ×
           </button> : null}

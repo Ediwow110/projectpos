@@ -234,15 +234,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
         {detailQuery.isLoading ? <Panel className="p-6"><p role="status" className="text-sm text-[#73685f]">Loading Order…</p></Panel> : null}
         {detailQuery.isError ? <Panel className="border-[#efb9b9] bg-[#fff0f0] p-5"><div className="flex flex-wrap items-center justify-between gap-3"><p role="alert" className="text-sm font-medium text-[#c43e3e]">Order could not be loaded.</p><GhostButton type="button" onClick={() => void detailQuery.refetch()}>Retry</GhostButton></div></Panel> : null}
-        {message ? <div role="status" className="rounded-xl border border-[#cfe9dc] bg-[#eaf7f0] px-4 py-3 text-sm font-medium text-[#1f8a5b]">{message}</div> : null}
+        {message ? <div role="status" className="rounded-xl border border-[#cfe9dc] bg-[#eaf7f0] px-4 py-3 text-sm font-medium text-[var(--color-atlas-verified)]">{message}</div> : null}
         {error ? <div role="alert" className="rounded-xl border border-[#efb9b9] bg-[#fff0f0] px-4 py-3 text-sm font-medium text-[#c43e3e]">{error}</div> : null}
 
         {detail && order ? (
           <>
             <section className="grid gap-4 md:grid-cols-3">
-              <Panel className="p-5"><p className="font-data text-[9px] uppercase tracking-[0.1em] text-[#9a8d83]">Order state</p><div className="mt-3"><StatusPill tone={tone(order.status)}>{order.status}</StatusPill></div><p className="mt-3 text-[11px] text-[#73685f]">Version {order.version} · {order.fulfillmentMode}</p></Panel>
-              <Panel className="p-5"><p className="font-data text-[9px] uppercase tracking-[0.1em] text-[#9a8d83]">Payment</p><div className="mt-3"><StatusPill tone={tone(detail.paymentStatus)}>{detail.paymentStatus.replaceAll("_"," ")}</StatusPill></div><p className="mt-3 text-[11px] text-[#73685f]">{order.paymentMode.replaceAll("_"," ")}</p></Panel>
-              <Panel className="p-5"><p className="font-data text-[9px] uppercase tracking-[0.1em] text-[#9a8d83]">Frozen total</p><p className="font-display mt-2 text-2xl font-bold">{formatOrderMoney(order.totalMinor, order.currency)}</p><p className="mt-2 text-[10px] text-[#8d8178]">Submitted totals are immutable.</p></Panel>
+              <Panel className="p-5"><p className="font-data text-[9px] uppercase tracking-[0.1em] text-[var(--color-atlas-muted-strong)]">Order state</p><div className="mt-3"><StatusPill tone={tone(order.status)}>{order.status}</StatusPill></div><p className="mt-3 text-[11px] text-[#73685f]">Version {order.version} · {order.fulfillmentMode}</p></Panel>
+              <Panel className="p-5"><p className="font-data text-[9px] uppercase tracking-[0.1em] text-[var(--color-atlas-muted-strong)]">Payment</p><div className="mt-3"><StatusPill tone={tone(detail.paymentStatus)}>{detail.paymentStatus.replaceAll("_"," ")}</StatusPill></div><p className="mt-3 text-[11px] text-[#73685f]">{order.paymentMode.replaceAll("_"," ")}</p></Panel>
+              <Panel className="p-5"><p className="font-data text-[9px] uppercase tracking-[0.1em] text-[var(--color-atlas-muted-strong)]">Frozen total</p><p className="font-display mt-2 text-2xl font-bold">{formatOrderMoney(order.totalMinor, order.currency)}</p><p className="mt-2 text-[10px] text-[#8d8178]">Submitted totals are immutable.</p></Panel>
             </section>
 
             <div className="grid gap-5 lg:grid-cols-[1.3fr_.7fr]">
@@ -274,13 +274,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                             : "No notification attempt is recorded."}
                     </p>
                     {detail.notificationStatus.lastAttemptAt ? (
-                      <p className="mt-2 text-[11px] text-[#71807a]">
+                      <p className="mt-2 text-[11px] text-[var(--color-atlas-muted-strong)]">
                         Last recorded attempt: {new Date(detail.notificationStatus.lastAttemptAt).toLocaleString()}
                       </p>
                     ) : null}
                   </section>
                 ) : null}
-                <label className="mt-4 block text-[11px] font-semibold text-[#655b53]">Action reason <span className="font-normal text-[#9a8d83]">(optional)</span><input className="field mt-2" value={reason} onChange={(event) => setReason(event.target.value)} /></label>
+                <label className="mt-4 block text-[11px] font-semibold text-[#655b53]">Action reason <span className="font-normal text-[var(--color-atlas-muted-strong)]">(optional)</span><input className="field mt-2" value={reason} onChange={(event) => setReason(event.target.value)} /></label>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {orderDetailActions({ role: meQuery.data?.role, orderStatus: order.status, paymentMode: order.paymentMode, fulfillment: null }).includes("accept") ? <PrimaryButton type="button" disabled={Boolean(busy)} onClick={() => void orderAction("accept")}>Accept order</PrimaryButton> : null}
                   {orderDetailActions({ role: meQuery.data?.role, orderStatus: order.status, paymentMode: order.paymentMode, fulfillment: null }).includes("reject") ? <DangerButton type="button" disabled={Boolean(busy)} onClick={() => setConfirmAction("reject")}>Reject order</DangerButton> : null}
@@ -295,7 +295,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <Panel className="p-5">
                 <SectionHeader title="Link CRM customer" description="Search existing customers. The server requires a matching normalized email/phone unless an authorized override reason is provided." />
                 <label className="mt-4 block max-w-lg text-[11px] font-semibold text-[#655b53]">Search customers<input className="field mt-2" value={customerSearch} onChange={(event) => setCustomerSearch(event.target.value)} placeholder="Name, email, or phone" /></label>
-                <label className="mt-3 block max-w-lg text-[11px] font-semibold text-[#655b53]">Mismatch override reason <span className="font-normal text-[#9a8d83]">(owner/manager only; leave blank when contact matches)</span><input className="field mt-2" value={customerOverrideReason} onChange={(event) => setCustomerOverrideReason(event.target.value)} placeholder="Why this customer should be linked" /></label>
+                <label className="mt-3 block max-w-lg text-[11px] font-semibold text-[#655b53]">Mismatch override reason <span className="font-normal text-[var(--color-atlas-muted-strong)]">(owner/manager only; leave blank when contact matches)</span><input className="field mt-2" value={customerOverrideReason} onChange={(event) => setCustomerOverrideReason(event.target.value)} placeholder="Why this customer should be linked" /></label>
                 {customersQuery.isFetching ? <p role="status" className="mt-3 text-sm text-[#73685f]">Searching customers…</p> : null}
                 {(customersQuery.data?.items ?? []).length > 0 ? <div className="mt-3 grid gap-2 sm:grid-cols-2">{customersQuery.data!.items.map((customer) => <button type="button" key={customer.id} disabled={Boolean(busy)} onClick={() => void linkCustomer(customer.id)} className="rounded-xl border border-[#e4d9d0] p-3 text-left hover:border-[#f35d3f]"><span className="block text-sm font-semibold">{customer.name}</span><span className="mt-1 block text-[10px] text-[#73685f]">{customer.email ?? customer.phone ?? "No contact"}</span></button>)}</div> : null}
               </Panel>

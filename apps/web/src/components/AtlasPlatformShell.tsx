@@ -28,13 +28,13 @@ export function AtlasPlatformShell({ current, title, description, children }: {
     <div className="min-w-0">
       <header className="flex min-h-20 flex-wrap items-center justify-between gap-3 border-b border-[#e5e9e3] bg-white px-5 py-3 sm:px-9">
         <span className="text-[13px] text-[#53615a]">Platform control / independent operator access</span>
-        <span className="rounded-md bg-[#fcf1df] px-3 py-2 font-data text-[10px] font-semibold tracking-[0.06em] text-[#9a6e32]">SEPARATE TENANT CONTEXT</span>
+        <span className="rounded-md bg-[#fcf1df] px-3 py-2 font-data text-[10px] font-semibold tracking-[0.06em] text-[var(--color-atlas-warning-strong)]">SEPARATE TENANT CONTEXT</span>
       </header>
       <main className="mx-auto w-full max-w-[1440px] space-y-6 px-4 py-8 sm:px-9">
         <div>
-          <p className="font-data text-[11px] font-medium tracking-[0.08em] text-[#da614c]">PLATFORM OPERATIONS / OWNER-CONSENTED</p>
+          <p className="font-data text-[11px] font-medium tracking-[0.08em] text-[var(--color-atlas-accent-strong)]">PLATFORM OPERATIONS / OWNER-CONSENTED</p>
           <h1 className="font-display mt-4 text-[30px] font-semibold tracking-tight text-[#202826]">{title}</h1>
-          <p className="mt-2 text-[14px] text-[#748078]">{description}</p>
+          <p className="mt-2 text-[14px] text-[var(--color-atlas-muted-strong)]">{description}</p>
         </div>
         {children}
       </main>

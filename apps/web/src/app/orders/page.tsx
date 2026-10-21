@@ -143,7 +143,7 @@ export default function OrdersPage(): JSX.Element {
                   <tbody>
                     {listQuery.data.items.map((order) => (
                       <tr key={order.id}>
-                        <td className="px-5 py-4"><Link href={"/orders/" + order.id} className="font-data font-semibold text-[#d94a30] hover:underline">{order.id.slice(-8).toUpperCase()}</Link><p className="mt-1 text-[9px] text-[#9a8d83]">{order.channel}</p></td>
+                        <td className="px-5 py-4"><Link href={"/orders/" + order.id} className="font-data font-semibold text-[var(--color-atlas-accent-strong)] hover:underline">{order.id.slice(-8).toUpperCase()}</Link><p className="mt-1 text-[9px] text-[var(--color-atlas-muted-strong)]">{order.channel}</p></td>
                         <td className="py-4 font-medium text-[#2a241f]">{order.contactName ?? "Walk-in"}</td>
                         <td className="py-4 text-[#73685f]">{branchName(order.branchId)}</td>
                         <td className="py-4 text-[#73685f]">{order.fulfillmentMode}</td>

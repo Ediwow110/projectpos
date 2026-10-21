@@ -137,7 +137,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
             <p role="alert" className="text-sm font-medium text-[#c43e3e]">
               {detailQuery.error instanceof ApiError ? `${detailQuery.error.code}: ${detailQuery.error.message}` : "Customer not found."}
             </p>
-            <Link href="/customers" className="mt-3 inline-block text-sm font-semibold text-[#e44e34]">← Back to customers</Link>
+            <Link href="/customers" className="mt-3 inline-block text-sm font-semibold text-[var(--color-atlas-accent-strong)]">← Back to customers</Link>
           </Panel>
         </main>
       </AppShell>
@@ -171,7 +171,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
           </section>
         ) : null}
 
-        {success ? <div role="status" className="rounded-xl border border-[#cfe9dc] bg-[#eaf7f0] px-4 py-3 text-sm font-medium text-[#1f8a5b]">{success}</div> : null}
+        {success ? <div role="status" className="rounded-xl border border-[#cfe9dc] bg-[#eaf7f0] px-4 py-3 text-sm font-medium text-[var(--color-atlas-verified)]">{success}</div> : null}
         {error ? <Panel className="border-[#efb9b9] bg-[#fff0f0] p-4"><p role="alert" className="text-sm font-medium text-[#c43e3e]">{error}</p></Panel> : null}
 
         {customer ? (
@@ -186,7 +186,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                   ["Notes", customer.notes ?? "—"],
                 ].map(([label, value]) => (
                   <div key={label} className="rounded-xl bg-[#f7f1ea] p-3">
-                    <dt className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#9a8d83]">{label}</dt>
+                    <dt className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--color-atlas-muted-strong)]">{label}</dt>
                     <dd className="mt-1 whitespace-pre-wrap text-sm font-medium text-[#2a241f]">{value}</dd>
                   </div>
                 ))}
@@ -196,7 +196,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
 
             <DataTableFrame>
               <div className="px-5 py-4"><SectionHeader title="Purchase history" description="Sales are linked to their authoritative sale records." /></div>
-              {customer.purchaseHistory.length === 0 ? <p className="px-5 pb-8 text-sm text-[#8b8077]">No purchases recorded.</p> : (
+              {customer.purchaseHistory.length === 0 ? <p className="px-5 pb-8 text-sm text-[var(--color-atlas-muted-strong)]">No purchases recorded.</p> : (
                 <table className="premium-table min-w-[620px] text-left text-[12px]">
                   <thead><tr><th className="px-5 pb-3">Receipt</th><th className="px-5 pb-3">Status</th><th className="px-5 pb-3 text-right">Total</th><th className="px-5 pb-3 text-right">Open</th></tr></thead>
                   <tbody>
@@ -205,7 +205,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
                         <td className="font-data px-5 py-3 font-semibold text-[#2a241f]">{sale.receiptNo}</td>
                         <td className="px-5 py-3 text-[#73685f]">{sale.status}</td>
                         <td className="font-data px-5 py-3 text-right font-medium">₱{money(sale.totalMinor)}</td>
-                        <td className="px-5 py-3 text-right"><Link href={`/sales/${sale.id}`} className="text-[11px] font-semibold text-[#e44e34]">Review →</Link></td>
+                        <td className="px-5 py-3 text-right"><Link href={`/sales/${sale.id}`} className="text-[11px] font-semibold text-[var(--color-atlas-accent-strong)]">Review →</Link></td>
                       </tr>
                     ))}
                   </tbody>
@@ -214,7 +214,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
             </DataTableFrame>
           </div>
         ) : <Panel className="p-6 text-sm text-[#73685f]">Loading customer…</Panel>}
-        {customer ? <Panel className="p-5"><SectionHeader title="Customer value" description="Stored value is tracked separately from purchase history and can be used by supported refund and POS flows." /><div className="mt-4 grid gap-3 sm:grid-cols-2"><div className="rounded-xl bg-[#f7f1ea] p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#9a8d83]">Store credit</p><p className="mt-1 font-data text-2xl font-semibold text-[#2a241f]">₱{money(valueQuery.data?.storeCreditMinor ?? 0)}</p><p className="mt-1 text-[11px] text-[#73685f]">Issued through refunds or authorized adjustments.</p></div><div className="rounded-xl bg-[#f7f1ea] p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#9a8d83]">Loyalty points</p><p className="mt-1 font-data text-2xl font-semibold text-[#2a241f]">{(valueQuery.data?.loyaltyPoints ?? 0).toLocaleString("en-PH")}</p><p className="mt-1 text-[11px] text-[#73685f]">Earned and redeemed against the configured program.</p></div></div><div className="mt-4 flex flex-wrap gap-3"><Link href={`/customers/${id}/stored-value`} className="inline-flex min-h-10 items-center rounded-[10px] border border-[#e4d9d0] bg-white px-4 text-sm font-semibold text-[#2a241f] hover:border-[#f35d3f]">Open value ledger →</Link><Link href="/gift-cards" className="inline-flex min-h-10 items-center rounded-[10px] border border-[#e4d9d0] bg-white px-4 text-sm font-semibold text-[#2a241f] hover:border-[#f35d3f]">Manage gift cards</Link></div></Panel> : null}
+        {customer ? <Panel className="p-5"><SectionHeader title="Customer value" description="Stored value is tracked separately from purchase history and can be used by supported refund and POS flows." /><div className="mt-4 grid gap-3 sm:grid-cols-2"><div className="rounded-xl bg-[#f7f1ea] p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--color-atlas-muted-strong)]">Store credit</p><p className="mt-1 font-data text-2xl font-semibold text-[#2a241f]">₱{money(valueQuery.data?.storeCreditMinor ?? 0)}</p><p className="mt-1 text-[11px] text-[#73685f]">Issued through refunds or authorized adjustments.</p></div><div className="rounded-xl bg-[#f7f1ea] p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--color-atlas-muted-strong)]">Loyalty points</p><p className="mt-1 font-data text-2xl font-semibold text-[#2a241f]">{(valueQuery.data?.loyaltyPoints ?? 0).toLocaleString("en-PH")}</p><p className="mt-1 text-[11px] text-[#73685f]">Earned and redeemed against the configured program.</p></div></div><div className="mt-4 flex flex-wrap gap-3"><Link href={`/customers/${id}/stored-value`} className="inline-flex min-h-10 items-center rounded-[10px] border border-[#e4d9d0] bg-white px-4 text-sm font-semibold text-[#2a241f] hover:border-[#f35d3f]">Open value ledger →</Link><Link href="/gift-cards" className="inline-flex min-h-10 items-center rounded-[10px] border border-[#e4d9d0] bg-white px-4 text-sm font-semibold text-[#2a241f] hover:border-[#f35d3f]">Manage gift cards</Link></div></Panel> : null}
       </main>
 
       <Modal

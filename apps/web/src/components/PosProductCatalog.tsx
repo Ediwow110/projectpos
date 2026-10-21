@@ -209,7 +209,7 @@ export function PosProductCatalog({
             autoFocus
             className="field-dark !h-[54px] !rounded-xl !py-3 pl-10 xl:!rounded-[9px] xl:!border-[#e5e9e3] xl:!bg-white xl:!text-[#202826] xl:placeholder:text-[var(--color-atlas-muted-strong)]"
           />
-          <span aria-hidden className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/35 xl:text-[#71807a]">⌕</span>
+          <span aria-hidden className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/35 xl:text-[var(--color-atlas-muted-strong)]">⌕</span>
           <kbd className="absolute right-3.5 top-1/2 hidden -translate-y-1/2 rounded-md border border-white/15 px-1.5 py-0.5 text-[10px] text-white/40 xl:block xl:border-[#e5e9e3] xl:text-[var(--color-atlas-muted-strong)]">Ctrl K</kbd>
         </div>
         <button

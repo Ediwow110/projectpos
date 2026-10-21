@@ -38,6 +38,7 @@
   --color-atlas-muted: #748078;
   /* Text-safe muted: 6.5:1 on white and 6.2:1 on canvas (WCAG AA). */
   --color-atlas-muted-strong: #53615a;
+  --color-atlas-warning-strong: #8a5400;
   --color-atlas-line: #e5e9e3;
   --color-atlas-accent: #da614c;
   --color-atlas-accent-soft: #fff0eb;

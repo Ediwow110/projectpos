@@ -48,7 +48,7 @@ export function PosPaymentUnknownDialog({
         <p className="rounded-[8px] bg-[#eff2ed] px-4 py-[18px] text-[13px] text-[#202826]">
           Recovery: Check status
         </p>
-        <p role="status" className="text-[11px] leading-5 text-[#71807a]">
+        <p role="status" className="text-[11px] leading-5 text-[var(--color-atlas-muted-strong)]">
           Ask an owner or manager to compare provider records before settling or retrying this sale. No final receipt is available yet.
         </p>
       </div>

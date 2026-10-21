@@ -70,7 +70,7 @@ export default function PlatformPage(): JSX.Element {
           </div>
         </Panel>
 
-        {status ? <div role="status" className="rounded-xl border border-[#cfe9dc] bg-[#eaf7f0] px-4 py-3 text-sm font-medium text-[#1f8a5b]">{status}</div> : null}
+        {status ? <div role="status" className="rounded-xl border border-[#cfe9dc] bg-[#eaf7f0] px-4 py-3 text-sm font-medium text-[var(--color-atlas-verified)]">{status}</div> : null}
         {error ? <div role="alert" className="rounded-xl border border-[#efb9b9] bg-[#fff0f0] px-4 py-3 text-sm font-medium text-[#c43e3e]">{error}</div> : null}
 
         <div className="grid gap-4 lg:grid-cols-[.8fr_1.2fr]">

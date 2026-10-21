@@ -252,9 +252,9 @@ export default function TeamPage(): JSX.Element {
     <AppShell businessName={meQuery.data?.businessName} role={meQuery.data?.role} atlasOwner>
       <main className="mx-auto w-full max-w-[1240px] space-y-5 px-4 pb-10 pt-5 sm:px-6">
         {isOwner ? <section aria-label="Mobile employee permissions" className="space-y-3 sm:hidden">
-          <p className="font-data text-[11px] tracking-[0.07em] text-[#da614c]">OWNER / EMPLOYEE ACCESS</p>
+          <p className="font-data text-[11px] tracking-[0.07em] text-[var(--color-atlas-accent-strong)]">OWNER / EMPLOYEE ACCESS</p>
           <h1 className="font-display text-[25px] font-semibold tracking-tight text-[#202826]">Employee access</h1>
-          <p className="text-[13px] leading-5 text-[#748078]">Choose a staff member to review their role, permission restrictions, and assigned locations.</p>
+          <p className="text-[13px] leading-5 text-[var(--color-atlas-muted-strong)]">Choose a staff member to review their role, permission restrictions, and assigned locations.</p>
           <PrimaryButton type="button" className="min-h-11" onClick={() => { resetCreate(); setCreateOpen(true); }}>+ Add team member</PrimaryButton>
         </section> : null}
         <div className={isOwner ? "hidden sm:block" : ""}><PageHeader
@@ -298,7 +298,7 @@ export default function TeamPage(): JSX.Element {
                 />
               </div>
               {membersQuery.isLoading ? <p className="px-5 pb-6 text-sm text-[#73685f]">Loading team…</p> : null}
-              {members.length === 0 && !membersQuery.isLoading ? <p className="px-5 pb-8 text-sm text-[#8b8077]">No active team members.</p> : null}
+              {members.length === 0 && !membersQuery.isLoading ? <p className="px-5 pb-8 text-sm text-[var(--color-atlas-muted-strong)]">No active team members.</p> : null}
               {members.length > 0 ? (
                 <section className="grid gap-3 px-4 pb-5 sm:hidden" aria-label="Mobile employee access">
                   {mobileMembers.map((member) => {
@@ -318,7 +318,7 @@ export default function TeamPage(): JSX.Element {
                             ? "Current user · Protected owner access"
                             : "Protected membership"}
                       </p>
-                      <p className="mt-3 text-[11px] text-[#748078]">Role-based access is enforced by the server. Use Permissions to review actual allowed and blocked actions.</p>
+                      <p className="mt-3 text-[11px] text-[var(--color-atlas-muted-strong)]">Role-based access is enforced by the server. Use Permissions to review actual allowed and blocked actions.</p>
                       {(editable || canManageApprovalPin(member)) ? <div className="mt-4 grid grid-cols-2 gap-2">
                         {editable ? (
                           <>
@@ -421,7 +421,7 @@ export default function TeamPage(): JSX.Element {
                                   Deactivate
                                 </GhostButton>
                               ) : !canManageApprovalPin(member) ? (
-                                <span className="self-center text-[10px] font-medium text-[#9a8d83]">
+                                <span className="self-center text-[10px] font-medium text-[var(--color-atlas-muted-strong)]">
                                   {member.userId === meQuery.data?.userId ? "Current user" : "Protected"}
                                 </span>
                               ) : null}
@@ -469,7 +469,7 @@ export default function TeamPage(): JSX.Element {
             immediately from the employee&apos;s server authorization. Owner roles cannot be restricted here.
             Manager approvals and other security checks may still apply.
           </p>
-          {permissionLoading ? <p role="status" className="text-sm text-[#707b75]">Loading current permissions…</p> : null}
+          {permissionLoading ? <p role="status" className="text-sm text-[var(--color-atlas-muted-strong)]">Loading current permissions…</p> : null}
           <div className="max-h-72 space-y-2 overflow-y-auto rounded-xl border border-[#e5e9e3] p-3">
             {permissionOptions.map((permission) => {
               const enabled = !deniedPermissions.includes(permission);
@@ -487,7 +487,7 @@ export default function TeamPage(): JSX.Element {
                     className="size-4 accent-[#da614c]"
                   />
                   <span className="min-w-0 flex-1 break-all font-mono text-xs">{permission}</span>
-                  <span className={"rounded-md px-2 py-1 font-data text-[10px] font-semibold " + (enabled ? "bg-[#e8f4ec] text-[#267552]" : "bg-[#fcf1df] text-[#9a6e32]")}>{enabled ? "Allowed" : "Blocked"}</span>
+                  <span className={"rounded-md px-2 py-1 font-data text-[10px] font-semibold " + (enabled ? "bg-[#e8f4ec] text-[#267552]" : "bg-[#fcf1df] text-[var(--color-atlas-warning-strong)]")}>{enabled ? "Allowed" : "Blocked"}</span>
                 </label>
               );
             })}
@@ -607,7 +607,7 @@ export default function TeamPage(): JSX.Element {
         {temporaryCredential ? (
           <div className="space-y-3">
             <div className="rounded-xl border border-[#b9dfca] bg-[#f0faf5] px-4 py-4">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#1f8a5b]">Display once</p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-atlas-verified)]">Display once</p>
               <p data-ui="temporary-password-value" className="font-data mt-2 break-all text-sm font-semibold text-[#17130f]">
                 {temporaryCredential.password}
               </p>

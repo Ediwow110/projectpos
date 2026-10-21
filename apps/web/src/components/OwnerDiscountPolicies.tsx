@@ -73,7 +73,7 @@ export function OwnerDiscountPolicies(): React.JSX.Element {
         title="Discount approval limits"
         description="These limits apply to the sale-creation authorization check. A discount above a configured percentage requires discount.override or a valid approval grant."
       />
-      <p className="mt-4 rounded-xl bg-[#f7f8f5] px-4 py-3 text-sm text-[#707b75]">
+      <p className="mt-4 rounded-xl bg-[#f7f8f5] px-4 py-3 text-sm text-[var(--color-atlas-muted-strong)]">
         Current: order discount <strong>{settings?.orderDiscountApprovalPercent ?? 10}%</strong>;
         line discount <strong>{settings?.lineDiscountApprovalPercent ?? 20}%</strong>.
         Defaults apply until saved.
@@ -98,7 +98,7 @@ export function OwnerDiscountPolicies(): React.JSX.Element {
       </form>
       {error ? <p role="alert" className="mt-3 text-sm text-[#b74945]">{error}</p> : null}
       {saved ? <p role="status" className="mt-3 text-sm text-[#267552]">{saved}</p> : null}
-      <p className="mt-3 text-xs leading-5 text-[#707b75]">
+      <p className="mt-3 text-xs leading-5 text-[var(--color-atlas-muted-strong)]">
         A setting of 0% requires approval for any positive discount. This does not
         change void approval rules or existing sale history.
       </p>

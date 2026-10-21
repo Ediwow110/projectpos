@@ -8,7 +8,7 @@ export function AtlasEntryBrand({ compact = false, href = "/login" }: { compact?
       <span aria-hidden="true" className="grid h-[43px] w-[43px] shrink-0 place-items-center rounded-[11px] bg-[#29332d] font-display text-[23px] font-semibold text-white">N</span>
       <span className="min-w-0">
         <span className="block font-display text-[21px] font-semibold leading-tight tracking-[-0.04em]">NexPOS</span>
-        {!compact ? <span className="font-data block text-[9px] uppercase tracking-[0.14em] text-[#748078]">Retail operations</span> : null}
+        {!compact ? <span className="font-data block text-[9px] uppercase tracking-[0.14em] text-[var(--color-atlas-muted-strong)]">Retail operations</span> : null}
       </span>
     </Link>
   );

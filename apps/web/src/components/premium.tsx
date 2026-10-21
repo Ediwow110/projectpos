@@ -48,8 +48,8 @@ export function MetricCard({ label, value, icon, meta, tone = "coral", className
   // the white card) instead of --color-success (4.33:1).
   const tones = {
     coral: "bg-[#fff0ea] text-[#f35d3f]", // contrast-gate: non-text indicator (icon glyph)
-    success: "bg-[#eaf7f0] text-[#1f8a5b]", // contrast-gate: non-text indicator (icon glyph)
-    warning: "bg-[#fff4df] text-[#b56d0c]", // contrast-gate: non-text indicator (icon glyph)
+    success: "bg-[#eaf7f0] text-[var(--color-atlas-verified)]", // contrast-gate: non-text indicator (icon glyph)
+    warning: "bg-[#fff4df] text-[var(--color-atlas-warning-strong)]", // contrast-gate: non-text indicator (icon glyph)
     info: "bg-[#edf3ff] text-[#3468d4]", // contrast-gate: non-text indicator (icon glyph)
   };
   return (

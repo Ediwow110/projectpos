@@ -118,7 +118,7 @@ export default function PasswordResetPage(): JSX.Element {
         <div aria-hidden className="animate-auth-glow pointer-events-none absolute left-1/2 top-1/2 h-[720px] w-[430px] -translate-x-1/2 -translate-y-1/2 rounded-[28px] bg-[#f7f1ea]" />
 
         <section className="animate-auth-card relative z-10 w-full max-w-[536px] rounded-[14px] border border-[#eee4db] bg-white p-6 shadow-[0_18px_48px_-14px_rgb(22_18_14/0.14)] sm:p-8">
-          <p className="font-data text-[9px] font-medium uppercase tracking-[0.14em] text-[#e44e34]">
+          <p className="font-data text-[9px] font-medium uppercase tracking-[0.14em] text-[var(--color-atlas-accent-strong)]">
             {token ? "Choose a new password" : "Recover secure access"}
           </p>
           <h2 className="font-display mt-5 text-[30px] font-bold text-[#17130f]">Reset password</h2>
@@ -173,7 +173,7 @@ export default function PasswordResetPage(): JSX.Element {
                   <button
                     type="button"
                     onClick={() => setShowPassword((shown) => !shown)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-[#e44e34]"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-[var(--color-atlas-accent-strong)]"
                   >
                     {showPassword ? "Hide" : "Show"}
                   </button>
@@ -204,7 +204,7 @@ export default function PasswordResetPage(): JSX.Element {
           <div className="mt-7 border-t border-[#eee4db] pt-5 text-center">
             <Link
               href="/login"
-              className="text-[11px] font-semibold text-[#e44e34] underline-offset-4 transition hover:text-[#c33e29] hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f35d3f] focus-visible:ring-offset-2"
+              className="text-[11px] font-semibold text-[var(--color-atlas-accent-strong)] underline-offset-4 transition hover:text-[#c33e29] hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f35d3f] focus-visible:ring-offset-2"
             >
               Back to sign in
             </Link>

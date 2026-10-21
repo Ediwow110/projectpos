@@ -175,7 +175,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ saleId: stri
         <main className="mx-auto max-w-[1240px] p-6">
           <Panel className="border-[#efb9b9] bg-[#fff0f0] p-6">
             <p role="alert" className="text-sm font-medium text-[#c43e3e]">{receiptQuery.error instanceof ApiError ? `${receiptQuery.error.code}: ${receiptQuery.error.message}` : "Receipt not found."}</p>
-            <Link href="/sales" className="mt-3 inline-block text-sm font-semibold text-[#e44e34]">← Back to sales</Link>
+            <Link href="/sales" className="mt-3 inline-block text-sm font-semibold text-[var(--color-atlas-accent-strong)]">← Back to sales</Link>
           </Panel>
         </main>
       </AppShell>
@@ -209,7 +209,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ saleId: stri
           <article data-ui="printable-receipt" aria-label="Receipt" className="mx-auto w-full max-w-[690px] overflow-hidden rounded-[14px] border border-[#e4e9e3] bg-white shadow-[0_18px_48px_-20px_rgb(22_18_14/0.12)] print:max-w-[80mm] print:rounded-none print:border-0 print:shadow-none">
             <header className="border-b border-dashed border-[#d8ccc2] px-6 py-6 text-center">
               <NexposLogo variant="light" size="md" className="mx-auto" />
-              <p className="font-data mt-1 text-[8px] uppercase tracking-[0.16em] text-[#9a8d83]">Retail operations receipt</p>
+              <p className="font-data mt-1 text-[8px] uppercase tracking-[0.16em] text-[var(--color-atlas-muted-strong)]">Retail operations receipt</p>
               <p className="font-data mt-4 text-sm font-semibold text-[#2a241f]">{receipt.receiptNo}</p>
               <div className="mt-3"><StatusPill tone={receipt.status === "COMPLETED" ? "ok" : "info"}>{receipt.status}</StatusPill></div>
               {receipt.customerName ? <p className="mt-3 text-[11px] text-[#73685f]">Customer · {receipt.customerName}</p> : null}
@@ -220,7 +220,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ saleId: stri
                 <ReceiptItemLines items={receipt.items} />
                 {receipt.giftCardLoads.map((load, index) => (
                   <div key={`gift-card-load-${index}`} className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 text-[12px]">
-                    <div><p className="font-semibold text-[#2a241f]">{load.kind === "NEW" ? "Gift card load" : "Gift card reload"}</p><p className="font-data mt-1 text-[10px] text-[#9a8d83]">{load.maskedCode ?? "Stored-value load"}</p></div>
+                    <div><p className="font-semibold text-[#2a241f]">{load.kind === "NEW" ? "Gift card load" : "Gift card reload"}</p><p className="font-data mt-1 text-[10px] text-[var(--color-atlas-muted-strong)]">{load.maskedCode ?? "Stored-value load"}</p></div>
                     <p className="font-data font-semibold text-[#2a241f]">₱{money(load.amountMinor)}</p>
                   </div>
                 ))}
@@ -242,12 +242,12 @@ export default function ReceiptPage({ params }: { params: Promise<{ saleId: stri
               <div aria-hidden className="my-5 border-t border-dashed border-[#d8ccc2]" />
 
               <div className="space-y-2">
-                <p className="font-data text-[8px] font-semibold uppercase tracking-[0.14em] text-[#9a8d83]">Payments</p>
+                <p className="font-data text-[8px] font-semibold uppercase tracking-[0.14em] text-[var(--color-atlas-muted-strong)]">Payments</p>
                 {receipt.payments.map((payment, index) => <div key={`${payment.method}-${index}`} className="flex items-center justify-between text-[11px]"><span className="text-[#73685f]">{methodLabel(payment.method)} · {payment.status}</span><span className="font-data font-semibold text-[#2a241f]">₱{money(payment.amountMinor)}</span></div>)}
               </div>
             </div>
 
-            <footer className="border-t border-dashed border-[#d8ccc2] px-6 py-5 text-center"><p className="text-[10px] font-semibold text-[#2a241f]">Thank you.</p><p className="font-data mt-2 text-[8px] text-[#9a8d83]">Sale {receipt.saleId.slice(0, 8)} · {receipt.currency}</p></footer>
+            <footer className="border-t border-dashed border-[#d8ccc2] px-6 py-5 text-center"><p className="text-[10px] font-semibold text-[#2a241f]">Thank you.</p><p className="font-data mt-2 text-[8px] text-[var(--color-atlas-muted-strong)]">Sale {receipt.saleId.slice(0, 8)} · {receipt.currency}</p></footer>
           </article>
         ) : <Panel className="p-6 text-sm text-[#73685f]">Loading receipt…</Panel>}
 

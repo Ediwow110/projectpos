@@ -96,7 +96,7 @@ export function OwnerFinancialPolicies(): React.JSX.Element {
       </form>
       {error ? <p role="alert" className="mt-3 text-sm text-[#b74945]">{error}</p> : null}
       {success ? <p role="status" className="mt-3 text-sm text-[#267552]">{success}</p> : null}
-      <p className="mt-4 text-xs leading-5 text-[#707b75]">
+      <p className="mt-4 text-xs leading-5 text-[var(--color-atlas-muted-strong)]">
         This updates the existing refund threshold, not discount or void approval rules.
         Set to ₱0.00 to require owner approval for positive-value refunds.
       </p>

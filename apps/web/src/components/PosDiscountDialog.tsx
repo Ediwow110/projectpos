@@ -140,7 +140,7 @@ export function PosDiscountDialog({
             <label key={entry.productId} className="grid gap-2 rounded-xl border border-[#eee4db] bg-white p-3 sm:grid-cols-[minmax(0,1fr)_150px] sm:items-center">
               <span className="min-w-0">
                 <span className="block truncate text-[12px] font-semibold text-[#2a241f]">{entry.name}</span>
-                <span className="font-data mt-1 block text-[10px] text-[#8b8077]">{entry.qty} × ₱{phpInput(entry.priceMinor)} · max ₱{phpInput(entry.qty * entry.priceMinor)}</span>
+                <span className="font-data mt-1 block text-[10px] text-[var(--color-atlas-muted-strong)]">{entry.qty} × ₱{phpInput(entry.priceMinor)} · max ₱{phpInput(entry.qty * entry.priceMinor)}</span>
               </span>
               <span className="text-[10px] font-semibold text-[#655b53]">
                 Line discount — {entry.name} (PHP)
@@ -157,9 +157,9 @@ export function PosDiscountDialog({
         </div>
 
         <div className="grid gap-2 rounded-xl bg-[#f7f1ea] p-4 text-[11px] sm:grid-cols-3">
-          <div><span className="text-[#8b8077]">Gross</span><p className="font-data mt-1 font-semibold text-[#2a241f]">₱{phpInput(preview.grossMinor)}</p></div>
-          <div><span className="text-[#8b8077]">Discounts</span><p className="font-data mt-1 font-semibold text-[#c94f37]">−₱{phpInput(preview.totalDiscountMinor)}</p></div>
-          <div className="sm:text-right"><span className="text-[#8b8077]">Preview total</span><p className="font-data mt-1 font-bold text-[#2a241f]">₱{phpInput(preview.totalMinor)}</p></div>
+          <div><span className="text-[var(--color-atlas-muted-strong)]">Gross</span><p className="font-data mt-1 font-semibold text-[#2a241f]">₱{phpInput(preview.grossMinor)}</p></div>
+          <div><span className="text-[var(--color-atlas-muted-strong)]">Discounts</span><p className="font-data mt-1 font-semibold text-[#c94f37]">−₱{phpInput(preview.totalDiscountMinor)}</p></div>
+          <div className="sm:text-right"><span className="text-[var(--color-atlas-muted-strong)]">Preview total</span><p className="font-data mt-1 font-bold text-[#2a241f]">₱{phpInput(preview.totalMinor)}</p></div>
         </div>
 
         {error ? <p role="alert" className="rounded-xl bg-[#fff0f0] px-3 py-2.5 text-[12px] font-medium text-[#c43e3e]">{error}</p> : null}

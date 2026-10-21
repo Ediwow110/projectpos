@@ -173,7 +173,7 @@ export function PosCartPanel({
           aria-label="Clear sale"
           onClick={onClearCart}
           disabled={cart.length === 0 || saleLocked}
-          className="absolute right-0 top-[-4px] h-11 w-11 rounded-[9px] border border-[#e5e9e3] bg-[#eff2ef] text-[14px] font-semibold text-[#da614c] disabled:opacity-40"
+          className="absolute right-0 top-[-4px] h-11 w-11 rounded-[9px] border border-[#e5e9e3] bg-[#eff2ef] text-[14px] font-semibold text-[var(--color-atlas-accent-strong)] disabled:opacity-40"
         >
           ⌫
         </button>

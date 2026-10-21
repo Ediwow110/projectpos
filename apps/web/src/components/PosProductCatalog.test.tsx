@@ -104,12 +104,11 @@ describe("POS product catalog", () => {
     expect(html).not.toContain("h-[34px]");
     expect(html).toContain('min-h-11 rounded-lg border border-[#e5e9e3] bg-[#eff2ef]');
     expect(html).toContain('aria-label="Mobile register" class="min-h-11 min-w-0');
-    // Every label is on the text-safe token now; the one remaining #71807a and
-    // white/35 pair is the aria-hidden search glyph, a non-text indicator that
-    // only needs the 3:1 floor, so it is deliberately left alone.
-    expect(html.match(/#71807a/g)).toHaveLength(1);
+    // Every foreground, including the aria-hidden search glyph, now uses the
+    // text-safe token - so no banned literal remains in this surface at all.
+    expect(html.match(/#71807a/g)).toBeNull();
     expect(html.match(/text-white\/35/g)).toHaveLength(1);
-    expect(html).toContain('aria-hidden="true" class="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/35 xl:text-[#71807a]"');
+    expect(html).toContain('aria-hidden="true" class="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/35 xl:text-[var(--color-atlas-muted-strong)]"');
     // the F1 hint sat as white/35 text on a light button; it now uses the text-safe token
     expect(html).toContain('Add customer <span class="font-data text-[var(--color-atlas-muted-strong)]">F1</span>');
   });

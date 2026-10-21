@@ -133,7 +133,7 @@ export default function TransfersPage(): JSX.Element {
           <MetricCard label="Visible lines" value={lineCount} icon="▦" tone="coral" meta="Across current results" />
         </section>
 
-        {success ? <div role="status" className="rounded-xl border border-[#cfe9dc] bg-[#eaf7f0] px-4 py-3 text-sm font-medium text-[#1f8a5b]">{success}</div> : null}
+        {success ? <div role="status" className="rounded-xl border border-[#cfe9dc] bg-[#eaf7f0] px-4 py-3 text-sm font-medium text-[var(--color-atlas-verified)]">{success}</div> : null}
         {error ? <Panel className="border-[#efb9b9] bg-[#fff0f0] p-4"><p role="alert" className="text-sm font-medium text-[#c43e3e]">{error}</p></Panel> : null}
 
         <Panel className="p-5">
@@ -149,17 +149,17 @@ export default function TransfersPage(): JSX.Element {
         <DataTableFrame>
           <div className="px-5 py-4"><SectionHeader title="Transfers" description="Open a transfer to review its ledger trail and perform the next valid workflow action." /></div>
           {listQuery.isLoading ? <p className="px-5 pb-6 text-sm text-[#73685f]">Loading transfers…</p> : null}
-          {items.length === 0 && !listQuery.isLoading ? <p className="px-5 pb-8 text-sm text-[#8b8077]">No transfers match this filter.</p> : null}
+          {items.length === 0 && !listQuery.isLoading ? <p className="px-5 pb-8 text-sm text-[var(--color-atlas-muted-strong)]">No transfers match this filter.</p> : null}
           {items.length > 0 ? (
             <table className="premium-table min-w-[760px] text-left text-[12px]">
               <thead><tr><th className="px-5 pb-3">Route</th><th className="px-5 pb-3 text-right">Lines</th><th className="px-5 pb-3 text-right">Status</th><th className="px-5 pb-3 text-right">Open</th></tr></thead>
               <tbody>
                 {items.map((transfer) => (
                   <tr key={transfer.id}>
-                    <td className="px-5 py-3 font-semibold text-[#2a241f]">{branchName(transfer.fromBranchId)} <span className="mx-2 text-[#9a8d83]">→</span> {branchName(transfer.toBranchId)}</td>
+                    <td className="px-5 py-3 font-semibold text-[#2a241f]">{branchName(transfer.fromBranchId)} <span className="mx-2 text-[var(--color-atlas-muted-strong)]">→</span> {branchName(transfer.toBranchId)}</td>
                     <td className="font-data px-5 py-3 text-right text-[#73685f]">{transfer.lines.length}</td>
                     <td className="px-5 py-3 text-right"><StatusPill tone={statusTone(transfer.status)}>{transferStatusLabel(transfer.status)}</StatusPill></td>
-                    <td className="px-5 py-3 text-right"><Link href={`/transfers/${transfer.id}`} className="text-[11px] font-semibold text-[#e44e34]">Review →</Link></td>
+                    <td className="px-5 py-3 text-right"><Link href={`/transfers/${transfer.id}`} className="text-[11px] font-semibold text-[var(--color-atlas-accent-strong)]">Review →</Link></td>
                   </tr>
                 ))}
               </tbody>
@@ -194,7 +194,7 @@ export default function TransfersPage(): JSX.Element {
             </div>
             <GhostButton type="button" className="mt-3" onClick={() => setLines([...lines, { productId: "", qty: 1 }])}>+ Add line</GhostButton>
           </section>
-          {productsQuery.isError ? <p className="text-[11px] text-[#b56d0c]">Products could not be loaded. Close and retry the transfer modal.</p> : null}
+          {productsQuery.isError ? <p className="text-[11px] text-[var(--color-atlas-warning-strong)]">Products could not be loaded. Close and retry the transfer modal.</p> : null}
           {error ? <p role="alert" className="rounded-xl bg-[#fff0f0] px-3 py-2.5 text-[12px] font-medium text-[#c43e3e]">{error}</p> : null}
         </form>
       </Modal>

@@ -33,7 +33,7 @@ function safeValue(value: number): number {
 function EmptyChart({ label }: { label: string }): JSX.Element {
   return (
     <div role="img" aria-label={label} className="grid min-h-36 place-items-center rounded-xl bg-[#fcf8f3] px-4 text-center">
-      <p className="text-xs text-[#9a8d83]">No chart data available</p>
+      <p className="text-xs text-[var(--color-atlas-muted-strong)]">No chart data available</p>
     </div>
   );
 }

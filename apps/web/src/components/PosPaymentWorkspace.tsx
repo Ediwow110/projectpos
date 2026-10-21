@@ -448,7 +448,7 @@ export function PosPaymentWorkspace({
             <button
               type="button"
               onClick={onClose}
-              className="min-h-11 rounded-lg border border-[#eee4db] px-3 py-2 text-[9px] font-semibold text-[#73685f] hover:text-[#d94a30]"
+              className="min-h-11 rounded-lg border border-[#eee4db] px-3 py-2 text-[9px] font-semibold text-[#73685f] hover:text-[var(--color-atlas-accent-strong)]"
             >
               Back to sale
             </button>
