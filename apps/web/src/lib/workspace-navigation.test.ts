@@ -74,4 +74,32 @@ describe("workspace navigation", () => {
       expect(hrefs, `${role} must not be offered the business setup surface`).not.toContain("/onboarding");
     }
   });
+
+  it("hides a destination the server refuses for this session", () => {
+    // The cashier role list still names gift cards, but the API withholds
+    // gift_card.manage from that role, so the session's own permission list is
+    // the authority and the destination must not be offered.
+    const hrefs = workspaceNavigationForRole("cashier", ["pos.read", "sale.create"])
+      .flatMap((group) => group.items)
+      .map((item) => item.href);
+
+    expect(hrefs).not.toContain("/gift-cards");
+  });
+
+  it("keeps a destination the server granted for this session", () => {
+    const hrefs = workspaceNavigationForRole("cashier", ["gift_card.manage"])
+      .flatMap((group) => group.items)
+      .map((item) => item.href);
+
+    expect(hrefs).toContain("/gift-cards");
+  });
+
+  it("keeps every owner destination when the owner holds every permission", () => {
+    const hrefs = workspaceNavigationForRole("owner", ["settings.write", "gift_card.manage"])
+      .flatMap((group) => group.items)
+      .map((item) => item.href);
+
+    expect(hrefs).toContain("/gift-cards");
+    expect(hrefs).toContain("/onboarding");
+  });
 });

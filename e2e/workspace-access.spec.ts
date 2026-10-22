@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { CASHIER_PERMISSIONS, OWNER_PERMISSIONS } from "./helpers";
 import { DashboardPage } from "./pages/DashboardPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 
@@ -10,7 +11,7 @@ test("incomplete owners stay in setup across dashboard deep links and browser hi
     contentType: "application/json",
     body: JSON.stringify({
       userId: "qa-owner", businessId: "qa-business", businessName: "QA Workspace",
-      role: "owner", onboardingRequired: true, workspaceTourSeen: false,
+      role: "owner", onboardingRequired: true, workspaceTourSeen: false, permissions: OWNER_PERMISSIONS,
       activeBranchId: null, activeBranchName: null,
     }),
   }));
@@ -77,7 +78,7 @@ test("completed owner with no sales has no setup loop", async ({ page }) => {
     status: 200, contentType: "application/json",
     body: JSON.stringify({
       userId: "qa-owner", businessId: "qa-business", businessName: "QA Workspace",
-      role: "owner", onboardingRequired: false, workspaceTourSeen: true,
+      role: "owner", onboardingRequired: false, workspaceTourSeen: true, permissions: OWNER_PERMISSIONS,
       activeBranchId: null, activeBranchName: null,
     }),
   }));
@@ -128,7 +129,7 @@ test("stale completed profile cannot keep the dashboard after setup becomes requ
     status: 200, contentType: "application/json",
     body: JSON.stringify({
       userId: "qa-owner", businessId: "qa-business", businessName: "QA Workspace",
-      role: "owner", onboardingRequired, workspaceTourSeen: true,
+      role: "owner", onboardingRequired, workspaceTourSeen: true, permissions: OWNER_PERMISSIONS,
       activeBranchId: null, activeBranchName: null,
     }),
   }));
@@ -175,7 +176,7 @@ test("owners can open the dashboard after required setup while optional steps re
     contentType: "application/json",
     body: JSON.stringify({
       userId: "qa-owner", businessId: "qa-business", businessName: "QA Workspace",
-      role: "owner", onboardingRequired: false, workspaceTourSeen: true,
+      role: "owner", onboardingRequired: false, workspaceTourSeen: true, permissions: OWNER_PERMISSIONS,
       activeBranchId: null, activeBranchName: null,
     }),
   }));
@@ -243,7 +244,7 @@ for (const status of [401, 403]) {
       contentType: "application/json",
       body: JSON.stringify(denied ? { code: "TENANT_REQUIRED", message: "Sign in required" } : {
         userId: "qa-user", businessId: "qa-business", businessName: "QA Workspace",
-        role: "cashier", onboardingRequired: false, workspaceTourSeen: true,
+        role: "cashier", onboardingRequired: false, workspaceTourSeen: true, permissions: CASHIER_PERMISSIONS,
         activeBranchId: null, activeBranchName: null,
       }),
     }));

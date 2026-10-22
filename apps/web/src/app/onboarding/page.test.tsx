@@ -7,6 +7,10 @@ const fixture = vi.hoisted(() => ({
   readiness: {} as Record<string, unknown>,
   settings: {} as Record<string, unknown>,
   readinessError: false,
+  role: "owner",
+  permissions: ["settings.write"] as string[] | undefined,
+  sessionError: false,
+  onboardingError: false,
   data: {
     currentStep: "receiptSetup",
     steps: {
@@ -22,7 +26,9 @@ const fixture = vi.hoisted(() => ({
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@tanstack/react-query", () => ({
   useQuery: ({ queryKey }: { queryKey: string[] }) => ({
-    data: queryKey[0] === "onboarding-sale-readiness"
+    data: queryKey[0] === "me"
+      ? (fixture.sessionError ? undefined : { role: fixture.role, permissions: fixture.permissions })
+      : queryKey[0] === "onboarding-sale-readiness"
       ? (fixture.readinessError ? undefined : {
           businessConfigured: true,
           legacySetupReviewSteps: fixture.legacyReviewSteps,
@@ -37,9 +43,14 @@ vi.mock("@tanstack/react-query", () => ({
         })
       : queryKey[0] === "onboarding-business"
         ? { name: "QA Business", currency: "PHP", settings: fixture.settings }
-        : fixture.data,
+        : queryKey[0] === "onboarding" && fixture.onboardingError
+          ? undefined
+          : fixture.data,
     isLoading: false,
-    isError: queryKey[0] === "onboarding-sale-readiness" ? fixture.readinessError : false,
+    isError: queryKey[0] === "onboarding-sale-readiness"
+      ? fixture.readinessError
+      : queryKey[0] === "me" && fixture.sessionError
+        || queryKey[0] === "onboarding" && fixture.onboardingError,
     refetch: vi.fn(),
   }),
   useQueryClient: () => ({ invalidateQueries: vi.fn().mockResolvedValue(undefined) }),
@@ -54,6 +65,10 @@ describe("onboarding navigation", () => {
     fixture.readiness = {};
     fixture.settings = {};
     fixture.readinessError = false;
+    fixture.role = "owner";
+    fixture.permissions = ["settings.write"];
+    fixture.sessionError = false;
+    fixture.onboardingError = false;
     fixture.data.currentStep = "receiptSetup";
     fixture.data.steps.businessDetails = "done";
     fixture.data.steps.taxCurrency = "pending";
@@ -287,5 +302,67 @@ describe("onboarding navigation", () => {
     expect(html.match(/✓/g) ?? []).toHaveLength(3);
     expect(html).toContain("No stock is available at the open register.");
     expect(html).toContain("Not ready for first sale");
+  });
+
+  it("refuses business-settings editing for a session without settings.write", () => {
+    fixture.role = "manager";
+    fixture.permissions = ["sale.create", "gift_card.manage"];
+    fixture.data.currentStep = "taxCurrency";
+
+    const html = renderToStaticMarkup(<OnboardingPage />);
+
+    // The owner-only editor must not be offered to a manager, even though the
+    // server answers GET /api/v1/onboarding with 200 for every member.
+    expect(html).toContain("You do not have access to business setup");
+    expect(html).not.toContain("Save &amp; continue");
+    expect(html).not.toContain("Tax rate (%)");
+  });
+
+  it("refuses business-settings editing when the server sent no permission list", () => {
+    fixture.role = "cashier";
+    fixture.permissions = undefined;
+    fixture.data.currentStep = "taxCurrency";
+
+    const html = renderToStaticMarkup(<OnboardingPage />);
+
+    expect(html).toContain("You do not have access to business setup");
+    expect(html).not.toContain("Save &amp; continue");
+  });
+
+  it("keeps the owner editor available to a session that holds settings.write", () => {
+    fixture.role = "owner";
+    fixture.permissions = ["settings.write"];
+    fixture.data.currentStep = "taxCurrency";
+
+    const html = renderToStaticMarkup(<OnboardingPage />);
+
+    expect(html).toContain("Save &amp; continue");
+    expect(html).not.toContain("You do not have access to business setup");
+  });
+
+  it("states that setup progress could not be loaded before anything about permissions", () => {
+    // The page's own data is the primary problem, so a broken setup read must
+    // not be reported as a permission problem.
+    fixture.onboardingError = true;
+    fixture.sessionError = true;
+
+    const html = renderToStaticMarkup(<OnboardingPage />);
+
+    expect(html).toContain("Could not load setup progress.");
+    expect(html).not.toContain("Could not verify your access to business setup");
+    expect(html).not.toContain("You do not have access to business setup");
+  });
+
+  it("states that it could not verify the session when the session read failed", () => {
+    fixture.sessionError = true;
+    fixture.data.currentStep = "taxCurrency";
+
+    const html = renderToStaticMarkup(<OnboardingPage />);
+
+    // A session that could not be read must not be told it lacks permission,
+    // and must not be shown the owner editor either.
+    expect(html).toContain("Could not verify your access to business setup");
+    expect(html).not.toContain("You do not have access to business setup");
+    expect(html).not.toContain("Save &amp; continue");
   });
 });
