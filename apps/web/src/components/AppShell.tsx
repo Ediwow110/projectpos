@@ -123,6 +123,7 @@ export function AppShell({
       workspaceTourSeen: boolean;
       activeBranchId: string | null;
       activeBranchName: string | null;
+      permissions: string[];
     }>("/api/v1/me"),
     retry: workspaceMeRetry,
     retryDelay: workspaceMeRetryDelay,
@@ -155,7 +156,7 @@ export function AppShell({
   const activeBranchId = shellMe.data?.activeBranchId ?? null;
   const activeBranchName = shellMe.data?.activeBranchName ?? null;
   const activeBranches = (branchesQuery.data?.items ?? []).filter((branch) => branch.isActive);
-  const navigationGroups = workspaceNavigationForRole(currentRole);
+  const navigationGroups = workspaceNavigationForRole(currentRole, shellMe.data?.permissions);
   const primaryMobileNavigation = navigationGroups[0]?.items ?? [];
   const secondaryNavigationGroups = navigationGroups.slice(1);
   const secondaryMobileNavigation = secondaryNavigationGroups.flatMap((group) => group.items);

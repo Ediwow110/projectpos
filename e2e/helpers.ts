@@ -2,6 +2,16 @@ import { expect, type Page, type APIRequestContext, type Locator } from "@playwr
 
 export const API = `http://localhost:${process.env.E2E_API_PORT ?? "3101"}`;
 
+/**
+ * The permission list GET /api/v1/me returns. The API derives it from ROLE_SEED
+ * and the per-member denials, and the web app gates surfaces on it, so a mocked
+ * session must carry the keys the client consults. A fixture that omits them
+ * models a response the API never sends, and the client then correctly refuses
+ * the surface, which breaks the fixture's own scenario.
+ */
+export const OWNER_PERMISSIONS = ["settings.write", "gift_card.manage"];
+export const CASHIER_PERMISSIONS = ["sale.create", "inventory.adjust", "shift.close"];
+
 export function posCartRegion(page: Page): Locator {
   const width = page.viewportSize()?.width ?? 1440;
   if (width < 1024) return page.getByRole("region", { name: "Mobile cart" });

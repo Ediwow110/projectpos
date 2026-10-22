@@ -53,7 +53,17 @@ function group(label: string, keys: Array<keyof typeof ITEMS>): WorkspaceNavigat
   return { label, items: keys.map((key) => ITEMS[key]) };
 }
 
-export function workspaceNavigationForRole(role?: string): WorkspaceNavigationGroup[] {
+/**
+ * Destinations the API decides per session. The session's own permission list is
+ * the only authority here: a hand-written per-role list drifted once already and
+ * offered a cashier a surface the API answers with 403.
+ */
+const PERMISSION_GATED: Record<string, string> = {
+  "/gift-cards": "gift_card.manage",
+  "/onboarding": "settings.write",
+};
+
+function navigationGroupsForRole(role?: string): WorkspaceNavigationGroup[] {
   if (role === "cashier") {
     return [
       group("Sell", ["dashboard", "pos", "receiptLookup", "customerConcerns", "sales", "orders", "customers", "giftCards"]),
@@ -88,6 +98,26 @@ export function workspaceNavigationForRole(role?: string): WorkspaceNavigationGr
   ];
 }
 
-export function flattenedWorkspaceNavigation(role?: string): WorkspaceNavigationItem[] {
-  return workspaceNavigationForRole(role).flatMap((entry) => entry.items);
+/**
+ * @param permissions the session's effective permission list from GET /api/v1/me.
+ *   When it is absent the navigation is returned unchanged: the shell only
+ *   renders once the session is known, and every permission-gated destination
+ *   also refuses server-side.
+ */
+export function workspaceNavigationForRole(role?: string, permissions?: readonly string[]): WorkspaceNavigationGroup[] {
+  const groups = navigationGroupsForRole(role);
+  if (permissions === undefined) return groups;
+  return groups
+    .map((entry) => ({
+      label: entry.label,
+      items: entry.items.filter((item) => {
+        const required = PERMISSION_GATED[item.href];
+        return required === undefined || permissions.includes(required);
+      }),
+    }))
+    .filter((entry) => entry.items.length > 0);
+}
+
+export function flattenedWorkspaceNavigation(role?: string, permissions?: readonly string[]): WorkspaceNavigationItem[] {
+  return workspaceNavigationForRole(role, permissions).flatMap((entry) => entry.items);
 }

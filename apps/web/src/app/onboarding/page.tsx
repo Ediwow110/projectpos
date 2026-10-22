@@ -10,6 +10,7 @@ import { Panel } from "../../components/premium";
 import { AtlasEntryBrand } from "../../components/AtlasEntryBrand";
 import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { ApiError, apiFetch } from "../../lib/api";
+import { hasPermission } from "../../lib/role-permissions";
 import {
   formatTaxRate,
   readinessGapLabels,
@@ -94,6 +95,16 @@ export default function OnboardingPage(): JSX.Element {
   const query = useQuery({ queryKey: ["onboarding"], queryFn: loadOnboarding, retry: false });
   const business = useQuery({ queryKey: ["onboarding-business"], queryFn: () => apiFetch<BusinessDetails>("/api/v1/business"), retry: false });
   const unauthorized = query.error instanceof ApiError && (query.error.status === 401 || query.error.status === 403);
+  // GET /api/v1/onboarding answers 200 for every member, so the read alone cannot
+  // say who may edit these settings. The server's effective permission list is
+  // the authority: settings.write is owner-only, and only the owner may change
+  // currency, tax and receipt defaults.
+  const session = useQuery({
+    queryKey: ["me"],
+    queryFn: () => apiFetch<{ role: string; permissions?: string[] }>("/api/v1/me"),
+    retry: false,
+  });
+  const mayEditSettings = hasPermission(session.data?.permissions, "settings.write");
   const requiredDone = query.data !== undefined && REQUIRED.every((step) => query.data.steps[step] === "done");
   const readiness = useQuery({
     queryKey: ["onboarding-sale-readiness"],
@@ -186,18 +197,45 @@ export default function OnboardingPage(): JSX.Element {
     }
   }
 
-  if (query.isLoading || business.isLoading) {
+  if (query.isLoading || business.isLoading || session.isLoading) {
     return <main role="status" className="atlas-entry grid min-h-screen place-items-center text-sm text-[var(--color-atlas-muted-strong)]">Loading setup…</main>;
   }
   if (unauthorized) {
     return <main role="status" className="atlas-entry grid min-h-screen place-items-center text-sm text-[var(--color-atlas-muted-strong)]">Returning to sign in…</main>;
   }
   if (query.isError || !query.data || business.isError || !business.data) {
+    // The page's own data is the primary problem, so say so first: a signed-out
+    // visitor whose setup read failed must not be told they lack permission.
     return (
       <main className="atlas-entry grid min-h-screen place-items-center p-6 text-center">
         <div>
           <p role="alert" className="text-sm text-[#c43e3e]">Could not load setup progress.</p>
           <button type="button" onClick={() => void query.refetch()} className="mt-4 text-sm font-semibold text-[var(--color-atlas-accent-strong)]">Try again</button>
+        </div>
+      </main>
+    );
+  }
+  if (session.isError && !session.data) {
+    return (
+      <main role="status" className="atlas-entry grid min-h-screen place-items-center p-6 text-center">
+        <div className="max-w-md space-y-3">
+          <p role="alert" className="text-sm font-medium text-[#c43e3e]">Could not verify your access to business setup.</p>
+          <button type="button" onClick={() => void session.refetch()} className="mt-4 text-sm font-semibold text-[var(--color-atlas-accent-strong)]">Try again</button>
+        </div>
+      </main>
+    );
+  }
+  if (!mayEditSettings) {
+    // Fail closed: without the server's permission list the owner-only editor
+    // must not render, because the API would refuse the save anyway.
+    return (
+      <main role="status" className="atlas-entry grid min-h-screen place-items-center p-6 text-center">
+        <div className="max-w-md space-y-3">
+          <p role="alert" className="text-sm font-medium text-[#c43e3e]">You do not have access to business setup.</p>
+          <p className="text-sm text-[var(--color-atlas-muted-strong)]">
+            Business details, currency, tax and receipt settings are changed by the owner. Ask an owner to make this change.
+          </p>
+          <a href="/" className="inline-block text-sm font-semibold text-[var(--color-atlas-accent-strong)]">← Back to workspace</a>
         </div>
       </main>
     );
