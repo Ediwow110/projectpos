@@ -102,13 +102,13 @@ describe("expenses export filter HTTP contract", () => {
   function seedExpense(
     db: { createExpense(input: Record<string, unknown>): Promise<{ id: string }> },
     businessId: string,
-    input: { category: string; method?: string; expenseDate?: Date; voidedAt?: Date | null },
+    input: { category: string; method?: string; description?: string | null; expenseDate?: Date; voidedAt?: Date | null },
   ): Promise<{ id: string }> {
     return db.createExpense({
       businessId,
       category: input.category,
       amountMinor: 1000,
-      description: null,
+      description: input.description ?? null,
       method: input.method ?? "cash",
       shiftId: null,
       branchId: null,
@@ -269,5 +269,30 @@ describe("expenses export filter HTTP contract", () => {
     const narrowLines = exportLines(narrow.text);
     expect(narrowLines.length).toBe(2);
     expect(narrowLines.some((line) => line.startsWith("#"))).toBe(false);
+  });
+
+  it("carries the recorded description into the exported row", async () => {
+    const biz = await registerBusiness("export-description@example.com", "Description Export Store");
+    const db = app.get("DbPort");
+    const noted = await seedExpense(db, biz.businessId, { category: "Rent", description: "Studio rent" });
+    const plain = await seedExpense(db, biz.businessId, { category: "Rent", description: null });
+
+    const res = await request(app.getHttpServer())
+      .get("/api/v1/expenses/export?format=csv&category=Rent")
+      .set("Cookie", biz.cookie);
+    expect(res.status).toBe(200);
+
+    const lines = exportLines(res.text);
+    // The screen collects an optional description and the service stores it, so
+    // the audit artifact an operator downloads has to carry it too. Keyed on the
+    // seeded ids because the export orders rows by date, not by insertion.
+    expect(lines[0]).toContain(",description");
+    const notedLine = lines.find((line) => line.startsWith(`${noted.id},`));
+    const plainLine = lines.find((line) => line.startsWith(`${plain.id},`));
+    expect(notedLine).toBeDefined();
+    expect(plainLine).toBeDefined();
+    expect(notedLine).toContain("Studio rent");
+    expect(plainLine).not.toContain("Studio rent");
+    expect(lines.length).toBe(3);
   });
 });

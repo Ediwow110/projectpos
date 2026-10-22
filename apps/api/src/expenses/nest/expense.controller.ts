@@ -22,7 +22,7 @@ function rid(req: Request): string {
   return getCorrelationId(headers);
 }
 
-const EXPORT_HEADERS = ["id", "category", "amountMinor", "method", "expenseDate", "actorId", "voided"];
+const EXPORT_HEADERS = ["id", "category", "amountMinor", "method", "expenseDate", "actorId", "voided", "description"];
 
 /**
  * Rows one expense export may contain. This is the stated ceiling, not an
@@ -84,6 +84,7 @@ export class ExpenseController {
           e.expenseDate.toISOString(),
           e.actorId,
           e.voidedAt === null ? "" : "voided",
+          e.description,
         ]),
       );
       const body = total > EXPENSE_EXPORT_ROW_LIMIT
