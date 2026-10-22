@@ -4,7 +4,11 @@ export function isPlanLimit(code: string): boolean {
 
 export function trialDaysLeft(trialEndsAt: string | null, nowMs = Date.now()): number | null {
   if (!trialEndsAt) return null;
-  return Math.max(0, Math.ceil((Date.parse(trialEndsAt) - nowMs) / 86400000));
+  const endsAt = Date.parse(trialEndsAt);
+  // A date the browser cannot read is not a trial that ended: counting it as
+  // zero would tell an owner their trial is over when the server said nothing.
+  if (Number.isNaN(endsAt)) return null;
+  return Math.max(0, Math.ceil((endsAt - nowMs) / 86400000));
 }
 
 export function usagePct(used: number, limit: number | null): number | null {

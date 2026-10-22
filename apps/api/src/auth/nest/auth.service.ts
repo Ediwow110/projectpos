@@ -239,8 +239,11 @@ export class AuthService {
     // an unverified account cannot sign in until its token is redeemed.
     if (user.emailVerified === false) throw new Error("EMAIL_UNVERIFIED");
     const memberships = await this.db.listMembershipsByUser(user.id);
-    if (memberships.length === 0) throw new Error("TENANT_REQUIRED");
-    const membership = memberships[0];
+    // A deactivated membership grants nothing. Landing a session there would put
+    // the guard's tenant check on every request, locking out a user who still
+    // has a live workspace elsewhere in the same instance.
+    const membership = memberships.find((row) => row.deactivatedAt == null);
+    if (!membership) throw new Error("TENANT_REQUIRED");
     const businessId = membership.businessId;
     if (deviceId !== undefined) {
       const device = await this.db.findDeviceById(deviceId, businessId);

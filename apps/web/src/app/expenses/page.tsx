@@ -32,6 +32,7 @@ interface ExpenseRow {
   method: string;
   expenseDate: string;
   voidedAt: string | null;
+  description: string | null;
 }
 
 const METHODS = ["cash", "card", "gcash", "maya", "bank_transfer", "other"];
@@ -156,9 +157,9 @@ export default function ExpensesPage(): JSX.Element {
             <>
               {exportable ? (
                 <ExportCsvLink
-                  href={expensesDownloadUrl()}
+                  href={expensesDownloadUrl({ category: filterCategory })}
                   label="Export CSV"
-                  bounds={`Latest ${EXPENSES_ROW_WINDOW.toLocaleString("en-US")} expenses, voided ones included.`}
+                  bounds={`${filterCategory.trim() ? `Category "${filterCategory.trim()}", ` : ""}up to ${EXPENSES_ROW_WINDOW.toLocaleString("en-US")} expenses, voided ones included.`}
                 />
               ) : null}
               <PrimaryButton type="button" onClick={() => { setError(null); setSuccess(""); setCreateOpen(true); }}>+ Record expense</PrimaryButton>
@@ -194,7 +195,13 @@ export default function ExpensesPage(): JSX.Element {
               <tbody>
                 {items.map((expense) => (
                   <tr key={expense.id}>
-                    <td className="px-5 py-3 font-semibold text-[#2a241f]">{expense.category}</td>
+                    <td className="px-5 py-3">
+                      <p className="font-semibold text-[#2a241f]">{expense.category}</p>
+                      {/* Two rows can share a category; the recorded note is the only thing that tells them apart. */}
+                      {expense.description ? (
+                        <p className="mt-0.5 text-[11px] font-normal leading-4 text-[#73685f]">{expense.description}</p>
+                      ) : null}
+                    </td>
                     <td className="px-5 py-3 text-[#73685f]">{methodLabel(expense.method)}</td>
                     <td className="font-data px-5 py-3 text-[#73685f]">{new Date(expense.expenseDate).toLocaleDateString("en-PH")}</td>
                     <td className="font-data px-5 py-3 text-right font-medium">₱{money(expense.amountMinor)}</td>

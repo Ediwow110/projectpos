@@ -9,7 +9,9 @@ import { AppShell } from "../../components/AppShell";
 import { DataTableFrame, MetricCard, PageHeader, Panel, SectionHeader } from "../../components/premium";
 import { GhostButton, PrimaryButton, StatusPill } from "../../components/ui";
 import { ApiError, apiFetch } from "../../lib/api";
+import { errorText } from "../../lib/billing";
 import { canExport as canExportCsv } from "../../lib/exports";
+import { salesExportUrl } from "../../lib/sales-export";
 import { DonutChart, HorizontalBarChart, VerticalBarChart } from "../../lib/charts";
 import { formatMoneyMinor } from "../../lib/money";
 import { paymentMix, reportSeries } from "../../lib/report-view";
@@ -140,15 +142,25 @@ export default function SalesHistoryPage(): JSX.Element {
     (sale) => branchId === "" || (sale.branchId ?? null) === branchId,
   );
 
-  function downloadExport(): void {
+  async function downloadExport(): Promise<void> {
     setError("");
-    const sp = new URLSearchParams();
-    sp.set("format", "csv");
-    if (status !== "") sp.set("status", status);
-    if (customerId.trim() !== "") sp.set("customerId", customerId.trim());
-    if (dateFrom !== "") sp.set("dateFrom", dateFrom);
-    if (dateTo !== "") sp.set("dateTo", dateTo);
-    window.location.href = "/api/v1/sales/export?" + sp.toString();
+    try {
+      const response = await fetch(salesExportUrl({ status, customerId, dateFrom, dateTo }), { credentials: "include" });
+      if (!response.ok) {
+        const envelope = (await response.json().catch(() => null)) as { code?: string; message?: string } | null;
+        throw new ApiError(envelope?.code ?? "HTTP_ERROR", envelope?.message ?? "Export failed", response.headers.get("x-correlation-id") ?? "", response.status);
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "sales-export.csv";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (cause) {
+      setError(errorText(cause, "The sales export could not be downloaded."));
+    }
   }
 
   const role = meQuery.data?.role ?? "cashier";
@@ -164,7 +176,7 @@ export default function SalesHistoryPage(): JSX.Element {
           eyebrow="Sales / Transactions"
           title="Sales intelligence"
           description="Review transaction history with real sales momentum and payment-mix context above the source records."
-          actions={canExport ? <GhostButton type="button" onClick={downloadExport}>⇩ Export CSV</GhostButton> : undefined}
+          actions={canExport ? <GhostButton type="button" onClick={() => void downloadExport()}>⇩ Export CSV</GhostButton> : undefined}
         />
 
         {summary ? (

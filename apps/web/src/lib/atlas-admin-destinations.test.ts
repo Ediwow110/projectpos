@@ -41,4 +41,9 @@ describe("Atlas V4 role-specific administration", () => {
     expect(owner).toContain("/admin/api-tokens");
     expect(manager).toContain("/admin/api-tokens");
   });
+
+  it("offers the plan and invoices screen to the owner, who is the only role that acts on billing", () => {
+    expect(atlasAdminDestinationsForRole("owner").map((item) => item.href)).toContain("/billing");
+    expect(atlasAdminDestinationsForRole("manager").map((item) => item.href)).not.toContain("/billing");
+  });
 });

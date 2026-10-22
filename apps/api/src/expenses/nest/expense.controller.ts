@@ -2,6 +2,7 @@ import { Body, Controller, Get, Inject, Param, Post, Query, Req, Res, UseGuards 
 import type { Request, Response } from "express";
 import {
   expenseCreateSchema,
+  expenseExportSchema,
   expenseListSchema,
   expenseVoidSchema,
 } from "@pos/validation";
@@ -21,7 +22,15 @@ function rid(req: Request): string {
   return getCorrelationId(headers);
 }
 
-const EXPORT_HEADERS = ["id", "category", "amountMinor", "method", "expenseDate", "actorId", "voided"];
+const EXPORT_HEADERS = ["id", "category", "amountMinor", "method", "expenseDate", "actorId", "voided", "description"];
+
+/**
+ * Rows one expense export may contain. This is the stated ceiling, not an
+ * accident: filters are honoured, and when the filtered matches still exceed
+ * it the CSV says so instead of silently dropping rows - the same way the
+ * ledger export states LEDGER_EXPORT_ROW_WINDOW truncation.
+ */
+export const EXPENSE_EXPORT_ROW_LIMIT = 1000;
 
 @Controller("api/v1")
 @UseGuards(SessionGuard)
@@ -45,16 +54,26 @@ export class ExpenseController {
       fail(res, 400, "VALIDATION", "Only format=csv is supported", req);
       return;
     }
+    // Validate the filters before any row goes out: an unknown method or voided
+    // value is a 400 with the controller's error envelope, not a header-only
+    // CSV. Unparseable dates are rejected inside listExpenses the same way the
+    // list endpoint rejects them, and the response has not started yet, so
+    // they too become a 400 VALIDATION rather than an empty export.
+    const parsed = expenseExportSchema.safeParse(query);
+    if (!parsed.success) {
+      fail(res, 400, "VALIDATION", "Invalid expense export query", req);
+      return;
+    }
     try {
-      const items = (await this.expenses.listExpenses(req.auth!.businessId, {
-        category: undefined,
-        method: undefined,
-        dateFrom: undefined,
-        dateTo: undefined,
-        voided: "all",
+      const { items, total } = await this.expenses.listExpenses(req.auth!.businessId, {
+        category: parsed.data.category,
+        method: parsed.data.method,
+        dateFrom: parsed.data.dateFrom,
+        dateTo: parsed.data.dateTo,
+        voided: parsed.data.voided,
         page: 1,
-        pageSize: 1000,
-      })).items;
+        pageSize: EXPENSE_EXPORT_ROW_LIMIT,
+      });
       const csv = toCsv(
         EXPORT_HEADERS,
         items.map((e) => [
@@ -65,9 +84,13 @@ export class ExpenseController {
           e.expenseDate.toISOString(),
           e.actorId,
           e.voidedAt === null ? "" : "voided",
+          e.description,
         ]),
       );
-      res.status(200).set("Content-Type", "text/csv; charset=utf-8").send(csv);
+      const body = total > EXPENSE_EXPORT_ROW_LIMIT
+        ? `${csv}\n# Export truncated at ${EXPENSE_EXPORT_ROW_LIMIT.toLocaleString("en-US")} rows. Narrow the filters and export again.\n`
+        : csv;
+      res.status(200).set("Content-Type", "text/csv; charset=utf-8").send(body);
     } catch (e) {
       failFromError(res, e, "Expense export failed", req);
     }

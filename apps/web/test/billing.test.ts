@@ -60,6 +60,10 @@ describe("phase10 billing web helpers", () => {
     expect(trialDaysLeft(new Date(now - 1000).toISOString(), now)).toBe(0);
     expect(trialDaysLeft(null, now)).toBeNull();
   });
+  it("refuses to count down from a trial date the server did not send readably", () => {
+    expect(trialDaysLeft("00:00:00", Date.now())).toBeNull();
+    expect(trialDaysLeft("not-a-date", Date.now())).toBeNull();
+  });
   it("computes usage percentages with null-safe limits", () => {
     expect(usagePct(50, 100)).toBe(50);
     expect(usagePct(150, 100)).toBe(100);
