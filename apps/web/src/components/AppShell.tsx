@@ -61,7 +61,7 @@ function NavLink({
             (active
               ? "bg-[#fff0ea] font-semibold text-[var(--color-atlas-accent-strong)]"
               : "text-[#4d443d] hover:bg-[#f7f1ea] hover:text-[#17130f]")
-          : "group relative inline-flex h-11 shrink-0 items-center gap-2 border-b-2 px-3 text-[11px] font-semibold transition " +
+          : "group relative inline-flex h-11 shrink-0 items-center gap-2 border-b-2 px-3 text-[12px] font-semibold transition " +
             (active
               ? "border-[#f35d3f] text-[var(--color-atlas-accent-strong)]"
               : "border-transparent text-[#665b53] hover:border-[#ead7cd] hover:text-[#17130f]")
@@ -71,7 +71,7 @@ function NavLink({
         aria-hidden
         className={
           "grid place-items-center rounded-lg font-data " +
-          (compact ? "h-7 w-7 text-[11px] " : "h-6 w-6 text-[10px] ") +
+          (compact ? "h-7 w-7 text-[12px] " : "h-6 w-6 text-[12px] ") +
           (active ? "bg-[#ffe3d8] text-[var(--color-atlas-accent-strong)]" : "bg-[#f4f0ea] text-[#635950]")
         }
       >
@@ -243,7 +243,7 @@ export function AppShell({
           <button
             type="button"
             onClick={() => void shellMe.refetch()}
-            className="mt-5 inline-flex items-center justify-center rounded-[10px] bg-[#f35d3f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#d94a30]"
+            className="mt-5 inline-flex items-center justify-center rounded-[10px] bg-[#f35d3f] px-4 py-2.5 text-sm font-semibold text-[#17130f] hover:bg-[#ff8061]"
           >
             Try again
           </button>
@@ -297,13 +297,13 @@ export function AppShell({
               <span className="font-display text-[21px] font-semibold tracking-tight text-[#202826]">NexPOS</span>
             </Link>
             <div className="flex min-w-0 items-center gap-2">
-              <span className={"rounded-[7px] bg-[#f0f3ef] px-3 py-2 text-[10px] font-medium uppercase tracking-[0.05em] text-[#53615a] " + (atlasPos ? "hidden sm:inline-flex" : "")}>{currentRole}</span>
+              <span className={"rounded-[7px] bg-[#f0f3ef] px-3 py-2 text-[12px] font-medium uppercase tracking-[0.05em] text-[#53615a] " + (atlasPos ? "hidden sm:inline-flex" : "")}>{currentRole}</span>
               {atlasPos ? (
                 <label className="min-w-0">
                   <span className="sr-only">Active branch</span>
                   <select aria-label="Active branch" value={activeBranchId ?? ""} disabled={switchingBranch}
                     onChange={(event) => void switchBranch(event.target.value)}
-                    className="min-h-11 w-[98px] max-w-full rounded-lg border border-[#e5e9e3] bg-white px-2 text-[11px] text-[#202826] disabled:opacity-50 sm:w-[138px]">
+                    className="min-h-11 w-[98px] max-w-full rounded-lg border border-[#e5e9e3] bg-white px-2 text-[12px] text-[#202826] disabled:opacity-50 sm:w-[138px]">
                     <option value="">All branches</option>
                     {activeBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
                   </select>
@@ -339,14 +339,14 @@ export function AppShell({
             {approvalAtlas ? <span className="hidden min-w-0 truncate text-[14px] font-medium text-[#202826] xl:block">{currentRole === "owner" ? "Owner" : "Manager"} desk / {activeBranchName ?? name}</span> : null}
 
             <div className={posMode ? "hidden items-center gap-2 lg:flex" : "hidden items-center gap-2 md:flex"}>
-              <label className="rounded-[10px] border border-[#eee4db] bg-white px-2.5 py-1.5 text-[9px] font-semibold text-[#2a241f]">
+              <label className="rounded-[10px] border border-[#eee4db] bg-white px-2.5 py-1.5 text-[12px] font-semibold text-[#2a241f]">
                 <span className="sr-only">Active branch</span>
                 <select
                   aria-label="Active branch"
                   value={activeBranchId ?? ""}
                   onChange={(event) => void switchBranch(event.target.value)}
                   disabled={switchingBranch}
-                  className="max-w-36 bg-transparent text-[10px] font-semibold outline-none disabled:cursor-wait"
+                  className="max-w-36 min-h-8 bg-transparent text-[12px] font-semibold outline-none disabled:cursor-wait"
                 >
                   <option value="">All branches</option>
                   {activeBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
@@ -355,7 +355,7 @@ export function AppShell({
               {offline !== undefined ? (
                 <span
                   className={
-                    "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[9px] font-semibold " +
+                    "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[12px] font-semibold " +
                     (offline ? "bg-[#fff4df] text-[var(--color-atlas-warning-strong)]" : "bg-[#eaf7f0] text-[var(--color-atlas-verified)]")
                   }
                 >
@@ -363,8 +363,8 @@ export function AppShell({
                   {offline ? "Offline" : "Online"}
                 </span>
               ) : null}
-              <span className="hidden text-[10px] font-medium text-[#5d534b] lg:inline">▣ Today</span>
-              <span className="hidden text-[9px] text-[var(--color-atlas-muted-strong)] xl:inline">{today}</span>
+              <span className="hidden text-[12px] font-medium text-[#5d534b] lg:inline">▣ Today</span>
+              <span className="hidden text-[12px] text-[var(--color-atlas-muted-strong)] xl:inline">{today}</span>
             </div>
 
             {posMode ? (
@@ -372,7 +372,7 @@ export function AppShell({
                 {offline !== undefined ? (
                   <span
                     className={
-                      "inline-flex shrink-0 items-center gap-1 text-[8px] font-semibold " +
+                      "inline-flex shrink-0 items-center gap-1 text-[12px] font-semibold " +
                       (offline ? "text-[var(--color-atlas-warning-strong)]" : "text-[var(--color-atlas-verified)]")
                     }
                   >
@@ -392,13 +392,13 @@ export function AppShell({
                   value={activeBranchId ?? ""}
                   onChange={(event) => void switchBranch(event.target.value)}
                   disabled={switchingBranch}
-                  className="max-w-24 rounded-lg border border-[#eadfd6] bg-white px-2 py-1.5 text-[8px] font-semibold text-[#665b53]"
+                  className="max-w-24 min-h-8 rounded-lg border border-[#eadfd6] bg-white px-2 py-1.5 text-[12px] font-semibold text-[#665b53]"
                 >
                   <option value="">All branches</option>
                   {activeBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
                 </select>
               </label>
-              {branchError || signOutError ? <span role="alert" className="max-w-28 text-right text-[8px] font-medium text-[#c43e3e]">{branchError || signOutError}</span> : null}
+              {branchError || signOutError ? <span role="alert" className="max-w-28 text-right text-[12px] font-medium text-[#c43e3e]">{branchError || signOutError}</span> : null}
               <span aria-hidden className="hidden text-sm text-[#2a241f] sm:inline">⌕</span>
               <span aria-hidden className="hidden text-sm text-[#2a241f] sm:inline">♢</span>
               {showSessionControls ? (
@@ -406,26 +406,26 @@ export function AppShell({
                   type="button"
                   data-tour="tour-restart"
                   onClick={() => setShowTour(true)}
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[#eadfd6] bg-white text-[11px] font-bold text-[#665b53] hover:border-[#f2b8a9] hover:text-[var(--color-atlas-accent-strong)]"
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[#eadfd6] bg-white text-[12px] font-bold text-[#665b53] hover:border-[#f2b8a9] hover:text-[var(--color-atlas-accent-strong)]"
                   aria-label="Restart system tour"
                   title="Restart system tour"
                 >
                   ?
                 </button>
               ) : null}
-              <div className="font-display grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#f35d3f] text-[11px] font-bold text-white">
+              <div className="font-display grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#f35d3f] text-[12px] font-bold text-[#17130f]">
                 {initial}
               </div>
               <div className="hidden max-w-40 min-w-0 lg:block">
-                <p className="truncate text-[9px] font-semibold text-[#2a241f]">{name}</p>
-                <p className="truncate text-[8px] capitalize text-[#84786e]">{currentRole} · {branchScopeLabel(activeBranchName)}</p>
+                <p className="truncate text-[12px] font-semibold text-[#2a241f]">{name}</p>
+                <p className="truncate text-[12px] capitalize text-[var(--color-atlas-muted-strong)]">{currentRole} · {branchScopeLabel(activeBranchName)}</p>
               </div>
               {showSessionControls ? (
                 <button
                   type="button"
                   onClick={() => void signOut()}
                   disabled={signingOut}
-                  className="min-h-8 shrink-0 rounded-lg border border-[#eadfd6] bg-white px-2.5 text-[9px] font-semibold text-[#665b53] transition hover:border-[#f2b8a9] hover:text-[var(--color-atlas-accent-strong)] disabled:cursor-wait disabled:opacity-60"
+                  className="min-h-8 shrink-0 rounded-lg border border-[#eadfd6] bg-white px-2.5 text-[12px] font-semibold text-[#665b53] transition hover:border-[#f2b8a9] hover:text-[var(--color-atlas-accent-strong)] disabled:cursor-wait disabled:opacity-60"
                 >
                   {signingOut ? "Signing out…" : "Sign out"}
                 </button>
@@ -460,13 +460,13 @@ export function AppShell({
                 aria-label={activeSecondaryItem ? `More workspace navigation, current page ${activeSecondaryItem.label}` : "More workspace navigation"}
                 onClick={() => setShowMobileMenu((open) => !open)}
                 className={
-                  "relative inline-flex h-11 shrink-0 items-center gap-2 border-b-2 px-3 text-[11px] font-semibold transition " +
+                  "relative inline-flex h-11 shrink-0 items-center gap-2 border-b-2 px-3 text-[12px] font-semibold transition " +
                   (activeSecondaryItem || showMobileMenu
                     ? "border-[#f35d3f] text-[var(--color-atlas-accent-strong)]"
                     : "border-transparent text-[#665b53] hover:border-[#ead7cd] hover:text-[#17130f]")
                 }
               >
-                <span aria-hidden className="grid h-6 w-6 place-items-center rounded-lg bg-[#f4f0ea] font-data text-[10px] text-[#635950]">•••</span>
+                <span aria-hidden className="grid h-6 w-6 place-items-center rounded-lg bg-[#f4f0ea] font-data text-[12px] text-[#635950]">•••</span>
                 {activeSecondaryItem ? activeSecondaryItem.label : "More"}
               </button>
             ) : null}
@@ -498,7 +498,7 @@ export function AppShell({
             <nav aria-label="More workspace navigation" className="mx-auto grid w-full max-w-[920px] gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {secondaryNavigationGroups.map((group) => (
                 <section key={group.label} aria-label={group.label}>
-                  <p className="px-2 pb-1.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-[var(--color-atlas-muted-strong)]">{group.label}</p>
+                  <p className="px-2 pb-1.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-[var(--color-atlas-muted-strong)]">{group.label}</p>
                   <div className="space-y-1">
                     {group.items.map((item) => (
                       <NavLink
@@ -553,14 +553,14 @@ export function AppShell({
             <AtlasInventoryNavigation role={currentRole} pathname={pathname} onNavigate={beginNavigation} onSignOut={() => void signOut()} signingOut={signingOut} />
           ) : <div className="flex h-full min-h-[540px] flex-col overflow-y-auto p-4 xl:pt-5">
             <div className="mb-3 px-2">
-              <p className="font-data text-[8px] font-semibold uppercase tracking-[0.16em] text-[var(--color-atlas-muted-strong)]">Workspace</p>
-              <p className="mt-1 text-[11px] leading-4 text-[#746960]">Store operations and administration.</p>
+              <p className="font-data text-[12px] font-semibold uppercase tracking-[0.16em] text-[var(--color-atlas-muted-strong)]">Workspace</p>
+              <p className="mt-1 text-[12px] leading-4 text-[#746960]">Store operations and administration.</p>
             </div>
 
             <nav className="space-y-4" aria-label="Primary navigation">
               {navigationGroups.map((group) => (
                 <div key={group.label}>
-                  <p className="px-2 pb-1.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-[var(--color-atlas-muted-strong)]">
+                  <p className="px-2 pb-1.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-[var(--color-atlas-muted-strong)]">
                     {group.label}
                   </p>
                   <div className="space-y-1">
@@ -576,19 +576,19 @@ export function AppShell({
               <button
                 type="button"
                 onClick={() => setShowTour(true)}
-                className="mb-3 flex w-full items-center justify-between rounded-xl border border-[#eee4db] bg-white px-3 py-2.5 text-left text-[10px] font-semibold text-[#655b53] hover:border-[#f2b8a9] hover:text-[var(--color-atlas-accent-strong)]"
+                className="mb-3 flex w-full items-center justify-between rounded-xl border border-[#eee4db] bg-white px-3 py-2.5 text-left text-[12px] font-semibold text-[#655b53] hover:border-[#f2b8a9] hover:text-[var(--color-atlas-accent-strong)]"
               >
                 <span>Help · Restart tour</span>
                 <span aria-hidden>?</span>
               </button>
               <div className="rounded-2xl border border-[#f0e4da] bg-[#fff6f1] p-3">
                 <div className="flex items-center gap-2.5">
-                  <div className="font-display grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#f35d3f] text-xs font-bold text-white">
+                  <div className="font-display grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#f35d3f] text-[12px] font-bold text-[#17130f]">
                     {initial}
                   </div>
                   <div className="min-w-0">
-                    <p className="truncate text-[10px] font-semibold text-[#2a241f]">{name}</p>
-                    <p className="truncate text-[8px] capitalize text-[#84786e]">{currentRole} · {branchScopeLabel(activeBranchName)}</p>
+                    <p className="truncate text-[12px] font-semibold text-[#2a241f]">{name}</p>
+                    <p className="truncate text-[12px] capitalize text-[var(--color-atlas-muted-strong)]">{currentRole} · {branchScopeLabel(activeBranchName)}</p>
                   </div>
                 </div>
               </div>
@@ -619,7 +619,7 @@ export function AppShell({
         data-ui="shell-footer"
         className={"relative z-20 border-t border-[#eadfd6] bg-white/80 px-4 py-4 backdrop-blur sm:px-6 " + (atlasPos ? "xl:hidden" : "")}
       >
-        <div className="mx-auto flex w-full max-w-[1480px] flex-wrap items-center justify-between gap-2 text-[9px] text-[var(--color-atlas-muted-strong)]">
+        <div className="mx-auto flex w-full max-w-[1480px] flex-wrap items-center justify-between gap-2 text-[12px] text-[var(--color-atlas-muted-strong)]">
           <p><span className="font-display font-semibold text-[#3b342e]">NEXPOS</span> · Retail operations workspace</p>
           <p className="font-data">© {year} · Secure session workspace</p>
         </div>

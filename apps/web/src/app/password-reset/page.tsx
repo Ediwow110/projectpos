@@ -161,7 +161,7 @@ export default function PasswordResetPage(): JSX.Element {
                 New password (12+ characters)
                 <span className="relative mt-2 block">
                   <input
-                    className="field !min-h-[54px] pr-16"
+                    className="field !min-h-[54px] pr-[72px]"
                     type={showPassword ? "text" : "password"}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
@@ -173,7 +173,7 @@ export default function PasswordResetPage(): JSX.Element {
                   <button
                     type="button"
                     onClick={() => setShowPassword((shown) => !shown)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-[var(--color-atlas-accent-strong)]"
+                    className="absolute right-1.5 top-1/2 flex min-h-11 -translate-y-1/2 items-center rounded-lg px-3 text-[12px] font-semibold text-[var(--color-atlas-accent-strong)]"
                   >
                     {showPassword ? "Hide" : "Show"}
                   </button>

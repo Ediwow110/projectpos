@@ -29,7 +29,7 @@ export function AtlasWorkspaceDestinations({
       <nav aria-label="All workspace destinations" className="max-h-[40vh] space-y-3 overflow-y-auto border-t border-[#e5e9e3] px-3 py-3">
         {groups.map((group) => (
           <section key={group.label} aria-label={group.label}>
-            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[#758078]">{group.label}</p>
+            <p className="mb-1 text-[12px] font-semibold uppercase tracking-wider text-[var(--color-atlas-muted-strong)]">{group.label}</p>
             {group.items.map((item) => (
               <Link key={item.href} href={item.href} data-tour={item.tour} onClick={() => onNavigate(item.href)}
                 className="block min-h-11 rounded-lg px-3 py-2.5 text-[12px] text-[#202826] hover:bg-white focus-visible:outline-2 focus-visible:outline-[#da614c]">

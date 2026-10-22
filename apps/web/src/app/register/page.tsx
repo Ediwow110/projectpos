@@ -124,12 +124,12 @@ export default function RegisterPage(): JSX.Element {
                   minLength={12}
                   autoComplete="new-password"
                   placeholder="Enter a strong password"
-                  className="field !min-h-[55px] pr-16"
+                  className="field !min-h-[55px] pr-[72px]"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((shown) => !shown)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-[var(--color-atlas-accent-strong)]"
+                  className="absolute right-1.5 top-1/2 flex min-h-11 -translate-y-1/2 items-center rounded-lg px-3 text-[12px] font-semibold text-[var(--color-atlas-accent-strong)]"
                 >
                   {showPassword ? "Hide" : "Show"}
                 </button>
