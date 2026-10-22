@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { AppShell } from "../../../components/AppShell";
 import { AtlasInventorySafeguards } from "../../../components/AtlasInventorySafeguards";
+import { PageHeader } from "../../../components/premium";
 import { apiFetch } from "../../../lib/api";
 
 interface Me {
@@ -25,6 +26,13 @@ export default function InventoryAccessPage() {
   const inventoryPrivilege = me.data?.permissions.includes("inventory.adjust") ?? false;
   return <AppShell role={role} businessName={me.data?.businessName} atlasInventory>
     <main className="mx-auto w-full max-w-none space-y-5 px-4 pb-10 pt-8 sm:px-7">
+      {/* Every inventory page owns its h1 through the shared page header; the
+          safeguards block below it stays a section heading. */}
+      <PageHeader
+        eyebrow="Inventory / Access control"
+        title="Manager-protected adjustments"
+        description="What inventory authority does not include, and where every protected action is decided instead."
+      />
       <AtlasInventorySafeguards title="Restricted action" description="Inventory permissions never automatically confer commercial or financial approval authority." rules={["Every protected operation is authorized by the API.", "Unavailable actions have an explicit route to the responsible workflow.", "Manager or owner verification cannot be bypassed by sharing credentials."]}>
         <h3 className="font-display text-[22px] font-semibold text-[#202826]">Access restrictions</h3>
         <p className="mt-2 text-sm text-[var(--color-atlas-muted-strong)]">Your role and assigned permissions determine what you can do. These entries explain the existing workflows; they do not grant access.</p>

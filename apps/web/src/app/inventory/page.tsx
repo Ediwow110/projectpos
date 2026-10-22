@@ -183,6 +183,9 @@ export default function InventoryPage(): JSX.Element {
         <PageHeader
           eyebrow={role === "inventory" ? "INVENTORY / STOCK CONTROL" : "Inventory / Stock control"}
           title={role === "inventory" ? "Stock levels" : "Inventory"}
+          // The inventory role opens on the workbench, whose own heading is the
+          // page's h1, so this block is the second heading on the page.
+          titleAs={role === "inventory" ? "h2" : "h1"}
           description={
             meQuery.data?.activeBranchName
               ? "Viewing stock for " + meQuery.data.activeBranchName + ". Track on-hand inventory and audited movement within this branch."

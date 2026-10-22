@@ -12,12 +12,12 @@ export function DecorativeBackdrop(): JSX.Element {
   );
 }
 
-export function PageHeader({ eyebrow, title, description, actions }: { eyebrow?: string; title: string; description?: string; actions?: ReactNode }): JSX.Element {
+export function PageHeader({ eyebrow, title, description, actions, titleAs: Title = "h1" }: { eyebrow?: string; title: string; description?: string; actions?: ReactNode; titleAs?: "h1" | "h2" }): JSX.Element {
   return (
     <header className="flex flex-wrap items-end justify-between gap-4">
       <div>
         {eyebrow ? <p className="font-data text-[10px] font-medium uppercase tracking-[0.16em] text-[var(--color-atlas-accent-strong)]">{eyebrow}</p> : null}
-        <h1 className="font-display mt-1 text-[30px] font-bold leading-tight text-[#17130f] sm:text-[34px]">{title}</h1>
+        <Title className="font-display mt-1 text-[30px] font-bold leading-tight text-[#17130f] sm:text-[34px]">{title}</Title>
         {description ? <p className="mt-2 max-w-3xl text-[13px] leading-5 text-[#73685f]">{description}</p> : null}
       </div>
       {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
